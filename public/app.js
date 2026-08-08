@@ -23,8 +23,8 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "large-diff-notice", "connection-banner",
-    "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
+    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "large-diff-notice", "connection-banner",
+    "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
     "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "toast",
@@ -100,6 +100,39 @@ function setBusy(busy, label = "Working…") {
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
     elements["step-explanation"].innerHTML = `<span class="loading">${escapeHtml(label)}</span>`;
   }
+}
+
+async function loadSessions() {
+  elements["sessions-list"].innerHTML = '<div class="empty compact">Loading sessions…</div>';
+  try {
+    const result = await api(`/api/sessions${elements["show-archived-sessions"].checked ? "?all=true" : ""}`);
+    elements["sessions-list"].innerHTML = result.sessions.length === 0
+      ? '<div class="empty compact">No matching sessions.</div>'
+      : result.sessions.map((session) => `<article class="session-item" data-session-id="${escapeHtml(session.id)}">
+        <div class="session-summary">
+          <div><strong>${escapeHtml(session.name)}</strong><span>${escapeHtml(session.repositoryName)} · ${escapeHtml(session.base)}</span></div>
+          <span class="session-status">${escapeHtml(session.archived ? "archived" : session.status)}</span>
+        </div>
+        <div class="session-detail"><span>${escapeHtml(session.id.slice(0, 8))}</span><span>${session.comments} feedback</span><span>${session.activities} changes</span><time datetime="${escapeHtml(session.updatedAt)}">${escapeHtml(new Date(session.updatedAt).toLocaleString())}</time></div>
+        <div class="session-actions">
+          <button type="button" class="text-button" data-session-action="copy">Copy reopen command</button>
+          <button type="button" class="text-button" data-session-action="rename">Rename</button>
+          <button type="button" class="text-button" data-session-action="${session.archived ? "unarchive" : "archive"}">${session.archived ? "Restore" : "Archive"}</button>
+          <button type="button" class="text-button danger" data-session-action="delete">Delete</button>
+        </div>
+      </article>`).join("");
+    if (result.invalid.length > 0) toast(`${result.invalid.length} unreadable session file(s) were ignored.`);
+  } catch (error) {
+    elements["sessions-list"].innerHTML = `<div class="empty compact">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function updateLibrarySession(id, action, name) {
+  await api(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action, name }),
+  });
+  await loadSessions();
 }
 
 function reviewIsOpen() {
@@ -406,16 +439,33 @@ function renderFlows() {
   }).join("");
 }
 
+function renderActivities() {
+  const activities = [...(state.session.activities ?? [])].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  elements["activity-empty"].classList.toggle("hidden", activities.length > 0);
+  elements["activity-tab-count"].textContent = String(activities.length);
+  elements["activity-tab-count"].classList.toggle("hidden", activities.length === 0);
+  elements["activity-list"].innerHTML = activities.map((activity) => `<article class="activity-card">
+    <header>
+      <div><span class="activity-status ${escapeHtml(activity.status)}">${activity.status === "verified" ? "refreshed" : "observed"}</span><h2>${escapeHtml(activity.request)}</h2></div>
+      <time datetime="${escapeHtml(activity.updatedAt)}">${escapeHtml(new Date(activity.updatedAt).toLocaleString())}</time>
+    </header>
+    <div class="activity-agent">${escapeHtml(activity.adapterId)} · ${escapeHtml(activity.modelId)}${activity.stepId ? ` · tour step ${escapeHtml(activity.stepId)}` : ""}</div>
+    <div class="activity-files">${activity.files.map((file) => `<button type="button" class="activity-file" data-activity-file="${escapeHtml(file.path)}">
+      <span><strong>${escapeHtml(file.path)}</strong><small>${escapeHtml(file.change)}</small></span>
+      <span class="file-stats">${file.after ? `<span class="plus">+${file.after.additions}</span> <span class="minus">-${file.after.deletions}</span>` : "removed from diff"}</span>
+    </button>`).join("")}</div>
+    <section class="activity-verification"><div class="eyebrow">Verification</div>${activity.verification ? renderMarkdown(activity.verification) : `<p class="muted">${activity.status === "verified" ? "No verification summary was supplied." : "Waiting for the agent's explicit refresh."}</p>`}</section>
+  </article>`).join("");
+}
+
 function renderActiveTab() {
-  const flows = state.activeTab === "flows";
-  elements["diff-view"].classList.toggle("hidden", flows);
-  elements["flows-view"].classList.toggle("hidden", !flows);
-  elements["diff-tab"].classList.toggle("active", !flows);
-  elements["flows-tab"].classList.toggle("active", flows);
-  elements["diff-tab"].setAttribute("aria-selected", String(!flows));
-  elements["flows-tab"].setAttribute("aria-selected", String(flows));
-  elements["diff-tab"].tabIndex = flows ? -1 : 0;
-  elements["flows-tab"].tabIndex = flows ? 0 : -1;
+  for (const tabName of ["diff", "flows", "activity"]) {
+    const active = state.activeTab === tabName;
+    elements[`${tabName}-view`].classList.toggle("hidden", !active);
+    elements[`${tabName}-tab`].classList.toggle("active", active);
+    elements[`${tabName}-tab`].setAttribute("aria-selected", String(active));
+    elements[`${tabName}-tab`].tabIndex = active ? 0 : -1;
+  }
 }
 
 function highlightAnchor() {
@@ -481,6 +531,7 @@ function renderSession() {
   renderComments();
   renderFindings();
   renderFlows();
+  renderActivities();
   renderActiveTab();
   elements["feedback-button"].classList.toggle("hidden", comments.length === 0);
   const closed = !reviewIsOpen();
@@ -657,18 +708,60 @@ elements["cancel-comment"].addEventListener("click", () => elements["comment-dia
 elements["close-button"].addEventListener("click", () => close("accepted"));
 elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
+elements["sessions-button"].addEventListener("click", () => { elements["sessions-dialog"].showModal(); void loadSessions(); });
+elements["close-sessions"].addEventListener("click", () => elements["sessions-dialog"].close());
+elements["show-archived-sessions"].addEventListener("change", loadSessions);
+elements["sessions-list"].addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-session-action]");
+  const item = event.target.closest("[data-session-id]");
+  if (!button || !item) return;
+  const id = item.dataset.sessionId;
+  const action = button.dataset.sessionAction;
+  try {
+    if (action === "copy") {
+      await navigator.clipboard.writeText(`code-review-tour sessions resume ${id.slice(0, 8)} --open`);
+      toast("Reopen command copied");
+      return;
+    }
+    if (action === "rename") {
+      const name = window.prompt("Session name", item.querySelector("strong")?.textContent ?? "");
+      if (name?.trim()) await updateLibrarySession(id, "rename", name.trim());
+      return;
+    }
+    if (action === "delete") {
+      if (!window.confirm("Delete this persisted review session? This cannot be undone.")) return;
+      await api(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({ confirm: true }) });
+      await loadSessions();
+      toast("Session deleted");
+      return;
+    }
+    await updateLibrarySession(id, action);
+  } catch (error) {
+    toast(error.message);
+  }
+});
 elements["agent-select"].addEventListener("change", renderModelOptions);
 elements["model-select"].addEventListener("change", renderReasoningOptions);
 elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });
 elements["flows-tab"].addEventListener("click", () => { state.activeTab = "flows"; renderFlows(); renderActiveTab(); });
+elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  const flows = event.key === "ArrowRight" || event.key === "End";
-  state.activeTab = flows ? "flows" : "diff";
-  if (flows) renderFlows();
+  const tabs = ["diff", "flows", "activity"];
+  const currentIndex = tabs.indexOf(state.activeTab);
+  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
+    (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  state.activeTab = tabs[nextIndex];
+  if (state.activeTab === "flows") renderFlows();
+  if (state.activeTab === "activity") renderActivities();
   renderActiveTab();
-  elements[flows ? "flows-tab" : "diff-tab"].focus();
+  elements[`${state.activeTab}-tab`].focus();
+});
+
+elements["activity-list"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-activity-file]");
+  if (button) void showChangedFile(button.dataset.activityFile);
 });
 
 elements.diff.addEventListener("click", (event) => {

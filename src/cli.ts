@@ -9,6 +9,7 @@ import { ReviewSession } from "./session.ts";
 import { startServer } from "./server.ts";
 import packageJson from "../package.json" with { type: "json" };
 import { runDoctor } from "./doctor.ts";
+import { runSessionCommand } from "./session-library.ts";
 
 interface Options {
   repository: string;
@@ -28,6 +29,7 @@ function printHelp(): void {
 Usage:
   code-review-tour [options]
   code-review-tour doctor
+  code-review-tour sessions [list|resume|rename|archive|unarchive|delete]
 
 Options:
   --repo PATH          Repository to review (default: current directory)
@@ -86,7 +88,8 @@ function parseOptions(args: string[]): Options {
   return options;
 }
 
-const command = process.argv[2];
+let cliArguments = process.argv.slice(2);
+const command = cliArguments[0];
 if (command === "--version" || command === "-v") {
   console.log(packageJson.version);
   process.exit(0);
@@ -94,7 +97,15 @@ if (command === "--version" || command === "-v") {
 if (command === "doctor") {
   process.exit(await runDoctor());
 }
-const options = parseOptions(process.argv.slice(2));
+if (command === "sessions") {
+  const result = await runSessionCommand(cliArguments.slice(1));
+  if (!result.resumePath) {
+    if (result.output) console.log(result.output);
+    process.exit(0);
+  }
+  cliArguments = ["--resume", result.resumePath, ...(result.open ? ["--open"] : [])];
+}
+const options = parseOptions(cliArguments);
 const stateFile = options.resume ?? join(
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),
   "code-review-tour",
@@ -147,7 +158,7 @@ try {
     if (!filename || String(filename).split(/[\\/]/).includes(".git")) return;
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
-      session.refreshComparison().catch((error) => console.error("Could not refresh the review comparison:", error));
+      session.refreshComparison({ source: "watcher" }).catch((error) => console.error("Could not refresh the review comparison:", error));
     }, 500);
   });
 } catch (error) {

@@ -22,7 +22,9 @@ to the relevant code, and stays available for follow-up questions.
 - anchors tour stops, editable review comments, and evidence-backed P0–P3 findings to diff lines;
 - generates provenance-labelled sequence views for goal-critical, high-blast flows;
 - refreshes when repository files change and marks stale annotations as outdated;
+- records agent-authored file changes, their triggering request, and verification in an Activity timeline;
 - persists review state atomically so the server can resume it after restart;
+- provides a session library to reopen, rename, archive, and delete saved tours;
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - exposes `Close` and `Send feedback & close` outcomes.
 
@@ -106,6 +108,25 @@ The server prints an owner-only session-state path. Resume it after a restart:
 ```sh
 code-review-tour --resume "/path/printed/by/the/server.json" --open
 ```
+
+Saved tours can also be managed without handling state-file paths. Open the
+`Sessions` dialog in the browser, or use a session's displayed short ID:
+
+```sh
+code-review-tour sessions
+code-review-tour sessions --all
+code-review-tour sessions resume 169dedd6 --open
+code-review-tour sessions rename 169dedd6 "Push notification review"
+code-review-tour sessions archive 169dedd6
+code-review-tour sessions unarchive 169dedd6
+code-review-tour sessions delete 169dedd6 --yes
+```
+
+The `Activity` tab groups repository changes by attached-agent request. It shows
+the affected files, before/after diff totals, and the verification reported by
+the agent after the refreshed changes are visible in the browser. Manual and
+background refreshes outside an active attached request are not attributed to
+the agent.
 
 New state files live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/sessions` and are written atomically. A standalone server exits after the browser closes the review. An attached server waits until the triggering agent acknowledges that it handled the terminal outcome.
 

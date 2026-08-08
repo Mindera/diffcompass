@@ -7,6 +7,8 @@ import { loadComparison } from "../src/git.ts";
 import { runProcess } from "../src/process.ts";
 import { startServer } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
+import { savePersistedSession } from "../src/store.ts";
+import type { PersistedReviewSession } from "../src/types.ts";
 
 const repositories: string[] = [];
 const servers: Array<ReturnType<typeof startServer>> = [];
@@ -45,10 +47,10 @@ async function fixture() {
   const comparison = await loadComparison(repository);
   const bridge = new AttachedAgentBridge("bridge-token-0123456789");
   const session = new (ReviewSession as unknown as ReviewSessionConstructor)(comparison, [], {}, bridge);
-  const server = startServer(session, 0);
+  const server = startServer(session, 0, join(repository, ".test-sessions"));
   servers.push(server);
   const url = `http://${server.hostname}:${server.port}`;
-  return { bridge, comparison, session, url };
+  return { bridge, comparison, repository, session, url };
 }
 
 function browserHeaders(url: string, token: string, headers: HeadersInit = {}): Headers {
@@ -191,4 +193,44 @@ test("close is terminal while an identical close remains idempotent", async () =
     headers,
     body: JSON.stringify({ path: "app.ts", side: "new", line: 2, body: "Too late" }),
   })).status).toBe(409);
+});
+
+test("session library API lists, renames, archives, and explicitly deletes sessions", async () => {
+  const { repository, session, url } = await fixture();
+  const directory = join(repository, ".test-sessions");
+  const state: PersistedReviewSession = {
+    schemaVersion: 1,
+    repositoryRoot: repository,
+    base: "origin/main",
+    browserToken: "another-browser-token",
+    currentStepIndex: -1,
+    comments: [],
+    messages: [],
+    revision: 1,
+    status: "open",
+    updatedAt: "2026-08-09T10:00:00.000Z",
+  };
+  await savePersistedSession(join(directory, "cccccccc-3333.json"), state);
+  const headers = browserHeaders(url, session.browserToken);
+
+  const listed = await (await jsonRequest(url, "/api/sessions", { headers })).json() as { sessions: Array<{ id: string; name: string }> };
+  expect(listed.sessions).toEqual([expect.objectContaining({ id: "cccccccc-3333" })]);
+
+  expect((await jsonRequest(url, "/api/sessions/cccc", {
+    method: "PATCH", headers, body: JSON.stringify({ action: "rename", name: "API review" }),
+  })).status).toBe(200);
+  expect((await jsonRequest(url, "/api/sessions/cccc", {
+    method: "PATCH", headers, body: JSON.stringify({ action: "archive" }),
+  })).status).toBe(200);
+  const archived = await (await jsonRequest(url, "/api/sessions?all=true", { headers })).json() as { sessions: Array<{ name: string; archived: boolean }> };
+  expect(archived.sessions).toEqual([expect.objectContaining({ name: "API review", archived: true })]);
+
+  expect((await jsonRequest(url, "/api/sessions/cccc", {
+    method: "DELETE", headers, body: JSON.stringify({ confirm: false }),
+  })).status).toBe(422);
+  expect((await jsonRequest(url, "/api/sessions/cccc", {
+    method: "DELETE", headers, body: JSON.stringify({ confirm: true }),
+  })).status).toBe(200);
+  const empty = await (await jsonRequest(url, "/api/sessions?all=true", { headers })).json() as { sessions: unknown[] };
+  expect(empty.sessions).toEqual([]);
 });

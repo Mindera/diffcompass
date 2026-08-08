@@ -11,6 +11,7 @@ interface Options {
   eventId?: string;
   leaseId?: string;
   file?: string;
+  verificationFile?: string;
 }
 
 function parseOptions(args: string[]): Options {
@@ -29,6 +30,7 @@ function parseOptions(args: string[]): Options {
     else if (arg === "--event" && value) options.eventId = value;
     else if (arg === "--lease" && value) options.leaseId = value;
     else if (arg === "--file" && value) options.file = value;
+    else if (arg === "--verification-file" && value) options.verificationFile = value;
     else throw new Error(`Unknown or incomplete option: ${arg}`);
     index += 1;
   }
@@ -84,9 +86,10 @@ if (options.command === "context") {
   });
 } else {
   if (!options.eventId || !options.leaseId) throw new Error("refresh requires --event ID and --lease LEASE_ID.");
+  const verification = options.verificationFile ? await Bun.file(options.verificationFile).text() : undefined;
   result = await request(options, "/api/bridge/refresh", {
     method: "POST",
-    body: JSON.stringify({ eventId: options.eventId, leaseId: options.leaseId }),
+    body: JSON.stringify({ eventId: options.eventId, leaseId: options.leaseId, verification }),
   });
 }
 console.log(JSON.stringify(result, null, 2));

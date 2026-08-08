@@ -43,7 +43,7 @@ Prompt kinds:
 
 - `tour.outline`: return only the JSON shape requested by the event. Inspect the diff and repository before responding.
 - `tour.explanation`: return the conversational explanation for that stop.
-- `review.question`: answer the reviewer using the current step and selected-line context. Modify files only when the reviewer explicitly requests a concrete change. If files change, run proportionate checks, then call `code-review-tour-bridge refresh --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID` before responding so the browser receives the updated diff. This event-bound refresh is what authorizes the question's answer to cross that comparison update.
+- `review.question`: answer the reviewer using the current step and selected-line context. Modify files only when the reviewer explicitly requests a concrete change. If files change, run proportionate checks and write a concise UTF-8 verification summary to a temporary file. Include commands and outcomes, or state why a relevant check was not run. Then call `code-review-tour-bridge refresh --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID --verification-file VERIFICATION_FILE` before responding so the browser receives the updated diff and durable change activity. Delete the verification file after the bridge accepts the refresh. This event-bound refresh is what authorizes the question's answer to cross that comparison update.
 
 ## Finish
 

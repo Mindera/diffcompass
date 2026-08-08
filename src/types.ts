@@ -116,6 +116,38 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface AgentChangeFile {
+  path: string;
+  change: "added" | "modified" | "removed";
+  beforeFingerprint?: string;
+  afterFingerprint?: string;
+  before?: {
+    status: DiffFile["status"];
+    additions: number;
+    deletions: number;
+  };
+  after?: {
+    status: DiffFile["status"];
+    additions: number;
+    deletions: number;
+  };
+}
+
+export interface AgentChangeActivity {
+  id: string;
+  requestMessageId: string;
+  request: string;
+  stepId?: string;
+  adapterId: string;
+  modelId: string;
+  eventId?: string;
+  files: AgentChangeFile[];
+  verification?: string;
+  status: "observed" | "verified";
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 export interface AgentModelOption {
@@ -142,6 +174,8 @@ export interface AgentSelection {
 
 export interface PersistedReviewSession {
   schemaVersion: 1;
+  name?: string;
+  archived?: boolean;
   repositoryRoot: string;
   base: string;
   browserToken: string;
@@ -174,6 +208,7 @@ export interface PersistedReviewSession {
   currentStepIndex: number;
   comments: ReviewComment[];
   messages: ChatMessage[];
+  activities?: AgentChangeActivity[];
   revision: number;
   status: ReviewStatus;
   selection?: AgentSelection;

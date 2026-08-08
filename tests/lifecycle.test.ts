@@ -241,12 +241,58 @@ test("an attached review question can refresh after requested edits and still re
 
   await writeFile(join(repository, "app.ts"), "const base = 1;\nconst edited = 4;\n");
   bridge.validateRefresh(prompt!.id, prompt!.leaseId!);
-  await session.refreshComparison();
+  await session.refreshComparison({ source: "agent", eventId: prompt!.id, verification: "bun test: passed" });
   bridge.authorizeRefresh(prompt!.id, prompt!.leaseId!, session.currentComparisonGeneration);
   await bridge.respond(prompt!.id, "I made the requested change and refreshed the diff.", prompt!.leaseId);
 
   const snapshot = await asking;
   expect(snapshot.messages.at(-1)).toMatchObject({ role: "agent", body: "I made the requested change and refreshed the diff." });
+  expect(snapshot.activities).toEqual([expect.objectContaining({
+    request: "Please make the requested change.",
+    eventId: prompt!.id,
+    status: "verified",
+    verification: "bun test: passed",
+    files: [expect.objectContaining({ path: "app.ts", change: "modified" })],
+  })]);
+  expect((await loadPersistedSession(stateFile)).activities).toEqual(snapshot.activities);
+});
+
+test("watcher refreshes accumulate agent edits until the explicit verified refresh", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge!;
+  const asking = session.ask("Update the implementation and add coverage.");
+  const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
+
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst edited = 8;\n");
+  await session.refreshComparison({ source: "watcher" });
+  await writeFile(join(repository, "app.test.ts"), "test('edited', () => expect(true).toBe(true));\n");
+  await session.refreshComparison({ source: "watcher" });
+  expect(session.snapshot().activities).toEqual([expect.objectContaining({
+    status: "observed",
+    files: [expect.objectContaining({ path: "app.test.ts" }), expect.objectContaining({ path: "app.ts" })],
+  })]);
+
+  bridge.validateRefresh(prompt!.id, prompt!.leaseId!);
+  await session.refreshComparison({ source: "agent", eventId: prompt!.id, verification: "bun test: 1 pass" });
+  bridge.authorizeRefresh(prompt!.id, prompt!.leaseId!, session.currentComparisonGeneration);
+  await bridge.respond(prompt!.id, "Implemented and verified.", prompt!.leaseId);
+  const snapshot = await asking;
+  expect(snapshot.activities).toEqual([expect.objectContaining({
+    status: "verified",
+    eventId: prompt!.id,
+    verification: "bun test: 1 pass",
+    files: [expect.objectContaining({ path: "app.test.ts" }), expect.objectContaining({ path: "app.ts" })],
+  })]);
+});
+
+test("manual refreshes are not attributed to an attached agent request", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { stateFile, attached: true });
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst manual = 9;\n");
+  await session.refreshComparison({ source: "manual" });
+  expect(session.snapshot().activities).toEqual([]);
 });
 
 test("an unrelated refresh still rejects an in-flight attached question", async () => {

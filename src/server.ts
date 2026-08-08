@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { resolve } from "node:path";
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
 import appScript from "../public/app.js" with { type: "text" };
 import indexHtml from "../public/index.html" with { type: "text" };
@@ -8,6 +9,7 @@ import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
 import { loadRepositoryFile } from "./git.ts";
 import { ReviewSession } from "./session.ts";
+import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
 import {
   enumValue,
   exactKeys,
@@ -72,7 +74,7 @@ function requireBrowserAuthorization(request: Request, session: ReviewSession): 
   }
 }
 
-export function startServer(session: ReviewSession, port: number) {
+export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory()) {
   const fetch = async (request: Request) => {
     const url = new URL(request.url);
     try {
@@ -113,11 +115,15 @@ export function startServer(session: ReviewSession, port: number) {
         }
         if (request.method === "POST" && url.pathname === "/api/bridge/refresh") {
           const input = await readJsonObject(request);
-          exactKeys(input, ["eventId", "leaseId"]);
+          exactKeys(input, ["eventId", "leaseId", "verification"]);
           const eventId = requiredString(input.eventId, "eventId", 128);
           const leaseId = requiredString(input.leaseId, "leaseId", 128);
           session.bridge.validateRefresh(eventId, leaseId);
-          const snapshot = await session.refreshComparison();
+          const snapshot = await session.refreshComparison({
+            source: "agent",
+            eventId,
+            verification: optionalString(input.verification, "verification", 16_000),
+          });
           session.bridge.authorizeRefresh(eventId, leaseId, session.currentComparisonGeneration);
           return json(snapshot);
         }
@@ -126,6 +132,31 @@ export function startServer(session: ReviewSession, port: number) {
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "GET" && url.pathname === "/api/sessions") {
+        return json(await listReviewSessions(sessionDirectory, url.searchParams.get("all") === "true"));
+      }
+      const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
+      if (sessionMatch && request.method === "PATCH") {
+        const id = decodeURIComponent(sessionMatch[1]);
+        const input = await readJsonObject(request);
+        exactKeys(input, ["action", "name"]);
+        const action = enumValue(input.action, "action", ["rename", "archive", "unarchive"]);
+        const updated = await updateReviewSessionMetadata(id, action === "rename"
+          ? { name: requiredString(input.name, "name", 200) }
+          : { archived: action === "archive" }, sessionDirectory);
+        return json(updated);
+      }
+      if (sessionMatch && request.method === "DELETE") {
+        const id = decodeURIComponent(sessionMatch[1]);
+        const input = await readJsonObject(request);
+        exactKeys(input, ["confirm"]);
+        if (input.confirm !== true) throw new HttpError(422, "Session deletion requires explicit confirmation.");
+        const target = await resolveReviewSession(id, sessionDirectory);
+        if (session.stateFile && resolve(target.path) === resolve(session.stateFile)) {
+          throw new HttpError(409, "The currently running session cannot delete itself. Close its server first.");
+        }
+        return json(await deleteReviewSession(id, sessionDirectory));
+      }
       if (request.method === "GET" && url.pathname === "/api/files") {
         const path = requiredString(url.searchParams.get("path"), "path", 4_096);
         return json({ path, content: await loadRepositoryFile(session.comparison, path) });
@@ -187,7 +218,7 @@ export function startServer(session: ReviewSession, port: number) {
       }
       if (request.method === "POST" && url.pathname === "/api/refresh") {
         await readJsonObject(request);
-        return json(await session.refreshComparison());
+        return json(await session.refreshComparison({ source: "manual" }));
       }
       if (request.method === "POST" && url.pathname === "/api/close") {
         const input = await readJsonObject(request);

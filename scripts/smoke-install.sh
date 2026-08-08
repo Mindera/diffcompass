@@ -15,6 +15,7 @@ esac
 
 archive="$(find dist/release -maxdepth 1 -name "code-review-tour-v*-${platform}.tar.gz" -print -quit)"
 [[ -n "$archive" ]] || { echo "Build release archives before running the installer smoke test." >&2; exit 1; }
+package_version="$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
 
 CODE_REVIEW_TOUR_ARCHIVE="$archive" \
 CODE_REVIEW_TOUR_INSTALL_ROOT="$test_root/install" \
@@ -35,4 +36,4 @@ CODE_REVIEW_TOUR_BIN_ROOT="$test_root/bin" \
 CODE_REVIEW_TOUR_CODEX_SKILL_ROOT="$test_root/codex/skills" \
 CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT="$test_root/claude/skills" \
   ./scripts/install.sh >/dev/null
-[[ ! -d "$test_root/install/0.1.0/bin/bin" ]]
+[[ ! -d "$test_root/install/$package_version/bin/bin" ]]

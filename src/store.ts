@@ -60,6 +60,30 @@ function validMessage(value: unknown): boolean {
     nonEmptyString(value.createdAt, 64);
 }
 
+function validChangeSummary(value: unknown): boolean {
+  return record(value) && ["added", "deleted", "modified", "renamed"].includes(String(value.status)) &&
+    Number.isInteger(value.additions) && Number(value.additions) >= 0 &&
+    Number.isInteger(value.deletions) && Number(value.deletions) >= 0;
+}
+
+function validActivity(value: unknown): boolean {
+  return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.requestMessageId, 128) &&
+    nonEmptyString(value.request, 8_000) && (value.stepId === undefined || nonEmptyString(value.stepId, 128)) &&
+    nonEmptyString(value.adapterId, 128) && nonEmptyString(value.modelId, 256) &&
+    (value.eventId === undefined || nonEmptyString(value.eventId, 128)) &&
+    Array.isArray(value.files) && value.files.length <= 10_000 && value.files.every((file) => (
+      record(file) && nonEmptyString(file.path, 4_096) && ["added", "modified", "removed"].includes(String(file.change)) &&
+      (file.beforeFingerprint === undefined || nonEmptyString(file.beforeFingerprint, 128)) &&
+      (file.afterFingerprint === undefined || nonEmptyString(file.afterFingerprint, 128)) &&
+      (file.before === undefined || validChangeSummary(file.before)) &&
+      (file.after === undefined || validChangeSummary(file.after)) &&
+      (file.before !== undefined || file.after !== undefined)
+    )) &&
+    (value.verification === undefined || nonEmptyString(value.verification, 16_000)) &&
+    ["observed", "verified"].includes(String(value.status)) &&
+    nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
+}
+
 function validSelection(value: unknown): boolean {
   return record(value) && nonEmptyString(value.adapterId, 128) && nonEmptyString(value.modelId, 256) &&
     (value.reasoningEffort === undefined || ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(String(value.reasoningEffort)));
@@ -97,9 +121,23 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     throw new Error(`Could not read review session ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (!record(value)) throw new Error("The review session file is invalid.");
+  if (value.schemaVersion === 1 && record(value.outline)) {
+    value.outline.flows ??= [];
+    value.outline.findings ??= [];
+    if (Array.isArray(value.outline.findings)) {
+      for (const finding of value.outline.findings) {
+        if (!record(finding)) continue;
+        finding.blastRadiusSize ??= 0;
+        finding.tested ??= false;
+        finding.pinScope ??= "line";
+      }
+    }
+  }
   const session = value as Partial<PersistedReviewSession>;
   if (
     session.schemaVersion !== 1 ||
+    (session.name !== undefined && !nonEmptyString(session.name, 200)) ||
+    (session.archived !== undefined && typeof session.archived !== "boolean") ||
     !nonEmptyString(session.repositoryRoot, 16_384) ||
     !nonEmptyString(session.base, 4_096) ||
     !nonEmptyString(session.browserToken, 256) ||
@@ -113,6 +151,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     )))) ||
     !Array.isArray(session.comments) || session.comments.length > 10_000 || !session.comments.every(validComment) ||
     !Array.isArray(session.messages) || session.messages.length > 10_000 || !session.messages.every(validMessage) ||
+    (session.activities !== undefined && (!Array.isArray(session.activities) || session.activities.length > 2_000 || !session.activities.every(validActivity))) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||
     (session.agentContinuation !== undefined && !validContinuation(session.agentContinuation)) ||

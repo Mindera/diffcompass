@@ -16,8 +16,10 @@
       <div class="tabs" role="tablist">
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
         <button id="flows-tab" class="tab" data-tab="flows" role="tab" aria-selected="false" aria-controls="flows-view" tabindex="-1">Flows</button>
+        <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
       </div>
       <div class="actions">
+        <button id="sessions-button" class="button secondary">Sessions</button>
         <button id="refresh-button" class="button secondary">Refresh</button>
         <button id="close-button" class="button secondary">Close</button>
         <button id="feedback-button" class="button primary hidden">Send feedback &amp; close</button>
@@ -49,6 +51,10 @@
         <div id="flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="flows-tab">
           <div id="flows-empty" class="empty">Start the tour to generate grounded main-flow diagrams.</div>
           <div id="flows" class="flows"></div>
+        </div>
+        <div id="activity-view" class="review-view hidden" role="tabpanel" aria-labelledby="activity-tab">
+          <div id="activity-empty" class="empty">Agent-authored repository changes will appear here.</div>
+          <div id="activity-list" class="activity-list"></div>
         </div>
       </section>
 
@@ -136,6 +142,18 @@
           <button id="save-comment" type="submit" class="button primary">Add comment</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="sessions-dialog" class="sessions-dialog">
+      <div class="dialog-heading">
+        <div>
+          <div class="eyebrow">Review library</div>
+          <h2>Sessions</h2>
+        </div>
+        <button id="close-sessions" type="button" class="button secondary">Close</button>
+      </div>
+      <label class="archive-toggle"><input id="show-archived-sessions" type="checkbox" /> Show archived</label>
+      <div id="sessions-list" class="sessions-list"></div>
     </dialog>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>

@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
-import type { PersistedReviewSession } from "../src/types.ts";
+import type { PersistedReviewSession, ReviewFinding } from "../src/types.ts";
 
 const directories: string[] = [];
 
@@ -100,6 +100,32 @@ test("rejects unreadable JSON and unsupported persisted schemas", async () => {
   expect((incomplete as Error).message).toContain("unsupported or invalid schema");
 });
 
+test("migrates legacy v1 finding metadata without discarding the session", async () => {
+  const path = await temporaryStateFile();
+  const legacy = persistedSession();
+  legacy.outline!.findings = [{
+    id: "legacy-finding",
+    path: "src/app.ts",
+    side: "new",
+    line: 2,
+    lineContent: "return result;",
+    message: "Review this result.",
+    category: "correctness",
+    severity: "medium",
+    confidence: "medium",
+    evidence: "The changed line returns directly.",
+    priority: "P2",
+    introduced: null,
+    recallGuard: false,
+    status: "open",
+  } as unknown as ReviewFinding];
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, JSON.stringify(legacy));
+
+  const migrated = await loadPersistedSession(path);
+  expect(migrated.outline?.findings[0]).toMatchObject({ blastRadiusSize: 0, tested: false, pinScope: "line" });
+});
+
 test("rejects malformed nested persisted findings while accepting their complete schema", async () => {
   const path = await temporaryStateFile();
   const valid = persistedSession();
@@ -128,6 +154,38 @@ test("rejects malformed nested persisted findings while accepting their complete
   const malformed = structuredClone(valid);
   const malformedFinding = malformed.outline!.findings[0]! as { evidence?: string };
   delete malformedFinding.evidence;
+  await writeFile(path, JSON.stringify(malformed));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+});
+
+test("persists valid change activity and rejects malformed nested activity", async () => {
+  const path = await temporaryStateFile();
+  const valid = persistedSession();
+  valid.activities = [{
+    id: "activity-1",
+    requestMessageId: "message-1",
+    request: "Please update this path.",
+    adapterId: "attached",
+    modelId: "current-session",
+    eventId: "event-1",
+    files: [{
+      path: "src/app.ts",
+      change: "modified",
+      beforeFingerprint: "before",
+      afterFingerprint: "after",
+      before: { status: "modified", additions: 1, deletions: 0 },
+      after: { status: "modified", additions: 2, deletions: 1 },
+    }],
+    verification: "bun test: passed",
+    status: "verified",
+    createdAt: "2026-08-09T00:00:00.000Z",
+    updatedAt: "2026-08-09T00:01:00.000Z",
+  }];
+  await savePersistedSession(path, valid);
+  await expect(loadPersistedSession(path)).resolves.toEqual(valid);
+
+  const malformed = structuredClone(valid);
+  (malformed.activities![0]!.files[0] as { change: string }).change = "rewritten";
   await writeFile(path, JSON.stringify(malformed));
   await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
 });

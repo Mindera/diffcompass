@@ -4,7 +4,7 @@ import { TourAgent } from "./agent.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
 import { loadComparison } from "./git.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
-import type { AgentAdapterOption, AgentSelection, ChatMessage, DiffRow, PersistedReviewSession, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewStatus, TourOutline } from "./types.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -15,9 +15,45 @@ interface AgentDefaults {
   resume?: boolean;
 }
 
+interface RefreshContext {
+  source: "manual" | "watcher" | "agent";
+  eventId?: string;
+  verification?: string;
+}
+
+function fileFingerprint(file: DiffFile): string {
+  return new Bun.CryptoHasher("sha256").update(JSON.stringify(file)).digest("hex");
+}
+
+function fileSummary(file: DiffFile) {
+  return { status: file.status, additions: file.additions, deletions: file.deletions };
+}
+
+function comparisonChanges(before: DiffFile[], after: DiffFile[]): AgentChangeFile[] {
+  const beforeByPath = new Map(before.map((file) => [file.path, file]));
+  const afterByPath = new Map(after.map((file) => [file.path, file]));
+  const paths = [...new Set([...beforeByPath.keys(), ...afterByPath.keys()])].sort();
+  return paths.flatMap((path) => {
+    const previous = beforeByPath.get(path);
+    const current = afterByPath.get(path);
+    const beforeFingerprint = previous ? fileFingerprint(previous) : undefined;
+    const afterFingerprint = current ? fileFingerprint(current) : undefined;
+    if (beforeFingerprint === afterFingerprint) return [];
+    return [{
+      path,
+      change: !previous ? "added" as const : !current ? "removed" as const : "modified" as const,
+      beforeFingerprint,
+      afterFingerprint,
+      before: previous ? fileSummary(previous) : undefined,
+      after: current ? fileSummary(current) : undefined,
+    }];
+  });
+}
+
 export class ReviewSession {
   readonly comments: ReviewComment[];
   readonly messages: ChatMessage[];
+  readonly activities: AgentChangeActivity[];
   readonly browserToken: string;
   outline?: TourOutline;
   currentStepIndex = -1;
@@ -33,6 +69,9 @@ export class ReviewSession {
   private terminalEpoch = 0;
   private closePromise?: Promise<{ outcome: ReviewOutcome; comments: ReviewComment[]; status: ReviewStatus }>;
   private comparisonGeneration = 0;
+  private activeAgentRequest?: { messageId: string; body: string; stepId?: string };
+  private readonly sessionName?: string;
+  private readonly archived: boolean;
   private resolveClosed!: (outcome: ReviewOutcome) => void;
   readonly closed = new Promise<ReviewOutcome>((resolve) => {
     this.resolveClosed = resolve;
@@ -48,6 +87,9 @@ export class ReviewSession {
     this.browserToken = persisted?.browserToken ?? crypto.randomUUID();
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
+    this.activities = structuredClone(persisted?.activities ?? []);
+    this.sessionName = persisted?.name;
+    this.archived = persisted?.archived ?? false;
     this.outline = persisted?.outline
       ? { ...structuredClone(persisted.outline), flows: persisted.outline.flows ?? [], findings: persisted.outline.findings ?? [] }
       : undefined;
@@ -81,6 +123,8 @@ export class ReviewSession {
   private persistedState(): PersistedReviewSession {
     return {
       schemaVersion: 1,
+      name: this.sessionName,
+      archived: this.archived,
       repositoryRoot: this.comparison.repositoryRoot,
       base: this.comparison.base,
       browserToken: this.browserToken,
@@ -93,6 +137,7 @@ export class ReviewSession {
       currentStepIndex: this.currentStepIndex,
       comments: structuredClone(this.comments),
       messages: structuredClone(this.messages),
+      activities: structuredClone(this.activities),
       revision: this.revision,
       status: this.status,
       selection: structuredClone(this.selection),
@@ -132,6 +177,10 @@ export class ReviewSession {
     return this.comparisonGeneration;
   }
 
+  get stateFile(): string | undefined {
+    return this.defaults.stateFile;
+  }
+
   private captureMutableState() {
     return {
       outline: structuredClone(this.outline),
@@ -161,6 +210,59 @@ export class ReviewSession {
     return file?.hunks
       .flatMap((hunk) => hunk.rows)
       .find((row) => row.kind !== "meta" && (side === "old" ? row.oldLine : row.newLine) === line);
+  }
+
+  private recordAgentActivity(previousFiles: DiffFile[], nextFiles: DiffFile[], context: RefreshContext): void {
+    if (!this.activeAgentRequest || !this.selection || !["watcher", "agent"].includes(context.source)) return;
+    const changes = comparisonChanges(previousFiles, nextFiles);
+    const request = this.activeAgentRequest;
+    let activity = this.activities.find((candidate) => candidate.requestMessageId === request.messageId);
+    if (!activity && changes.length === 0) return;
+    const now = new Date().toISOString();
+    if (!activity) {
+      activity = {
+        id: crypto.randomUUID(),
+        requestMessageId: request.messageId,
+        request: request.body,
+        stepId: request.stepId,
+        adapterId: this.selection.adapterId,
+        modelId: this.selection.modelId,
+        files: [],
+        status: "observed",
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.activities.push(activity);
+    }
+    const files = new Map(activity.files.map((file) => [file.path, file]));
+    for (const change of changes) {
+      const prior = files.get(change.path);
+      const merged: AgentChangeFile = prior
+        ? {
+            path: change.path,
+            change: prior.before === undefined ? "added" : change.after === undefined ? "removed" : "modified",
+            beforeFingerprint: prior.beforeFingerprint,
+            afterFingerprint: change.afterFingerprint,
+            before: prior.before,
+            after: change.after,
+          }
+        : change;
+      if (merged.beforeFingerprint === merged.afterFingerprint) files.delete(change.path);
+      else files.set(change.path, merged);
+    }
+    activity.files = [...files.values()].sort((left, right) => left.path.localeCompare(right.path));
+    if (context.source === "watcher" && changes.length > 0) {
+      activity.eventId = undefined;
+      activity.verification = undefined;
+      activity.status = "observed";
+    }
+    if (context.source === "agent") {
+      activity.eventId = context.eventId;
+      activity.verification = context.verification?.trim() || undefined;
+      activity.status = "verified";
+    }
+    activity.updatedAt = now;
+    if (activity.files.length === 0) this.activities.splice(this.activities.indexOf(activity), 1);
   }
 
   static async create(
@@ -255,6 +357,7 @@ export class ReviewSession {
       currentStepIndex: this.currentStepIndex,
       comments: this.comments,
       messages: this.messages,
+      activities: this.activities,
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,
@@ -399,6 +502,9 @@ export class ReviewSession {
         stepId,
         createdAt: new Date().toISOString(),
       };
+      if (this.selection?.adapterId === "attached") {
+        this.activeAgentRequest = { messageId: userMessage.id, body: userMessage.body, stepId };
+      }
       try {
         const answer = await this.agent.answer(body, selectedContext, step);
         const authorizedGeneration = this.bridge?.consumeResponseRefreshAuthorization();
@@ -418,6 +524,8 @@ export class ReviewSession {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
         if (createdAgent) this.agent = undefined;
         throw error;
+      } finally {
+        if (this.activeAgentRequest?.messageId === userMessage.id) this.activeAgentRequest = undefined;
       }
     });
   }
@@ -555,7 +663,7 @@ export class ReviewSession {
     });
   }
 
-  async refreshComparison() {
+  async refreshComparison(context: RefreshContext = { source: "manual" }) {
     const operation = this.refreshQueue.then(() => this.serializeMutation(async () => {
       this.ensureOpen();
       const refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
@@ -565,6 +673,7 @@ export class ReviewSession {
       let operationRevision = before.revision;
       const previousComparison = this.comparison;
       const previousGeneration = this.comparisonGeneration;
+      const previousActivities = structuredClone(this.activities);
       try {
       this.comparison = refreshed;
       this.comparisonGeneration += 1;
@@ -581,12 +690,14 @@ export class ReviewSession {
         const row = this.findRow(finding.path, finding.side, finding.line);
         finding.outdated = row?.content !== finding.lineContent;
       }
+      this.recordAgentActivity(previousComparison.files, refreshed.files, context);
       await this.persist();
       return this.snapshot();
       } catch (error) {
         if (this.status === "open" && this.terminalEpoch === terminalEpoch) {
           this.comparison = previousComparison;
           this.comparisonGeneration = previousGeneration;
+          this.activities.splice(0, this.activities.length, ...previousActivities);
         }
         this.restoreMutableState(before, terminalEpoch, operationRevision);
         throw error;

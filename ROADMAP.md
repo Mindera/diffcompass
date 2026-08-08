@@ -14,13 +14,18 @@ clear.
 - Self-contained macOS and Linux releases, checksum verification, diagnostics,
   CI, and automatic Codex and Claude skill installation.
 
+## Shipped in v0.2
+
+- Session library in the browser and CLI: list, reopen by short ID, rename,
+  archive, restore, and explicitly delete saved tours.
+- Durable agent change activity grouped by the triggering request, including
+  affected files, before/after diff totals, and reported verification.
+- Compatibility migration for early v0.1 session files that predate findings
+  and flow metadata.
+
 ## v0.2 — Daily review workflow
 
-- Session library: list, reopen, rename, archive, and delete tours without copying
-  state-file paths.
 - Retention controls for old sessions and temporary data.
-- Agent change activity: show files changed after a request, the triggering
-  conversation turn, verification results, and before/after state.
 - Explicit apply, reject, and undo controls for agent-authored changes.
 - Diff search and filters, changed-files-only mode, context expansion, unified or
   split view, and per-file reviewed state.
