@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+test_root="$(mktemp -d)"
+trap 'rm -rf "$test_root"' EXIT
+
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) platform="darwin-arm64" ;;
+  Darwin-x86_64) platform="darwin-x64" ;;
+  Linux-aarch64) platform="linux-arm64" ;;
+  Linux-x86_64) platform="linux-x64" ;;
+  *) echo "Unsupported smoke-test platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
+esac
+
+archive="$(find dist/release -maxdepth 1 -name "code-review-tour-v*-${platform}.tar.gz" -print -quit)"
+[[ -n "$archive" ]] || { echo "Build release archives before running the installer smoke test." >&2; exit 1; }
+
+CODE_REVIEW_TOUR_ARCHIVE="$archive" \
+CODE_REVIEW_TOUR_INSTALL_ROOT="$test_root/install" \
+CODE_REVIEW_TOUR_BIN_ROOT="$test_root/bin" \
+CODE_REVIEW_TOUR_CODEX_SKILL_ROOT="$test_root/codex/skills" \
+CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT="$test_root/claude/skills" \
+  ./scripts/install.sh
+
+"$test_root/bin/code-review-tour" --version
+"$test_root/bin/code-review-tour-bridge" >/dev/null
+[[ -L "$test_root/codex/skills/code-review-tour" ]]
+[[ -L "$test_root/claude/skills/code-review-tour" ]]
+
+# Reinstalling the same release must update in place without nesting directories.
+CODE_REVIEW_TOUR_ARCHIVE="$archive" \
+CODE_REVIEW_TOUR_INSTALL_ROOT="$test_root/install" \
+CODE_REVIEW_TOUR_BIN_ROOT="$test_root/bin" \
+CODE_REVIEW_TOUR_CODEX_SKILL_ROOT="$test_root/codex/skills" \
+CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT="$test_root/claude/skills" \
+  ./scripts/install.sh >/dev/null
+[[ ! -d "$test_root/install/0.1.0/bin/bin" ]]

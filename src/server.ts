@@ -1,5 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
-import { join } from "node:path";
+// @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
+import appScript from "../public/app.js" with { type: "text" };
+import indexHtml from "../public/index.html" with { type: "text" };
+// @ts-expect-error Bun's text loader embeds this CSS asset as a string.
+import styles from "../public/styles.css" with { type: "text" };
 import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
 import { loadRepositoryFile } from "./git.ts";
@@ -16,7 +20,11 @@ import {
   requiredString,
 } from "./validation.ts";
 
-const PUBLIC_ROOT = join(import.meta.dir, "..", "public");
+const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
+  "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
+  "app.js": { body: String(appScript), contentType: "text/javascript; charset=utf-8" },
+  "styles.css": { body: String(styles), contentType: "text/css; charset=utf-8" },
+};
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
@@ -189,13 +197,11 @@ export function startServer(session: ReviewSession, port: number) {
       if (url.pathname.startsWith("/api/")) throw new HttpError(404, "API endpoint not found.");
 
       const relative = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\//, "");
-      if (!relative.includes("..")) {
-        const file = Bun.file(join(PUBLIC_ROOT, relative));
-        if (await file.exists()) {
-          const response = new Response(file);
-          for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
-          return response;
-        }
+      const publicFile = PUBLIC_FILES[relative];
+      if (publicFile) {
+        const response = new Response(publicFile.body, { headers: { "content-type": publicFile.contentType } });
+        for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
+        return response;
       }
       return new Response("Not found", { status: 404, headers: SECURITY_HEADERS });
     } catch (error) {

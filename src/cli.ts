@@ -7,6 +7,8 @@ import { resolveRepositoryRoot } from "./git.ts";
 import { loadPersistedSession } from "./store.ts";
 import { ReviewSession } from "./session.ts";
 import { startServer } from "./server.ts";
+import packageJson from "../package.json" with { type: "json" };
+import { runDoctor } from "./doctor.ts";
 
 interface Options {
   repository: string;
@@ -18,6 +20,27 @@ interface Options {
   attached: boolean;
   open: boolean;
   resume?: string;
+}
+
+function printHelp(): void {
+  console.log(`Code Review Tour ${packageJson.version}
+
+Usage:
+  code-review-tour [options]
+  code-review-tour doctor
+
+Options:
+  --repo PATH          Repository to review (default: current directory)
+  --base REF           Parent branch or Git reference to compare
+  --attached           Use the launching agent as the conversation backend
+  --open               Open the review automatically in the default browser
+  --agent ID           Standalone agent: codex or claude
+  --model MODEL        Model identifier reported by the selected agent
+  --reasoning EFFORT   minimal, low, medium, high, xhigh, max, or ultra
+  --port PORT          Loopback port (default: random)
+  --resume FILE        Resume a persisted review session
+  --version            Print the installed version
+  --help               Show this help`);
 }
 
 function parseOptions(args: string[]): Options {
@@ -54,7 +77,7 @@ function parseOptions(args: string[]): Options {
       options.port = Number(value);
       index += 1;
     } else if (arg === "--help" || arg === "-h") {
-      console.log("Usage: code-review-tour [--repo PATH] [--base REF] [--attached] [--open] [--agent codex|claude] [--model MODEL] [--reasoning EFFORT] [--port PORT] [--resume SESSION_FILE]");
+      printHelp();
       process.exit(0);
     } else {
       throw new Error(`Unknown or incomplete option: ${arg}`);
@@ -63,6 +86,14 @@ function parseOptions(args: string[]): Options {
   return options;
 }
 
+const command = process.argv[2];
+if (command === "--version" || command === "-v") {
+  console.log(packageJson.version);
+  process.exit(0);
+}
+if (command === "doctor") {
+  process.exit(await runDoctor());
+}
 const options = parseOptions(process.argv.slice(2));
 const stateFile = options.resume ?? join(
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),

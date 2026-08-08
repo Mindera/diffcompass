@@ -38,16 +38,49 @@ bundled skill at `skills/code-review-tour` contains the complete polling and
 response workflow; Codex and Claude adapters remain available as standalone
 fallbacks in the picker.
 
+## Install
+
+Release archives contain self-contained macOS and Linux executables for Intel
+and Apple/ARM processors. Bun is not required after installation. While this
+repository is private, collaborators should authenticate GitHub CLI, clone the
+repository, and run the installer:
+
+```sh
+gh auth login
+gh repo clone rcosteira79/code-review-tour
+cd code-review-tour
+./scripts/install.sh
+code-review-tour doctor
+```
+
+The installer verifies the release checksum, installs commands under
+`${XDG_BIN_HOME:-~/.local/bin}`, and links the bundled skill into both
+`${CODEX_HOME:-~/.codex}/skills` and `~/.claude/skills`. Re-run it to update to
+the latest release. Override those locations with
+`CODE_REVIEW_TOUR_BIN_ROOT`, `CODE_REVIEW_TOUR_INSTALL_ROOT`,
+`CODE_REVIEW_TOUR_CODEX_SKILL_ROOT`, and
+`CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT`.
+
+If either agent already has a real `code-review-tour` skill directory, the
+installer preserves it and exits with instructions instead of overwriting user
+files. Existing installer-managed symlinks are updated automatically.
+
+Once the repository is public, a versioned installation needs only the checked
+out installer and `CODE_REVIEW_TOUR_VERSION=vX.Y.Z ./scripts/install.sh`; GitHub
+CLI is not required in that case.
+
 ## Run
 
-Requires Bun, Git, and at least one authenticated Codex or Claude Code CLI.
+An installed release requires Git and, for standalone mode, at least one
+authenticated Codex or Claude Code CLI. Attached mode does not require a
+standalone agent CLI. For development from a checkout, Bun is also required.
 
 ```sh
 bun install
 bun run start -- --repo /path/to/repository --base origin/main
 ```
 
-For local command installation, run `bun install --global .` from this checkout.
+For a development-only command installation, run `bun install --global .` from this checkout.
 This provides `code-review-tour` and `code-review-tour-bridge` in Bun's global
 binary directory (`bun pm bin -g`); ensure that directory is on `PATH`.
 Install or symlink `skills/code-review-tour` into the agent's skill directory
@@ -84,6 +117,10 @@ git config branch.my-feature.reviewTourBase parent-feature
 ## Verify
 
 ```sh
-bun test
-bun run typecheck
+bun run verify
+bun run build:release
 ```
+
+Pushing a `v*` tag runs the full verification suite, builds all four release
+archives, publishes checksums, and creates a GitHub Release. The package version
+and tag must match.
