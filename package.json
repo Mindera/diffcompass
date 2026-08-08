@@ -1,0 +1,20 @@
+{
+  "name": "code-review-tour",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "code-review-tour": "src/cli.ts",
+    "code-review-tour-bridge": "src/bridge-client.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "bridge": "bun run src/bridge-client.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  }
+}

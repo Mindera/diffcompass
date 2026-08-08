@@ -1,0 +1,174 @@
+import { afterEach, expect, test } from "bun:test";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
+import type { PersistedReviewSession } from "../src/types.ts";
+
+const directories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
+async function temporaryStateFile(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "review-tour-store-"));
+  directories.push(directory);
+  return join(directory, "nested", "session.json");
+}
+
+function persistedSession(): PersistedReviewSession {
+  return {
+    schemaVersion: 1,
+    repositoryRoot: "/private/tmp/repository",
+    base: "origin/main",
+    browserToken: "browser-token",
+    bridgeToken: "bridge-token",
+    outline: {
+      title: "Review the change",
+      summary: "A short summary",
+      steps: [{
+        id: "entrypoint",
+        title: "Entry point",
+        objective: "Understand the changed behavior",
+        anchor: { path: "src/app.ts", side: "new", startLine: 2, endLine: 2 },
+      }],
+      flows: [],
+      findings: [],
+    },
+    currentStepIndex: 0,
+    comments: [{
+      id: "comment-1",
+      path: "src/app.ts",
+      side: "new",
+      line: 2,
+      body: "Check the empty path.",
+      lineContent: "return result;",
+      status: "active",
+      createdAt: "2026-08-08T00:00:00.000Z",
+      updatedAt: "2026-08-08T00:00:00.000Z",
+    }],
+    messages: [{
+      id: "message-1",
+      role: "user",
+      body: "Why is this needed?",
+      createdAt: "2026-08-08T00:00:00.000Z",
+    }],
+    revision: 3,
+    status: "open",
+    selection: { adapterId: "attached", modelId: "current-session" },
+    updatedAt: "2026-08-08T00:00:00.000Z",
+  };
+}
+
+test("persists a complete session atomically and with owner-only permissions where supported", async () => {
+  const path = await temporaryStateFile();
+  const expected = persistedSession();
+
+  await savePersistedSession(path, expected);
+
+  expect(await loadPersistedSession(path)).toEqual(expected);
+  expect(JSON.parse(await readFile(path, "utf8"))).toEqual(expected);
+  if (process.platform !== "win32") {
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    expect((await stat(join(path, ".."))).mode & 0o777).toBe(0o700);
+  }
+});
+
+test("rejects unreadable JSON and unsupported persisted schemas", async () => {
+  const path = await temporaryStateFile();
+  await savePersistedSession(path, persistedSession());
+  await writeFile(path, "not json");
+  const unreadable = await loadPersistedSession(path).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect((unreadable as Error).message).toContain("Could not read review session");
+
+  await writeFile(path, JSON.stringify({ ...persistedSession(), schemaVersion: 2 }));
+  const unsupported = await loadPersistedSession(path).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect((unsupported as Error).message).toContain("unsupported or invalid schema");
+
+  await writeFile(path, JSON.stringify({ schemaVersion: 1, repositoryRoot: "/tmp" }));
+  const incomplete = await loadPersistedSession(path).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect((incomplete as Error).message).toContain("unsupported or invalid schema");
+});
+
+test("rejects malformed nested persisted findings while accepting their complete schema", async () => {
+  const path = await temporaryStateFile();
+  const valid = persistedSession();
+  valid.outline!.findings = [{
+    id: "finding-1",
+    path: "src/app.ts",
+    side: "new",
+    line: 2,
+    lineContent: "return result;",
+    message: "Handle the empty result.",
+    category: "correctness",
+    severity: "high",
+    confidence: "high",
+    evidence: "No empty guard is visible in the new path.",
+    priority: "P1",
+    introduced: true,
+    recallGuard: false,
+    blastRadiusSize: 4,
+    tested: false,
+    pinScope: "line",
+    status: "open",
+  }];
+  await savePersistedSession(path, valid);
+  await expect(loadPersistedSession(path)).resolves.toEqual(valid);
+
+  const malformed = structuredClone(valid);
+  const malformedFinding = malformed.outline!.findings[0]! as { evidence?: string };
+  delete malformedFinding.evidence;
+  await writeFile(path, JSON.stringify(malformed));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+});
+
+test("preserving an existing parent mode does not loosen or tighten it", async () => {
+  const path = await temporaryStateFile();
+  const parent = join(path, "..");
+  await mkdir(parent, { recursive: true });
+  if (process.platform === "win32") return;
+  await chmod(parent, 0o755);
+
+  await savePersistedSession(path, persistedSession());
+
+  expect((await stat(parent)).mode & 0o777).toBe(0o755);
+  expect((await stat(path)).mode & 0o777).toBe(0o600);
+});
+
+test("rejects persisted state files above the 20 MiB limit before parsing", async () => {
+  const path = await temporaryStateFile();
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, Buffer.alloc(20 * 1024 * 1024 + 1, 0x20));
+
+  await expect(loadPersistedSession(path)).rejects.toThrow("20 MiB limit");
+});
+
+test("rejects inconsistent persisted session relationships", async () => {
+  const path = await temporaryStateFile();
+  await savePersistedSession(path, persistedSession());
+  const invalidIndex = persistedSession();
+  invalidIndex.currentStepIndex = 2;
+  await writeFile(path, JSON.stringify(invalidIndex));
+  await expect(loadPersistedSession(path)).rejects.toThrow("inconsistent state");
+
+  const wrongContinuation = persistedSession();
+  wrongContinuation.selection = { adapterId: "claude", modelId: "default" };
+  wrongContinuation.agentContinuation = { adapterId: "codex", id: "thread" };
+  await writeFile(path, JSON.stringify(wrongContinuation));
+  await expect(loadPersistedSession(path)).rejects.toThrow("inconsistent state");
+
+  const attachedWithoutToken = persistedSession();
+  attachedWithoutToken.bridgeToken = undefined;
+  await writeFile(path, JSON.stringify(attachedWithoutToken));
+  await expect(loadPersistedSession(path)).rejects.toThrow("inconsistent state");
+});

@@ -1,0 +1,298 @@
+import { afterEach, expect, test } from "bun:test";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runProcess } from "../src/process.ts";
+import { ReviewSession } from "../src/session.ts";
+import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
+import type { PersistedReviewSession } from "../src/types.ts";
+
+const directories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
+async function git(cwd: string, ...args: string[]) {
+  return runProcess(["git", ...args], cwd);
+}
+
+async function repositoryFixture() {
+  const directory = await mkdtemp(join(tmpdir(), "review-tour-lifecycle-"));
+  directories.push(directory);
+  const repository = join(directory, "repository");
+  await mkdir(repository);
+  await git(repository, "init", "-b", "main");
+  await git(repository, "config", "user.name", "Review Tour Test");
+  await git(repository, "config", "user.email", "review-tour@example.test");
+  await writeFile(join(repository, "app.ts"), "const base = 1;\n");
+  await git(repository, "add", "app.ts");
+  await git(repository, "commit", "-m", "base");
+  const base = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
+  await git(repository, "update-ref", "refs/remotes/origin/main", base);
+  await git(repository, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+  await git(repository, "switch", "-c", "feature");
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changed = 2;\n");
+  return { directory, repository: await realpath(repository), stateFile: join(directory, "session.json") };
+}
+
+function persistedAttachedSession(repositoryRoot: string, overrides: Partial<PersistedReviewSession> = {}): PersistedReviewSession {
+  return {
+    schemaVersion: 1,
+    repositoryRoot,
+    base: "origin/main",
+    browserToken: "browser-token",
+    bridgeToken: "bridge-token",
+    bridgeSequence: 7,
+    outline: {
+      title: "A resumed review",
+      summary: "Continue from the saved stop.",
+      steps: [
+        {
+          id: "first-step",
+          title: "First step",
+          objective: "Review the changed line.",
+          anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
+        },
+        {
+          id: "second-step",
+          title: "Second step",
+          objective: "Review the same changed line from another angle.",
+          anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
+        },
+      ],
+      flows: [],
+      findings: [],
+    },
+    currentStepIndex: 1,
+    comments: [],
+    messages: [],
+    revision: 4,
+    status: "open",
+    selection: { adapterId: "attached", modelId: "current-session" },
+    updatedAt: "2026-08-08T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("a resumed open attached session retains its stop and drives the rehydrated agent bridge", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge;
+  if (!bridge) throw new Error("Expected an attached bridge after resume.");
+  expect(session.snapshot().currentStepIndex).toBe(1);
+
+  const started = session.startTour();
+  const [prompt] = await bridge.eventsAfter(7, 1_000);
+  expect(prompt).toMatchObject({ sequence: 8, type: "agent.prompt", kind: "tour.explanation" });
+  await bridge.respond(prompt!.id, "This is the saved second stop.");
+
+  const snapshot = await started;
+  expect(snapshot.currentStepIndex).toBe(1);
+  expect(snapshot.outline?.steps[1]?.explanation).toBe("This is the saved second stop.");
+});
+
+test("a resumed closed attached session emits an immutable terminal event beyond its persisted sequence", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const comments = [{
+    id: "comment-1",
+    path: "app.ts",
+    side: "new" as const,
+    line: 2,
+    body: "Please explain this branch.",
+    lineContent: "const changed = 2;",
+    status: "active" as const,
+    createdAt: "2026-08-08T00:00:00.000Z",
+    updatedAt: "2026-08-08T00:00:00.000Z",
+  }];
+  await savePersistedSession(stateFile, persistedAttachedSession(repository, { status: "feedback", comments }));
+
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge;
+  if (!bridge) throw new Error("Expected an attached bridge after resume.");
+  const [closed] = await bridge.eventsAfter(7);
+  expect(closed).toMatchObject({ sequence: 8, type: "review.closed", outcome: "feedback", comments });
+
+  (closed as { comments: typeof comments }).comments[0]!.body = "mutated response copy";
+  const [replayed] = await bridge.eventsAfter(7);
+  expect((replayed as { comments: typeof comments }).comments[0]!.body).toBe("Please explain this branch.");
+});
+
+test("terminal delivery and acknowledgement remain durable across resume", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { stateFile, attached: true });
+  const bridge = session.bridge;
+  if (!bridge) throw new Error("Expected an attached bridge.");
+
+  await session.close("cancelled");
+  const persistedClosed = await loadPersistedSession(stateFile);
+  expect(persistedClosed.bridgeTerminalEvent).toMatchObject({ outcome: "cancelled", acknowledged: false });
+  const sequence = persistedClosed.bridgeTerminalEvent!.sequence;
+  const [terminal] = await bridge.eventsAfter(sequence);
+  await bridge.ack(terminal!.id);
+  expect((await loadPersistedSession(stateFile)).bridgeTerminalEvent?.acknowledged).toBe(true);
+
+  const resumed = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  expect(await resumed.bridge!.eventsAfter(sequence)).toEqual([]);
+});
+
+test("refresh is rejected after close", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { stateFile });
+
+  await session.close("cancelled");
+  await expect(session.refreshComparison()).rejects.toThrow("review is closed");
+});
+
+test("closing during an attached tour prompt cannot be undone by the rejected operation", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository, {
+    outline: undefined,
+    currentStepIndex: -1,
+    selection: undefined,
+  }));
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge;
+  if (!bridge) throw new Error("Expected an attached bridge.");
+
+  const starting = session.startTour({ adapterId: "attached", modelId: "current-session" });
+  await bridge.eventsAfter(7, 1_000);
+  await session.close("cancelled");
+  await expect(starting).rejects.toThrow("review closed before the attached agent answered");
+
+  expect(session.snapshot().status).toBe("cancelled");
+  expect((await loadPersistedSession(stateFile)).status).toBe("cancelled");
+});
+
+for (const operation of ["ask", "navigate"] as const) {
+  test(`closing during an attached ${operation} prompt remains terminal`, async () => {
+    const { repository, stateFile } = await repositoryFixture();
+    await savePersistedSession(stateFile, persistedAttachedSession(repository));
+    const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+    const bridge = session.bridge!;
+
+    const pending = operation === "ask" ? session.ask("Why?") : session.navigate("previous");
+    await bridge.eventsAfter(7, 1_000);
+    await session.close("cancelled");
+    await expect(pending).rejects.toThrow();
+    expect(session.snapshot().status).toBe("cancelled");
+  });
+}
+
+test("closing during refresh remains terminal", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { stateFile });
+
+  const refreshing = session.refreshComparison();
+  const refreshSettled = refreshing.then(() => "resolved", () => "rejected");
+  await session.close("cancelled");
+  await refreshSettled;
+  expect(session.snapshot().status).toBe("cancelled");
+});
+
+test("concurrent identical closes share persistence failure instead of reporting early success", async () => {
+  const { repository } = await repositoryFixture();
+  const session = await ReviewSession.create(repository);
+  (session as unknown as { defaults: { stateFile?: string } }).defaults.stateFile = "/dev/null/review-session.json";
+
+  const first = session.close("cancelled");
+  const second = session.close("cancelled");
+  const firstFailure = first.then(() => undefined, (error: unknown) => error);
+  const secondFailure = second.then(() => undefined, (error: unknown) => error);
+  expect(await firstFailure).toBeInstanceOf(Error);
+  expect(await secondFailure).toBeInstanceOf(Error);
+  expect(session.snapshot().status).toBe("open");
+});
+
+test("a refresh rejects an in-flight outline generated for the previous comparison", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { stateFile, attached: true });
+  const bridge = session.bridge!;
+  const starting = session.startTour({ adapterId: "attached", modelId: "current-session" });
+  const [prompt] = await bridge.eventsAfter(0, 1_000);
+
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst refreshed = 3;\n");
+  await session.refreshComparison();
+  await bridge.respond(prompt!.id, JSON.stringify({
+    title: "Old outline", summary: "Generated before refresh", flows: [], findings: [],
+    steps: [{ id: "old", title: "Old", objective: "Old", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
+  }));
+
+  await expect(starting).rejects.toThrow("comparison changed");
+  expect(session.snapshot().outline).toBeUndefined();
+  await bridge.ack(prompt!.id);
+
+  const retry = session.startTour();
+  const retryEvents = await bridge.eventsAfter(prompt!.sequence, 1_000);
+  expect(retryEvents.some((event) => event.sequence > prompt!.sequence && event.type === "agent.prompt")).toBe(true);
+  await session.close("cancelled");
+  await expect(retry).rejects.toThrow();
+});
+
+test("an attached review question can refresh after requested edits and still return its answer", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge!;
+  const asking = session.ask("Please make the requested change.");
+  const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
+
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst edited = 4;\n");
+  bridge.validateRefresh(prompt!.id, prompt!.leaseId!);
+  await session.refreshComparison();
+  bridge.authorizeRefresh(prompt!.id, prompt!.leaseId!, session.currentComparisonGeneration);
+  await bridge.respond(prompt!.id, "I made the requested change and refreshed the diff.", prompt!.leaseId);
+
+  const snapshot = await asking;
+  expect(snapshot.messages.at(-1)).toMatchObject({ role: "agent", body: "I made the requested change and refreshed the diff." });
+});
+
+test("an unrelated refresh still rejects an in-flight attached question", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge!;
+  const asking = session.ask("Explain this.");
+  const [prompt] = await bridge.eventsAfter(7, 1_000);
+
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst unrelated = 5;\n");
+  await session.refreshComparison();
+  await bridge.respond(prompt!.id, "Stale answer");
+
+  await expect(asking).rejects.toThrow("comparison changed");
+  expect(session.snapshot().messages).toEqual([]);
+});
+
+test("a later unrelated refresh invalidates an earlier event-authorized refresh", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge!;
+  const asking = session.ask("Please edit this.");
+  const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
+
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst edited = 6;\n");
+  await session.refreshComparison();
+  bridge.authorizeRefresh(prompt!.id, prompt!.leaseId!, session.currentComparisonGeneration);
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst unrelated = 7;\n");
+  await session.refreshComparison();
+  await bridge.respond(prompt!.id, "Answer for the earlier refresh", prompt!.leaseId);
+
+  await expect(asking).rejects.toThrow("comparison changed");
+});
+
+test("CLI rejects a state path inside the reviewed repository before launching a server", async () => {
+  const { directory, repository } = await repositoryFixture();
+  const stateFile = join(repository, "review-state.json");
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+
+  const result = await runProcess(
+    [process.execPath, "run", "src/cli.ts", "--resume", stateFile],
+    join(import.meta.dir, ".."),
+    [1],
+  );
+  expect(`${result.stdout}\n${result.stderr}`).toContain("state must be stored outside the reviewed repository");
+  expect(directory).toBeDefined();
+});

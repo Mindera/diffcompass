@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Review Tour"
+  short_description: "Run an interactive attached-agent code tour"
+  default_prompt: "Use $code-review-tour to walk me through the current branch changes."
