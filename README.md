@@ -2,6 +2,13 @@
 
 A local, agent-led walkthrough for Git changes. The browser keeps the repository tree, full diff, ordered tour, review comments, and a resumable agent conversation in one place.
 
+![Code Review Tour diff with repository tree and agent setup](docs/images/overview.jpg)
+
+The selected agent plans an ordered route through the change, anchors every stop
+to the relevant code, and stays available for follow-up questions.
+
+![Guided review with an anchored diff and live agent explanation](docs/images/guided-tour.jpg)
+
 ## Features
 
 - compares the merge base of a parent branch with the current working tree;
@@ -124,3 +131,8 @@ bun run build:release
 Pushing a `v*` tag runs the full verification suite, builds all four release
 archives, publishes checksums, and creates a GitHub Release. The package version
 and tag must match.
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for shipped scope, upcoming milestones, and the
+remaining gaps between the current local tool and a complete review workflow.
