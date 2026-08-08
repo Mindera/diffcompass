@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Code Review Tour</title>
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -19,6 +20,14 @@
         <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
       </div>
       <div class="actions">
+        <label class="theme-control">
+          <span class="sr-only">Color theme</span>
+          <select id="theme-select" aria-label="Color theme">
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
         <button id="sessions-button" class="button secondary">Sessions</button>
         <button id="refresh-button" class="button secondary">Refresh</button>
         <button id="close-button" class="button secondary">Close</button>

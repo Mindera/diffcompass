@@ -5,6 +5,8 @@ import appScript from "../public/app.js" with { type: "text" };
 import indexHtml from "../public/index.html" with { type: "text" };
 // @ts-expect-error Bun's text loader embeds this CSS asset as a string.
 import styles from "../public/styles.css" with { type: "text" };
+// @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
+import themeScript from "../public/theme.js" with { type: "text" };
 import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
 import { loadRepositoryFile } from "./git.ts";
@@ -25,6 +27,7 @@ import {
 const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
   "app.js": { body: String(appScript), contentType: "text/javascript; charset=utf-8" },
+  "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
   "styles.css": { body: String(styles), contentType: "text/css; charset=utf-8" },
 };
 const SECURITY_HEADERS = {

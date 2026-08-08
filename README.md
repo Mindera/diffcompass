@@ -25,6 +25,7 @@ to the relevant code, and stays available for follow-up questions.
 - records agent-authored file changes, their triggering request, and verification in an Activity timeline;
 - persists review state atomically so the server can resume it after restart;
 - provides a session library to reopen, rename, archive, and delete saved tours;
+- follows the system light or dark appearance by default, with a persistent manual override;
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - exposes `Close` and `Send feedback & close` outcomes.
 

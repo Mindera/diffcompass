@@ -24,7 +24,7 @@ const state = {
 const elements = Object.fromEntries(
   [
     "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "large-diff-notice", "connection-banner",
-    "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
+    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
     "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "toast",
@@ -708,6 +708,8 @@ elements["cancel-comment"].addEventListener("click", () => elements["comment-dia
 elements["close-button"].addEventListener("click", () => close("accepted"));
 elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
+elements["theme-select"].value = window.reviewTourTheme.preference();
+elements["theme-select"].addEventListener("change", () => window.reviewTourTheme.set(elements["theme-select"].value));
 elements["sessions-button"].addEventListener("click", () => { elements["sessions-dialog"].showModal(); void loadSessions(); });
 elements["close-sessions"].addEventListener("click", () => elements["sessions-dialog"].close());
 elements["show-archived-sessions"].addEventListener("change", loadSessions);

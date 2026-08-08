@@ -85,6 +85,18 @@ test("browser and bridge endpoints require their own non-interchangeable token",
   })).status).toBe(200);
 });
 
+test("serves the early theme bootstrap before the stylesheet", async () => {
+  const { url } = await fixture();
+  const page = await (await jsonRequest(url, "/")).text();
+  const theme = await jsonRequest(url, "/theme.js");
+
+  expect(theme.status).toBe(200);
+  expect(theme.headers.get("content-type")).toContain("text/javascript");
+  expect(await theme.text()).toContain("prefers-color-scheme: dark");
+  expect(page.indexOf('src="/theme.js"')).toBeGreaterThan(-1);
+  expect(page.indexOf('src="/theme.js"')).toBeLessThan(page.indexOf('href="/styles.css"'));
+});
+
 test("bridge responses require the active event lease", async () => {
   const { bridge, url } = await fixture();
   const answer = bridge.send("Explain", "tour.explanation");

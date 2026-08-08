@@ -22,6 +22,7 @@ clear.
   affected files, before/after diff totals, and reported verification.
 - Compatibility migration for early v0.1 session files that predate findings
   and flow metadata.
+- System-aware light and dark themes with a persistent per-browser override.
 
 ## v0.2 — Daily review workflow
 
