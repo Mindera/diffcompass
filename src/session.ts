@@ -2,7 +2,8 @@ import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
 import { TourAgent } from "./agent.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
-import { loadComparison } from "./git.ts";
+import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
+import { parseUnifiedDiff } from "./diff.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewStatus, TourOutline } from "./types.ts";
 
@@ -69,7 +70,13 @@ export class ReviewSession {
   private terminalEpoch = 0;
   private closePromise?: Promise<{ outcome: ReviewOutcome; comments: ReviewComment[]; status: ReviewStatus }>;
   private comparisonGeneration = 0;
-  private activeAgentRequest?: { messageId: string; body: string; stepId?: string };
+  private activeAgentRequest?: {
+    messageId: string;
+    body: string;
+    stepId?: string;
+    workspace: ProposalWorkspace;
+    baselineComparison: Awaited<ReturnType<typeof loadComparison>>;
+  };
   private readonly sessionName?: string;
   private readonly archived: boolean;
   private resolveClosed!: (outcome: ReviewOutcome) => void;
@@ -212,57 +219,40 @@ export class ReviewSession {
       .find((row) => row.kind !== "meta" && (side === "old" ? row.oldLine : row.newLine) === line);
   }
 
-  private recordAgentActivity(previousFiles: DiffFile[], nextFiles: DiffFile[], context: RefreshContext): void {
-    if (!this.activeAgentRequest || !this.selection || !["watcher", "agent"].includes(context.source)) return;
+  private recordAgentActivity(
+    previousFiles: DiffFile[],
+    nextFiles: DiffFile[],
+    context: RefreshContext,
+    proposal: { patch: string; baselineTree: string; resultTree: string },
+  ): void {
+    if (!this.activeAgentRequest || !this.selection || context.source !== "agent") return;
     const changes = comparisonChanges(previousFiles, nextFiles);
+    if (changes.length === 0 || !proposal.patch.trim()) return;
+    const retainedPatchBytes = this.activities.reduce(
+      (total, activity) => total + (activity.proposal ? new TextEncoder().encode(activity.proposal.patch).byteLength : 0),
+      0,
+    );
+    if (retainedPatchBytes + new TextEncoder().encode(proposal.patch).byteLength > 16 * 1024 * 1024) {
+      throw new ReviewError("Pending and undoable agent changes exceed the 16 MiB session limit. Resolve an existing proposal or split this request.");
+    }
     const request = this.activeAgentRequest;
-    let activity = this.activities.find((candidate) => candidate.requestMessageId === request.messageId);
-    if (!activity && changes.length === 0) return;
     const now = new Date().toISOString();
-    if (!activity) {
-      activity = {
-        id: crypto.randomUUID(),
-        requestMessageId: request.messageId,
-        request: request.body,
-        stepId: request.stepId,
-        adapterId: this.selection.adapterId,
-        modelId: this.selection.modelId,
-        files: [],
-        status: "observed",
-        createdAt: now,
-        updatedAt: now,
-      };
-      this.activities.push(activity);
-    }
-    const files = new Map(activity.files.map((file) => [file.path, file]));
-    for (const change of changes) {
-      const prior = files.get(change.path);
-      const merged: AgentChangeFile = prior
-        ? {
-            path: change.path,
-            change: prior.before === undefined ? "added" : change.after === undefined ? "removed" : "modified",
-            beforeFingerprint: prior.beforeFingerprint,
-            afterFingerprint: change.afterFingerprint,
-            before: prior.before,
-            after: change.after,
-          }
-        : change;
-      if (merged.beforeFingerprint === merged.afterFingerprint) files.delete(change.path);
-      else files.set(change.path, merged);
-    }
-    activity.files = [...files.values()].sort((left, right) => left.path.localeCompare(right.path));
-    if (context.source === "watcher" && changes.length > 0) {
-      activity.eventId = undefined;
-      activity.verification = undefined;
-      activity.status = "observed";
-    }
-    if (context.source === "agent") {
-      activity.eventId = context.eventId;
-      activity.verification = context.verification?.trim() || undefined;
-      activity.status = "verified";
-    }
-    activity.updatedAt = now;
-    if (activity.files.length === 0) this.activities.splice(this.activities.indexOf(activity), 1);
+    this.activities.push({
+      id: crypto.randomUUID(),
+      requestMessageId: request.messageId,
+      request: request.body,
+      stepId: request.stepId,
+      adapterId: this.selection.adapterId,
+      modelId: this.selection.modelId,
+      eventId: context.eventId,
+      files: changes,
+      verification: context.verification?.trim() || undefined,
+      status: "verified",
+      changeStatus: "pending",
+      proposal,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   static async create(
@@ -357,7 +347,7 @@ export class ReviewSession {
       currentStepIndex: this.currentStepIndex,
       comments: this.comments,
       messages: this.messages,
-      activities: this.activities,
+      activities: this.activities.map(({ proposal, ...activity }) => ({ ...activity, hasProposal: Boolean(proposal) })),
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,
@@ -395,6 +385,60 @@ export class ReviewSession {
       return [{ ...hunk, rows: hunk.rows.slice(startInHunk, endInHunk) }];
     });
     return { file: structuredClone({ ...file, hunks }), offset, limit, totalRows };
+  }
+
+  activityDiff(id: string, path: string) {
+    const activity = this.activities.find((candidate) => candidate.id === id);
+    if (!activity?.proposal) throw new ReviewError("The proposed change does not exist.");
+    const file = parseUnifiedDiff(activity.proposal.patch).find((candidate) => candidate.path === path);
+    if (!file) throw new ReviewError("The proposed file does not exist in this change.");
+    return { file: structuredClone(file) };
+  }
+
+  async updateActivity(id: string, action: "apply" | "reject" | "undo") {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      const activity = this.activities.find((candidate) => candidate.id === id);
+      if (!activity?.proposal || !activity.changeStatus) throw new ReviewError("This activity has no actionable change bundle.");
+      const proposal = activity.proposal;
+      if (action === "apply" && activity.changeStatus !== "pending") throw new ReviewError("Only a pending change can be applied.");
+      if (action === "reject" && activity.changeStatus !== "pending") throw new ReviewError("Only a pending change can be rejected.");
+      if (action === "undo" && activity.changeStatus !== "applied") throw new ReviewError("Only an applied change can be undone.");
+
+      const previousComparison = this.comparison;
+      const previousStatus = activity.changeStatus;
+      const previousRevision = this.revision;
+      const previousGeneration = this.comparisonGeneration;
+      const modifiesWorkingTree = action !== "reject";
+      const reverse = action === "undo";
+      let patched = false;
+      try {
+        if (modifiesWorkingTree) {
+          await applyChangePatch(this.comparison.repositoryRoot, proposal.patch, reverse);
+          patched = true;
+        }
+        if (modifiesWorkingTree) {
+          this.comparison = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
+          this.comparisonGeneration += 1;
+        }
+        activity.changeStatus = action === "apply" ? "applied" : action === "reject" ? "rejected" : "undone";
+        if (action === "reject" || action === "undo") activity.proposal = undefined;
+        activity.updatedAt = new Date().toISOString();
+        this.revision += 1;
+        await this.persist();
+        return this.snapshot();
+      } catch (error) {
+        if (patched) {
+          await applyChangePatch(this.comparison.repositoryRoot, proposal.patch, !reverse).catch(() => undefined);
+        }
+        this.comparison = previousComparison;
+        this.comparisonGeneration = previousGeneration;
+        activity.changeStatus = previousStatus;
+        activity.proposal = proposal;
+        this.revision = previousRevision;
+        throw error;
+      }
+    });
   }
 
   async startTour(selection?: Partial<AgentSelection>) {
@@ -502,11 +546,19 @@ export class ReviewSession {
         stepId,
         createdAt: new Date().toISOString(),
       };
-      if (this.selection?.adapterId === "attached") {
-        this.activeAgentRequest = { messageId: userMessage.id, body: userMessage.body, stepId };
-      }
+      let proposalWorkspace: ProposalWorkspace | undefined;
       try {
-        const answer = await this.agent.answer(body, selectedContext, step);
+        if (this.selection?.adapterId === "attached") {
+          proposalWorkspace = await createProposalWorkspace(this.comparison.repositoryRoot);
+          this.activeAgentRequest = {
+            messageId: userMessage.id,
+            body: userMessage.body,
+            stepId,
+            workspace: proposalWorkspace,
+            baselineComparison: structuredClone(this.comparison),
+          };
+        }
+        const answer = await this.agent.answer(body, selectedContext, step, proposalWorkspace?.path);
         const authorizedGeneration = this.bridge?.consumeResponseRefreshAuthorization();
         if (this.comparisonGeneration !== comparisonGeneration && !(
           this.selection?.adapterId === "attached" && authorizedGeneration === this.comparisonGeneration
@@ -526,6 +578,7 @@ export class ReviewSession {
         throw error;
       } finally {
         if (this.activeAgentRequest?.messageId === userMessage.id) this.activeAgentRequest = undefined;
+        if (proposalWorkspace) await removeProposalWorkspace(this.comparison.repositoryRoot, proposalWorkspace);
       }
     });
   }
@@ -664,9 +717,30 @@ export class ReviewSession {
   }
 
   async refreshComparison(context: RefreshContext = { source: "manual" }) {
+    if (context.source === "watcher" && this.activeAgentRequest) return this.snapshot();
     const operation = this.refreshQueue.then(() => this.serializeMutation(async () => {
       this.ensureOpen();
-      const refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
+      const activeRequest = context.source === "agent" ? this.activeAgentRequest : undefined;
+      if (context.source === "agent" && !activeRequest) throw new ReviewError("No attached-agent change request is active.");
+      const replayed = context.eventId && this.activities.find((activity) => activity.eventId === context.eventId);
+      if (replayed) return this.snapshot();
+
+      let refreshed: Awaited<ReturnType<typeof loadComparison>>;
+      let proposed: Awaited<ReturnType<typeof loadComparison>> | undefined;
+      let proposal: { patch: string; baselineTree: string; resultTree: string } | undefined;
+      if (activeRequest) {
+        const currentReviewedTree = await captureWorkingTreeSnapshot(this.comparison.repositoryRoot);
+        if (currentReviewedTree.tree !== activeRequest.workspace.tree || currentReviewedTree.indexTree !== activeRequest.workspace.indexTree) {
+          throw new ReviewError("The reviewed working tree changed while the agent was preparing its proposal. The original files were not touched; retry the request against the latest state.");
+        }
+        const result = await captureWorkingTreeSnapshot(activeRequest.workspace.path);
+        const patch = await createChangePatch(activeRequest.workspace.path, activeRequest.workspace.tree, result.tree);
+        proposed = await loadComparison(activeRequest.workspace.path, this.comparison.base);
+        proposal = { patch, baselineTree: activeRequest.workspace.tree, resultTree: result.tree };
+        refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
+      } else {
+        refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
+      }
       this.ensureOpen();
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;
@@ -690,7 +764,9 @@ export class ReviewSession {
         const row = this.findRow(finding.path, finding.side, finding.line);
         finding.outdated = row?.content !== finding.lineContent;
       }
-      this.recordAgentActivity(previousComparison.files, refreshed.files, context);
+      if (proposal && proposed && activeRequest) {
+        this.recordAgentActivity(activeRequest.baselineComparison.files, proposed.files, context, proposal);
+      }
       await this.persist();
       return this.snapshot();
       } catch (error) {
@@ -716,6 +792,9 @@ export class ReviewSession {
     if (this.status !== "open") {
       if (this.status !== outcome) throw new ReviewError(`The review already closed as ${this.status}.`);
       return { outcome, comments: this.comments, status: this.status };
+    }
+    if (outcome !== "cancelled" && this.activities.some((activity) => activity.changeStatus === "pending")) {
+      throw new ReviewError("Apply or reject every pending agent change before closing the review.");
     }
     if (outcome === "accepted" && this.comments.length > 0) {
       throw new ReviewError("Resolve or remove feedback before accepting, or close with feedback.");

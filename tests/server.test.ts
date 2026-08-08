@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AttachedAgentBridge } from "../src/bridge.ts";
-import { loadComparison } from "../src/git.ts";
+import { captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, removeProposalWorkspace } from "../src/git.ts";
 import { runProcess } from "../src/process.ts";
 import { startServer } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
@@ -205,6 +205,43 @@ test("close is terminal while an identical close remains idempotent", async () =
     headers,
     body: JSON.stringify({ path: "app.ts", side: "new", line: 2, body: "Too late" }),
   })).status).toBe(409);
+});
+
+test("activity API previews, applies, and undoes an isolated proposal", async () => {
+  const { repository, session, url } = await fixture();
+  const workspace = await createProposalWorkspace(repository);
+  await writeFile(join(workspace.path, "app.ts"), "const base = 1;\nconst proposed = 7;\n");
+  const result = await captureWorkingTreeSnapshot(workspace.path);
+  const patch = await createChangePatch(workspace.path, workspace.tree, result.tree);
+  await removeProposalWorkspace(repository, workspace);
+  session.activities.push({
+    id: "activity-1",
+    requestMessageId: "message-1",
+    request: "Change the implementation.",
+    adapterId: "attached",
+    modelId: "current-session",
+    files: [{ path: "app.ts", change: "modified", before: { status: "modified", additions: 1, deletions: 0 }, after: { status: "modified", additions: 1, deletions: 0 } }],
+    verification: "checked",
+    status: "verified",
+    changeStatus: "pending",
+    proposal: { patch, baselineTree: workspace.tree, resultTree: result.tree },
+    createdAt: "2026-08-09T10:00:00.000Z",
+    updatedAt: "2026-08-09T10:00:00.000Z",
+  });
+  const headers = browserHeaders(url, session.browserToken);
+
+  const browserSnapshot = await (await jsonRequest(url, "/api/session", { headers })).json() as { activities: Array<{ proposal?: unknown; changeStatus?: string }> };
+  expect(browserSnapshot.activities[0]).toMatchObject({ changeStatus: "pending" });
+  expect(browserSnapshot.activities[0]!.proposal).toBeUndefined();
+  expect((await jsonRequest(url, "/api/activities/activity-1/diff?path=app.ts")).status).toBe(401);
+  const preview = await (await jsonRequest(url, "/api/activities/activity-1/diff?path=app.ts", { headers })).json() as { file: { hunks: Array<{ rows: Array<{ content: string }> }> } };
+  expect(preview.file.hunks.flatMap((hunk) => hunk.rows).some((row) => row.content.includes("proposed = 7"))).toBe(true);
+  expect((await jsonRequest(url, "/api/close", { method: "POST", headers, body: JSON.stringify({ outcome: "accepted" }) })).status).toBe(409);
+
+  expect((await jsonRequest(url, "/api/activities/activity-1", { method: "POST", headers, body: JSON.stringify({ action: "apply" }) })).status).toBe(200);
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toContain("proposed = 7");
+  expect((await jsonRequest(url, "/api/activities/activity-1", { method: "POST", headers, body: JSON.stringify({ action: "undo" }) })).status).toBe(200);
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toContain("changed = 2");
 });
 
 test("session library API lists, renames, archives, and explicitly deletes sessions", async () => {

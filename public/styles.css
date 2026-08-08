@@ -351,6 +351,10 @@ button { color: inherit; }
 .activity-agent { margin: 8px 0 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .activity-status { border: 1px solid var(--border); border-radius: 999px; padding: 3px 6px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .activity-status.verified { border-color: var(--success-border); color: var(--success-text); }
+.change-status { display: inline-block; margin-left: 5px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 6px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.change-status.pending { border-color: var(--warning-border); color: var(--warning); }
+.change-status.applied { border-color: var(--success-border); color: var(--success-text); }
+.change-status.rejected, .change-status.undone { opacity: .8; }
 .activity-files { display: flex; flex-direction: column; gap: 6px; }
 .activity-file { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; border: 1px solid var(--border-soft); border-radius: 7px; padding: 8px 10px; background: var(--surface-code); text-align: left; cursor: pointer; }
 .activity-file:hover { border-color: var(--border-hover); }
@@ -359,6 +363,8 @@ button { color: inherit; }
 .activity-file small { margin-top: 3px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .activity-verification { margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; color: var(--text-code); font-size: 12px; line-height: 1.5; }
 .activity-verification p { margin: 6px 0 0; }
+.activity-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; font-size: 11px; }
+.proposal-label { color: var(--warning); font-weight: 700; text-transform: uppercase; }
 .closed-banner { position: fixed; z-index: 10; top: 66px; left: 50%; transform: translateX(-50%); max-width: min(680px, calc(100vw - 32px)); border: 1px solid var(--banner-border); border-radius: 8px; background: var(--banner-background); color: var(--banner-text); padding: 9px 13px; font-size: 12px; text-align: center; box-shadow: 0 10px 28px var(--shadow); }
 .closed-banner.connection { border-color: var(--error-border); background: var(--error-background); color: var(--error-text); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

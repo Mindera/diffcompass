@@ -81,6 +81,12 @@ function validActivity(value: unknown): boolean {
     )) &&
     (value.verification === undefined || nonEmptyString(value.verification, 16_000)) &&
     ["observed", "verified"].includes(String(value.status)) &&
+    (value.changeStatus === undefined || ["pending", "applied", "rejected", "undone"].includes(String(value.changeStatus))) &&
+    (value.proposal === undefined || (
+      record(value.proposal) && boundedString(value.proposal.patch, 12 * 1024 * 1024) &&
+      /^[0-9a-f]{40,64}$/.test(String(value.proposal.baselineTree)) &&
+      /^[0-9a-f]{40,64}$/.test(String(value.proposal.resultTree)) && value.changeStatus !== undefined
+    )) &&
     nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
 }
 

@@ -1,10 +1,23 @@
 import { basename } from "node:path";
-import { lstat, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { lstat, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseUnifiedDiff } from "./diff.ts";
 import { ReviewError } from "./errors.ts";
 import { runProcess } from "./process.ts";
 import type { GitComparison } from "./types.ts";
+
+const MAX_CHANGE_PATCH_BYTES = 12 * 1024 * 1024;
+
+export interface WorkingTreeSnapshot {
+  tree: string;
+  indexTree: string;
+}
+
+export interface ProposalWorkspace extends WorkingTreeSnapshot {
+  path: string;
+  temporaryRoot: string;
+}
 
 async function git(cwd: string, args: string[], acceptedExitCodes?: number[]): Promise<string> {
   return (await runProcess(["git", ...args], cwd, acceptedExitCodes)).stdout.trimEnd();
@@ -21,6 +34,62 @@ async function refExists(cwd: string, ref: string): Promise<boolean> {
 
 export async function resolveRepositoryRoot(cwd: string): Promise<string> {
   return git(cwd, ["rev-parse", "--show-toplevel"]);
+}
+
+export async function captureWorkingTreeSnapshot(repositoryRoot: string): Promise<WorkingTreeSnapshot> {
+  const temporary = await mkdtemp(join(tmpdir(), "code-review-tour-index-"));
+  const indexFile = join(temporary, "index");
+  const options = { env: { GIT_INDEX_FILE: indexFile } };
+  try {
+    await runProcess(["git", "read-tree", "HEAD"], repositoryRoot, [0], options);
+    await runProcess(["git", "add", "-A", "--", "."], repositoryRoot, [0], options);
+    const tree = (await runProcess(["git", "write-tree"], repositoryRoot, [0], options)).stdout.trim();
+    const indexTree = await git(repositoryRoot, ["write-tree"]);
+    return { tree, indexTree };
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+}
+
+export async function createProposalWorkspace(repositoryRoot: string): Promise<ProposalWorkspace> {
+  const baseline = await captureWorkingTreeSnapshot(repositoryRoot);
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "code-review-tour-proposal-"));
+  const path = join(temporaryRoot, "workspace");
+  try {
+    await runProcess(["git", "worktree", "add", "--detach", "--no-checkout", path, "HEAD"], repositoryRoot);
+    await runProcess(["git", "read-tree", "--reset", "-u", baseline.tree], path);
+    return { ...baseline, path, temporaryRoot };
+  } catch (error) {
+    await runProcess(["git", "worktree", "remove", "--force", path], repositoryRoot, [0, 128]).catch(() => undefined);
+    await rm(temporaryRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function removeProposalWorkspace(repositoryRoot: string, workspace: ProposalWorkspace): Promise<void> {
+  await runProcess(["git", "worktree", "remove", "--force", workspace.path], repositoryRoot, [0, 128]).catch(() => undefined);
+  await rm(workspace.temporaryRoot, { recursive: true, force: true });
+}
+
+export async function createChangePatch(repositoryRoot: string, beforeTree: string, afterTree: string): Promise<string> {
+  const patch = (await runProcess([
+    "git", "diff", "--binary", "--full-index", "--find-renames", "--no-ext-diff", "--no-color", beforeTree, afterTree, "--",
+  ], repositoryRoot)).stdout;
+  if (new TextEncoder().encode(patch).byteLength > MAX_CHANGE_PATCH_BYTES) {
+    throw new ReviewError("The proposed agent change exceeds the 12 MiB approval limit. Split it into smaller requests.");
+  }
+  return patch;
+}
+
+export async function applyChangePatch(repositoryRoot: string, patch: string, reverse = false): Promise<void> {
+  if (!patch.trim()) return;
+  const direction = reverse ? ["-R"] : [];
+  try {
+    await runProcess(["git", "apply", "--check", "--binary", ...direction], repositoryRoot, [0], { input: patch });
+    await runProcess(["git", "apply", "--binary", ...direction], repositoryRoot, [0], { input: patch });
+  } catch (error) {
+    throw new ReviewError(`The ${reverse ? "undo" : "apply"} cannot proceed because the working tree no longer matches the captured change. Resolve the overlapping edits and retry.`, { cause: error });
+  }
 }
 
 export async function resolveBase(repositoryRoot: string, explicitBase?: string): Promise<string> {

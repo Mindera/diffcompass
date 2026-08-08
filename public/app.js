@@ -17,6 +17,7 @@ const state = {
   diffCache: new Map(),
   diffCacheRevision: null,
   fileRequestId: 0,
+  proposalPreview: false,
   pollInFlight: false,
   pollGeneration: 0,
 };
@@ -188,12 +189,12 @@ function rowSide(row) {
 }
 
 function renderDiff(files) {
-  const findings = state.session.outline?.findings ?? [];
+  const findings = state.proposalPreview ? [] : state.session.outline?.findings ?? [];
   elements.diff.innerHTML = files
     .map((file) => `<section class="diff-file" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       <header class="diff-file-header">
         <span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span>
-        <span class="file-stats">${file._page ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
+        <span class="file-stats">${state.proposalPreview ? '<span class="proposal-label">pending proposal</span> · ' : ""}${file._page ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
       </header>
       ${file.hunks.map((hunk) => `<div class="hunk">
         <div class="hunk-header">${escapeHtml(hunk.header)}</div>
@@ -205,7 +206,7 @@ function renderDiff(files) {
           return `<div class="diff-row ${row.kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(row.content)}">
             <span class="line-number">${row.oldLine ?? ""}</span>
             <span class="line-number">${row.newLine ?? ""}</span>
-            <button class="line-prefix line-action" type="button" tabindex="-1"${line ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
+            <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
             <span class="finding-markers">${rowFindings.map((finding) => `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" title="${escapeHtml(finding.message)}">${finding.priority}</button>`).join("")}</span>
             <pre class="line-code">${escapeHtml(row.content || " ")}</pre>
           </div>`;
@@ -232,6 +233,7 @@ function visibleDiffFiles() {
 async function showChangedFile(path, line, side, requestedOffset) {
   const requestId = ++state.fileRequestId;
   state.activeTab = "diff";
+  state.proposalPreview = false;
   state.visibleFile = path;
   renderActiveTab();
   let files = state.session.comparison.files;
@@ -270,6 +272,7 @@ async function showChangedFile(path, line, side, requestedOffset) {
 
 async function showRepositoryFile(path) {
   state.activeTab = "diff";
+  state.proposalPreview = false;
   renderActiveTab();
   const requestId = ++state.fileRequestId;
   elements.diff.innerHTML = '<div class="empty">Loading source…</div>';
@@ -278,6 +281,23 @@ async function showRepositoryFile(path) {
     if (requestId !== state.fileRequestId) return;
     elements.diff.innerHTML = `<section class="source-file"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="muted">unchanged</span></header><pre class="source-code">${escapeHtml(file.content)}</pre></section>`;
     elements["empty-diff"].classList.add("hidden");
+  } catch (error) {
+    if (requestId === state.fileRequestId) toast(error.message);
+  }
+}
+
+async function showActivityFile(activityId, path) {
+  const requestId = ++state.fileRequestId;
+  state.activeTab = "diff";
+  state.proposalPreview = true;
+  renderActiveTab();
+  elements.diff.innerHTML = '<div class="empty">Loading proposed diff…</div>';
+  elements["empty-diff"].classList.add("hidden");
+  try {
+    const result = await api(`/api/activities/${encodeURIComponent(activityId)}/diff?path=${encodeURIComponent(path)}`);
+    if (requestId !== state.fileRequestId || !state.proposalPreview) return;
+    renderDiff([result.file]);
+    document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     if (requestId === state.fileRequestId) toast(error.message);
   }
@@ -444,17 +464,22 @@ function renderActivities() {
   elements["activity-empty"].classList.toggle("hidden", activities.length > 0);
   elements["activity-tab-count"].textContent = String(activities.length);
   elements["activity-tab-count"].classList.toggle("hidden", activities.length === 0);
-  elements["activity-list"].innerHTML = activities.map((activity) => `<article class="activity-card">
+  elements["activity-list"].innerHTML = activities.map((activity) => `<article class="activity-card" data-activity-id="${escapeHtml(activity.id)}">
     <header>
-      <div><span class="activity-status ${escapeHtml(activity.status)}">${activity.status === "verified" ? "refreshed" : "observed"}</span><h2>${escapeHtml(activity.request)}</h2></div>
+      <div><span class="activity-status ${escapeHtml(activity.status)}">${activity.status === "verified" ? "verified" : "observed"}</span>${activity.changeStatus ? `<span class="change-status ${escapeHtml(activity.changeStatus)}">${escapeHtml(activity.changeStatus)}</span>` : ""}<h2>${escapeHtml(activity.request)}</h2></div>
       <time datetime="${escapeHtml(activity.updatedAt)}">${escapeHtml(new Date(activity.updatedAt).toLocaleString())}</time>
     </header>
     <div class="activity-agent">${escapeHtml(activity.adapterId)} · ${escapeHtml(activity.modelId)}${activity.stepId ? ` · tour step ${escapeHtml(activity.stepId)}` : ""}</div>
-    <div class="activity-files">${activity.files.map((file) => `<button type="button" class="activity-file" data-activity-file="${escapeHtml(file.path)}">
+    <div class="activity-files">${activity.files.map((file) => `<button type="button" class="activity-file"${activity.hasProposal ? ` data-activity-id="${escapeHtml(activity.id)}" data-activity-file="${escapeHtml(file.path)}"` : activity.changeStatus ? " disabled" : ` data-current-file="${escapeHtml(file.path)}"`}>
       <span><strong>${escapeHtml(file.path)}</strong><small>${escapeHtml(file.change)}</small></span>
       <span class="file-stats">${file.after ? `<span class="plus">+${file.after.additions}</span> <span class="minus">-${file.after.deletions}</span>` : "removed from diff"}</span>
     </button>`).join("")}</div>
     <section class="activity-verification"><div class="eyebrow">Verification</div>${activity.verification ? renderMarkdown(activity.verification) : `<p class="muted">${activity.status === "verified" ? "No verification summary was supplied." : "Waiting for the agent's explicit refresh."}</p>`}</section>
+    ${activity.changeStatus ? `<div class="activity-actions">
+      ${activity.changeStatus === "pending" ? '<button type="button" class="button primary" data-activity-action="apply">Apply</button><button type="button" class="button secondary" data-activity-action="reject">Reject</button>' : ""}
+      ${activity.changeStatus === "applied" ? '<button type="button" class="button secondary" data-activity-action="undo">Undo</button>' : ""}
+      ${["rejected", "undone"].includes(activity.changeStatus) ? `<span class="muted">${activity.changeStatus === "rejected" ? "Proposal discarded" : "Applied change undone"}</span>` : ""}
+    </div>` : ""}
   </article>`).join("");
 }
 
@@ -512,6 +537,7 @@ function renderTour() {
 
 function renderSession() {
   const { comparison, comments } = state.session;
+  state.proposalPreview = false;
   elements["repository-label"].textContent = comparison.repositoryName;
   elements["comparison-label"].textContent = `${comparison.base} → working tree`;
   elements["file-count"].textContent = `${comparison.files.length} changed · ${(comparison.repositoryFiles ?? comparison.files.map((file) => file.path)).length} total`;
@@ -762,8 +788,39 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
 });
 
 elements["activity-list"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-activity-file]");
-  if (button) void showChangedFile(button.dataset.activityFile);
+  const fileButton = event.target.closest("[data-activity-file]");
+  if (fileButton) {
+    void showActivityFile(fileButton.dataset.activityId, fileButton.dataset.activityFile);
+    return;
+  }
+  const currentFileButton = event.target.closest("[data-current-file]");
+  if (currentFileButton) {
+    void showChangedFile(currentFileButton.dataset.currentFile);
+    return;
+  }
+  const actionButton = event.target.closest("[data-activity-action]");
+  const card = event.target.closest("[data-activity-id]");
+  if (!actionButton || !card || state.busy || !reviewIsOpen()) return;
+  const action = actionButton.dataset.activityAction;
+  if ((action === "reject" || action === "undo") && !window.confirm(action === "reject"
+    ? "Reject this proposed change? The proposal will remain in the audit trail."
+    : "Undo this applied change? This stops if overlapping edits were made afterwards.")) return;
+  void (async () => {
+    setBusy(true, `${action === "apply" ? "Applying" : action === "reject" ? "Rejecting" : "Undoing"} agent change…`);
+    try {
+      state.session = await api(`/api/activities/${encodeURIComponent(card.dataset.activityId)}`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      renderSession();
+      toast(action === "apply" ? "Agent change applied" : action === "reject" ? "Agent change rejected" : "Agent change undone");
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      setBusy(false);
+      renderSession();
+    }
+  })();
 });
 
 elements.diff.addEventListener("click", (event) => {

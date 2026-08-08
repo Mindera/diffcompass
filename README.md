@@ -23,13 +23,14 @@ to the relevant code, and stays available for follow-up questions.
 - generates provenance-labelled sequence views for goal-critical, high-blast flows;
 - refreshes when repository files change and marks stale annotations as outdated;
 - records agent-authored file changes, their triggering request, and verification in an Activity timeline;
+- prepares attached-agent edits in isolated worktrees with explicit Apply, Reject, and conflict-safe Undo controls;
 - persists review state atomically so the server can resume it after restart;
 - provides a session library to reopen, rename, archive, and delete saved tours;
 - follows the system light or dark appearance by default, with a persistent manual override;
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - exposes `Close` and `Send feedback & close` outcomes.
 
-Standalone Codex and Claude sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change; verified edits are then refreshed into the browser.
+Standalone Codex and Claude sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
 
 ## Attached-agent mode
 
@@ -125,9 +126,13 @@ code-review-tour sessions delete 169dedd6 --yes
 
 The `Activity` tab groups repository changes by attached-agent request. It shows
 the affected files, before/after diff totals, and the verification reported by
-the agent after the refreshed changes are visible in the browser. Manual and
-background refreshes outside an active attached request are not attributed to
-the agent.
+the agent. Select a file to preview the proposed patch, then explicitly `Apply`
+or `Reject` it. Applied bundles can be undone while their captured context
+still matches; overlapping later edits stop the operation instead of being
+overwritten. Text, binary, added, deleted, and renamed files are retained in the
+bundle. A review cannot be accepted or closed with feedback while proposals are
+pending. Manual and background refreshes outside an active attached request are
+not attributed to the agent.
 
 New state files live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/sessions` and are written atomically. A standalone server exits after the browser closes the review. An attached server waits until the triggering agent acknowledges that it handled the terminal outcome.
 

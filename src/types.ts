@@ -144,6 +144,12 @@ export interface AgentChangeActivity {
   files: AgentChangeFile[];
   verification?: string;
   status: "observed" | "verified";
+  changeStatus?: "pending" | "applied" | "rejected" | "undone";
+  proposal?: {
+    patch: string;
+    baselineTree: string;
+    resultTree: string;
+  };
   createdAt: string;
   updatedAt: string;
 }

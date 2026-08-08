@@ -175,6 +175,22 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
         if ((line === undefined) !== (side === undefined)) throw new HttpError(400, "line and side must be provided together.");
         return json({ ...session.diffFile(path, offset, limit, line && side ? { line, side } : undefined), revision: session.revision });
       }
+      const activityDiffMatch = /^\/api\/activities\/([^/]+)\/diff$/.exec(url.pathname);
+      if (activityDiffMatch && request.method === "GET") {
+        return json(session.activityDiff(
+          decodeURIComponent(activityDiffMatch[1]),
+          requiredString(url.searchParams.get("path"), "path", 4_096),
+        ));
+      }
+      const activityMatch = /^\/api\/activities\/([^/]+)$/.exec(url.pathname);
+      if (activityMatch && request.method === "POST") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["action"]);
+        return json(await session.updateActivity(
+          decodeURIComponent(activityMatch[1]),
+          enumValue(input.action, "action", ["apply", "reject", "undo"]),
+        ));
+      }
       if (request.method === "POST" && url.pathname === "/api/tour/start") {
         return json(await session.startTour(parseAgentSelection(await readJsonObject(request))));
       }

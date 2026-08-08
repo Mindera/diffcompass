@@ -24,16 +24,24 @@ clear.
   and flow metadata.
 - System-aware light and dark themes with a persistent per-browser override.
 
-## v0.2 — Daily review workflow
+## Daily review backlog
 
 - Retention controls for old sessions and temporary data.
-- Explicit apply, reject, and undo controls for agent-authored changes.
 - Diff search and filters, changed-files-only mode, context expansion, unified or
   split view, and per-file reviewed state.
 - Repository-level defaults for parent branch, preferred agent/model, and review
   behavior.
 
-## v0.3 — Pull request workflow
+## Shipped in v0.3
+
+- Attached-agent edits run in an isolated proposal worktree, leaving the reviewed
+  working tree unchanged until explicit approval.
+- Activity patch previews plus Apply, Reject, and conflict-safe Undo controls for
+  text, binary, added, deleted, and renamed files.
+- Pending proposals block successful review closure, and later overlapping edits
+  fail closed instead of being overwritten.
+
+## v0.4 — Pull request workflow
 
 - Open a tour from a GitHub pull request URL or number without manually preparing
   the checkout and base reference.
@@ -42,7 +50,7 @@ clear.
   explicit confirmation.
 - Track remote updates and reconcile comments when the pull request changes.
 
-## v0.4 — Extensibility and richer analysis
+## v0.5 — Extensibility and richer analysis
 
 - A documented adapter contract for additional local agents such as Gemini,
   Aider, and OpenCode.

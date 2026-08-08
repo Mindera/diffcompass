@@ -12,15 +12,22 @@ export async function runProcess(
   command: string[],
   cwd: string,
   acceptedExitCodes: number[] = [0],
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number; input?: string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   if (options.signal?.aborted) throw new Error("The command was cancelled.");
   const process = Bun.spawn(command, {
     cwd,
-    stdin: "ignore",
+    stdin: options.input === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",
+    env: options.env ? { ...globalThis.process.env, ...options.env } : undefined,
   });
+  if (options.input !== undefined) {
+    const stdin = process.stdin;
+    if (!stdin) throw new Error("The command input pipe is unavailable.");
+    stdin.write(options.input);
+    stdin.end();
+  }
 
   let timedOut = false;
   const stop = () => process.kill();

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runProcess } from "../src/process.ts";
@@ -73,6 +73,12 @@ function persistedAttachedSession(repositoryRoot: string, overrides: Partial<Per
     updatedAt: "2026-08-08T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function proposalWorkspace(prompt: { type: string; prompt?: string }): string {
+  const match = /isolated proposal workspace ("(?:\\.|[^"])*")/.exec(prompt.prompt ?? "");
+  if (!match) throw new Error("Attached prompt did not include a proposal workspace.");
+  return JSON.parse(match[1]) as string;
 }
 
 test("a resumed open attached session retains its stop and drives the rehydrated agent bridge", async () => {
@@ -239,7 +245,7 @@ test("an attached review question can refresh after requested edits and still re
   const asking = session.ask("Please make the requested change.");
   const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
 
-  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst edited = 4;\n");
+  await writeFile(join(proposalWorkspace(prompt!), "app.ts"), "const base = 1;\nconst edited = 4;\n");
   bridge.validateRefresh(prompt!.id, prompt!.leaseId!);
   await session.refreshComparison({ source: "agent", eventId: prompt!.id, verification: "bun test: passed" });
   bridge.authorizeRefresh(prompt!.id, prompt!.leaseId!, session.currentComparisonGeneration);
@@ -251,28 +257,36 @@ test("an attached review question can refresh after requested edits and still re
     request: "Please make the requested change.",
     eventId: prompt!.id,
     status: "verified",
+    changeStatus: "pending",
     verification: "bun test: passed",
     files: [expect.objectContaining({ path: "app.ts", change: "modified" })],
   })]);
-  expect((await loadPersistedSession(stateFile)).activities).toEqual(snapshot.activities);
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
+  const persisted = await loadPersistedSession(stateFile);
+  expect(persisted.activities?.[0]).toMatchObject({ changeStatus: "pending", proposal: { baselineTree: expect.any(String), resultTree: expect.any(String) } });
+
+  const applied = await session.updateActivity(snapshot.activities[0]!.id, "apply");
+  expect(applied.activities[0]).toMatchObject({ changeStatus: "applied" });
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst edited = 4;\n");
+  const undone = await session.updateActivity(snapshot.activities[0]!.id, "undo");
+  expect(undone.activities[0]).toMatchObject({ changeStatus: "undone" });
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
 });
 
-test("watcher refreshes accumulate agent edits until the explicit verified refresh", async () => {
+test("watcher refreshes do not expose edits while an isolated agent proposal is in flight", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
   const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
   const bridge = session.bridge!;
   const asking = session.ask("Update the implementation and add coverage.");
   const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
+  const proposal = proposalWorkspace(prompt!);
 
-  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst edited = 8;\n");
+  await writeFile(join(proposal, "app.ts"), "const base = 1;\nconst edited = 8;\n");
   await session.refreshComparison({ source: "watcher" });
-  await writeFile(join(repository, "app.test.ts"), "test('edited', () => expect(true).toBe(true));\n");
+  await writeFile(join(proposal, "app.test.ts"), "test('edited', () => expect(true).toBe(true));\n");
   await session.refreshComparison({ source: "watcher" });
-  expect(session.snapshot().activities).toEqual([expect.objectContaining({
-    status: "observed",
-    files: [expect.objectContaining({ path: "app.test.ts" }), expect.objectContaining({ path: "app.ts" })],
-  })]);
+  expect(session.snapshot().activities).toEqual([]);
 
   bridge.validateRefresh(prompt!.id, prompt!.leaseId!);
   await session.refreshComparison({ source: "agent", eventId: prompt!.id, verification: "bun test: 1 pass" });
@@ -281,10 +295,43 @@ test("watcher refreshes accumulate agent edits until the explicit verified refre
   const snapshot = await asking;
   expect(snapshot.activities).toEqual([expect.objectContaining({
     status: "verified",
+    changeStatus: "pending",
     eventId: prompt!.id,
     verification: "bun test: 1 pass",
     files: [expect.objectContaining({ path: "app.test.ts" }), expect.objectContaining({ path: "app.ts" })],
   })]);
+  expect(await Bun.file(join(repository, "app.test.ts")).exists()).toBe(false);
+});
+
+test("reject discards a pending proposal and apply conflicts preserve later reviewer edits", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const bridge = session.bridge!;
+
+  const firstAsk = session.ask("Prepare one change.");
+  const [firstPrompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
+  await writeFile(join(proposalWorkspace(firstPrompt!), "app.ts"), "const base = 1;\nconst proposal = 3;\n");
+  bridge.validateRefresh(firstPrompt!.id, firstPrompt!.leaseId!);
+  await session.refreshComparison({ source: "agent", eventId: firstPrompt!.id, verification: "checked" });
+  bridge.authorizeRefresh(firstPrompt!.id, firstPrompt!.leaseId!, session.currentComparisonGeneration);
+  await bridge.respond(firstPrompt!.id, "Proposal ready.", firstPrompt!.leaseId);
+  const first = await firstAsk;
+  const rejected = await session.updateActivity(first.activities[0]!.id, "reject");
+  expect(rejected.activities[0]).toMatchObject({ changeStatus: "rejected" });
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toContain("changed = 2");
+
+  const secondAsk = session.ask("Prepare another change.");
+  const [secondPrompt] = await bridge.eventsAfter(firstPrompt!.sequence, 1_000, undefined, true);
+  await writeFile(join(proposalWorkspace(secondPrompt!), "app.ts"), "const base = 1;\nconst proposal = 5;\n");
+  bridge.validateRefresh(secondPrompt!.id, secondPrompt!.leaseId!);
+  await session.refreshComparison({ source: "agent", eventId: secondPrompt!.id, verification: "checked" });
+  bridge.authorizeRefresh(secondPrompt!.id, secondPrompt!.leaseId!, session.currentComparisonGeneration);
+  await bridge.respond(secondPrompt!.id, "Second proposal ready.", secondPrompt!.leaseId);
+  const second = await secondAsk;
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst reviewer = 9;\n");
+  await expect(session.updateActivity(second.activities[1]!.id, "apply")).rejects.toThrow("working tree no longer matches");
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toContain("reviewer = 9");
 });
 
 test("manual refreshes are not attributed to an attached agent request", async () => {
