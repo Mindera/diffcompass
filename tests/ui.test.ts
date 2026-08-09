@@ -5,15 +5,19 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "..");
 
 test("review navigation exposes expanded changed paths and a full repository mode", async () => {
-  const [html, app] = await Promise.all([
+  const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).toContain('<select id="tree-mode"');
   expect(html).toContain('<option value="changes">Changed paths</option>');
   expect(html).toContain('<option value="repository">Full repository</option>');
   expect(app).toContain("renderChangedPathList(changedFiles)");
   expect(app).toContain("renderTreeNode(treeFromFiles(repositoryFiles, changedFiles))");
+  expect(html).toContain('id="file-resizer"');
+  expect(app).toContain("setFilePanelWidth(fileResizeStart.width + event.clientX - fileResizeStart.x)");
+  expect(styles).toContain("grid-template-columns: var(--file-panel-width)");
   expect(app).not.toContain('id="changed-only"');
 });
 
@@ -21,9 +25,11 @@ test("tour rendering annotates code without continuously stealing navigation", a
   const app = await readFile(join(root, "public/app.js"), "utf8");
   const renderTour = app.slice(app.indexOf("function renderTour()"), app.indexOf("function renderFilteredDiff()"));
   expect(app).toContain('note.className = `tour-code-note${step.id === activeStep.id ? " active" : ""}`');
-  expect(app).toContain("compactText(step.objective, 220)");
+  expect(app).toContain("compactText(step.objective, 180)");
   expect(app).toContain("const phase = currentPhase()");
   expect(app).toContain("for (let index = phase.steps.length - 1; index >= 0; index -= 1)");
+  expect(app).toContain('insertAdjacentElement("beforebegin", note)');
+  expect(app).toContain('document.querySelector(".tour-code-note.active")');
   expect(app).toContain("async function focusCurrentStep()");
   expect(renderTour).not.toContain("scrollIntoView");
   expect(renderTour).not.toContain("showChangedFile");
@@ -55,11 +61,35 @@ test("phase files and scoped findings are separated from the complete findings v
   expect(html).toContain('id="phase-files"');
   expect(html).toContain('id="phase-finding-list"');
   expect(html).toContain('id="all-findings-list"');
+  expect(html).toContain('id="findings-back"');
   expect(app).toContain("finding.stepId === step?.id");
   expect(app).toContain("finding.phaseId === phase?.id && !finding.stepId");
   expect(app).toContain("elements[\"all-findings-list\"].innerHTML = findingCards(findings)");
   expect(app).toContain('state.activeTab = "findings"');
+  expect(app).toContain("openFindingFromCode(findingPin.dataset.findingId)");
+  expect(app).toContain('classList.toggle("hidden", !state.findingReturn)');
+  expect(app).toContain('data-tooltip="${escapeHtml(summary)}"');
   expect(app).toContain("evidence.open = true");
+});
+
+test("topbar controls stay compact and name the theme selector", async () => {
+  const [html, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('<label class="theme-control">\n          <span>Theme</span>');
+  expect(styles).toContain(".topbar .button { padding: 6px 9px;");
+  expect(styles).toContain(".actions { justify-content: flex-end; gap: 5px;");
+});
+
+test("flow provenance uses clear reviewer-facing wording", async () => {
+  const [html, app] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+  ]);
+  expect(html).toContain("Partly verified: some links are inferred");
+  expect(app).toContain('label: "Partly verified"');
+  expect(app).toContain("Some links were traced; the remaining links are informed inferences.");
 });
 
 test("diff rows stay dense and the explanation owns a bounded scroll area", async () => {

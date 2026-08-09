@@ -29,18 +29,21 @@ const state = {
   preferenceRepository: null,
   treeMode: null,
   diffLayout: null,
+  filePanelWidth: 240,
   focusedStepId: null,
+  focusedFindingId: null,
+  findingReturn: null,
   pollInFlight: false,
   pollGeneration: 0,
 };
 
 const elements = Object.fromEntries(
   [
-    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
     "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-format", "export-button", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
     "tour-summary", "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "toast",
+    "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -163,12 +166,25 @@ function preferenceKey(name) {
   return `review-tour:${state.session.comparison.repositoryRoot}:${name}`;
 }
 
+const FILE_PANEL_MIN = 180;
+const FILE_PANEL_MAX = 480;
+
+function setFilePanelWidth(value, persist = false) {
+  const viewportLimit = Math.max(FILE_PANEL_MIN, Math.min(FILE_PANEL_MAX, window.innerWidth - 700));
+  const width = Math.round(Math.max(FILE_PANEL_MIN, Math.min(viewportLimit, value)));
+  state.filePanelWidth = width;
+  elements.workspace.style.setProperty("--file-panel-width", `${width}px`);
+  elements["file-resizer"].setAttribute("aria-valuenow", String(width));
+  if (persist) window.localStorage.setItem(preferenceKey("file-panel-width"), String(width));
+}
+
 function initializeUiPreferences() {
   const repository = state.session.comparison.repositoryRoot;
   if (state.preferenceRepository === repository) return;
   state.preferenceRepository = repository;
   const savedLayout = window.localStorage.getItem(preferenceKey("diff-layout"));
   const savedTreeMode = window.localStorage.getItem(preferenceKey("tree-mode"));
+  const savedFilePanelWidth = Number(window.localStorage.getItem(preferenceKey("file-panel-width")));
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = ["unified", "split"].includes(savedLayout) ? savedLayout : state.session.preferences?.diffLayout ?? "split";
   state.treeMode = ["changes", "repository"].includes(savedTreeMode)
@@ -176,6 +192,7 @@ function initializeUiPreferences() {
     : legacyChangedOnly !== null
       ? (legacyChangedOnly === "true" ? "changes" : "repository")
       : state.session.preferences?.changedFilesOnly ? "changes" : "repository";
+  setFilePanelWidth(Number.isFinite(savedFilePanelWidth) && savedFilePanelWidth > 0 ? savedFilePanelWidth : 240);
 }
 
 function fileContext(file) {
@@ -278,7 +295,10 @@ function findingPins(file, row, side, findings) {
   const line = side === "old" ? row?.oldLine : row?.newLine;
   return findings
     .filter((finding) => finding.path === file.path && finding.side === side && finding.line === line && finding.status !== "dismissed")
-    .map((finding) => `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" title="${escapeHtml(finding.message)}">${finding.priority}</button>`).join("");
+    .map((finding) => {
+      const summary = compactText(finding.message, 220);
+      return `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" data-tooltip="${escapeHtml(summary)}" aria-label="${escapeHtml(`${finding.priority} finding: ${summary}`)}" aria-describedby="finding-tooltip">${finding.priority}</button>`;
+    }).join("");
 }
 
 function renderUnifiedRow(file, row, findings) {
@@ -588,7 +608,9 @@ function findingCards(findings) {
   const ordered = [...findings].sort((left, right) => left.priority.localeCompare(right.priority) || left.path.localeCompare(right.path) || left.line - right.line);
   return ordered.length === 0
     ? '<p class="comment-empty">No findings in this scope.</p>'
-    : ordered.map((finding) => `<article class="finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${finding.outdated ? " outdated" : ""}" data-finding-id="${escapeHtml(finding.id)}">
+    : ordered.map((finding) => {
+      const focused = finding.id === state.focusedFindingId;
+      return `<article class="finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${finding.outdated ? " outdated" : ""}${focused ? " focused" : ""}" data-finding-id="${escapeHtml(finding.id)}"${focused ? ' aria-current="true" tabindex="-1"' : ""}>
       <div class="finding-heading"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(finding.path)}:${finding.line}</button><span class="finding-priority">${finding.priority}</span></div>
       <strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong>
       <p>${renderInlineMarkdown(finding.message)}</p>
@@ -597,7 +619,8 @@ function findingCards(findings) {
       <div class="comment-actions">
         ${finding.status === "open" ? `<button class="text-button" data-action="convert" type="button"${disabled}${finding.outdated ? " disabled" : ""}>Add as feedback</button><button class="text-button" data-action="dismiss" type="button"${disabled}>Dismiss</button>` : finding.status === "dismissed" ? `<button class="text-button" data-action="reopen" type="button"${disabled}>Reopen</button>` : '<span class="muted">Added to feedback</span>'}
       </div>
-    </article>`).join("");
+    </article>`;
+    }).join("");
 }
 
 function renderFindings() {
@@ -621,6 +644,64 @@ function renderFindings() {
   elements["findings-tab-count"].classList.toggle("hidden", findings.length === 0);
   elements["all-findings-empty"].classList.toggle("hidden", findings.length > 0);
   elements["all-findings-list"].innerHTML = findingCards(findings);
+  elements["findings-back"].classList.toggle("hidden", !state.findingReturn);
+}
+
+function openFindingFromCode(findingId) {
+  state.findingReturn = {
+    tab: state.activeTab,
+    visibleFile: state.visibleFile,
+    scrollTop: elements["diff-panel"].scrollTop,
+    findingId,
+  };
+  state.focusedFindingId = findingId;
+  state.activeTab = "findings";
+  renderFindings();
+  renderActiveTab();
+  window.requestAnimationFrame(() => {
+    const item = elements["all-findings-list"].querySelector(`.finding-item[data-finding-id="${CSS.escape(findingId)}"]`);
+    const evidence = item?.querySelector("details");
+    if (evidence) evidence.open = true;
+    item?.scrollIntoView({ behavior: "smooth", block: "center" });
+    item?.focus({ preventScroll: true });
+  });
+}
+
+function returnToFindingCode() {
+  const target = state.findingReturn;
+  if (!target) return;
+  state.findingReturn = null;
+  state.focusedFindingId = null;
+  state.activeTab = target.tab;
+  renderFindings();
+  renderActiveTab();
+  window.requestAnimationFrame(() => {
+    elements["diff-panel"].scrollTop = target.scrollTop;
+    elements.diff.querySelector(`[data-finding-id="${CSS.escape(target.findingId)}"]`)?.focus({ preventScroll: true });
+  });
+}
+
+function showFindingTooltip(pin) {
+  const summary = pin?.dataset.tooltip;
+  if (!summary) return;
+  elements["finding-tooltip"].textContent = summary;
+  elements["finding-tooltip"].classList.remove("hidden");
+  const rect = pin.getBoundingClientRect();
+  const tooltipRect = elements["finding-tooltip"].getBoundingClientRect();
+  const left = Math.max(12, Math.min(window.innerWidth - tooltipRect.width - 12, rect.left));
+  const top = rect.bottom + tooltipRect.height + 12 > window.innerHeight ? rect.top - tooltipRect.height - 7 : rect.bottom + 7;
+  elements["finding-tooltip"].style.left = `${left}px`;
+  elements["finding-tooltip"].style.top = `${Math.max(8, top)}px`;
+}
+
+function hideFindingTooltip() {
+  elements["finding-tooltip"].classList.add("hidden");
+}
+
+function flowProvenanceCopy(provenance) {
+  if (provenance === "verified") return { label: "Verified", detail: "Every link was traced in the changed code." };
+  if (provenance === "partial") return { label: "Partly verified", detail: "Some links were traced; the remaining links are informed inferences." };
+  return { label: "Unverified", detail: "The flow is plausible, but it was not traced end-to-end in the changed code." };
 }
 
 function renderFlows() {
@@ -631,13 +712,16 @@ function renderFlows() {
   elements["flows-empty"].textContent = state.session.outline
     ? "No goal-critical, high-blast runtime flow was identified for this change."
     : "Start the tour to generate grounded main-flow diagrams.";
-  elements.flows.innerHTML = flows.map((flow, index) => `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
-      <header><div><span class="provenance ${flow.provenance}">${escapeHtml(flow.provenance)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><span class="blast">affects ${flow.blastRadiusSize}</span><button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
+  elements.flows.innerHTML = flows.map((flow, index) => {
+    const provenance = flowProvenanceCopy(flow.provenance);
+    return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
+      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><span class="blast">affects ${flow.blastRadiusSize}</span><button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
       <div class="sequence-diagram mermaid-render" data-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
       <div class="flow-warning hidden" data-flow-error>Could not render this diagram safely. Inspect or edit its source below.</div>
       <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
-    </article>`).join("");
+    </article>`;
+  }).join("");
   void renderFlowDiagrams(flows, generation);
 }
 
@@ -724,13 +808,13 @@ function renderTourAnnotation() {
     const rows = [...document.querySelectorAll(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"]`)]
       .filter((row) => Number(row.dataset.line) >= startLine && Number(row.dataset.line) <= endLine);
     if (step.id === activeStep.id) rows.forEach((row) => row.classList.add("tour-anchor"));
-    const lastRow = rows.at(-1);
-    if (!lastRow) continue;
+    const firstRow = rows[0];
+    if (!firstRow) continue;
     const note = document.createElement("aside");
     note.className = `tour-code-note${step.id === activeStep.id ? " active" : ""}`;
     note.setAttribute("aria-label", `${step.id === activeStep.id ? "Current" : "Upcoming"} tour stop: ${step.title}`);
-    note.innerHTML = `<span>Stop ${index + 1}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 220))}</p>`;
-    (lastRow.closest(".split-row") ?? lastRow).insertAdjacentElement("afterend", note);
+    note.innerHTML = `<span>${step.id === activeStep.id ? "Current stop" : `Stop ${index + 1}`}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 180))}</p>`;
+    (firstRow.closest(".split-row") ?? firstRow).insertAdjacentElement("beforebegin", note);
   }
 }
 
@@ -745,7 +829,8 @@ async function focusCurrentStep() {
   state.activeTab = "diff";
   renderActiveTab();
   renderTourAnnotation();
-  const target = document.querySelector(`.diff-row[data-path="${CSS.escape(step.anchor.path)}"][data-side="${step.anchor.side}"][data-line="${step.anchor.startLine}"]`)
+  const target = document.querySelector(".tour-code-note.active")
+    ?? document.querySelector(`.diff-row[data-path="${CSS.escape(step.anchor.path)}"][data-side="${step.anchor.side}"][data-line="${step.anchor.startLine}"]`)
     ?? document.querySelector(`.diff-file[data-path="${CSS.escape(step.anchor.path)}"]`);
   target?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -1154,6 +1239,29 @@ elements["flow-form"].addEventListener("submit", saveFlow);
 elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
 elements["theme-select"].value = window.reviewTourTheme.preference();
 elements["theme-select"].addEventListener("change", () => window.reviewTourTheme.set(elements["theme-select"].value));
+let fileResizeStart = null;
+elements["file-resizer"].addEventListener("pointerdown", (event) => {
+  fileResizeStart = { pointerId: event.pointerId, x: event.clientX, width: state.filePanelWidth };
+  elements["file-resizer"].classList.add("dragging");
+  elements["file-resizer"].setPointerCapture(event.pointerId);
+});
+elements["file-resizer"].addEventListener("pointermove", (event) => {
+  if (!fileResizeStart || event.pointerId !== fileResizeStart.pointerId) return;
+  setFilePanelWidth(fileResizeStart.width + event.clientX - fileResizeStart.x);
+});
+elements["file-resizer"].addEventListener("pointerup", (event) => {
+  if (!fileResizeStart || event.pointerId !== fileResizeStart.pointerId) return;
+  fileResizeStart = null;
+  elements["file-resizer"].classList.remove("dragging");
+  setFilePanelWidth(state.filePanelWidth, true);
+});
+elements["file-resizer"].addEventListener("keydown", (event) => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const width = event.key === "Home" ? FILE_PANEL_MIN : event.key === "End" ? FILE_PANEL_MAX : state.filePanelWidth + (event.key === "ArrowRight" ? 20 : -20);
+  setFilePanelWidth(width, true);
+});
+window.addEventListener("resize", () => { if (state.session) setFilePanelWidth(state.filePanelWidth); });
 window.addEventListener("review-tour-theme-change", () => {
   if (state.session && state.activeTab === "flows") renderFlows();
 });
@@ -1218,6 +1326,7 @@ elements["diff-layout"].addEventListener("change", () => {
 elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });
 elements["flows-tab"].addEventListener("click", () => { state.activeTab = "flows"; renderFlows(); renderActiveTab(); });
 elements["findings-tab"].addEventListener("click", () => { state.activeTab = "findings"; renderFindings(); renderActiveTab(); });
+elements["findings-back"].addEventListener("click", returnToFindingCode);
 elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
 elements["pull-request-tab"].addEventListener("click", () => { state.activeTab = "pull-request"; renderPullRequest(); renderActiveTab(); });
 elements.flows.addEventListener("click", (event) => {
@@ -1299,16 +1408,8 @@ elements.diff.addEventListener("click", (event) => {
   }
   const findingPin = event.target.closest("[data-finding-id]");
   if (findingPin) {
-    const selector = `.finding-item[data-finding-id="${CSS.escape(findingPin.dataset.findingId)}"]`;
-    let item = [...document.querySelectorAll(selector)].find((candidate) => candidate.offsetParent !== null);
-    if (!item) {
-      state.activeTab = "findings";
-      renderActiveTab();
-      item = elements["all-findings-list"].querySelector(selector);
-    }
-    const evidence = item?.querySelector("details");
-    if (evidence) evidence.open = true;
-    item?.scrollIntoView({ behavior: "smooth", block: "center" });
+    hideFindingTooltip();
+    openFindingFromCode(findingPin.dataset.findingId);
     return;
   }
   if (!reviewIsOpen()) return;
@@ -1328,6 +1429,21 @@ elements.diff.addEventListener("click", (event) => {
   } else {
     selectLine(row);
   }
+});
+elements.diff.addEventListener("pointerover", (event) => {
+  const pin = event.target.closest(".finding-pin");
+  if (pin) showFindingTooltip(pin);
+});
+elements.diff.addEventListener("pointerout", (event) => {
+  const pin = event.target.closest(".finding-pin");
+  if (pin && !pin.contains(event.relatedTarget)) hideFindingTooltip();
+});
+elements.diff.addEventListener("focusin", (event) => {
+  const pin = event.target.closest(".finding-pin");
+  if (pin) showFindingTooltip(pin);
+});
+elements.diff.addEventListener("focusout", (event) => {
+  if (event.target.closest(".finding-pin")) hideFindingTooltip();
 });
 elements.diff.addEventListener("keydown", (event) => {
   if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
@@ -1359,7 +1475,11 @@ async function handleFindingClick(event) {
   if (!action || !item) return;
   const finding = state.session.outline?.findings.find((candidate) => candidate.id === item.dataset.findingId);
   if (!finding) return;
-  if (action === "jump") return showChangedFile(finding.path, finding.line, finding.side);
+  if (action === "jump") {
+    state.findingReturn = null;
+    state.focusedFindingId = null;
+    return showChangedFile(finding.path, finding.line, finding.side);
+  }
   if (!reviewIsOpen()) return;
   try {
     state.session = await api(`/api/findings/${encodeURIComponent(finding.id)}`, {

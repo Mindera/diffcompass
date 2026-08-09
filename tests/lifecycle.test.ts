@@ -110,10 +110,21 @@ test("a resumed open attached session retains its stop and drives the rehydrated
   const [prompt] = await bridge.eventsAfter(7, 1_000);
   expect(prompt).toMatchObject({ sequence: 8, type: "agent.prompt", kind: "tour.explanation" });
   await bridge.respond(prompt!.id, "This is the saved second stop.");
+  await bridge.ack(prompt!.id);
 
   const snapshot = await started;
   expect(snapshot.currentStepIndex).toBe(1);
   expect(snapshot.outline?.phases[0]?.steps[1]?.explanation).toBe("This is the saved second stop.");
+
+  const [prefetch] = await bridge.eventsAfter(8, 1_000);
+  expect(prefetch).toMatchObject({ sequence: 9, type: "agent.prompt", kind: "tour.explanation" });
+  if (!prefetch || prefetch.type !== "agent.prompt") throw new Error("Expected a prefetched explanation prompt.");
+  expect(prefetch.prompt).toContain("Verification stop");
+  await bridge.respond(prefetch!.id, "The next stop was prepared before navigation.");
+  for (let attempt = 0; attempt < 20 && !session.snapshot().outline?.phases[1]?.steps[0]?.explanation; attempt += 1) {
+    await Bun.sleep(5);
+  }
+  expect(session.snapshot().outline?.phases[1]?.steps[0]?.explanation).toBe("The next stop was prepared before navigation.");
 });
 
 test("next traverses the flattened route across a phase boundary", async () => {

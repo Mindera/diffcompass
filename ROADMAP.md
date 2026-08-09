@@ -96,6 +96,17 @@ clear.
 - Validated sequence flows render as real, theme-aware Mermaid SVG using a local
   strict-mode runtime, with collapsed source and safe error fallback.
 
+## Post-v0.9 usability polish
+
+- Resizable, persistent file-pane width and a denser header with an explicit
+  Theme label.
+- Strong current-stop annotations placed before their code anchor, plus
+  plain-language explanations and preloaded next stops.
+- Finding pins expose summaries on hover or keyboard focus and open a clearly
+  selected Findings card with back-to-code navigation.
+- Flow provenance is worded as Verified, Partly verified, or Unverified, with
+  the evidence meaning explained in the UI.
+
 ## Release hardening
 
 - Native CI execution on macOS and ARM runners, not only cross-compilation.

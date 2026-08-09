@@ -23,7 +23,7 @@
       </div>
       <div class="actions">
         <label class="theme-control">
-          <span class="sr-only">Color theme</span>
+          <span>Theme</span>
           <select id="theme-select" aria-label="Color theme">
             <option value="system">System</option>
             <option value="dark">Dark</option>
@@ -42,7 +42,7 @@
     <div id="closed-banner" class="closed-banner hidden" role="status"></div>
     <div id="connection-banner" class="closed-banner connection hidden" role="status">The local server is unavailable. Restart it with the printed resume command, then reopen the new review URL.</div>
 
-    <main class="workspace">
+    <main id="workspace" class="workspace">
       <aside class="file-panel">
         <div class="panel-heading">
           <div>
@@ -66,9 +66,10 @@
           </select></label>
         </div>
         <div id="file-tree" class="file-tree"></div>
+        <div id="file-resizer" class="file-resizer" role="separator" aria-label="Resize file tree" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="480" aria-valuenow="240" tabindex="0"></div>
       </aside>
 
-      <section class="diff-panel">
+      <section id="diff-panel" class="diff-panel">
         <div id="diff-view" class="review-view" role="tabpanel" aria-labelledby="diff-tab">
           <p id="diff-instructions" class="sr-only">Choose a changed line once to select it and again to add feedback. Keyboard users can press Enter or Space.</p>
           <div class="diff-toolbar">
@@ -80,12 +81,12 @@
           <div id="diff"></div>
         </div>
         <div id="flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="flows-tab">
-          <div class="flows-toolbar"><div><strong>Main flows</strong><span class="muted">Grounded Mermaid sequence diagrams</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate all</button></div>
+          <div class="flows-toolbar"><div><strong>Main flows</strong><span class="muted">Verified: fully traced · Partly verified: some links are inferred · Unverified: not traced end-to-end</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate all</button></div>
           <div id="flows-empty" class="empty">Start the tour to generate grounded main-flow diagrams.</div>
           <div id="flows" class="flows"></div>
         </div>
         <div id="findings-view" class="review-view hidden" role="tabpanel" aria-labelledby="findings-tab">
-          <div class="flows-toolbar"><div><strong>All findings</strong><span class="muted">Evidence-backed analysis across the complete tour</span></div></div>
+          <div class="flows-toolbar"><div><strong>All findings</strong><span class="muted">Evidence-backed analysis across the complete tour</span></div><button id="findings-back" class="button secondary hidden" type="button">← Back to code</button></div>
           <div id="all-findings-empty" class="empty">No evidence-backed findings were generated.</div>
           <div id="all-findings-list" class="all-findings-list"></div>
         </div>
@@ -231,6 +232,7 @@
       </form>
     </dialog>
 
+    <div id="finding-tooltip" class="finding-tooltip hidden" role="tooltip"></div>
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
     <script src="/mermaid.min.js"></script>
     <script type="module" src="/app.js"></script>

@@ -13,18 +13,18 @@ to the relevant code, and stays available for follow-up questions.
 
 - compares the merge base of a parent branch with the current working tree;
 - includes committed, staged, unstaged, and untracked changes;
-- renders the complete repository tree, unchanged source files, and the branch diff;
+- renders the complete repository tree, unchanged source files, and the branch diff in a resizable file pane;
 - detects installed Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI agents;
 - lets the reviewer choose an available agent, model, and reasoning effort;
 - asks the selected agent to organize the change into logical phases and precise code stops;
-- generates each explanation as the reviewer moves forward;
+- preloads the next explanation while the reviewer reads the current stop;
 - keeps follow-up questions in the same agent conversation;
-- places a compact tour annotation beside the active code while the agent gives the deeper explanation in a separately scrollable panel;
+- places a prominent tour annotation immediately before the active code while the agent gives a short, plain-language explanation in a separately scrollable panel;
 - keeps the diff and file navigation reviewer-controlled; only Start, Previous, and Next jump to a tour anchor;
 - declares each phase's changed files and their role, with Git-derived additions and deletions;
-- separates stop-scoped and phase-scoped P0–P3 findings, while keeping a complete Findings view for global and migrated analysis;
+- separates stop-scoped and phase-scoped P0–P3 findings, with pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
 - syntax-highlights loaded diffs locally in both light and dark themes;
-- renders provenance-labelled Mermaid sequence diagrams as strict local SVG for goal-critical, high-blast flows, with validated editing, source fallback, and agent regeneration;
+- renders Mermaid sequence diagrams as strict local SVG for goal-critical, high-blast flows, with explicit fully traced, partly inferred, or unverified provenance wording, validated editing, source fallback, and agent regeneration;
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
 - exports the complete tour, flows, findings, reviewer feedback, changed-file state, and diff as Markdown or self-contained HTML;
 - refreshes when repository files change and marks stale annotations as outdated;
@@ -262,7 +262,8 @@ Guided reviews are organized as `Tour → Phases → Stops`. A phase represents 
 coherent behavioral or architectural change and declares the changed files that
 participate in it. A stop is an exact old/new diff anchor with a short inline
 annotation and a deeper agent explanation. Previous and Next traverse the
-flattened stop route across phase boundaries; file-tree and free-form diff
+flattened stop route across phase boundaries, while the next explanation is
+prepared in advance; file-tree and free-form diff
 navigation remain under the reviewer's control. Findings shown below a stop are
 limited to that exact anchor, phase findings sit with the phase overview, and
 the Findings tab contains the complete set. Sessions created before v0.9 are

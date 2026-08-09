@@ -108,6 +108,9 @@ test("normalizes context findings and derives all priority levels from the docum
   };
   const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
   const [event] = await bridge.eventsAfter(0, 1_000);
+  if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
+  expect(event.prompt).toContain("Use short, plain sentences");
+  expect(event.prompt).toContain("Describe concrete behavior before implementation details");
   const finding = (id: string, line: number, side: "old" | "new", blastRadiusSize: number, tested: boolean, pinScope: "line" | "symbol" | "file") => ({
     id, phaseId: "behavior", ...(line === 2 ? { stepId: "step" } : {}), path: "app.ts", side, line, message: `${id} issue`, category: "correctness", severity: "medium", confidence: "high",
     evidence: "The diff demonstrates the issue.", priority: "P3", introduced: true, recallGuard: false, blastRadiusSize, tested, pinScope, status: "open",
@@ -127,6 +130,23 @@ test("normalizes context findings and derives all priority levels from the docum
   expect(outline.planningNotes).toEqual(["Start at the behavior boundary."]);
   expect(outline.findings.map(({ id, priority }) => [id, priority])).toEqual([["p0", "P0"], ["p1", "P1"], ["p2", "P2"], ["p3", "P3"]]);
   expect(outline.findings[3]).toMatchObject({ side: "new", line: 1 });
+});
+
+test("asks for short plain-language stop explanations", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const pending = agent.explainStep({
+    id: "plain-step",
+    title: "A direct behavior",
+    objective: "See the changed result.",
+    anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
+  }, 0, 2);
+  const [event] = await bridge.eventsAfter(0, 1_000);
+  if (!event || event.type !== "agent.prompt") throw new Error("Expected an explanation prompt.");
+  expect(event.prompt).toContain("Keep it under 180 words");
+  expect(event.prompt).toContain("Avoid jargon");
+  await bridge.respond(event!.id, "The value now changes here. Check the result.");
+  expect(await pending).toBe("The value now changes here. Check the result.");
 });
 
 test("repository policy is bounded context and findings are enforced after generation", async () => {

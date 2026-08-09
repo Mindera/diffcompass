@@ -538,6 +538,35 @@ export class ReviewSession {
     });
   }
 
+  private scheduleNextStepPrefetch(): void {
+    void this.serialize(async () => {
+      this.ensureOpen();
+      if (!this.outline || !this.agent) return;
+      const steps = tourSteps(this.outline);
+      const index = this.currentStepIndex + 1;
+      const step = steps[index];
+      if (!step || step.explanation) return;
+      const comparisonGeneration = this.comparisonGeneration;
+      this.agent.useComparison(this.comparison);
+      const explanation = await this.agent.explainStep(step, index, steps.length);
+      this.ensureOpen();
+      this.ensureComparisonCurrent(comparisonGeneration);
+      if (step.explanation) return;
+      const previousRevision = this.revision;
+      step.explanation = explanation;
+      this.revision += 1;
+      try {
+        await this.persistAgentResult();
+      } catch (error) {
+        if (step.explanation === explanation && this.revision === previousRevision + 1) {
+          step.explanation = undefined;
+          this.revision = previousRevision;
+        }
+        throw error;
+      }
+    }).catch(() => undefined);
+  }
+
   async startTour(selection?: Partial<AgentSelection>) {
     return this.serialize(async () => {
       const before = this.captureMutableState();
@@ -578,6 +607,7 @@ export class ReviewSession {
         this.revision += 1;
         operationRevision = this.revision;
         await this.persistAgentResult();
+        this.scheduleNextStepPrefetch();
         return this.snapshot();
       } catch (error) {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
@@ -614,6 +644,7 @@ export class ReviewSession {
       this.revision += 1;
       operationRevision = this.revision;
       await this.persistAgentResult();
+      this.scheduleNextStepPrefetch();
       return this.snapshot();
       } catch (error) {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
