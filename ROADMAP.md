@@ -24,14 +24,12 @@ clear.
   and flow metadata.
 - System-aware light and dark themes with a persistent per-browser override.
 
-## Daily review backlog
-
-- Retention controls for old sessions and temporary data.
-
 ## In progress for v0.5
 
 - Strict repository-level defaults for parent branch, preferred agent/model,
   diff layout and context, changed-file navigation, and successful-close policy.
+- Preview-first retention controls for repository sessions and stale temporary
+  data, with active-process locks and concurrent-change protection.
 
 ## Shipped in v0.3
 

@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { lstat, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseUnifiedDiff } from "./diff.ts";
@@ -54,6 +54,7 @@ export async function captureWorkingTreeSnapshot(repositoryRoot: string): Promis
 export async function createProposalWorkspace(repositoryRoot: string): Promise<ProposalWorkspace> {
   const baseline = await captureWorkingTreeSnapshot(repositoryRoot);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "code-review-tour-proposal-"));
+  await writeFile(join(temporaryRoot, ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
   const path = join(temporaryRoot, "workspace");
   try {
     await runProcess(["git", "worktree", "add", "--detach", "--no-checkout", path, "HEAD"], repositoryRoot);

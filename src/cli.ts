@@ -9,7 +9,7 @@ import { ReviewSession } from "./session.ts";
 import { startServer } from "./server.ts";
 import packageJson from "../package.json" with { type: "json" };
 import { runDoctor } from "./doctor.ts";
-import { runSessionCommand } from "./session-library.ts";
+import { acquireSessionLock, runSessionCommand } from "./session-library.ts";
 import { loadRepositoryConfig } from "./config.ts";
 
 interface Options {
@@ -30,7 +30,7 @@ function printHelp(): void {
 Usage:
   code-review-tour [options]
   code-review-tour doctor
-  code-review-tour sessions [list|resume|rename|archive|unarchive|delete]
+  code-review-tour sessions [list|resume|rename|archive|unarchive|delete|prune]
 
 Options:
   --repo PATH          Repository to review (default: current directory)
@@ -145,15 +145,22 @@ if (!stateWithinRepository || (!stateWithinRepository.startsWith("..") && !isAbs
   throw new Error("Review session state must be stored outside the reviewed repository.");
 }
 await mkdir(canonicalStateDirectory, { recursive: true, mode: 0o700 });
-const session = await ReviewSession.create(options.repository, options.base ?? repositoryConfig.base, {
-  adapterId: options.attached ? "attached" : options.agent ?? repositoryConfig.agent,
-  modelId: options.model ?? repositoryConfig.model,
-  reasoningEffort: options.reasoning ?? repositoryConfig.reasoning,
-  attached: options.attached,
-  stateFile: canonicalStatePath,
-  resume: Boolean(options.resume),
-  preferences: repositoryConfig.preferences,
-});
+const releaseSessionLock = await acquireSessionLock(canonicalStatePath);
+let session: ReviewSession;
+try {
+  session = await ReviewSession.create(options.repository, options.base ?? repositoryConfig.base, {
+    adapterId: options.attached ? "attached" : options.agent ?? repositoryConfig.agent,
+    modelId: options.model ?? repositoryConfig.model,
+    reasoningEffort: options.reasoning ?? repositoryConfig.reasoning,
+    attached: options.attached,
+    stateFile: canonicalStatePath,
+    resume: Boolean(options.resume),
+    preferences: repositoryConfig.preferences,
+  });
+} catch (error) {
+  await releaseSessionLock();
+  throw error;
+}
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let repositoryWatcher: ReturnType<typeof watch> | undefined;
 try {
@@ -184,10 +191,12 @@ const shutdown = async (bridgeDirectory?: string, force = false) => {
   repositoryWatcher?.close();
   server.stop(force);
   await session.dispose();
+  await releaseSessionLock();
   if (bridgeDirectory) await rm(bridgeDirectory, { recursive: true, force: true });
 };
 if (session.bridge) {
   const bridgeDirectory = await mkdtemp(join(tmpdir(), "code-review-tour-"));
+  await writeFile(join(bridgeDirectory, ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
   const bridgeTokenFile = join(bridgeDirectory, "bridge-token");
   await writeFile(bridgeTokenFile, session.bridge.token, { mode: 0o600 });
   console.log(`Attached bridge URL: ${baseUrl}`);

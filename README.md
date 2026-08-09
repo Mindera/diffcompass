@@ -124,6 +124,8 @@ code-review-tour sessions rename 169dedd6 "Push notification review"
 code-review-tour sessions archive 169dedd6
 code-review-tour sessions unarchive 169dedd6
 code-review-tour sessions delete 169dedd6 --yes
+code-review-tour sessions prune --repo . --days 30 --max 50
+code-review-tour sessions prune --repo . --days 30 --max 50 --yes
 ```
 
 The `Activity` tab groups repository changes by attached-agent request. It shows
@@ -177,6 +179,11 @@ Add `.code-review-tour.json` at the repository root to share review defaults:
   "review": {
     "requireAllFilesReviewed": true,
     "closeOutcome": "accepted"
+  },
+  "retention": {
+    "maxAgeDays": 30,
+    "maxSessions": 50,
+    "includeArchived": false
   }
 }
 ```
@@ -187,6 +194,15 @@ retains the settings it started with. For a new session, explicit CLI agent,
 model, reasoning, and base flags override repository defaults, which in turn
 override built-in and Git-inferred defaults. Unknown or mistyped settings fail
 closed so a misspelled policy cannot silently be ignored.
+
+Retention is always explicit. `sessions prune` previews its targets; add
+`--yes` to delete them. `--repo PATH` loads that repository's retention
+defaults and limits pruning to its sessions. CLI `--days` and `--max` override
+the file. Archived sessions are preserved unless `--include-archived` (or the
+matching repository setting) is enabled. `--temp-hours N` also targets stale
+tool-owned temporary directories. Active sessions and live proposal/bridge
+workspaces are process-locked and cannot be pruned; session files are rechecked
+immediately before deletion so concurrent changes fail safely.
 
 ## Verify
 

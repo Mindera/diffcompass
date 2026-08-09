@@ -1,6 +1,8 @@
-import { chmod, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { chmod, lstat, mkdir, readFile, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { loadRepositoryConfig, type RetentionConfig } from "./config.ts";
+import { resolveRepositoryRoot } from "./git.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import type { PersistedReviewSession } from "./types.ts";
 
@@ -16,6 +18,13 @@ export interface SessionSummary {
   comments: number;
   activities: number;
   updatedAt: string;
+}
+
+export interface RetentionResult {
+  sessions: SessionSummary[];
+  temporaryDirectories: string[];
+  protectedSessions: SessionSummary[];
+  changedSessions: SessionSummary[];
 }
 
 interface LibraryMetadata {
@@ -54,6 +63,131 @@ async function saveLibraryMetadata(directory: string, metadata: LibraryMetadata)
 
 export function reviewSessionDirectory(): string {
   return join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "code-review-tour", "sessions");
+}
+
+function lockPath(sessionPath: string): string {
+  return `${sessionPath}.lock`;
+}
+
+async function activeSessionLock(sessionPath: string): Promise<boolean> {
+  const path = lockPath(sessionPath);
+  try {
+    const value = JSON.parse(await readFile(path, "utf8")) as { pid?: unknown };
+    if (!Number.isInteger(value.pid) || Number(value.pid) <= 0) return false;
+    try {
+      process.kill(Number(value.pid), 0);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "EPERM";
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    return false;
+  }
+}
+
+async function processIsAlive(pid: unknown): Promise<boolean> {
+  if (!Number.isInteger(pid) || Number(pid) <= 0) return false;
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+async function activeTemporaryDirectory(path: string): Promise<boolean> {
+  try {
+    const value = JSON.parse(await readFile(join(path, ".active.json"), "utf8")) as { pid?: unknown };
+    return processIsAlive(value.pid);
+  } catch {
+    return false;
+  }
+}
+
+export async function acquireSessionLock(sessionPath: string): Promise<() => Promise<void>> {
+  const path = lockPath(sessionPath);
+  const token = crypto.randomUUID();
+  await mkdir(join(path, ".."), { recursive: true, mode: 0o700 });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await writeFile(path, `${JSON.stringify({ pid: process.pid, token, startedAt: new Date().toISOString() })}\n`, { mode: 0o600, flag: "wx" });
+      return async () => {
+        try {
+          const current = JSON.parse(await readFile(path, "utf8")) as { token?: string };
+          if (current.token === token) await unlink(path);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (await activeSessionLock(sessionPath)) throw new Error("This review session is already open in another process.");
+      await unlink(path).catch((unlinkError) => {
+        if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkError;
+      });
+    }
+  }
+  throw new Error("Could not acquire the review session lock.");
+}
+
+export async function pruneReviewSessions(
+  policy: RetentionConfig & { temporaryMaxAgeHours?: number },
+  options: { directory?: string; repositoryRoot?: string; apply?: boolean; now?: Date; temporaryRoot?: string } = {},
+): Promise<RetentionResult> {
+  if (policy.maxAgeDays === undefined && policy.maxSessions === undefined && policy.temporaryMaxAgeHours === undefined) {
+    throw new Error("Retention requires maxAgeDays, maxSessions, or temporaryMaxAgeHours.");
+  }
+  const directory = options.directory ?? reviewSessionDirectory();
+  const now = options.now ?? new Date();
+  const { sessions } = await listReviewSessions(directory, true);
+  const scope = sessions.filter((session) => (!options.repositoryRoot || session.repositoryRoot === options.repositoryRoot) &&
+    (policy.includeArchived || !session.archived));
+  const cutoff = policy.maxAgeDays === undefined ? undefined : now.getTime() - policy.maxAgeDays * 86_400_000;
+  const targets = scope.filter((session, index) =>
+    (cutoff !== undefined && new Date(session.updatedAt).getTime() < cutoff) ||
+    (policy.maxSessions !== undefined && index >= policy.maxSessions));
+  const result: RetentionResult = { sessions: [], temporaryDirectories: [], protectedSessions: [], changedSessions: [] };
+  const metadata = await loadLibraryMetadata(directory);
+  for (const target of targets) {
+    if (!options.apply) {
+      if (await activeSessionLock(target.path)) result.protectedSessions.push(target);
+      else result.sessions.push(target);
+      continue;
+    }
+    let release: (() => Promise<void>) | undefined;
+    try {
+      release = await acquireSessionLock(target.path);
+      const file = await lstat(target.path);
+      if (!file.isFile() || file.isSymbolicLink()) { result.changedSessions.push(target); continue; }
+      const current = await loadPersistedSession(target.path);
+      if (current.updatedAt !== target.updatedAt) { result.changedSessions.push(target); continue; }
+      await unlink(target.path);
+      delete metadata.sessions[target.id];
+      result.sessions.push(target);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("already open")) result.protectedSessions.push(target);
+      else if ((error as NodeJS.ErrnoException).code !== "ENOENT") result.changedSessions.push(target);
+    } finally {
+      await release?.();
+    }
+  }
+  if (options.apply && result.sessions.length > 0) await saveLibraryMetadata(directory, metadata);
+
+  if (policy.temporaryMaxAgeHours !== undefined) {
+    const temporaryRoot = options.temporaryRoot ?? tmpdir();
+    const temporaryCutoff = now.getTime() - policy.temporaryMaxAgeHours * 3_600_000;
+    const entries = await readdir(temporaryRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !/^code-review-tour-(?:proposal-|index-)?[A-Za-z0-9]+$/.test(entry.name)) continue;
+      const path = join(temporaryRoot, entry.name);
+      const metadata = await lstat(path);
+      if (metadata.isSymbolicLink() || metadata.mtimeMs >= temporaryCutoff || await activeTemporaryDirectory(path)) continue;
+      result.temporaryDirectories.push(path);
+      if (options.apply) await rm(path, { recursive: true, force: true });
+    }
+  }
+  return result;
 }
 
 export async function listReviewSessions(
@@ -207,13 +341,54 @@ export async function runSessionCommand(args: string[], directory = reviewSessio
     const session = await deleteReviewSession(id, directory);
     return { output: `Deleted ${session.id.slice(0, 8)} (${session.name}).` };
   }
+  if (command === "prune") {
+    const allowed = new Set(["--repo", "--days", "--max", "--temp-hours", "--include-archived", "--yes"]);
+    for (let index = 1; index < args.length; index += 1) {
+      const arg = args[index]!;
+      if (!allowed.has(arg)) throw new Error(`Unknown sessions prune option: ${arg}`);
+      if (["--repo", "--days", "--max", "--temp-hours"].includes(arg)) {
+        if (!args[index + 1] || args[index + 1]!.startsWith("--")) throw new Error(`${arg} requires a value.`);
+        index += 1;
+      }
+    }
+    const value = (name: string) => {
+      const index = args.indexOf(name);
+      return index < 0 ? undefined : args[index + 1];
+    };
+    const positive = (name: string) => {
+      const raw = value(name);
+      if (raw === undefined) return undefined;
+      const number = Number(raw);
+      if (!Number.isInteger(number) || number <= 0) throw new Error(`${name} must be a positive integer.`);
+      return number;
+    };
+    const repository = value("--repo");
+    const repositoryRoot = repository ? await resolveRepositoryRoot(repository) : undefined;
+    const configured = repositoryRoot ? (await loadRepositoryConfig(repositoryRoot)).retention : { includeArchived: false };
+    const policy = {
+      maxAgeDays: positive("--days") ?? configured.maxAgeDays,
+      maxSessions: positive("--max") ?? configured.maxSessions,
+      temporaryMaxAgeHours: positive("--temp-hours"),
+      includeArchived: args.includes("--include-archived") || configured.includeArchived,
+    };
+    const result = await pruneReviewSessions(policy, { directory, repositoryRoot, apply: args.includes("--yes") });
+    const action = args.includes("--yes") ? "Deleted" : "Would delete";
+    const lines = [
+      `${action} ${result.sessions.length} session(s) and ${result.temporaryDirectories.length} temporary director${result.temporaryDirectories.length === 1 ? "y" : "ies"}.`,
+      ...(result.protectedSessions.length ? [`Protected ${result.protectedSessions.length} active session(s).`] : []),
+      ...(result.changedSessions.length ? [`Skipped ${result.changedSessions.length} session(s) that changed during pruning.`] : []),
+      ...(!args.includes("--yes") && (result.sessions.length || result.temporaryDirectories.length) ? ["Repeat with --yes to apply."] : []),
+    ];
+    return { output: lines.join("\n") };
+  }
   if (command === "help" || command === "--help" || command === "-h") {
     return { output: `Usage:
   code-review-tour sessions [list] [--all]
   code-review-tour sessions resume ID [--open]
   code-review-tour sessions rename ID NAME
   code-review-tour sessions archive|unarchive ID
-  code-review-tour sessions delete ID --yes` };
+  code-review-tour sessions delete ID --yes
+  code-review-tour sessions prune [--repo PATH] [--days N] [--max N] [--temp-hours N] [--include-archived] [--yes]` };
   }
   throw new Error(`Unknown sessions command: ${command}`);
 }
