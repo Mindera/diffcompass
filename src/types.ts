@@ -117,6 +117,17 @@ export interface ReviewPreferences {
   closeOutcome: Extract<ReviewOutcome, "accepted" | "cancelled">;
 }
 
+export type FindingSeverity = "critical" | "high" | "medium" | "low";
+
+export interface ReviewPolicy {
+  instructions: string[];
+  findings: {
+    enabled: boolean;
+    categories: string[];
+    minimumSeverity: FindingSeverity;
+  };
+}
+
 export interface PullRequestContext {
   repository: string;
   number: number;
@@ -264,6 +275,7 @@ export interface PersistedReviewSession {
   activities?: AgentChangeActivity[];
   reviewedFiles?: string[];
   preferences?: ReviewPreferences;
+  reviewPolicy?: ReviewPolicy;
   pullRequest?: PullRequestContext;
   revision: number;
   status: ReviewStatus;

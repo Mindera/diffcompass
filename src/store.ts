@@ -134,6 +134,17 @@ function validPreferences(value: unknown): boolean {
     typeof value.requireAllFilesReviewed === "boolean" && ["accepted", "cancelled"].includes(String(value.closeOutcome));
 }
 
+function validReviewPolicy(value: unknown): boolean {
+  if (!record(value) || !Array.isArray(value.instructions) || value.instructions.length > 32 ||
+    value.instructions.some((instruction) => !nonEmptyString(instruction, 2_000)) ||
+    new Set(value.instructions).size !== value.instructions.length || !record(value.findings)) return false;
+  const findings = value.findings;
+  return typeof findings.enabled === "boolean" && Array.isArray(findings.categories) && findings.categories.length <= 32 &&
+    findings.categories.every((category) => nonEmptyString(category, 2_000)) &&
+    new Set(findings.categories).size === findings.categories.length &&
+    ["critical", "high", "medium", "low"].includes(String(findings.minimumSeverity));
+}
+
 function validTerminalEvent(value: unknown): boolean {
   return record(value) && Number.isInteger(value.sequence) && Number(value.sequence) > 0 &&
     nonEmptyString(value.id, 128) && value.type === "review.closed" &&
@@ -196,6 +207,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.reviewedFiles !== undefined && (!Array.isArray(session.reviewedFiles) || session.reviewedFiles.length > 10_000 ||
       !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
     (session.preferences !== undefined && !validPreferences(session.preferences)) ||
+    (session.reviewPolicy !== undefined && !validReviewPolicy(session.reviewPolicy)) ||
     (session.pullRequest !== undefined && !validPullRequest(session.pullRequest)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||

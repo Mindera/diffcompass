@@ -64,11 +64,13 @@ clear.
 - Gemini routing aliases and installed Copilot model-catalog discovery.
 - Automatic skill installation for Gemini CLI and GitHub Copilot CLI.
 
-## v0.8 — Review policy and richer artifacts
+## Shipped in v0.8
 
-- Repository-specific finding policies and review instructions.
-- Regenerate and edit flow diagrams, with broader Mermaid sequence syntax.
-- Export a completed tour as a durable Markdown or HTML review artifact.
+- Bounded repository-specific finding policies and review instructions, enforced
+  on generated findings as well as communicated to the selected agent.
+- Validated flow editing and single/all-flow regeneration, with broader Mermaid
+  sequence syntax.
+- Durable Markdown and self-contained, escaped HTML review artifacts.
 
 ## Release hardening
 

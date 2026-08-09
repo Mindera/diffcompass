@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_REVIEW_PREFERENCES, loadRepositoryConfig } from "../src/config.ts";
+import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES, loadRepositoryConfig } from "../src/config.ts";
 
 const directories: string[] = [];
 
@@ -21,6 +21,7 @@ test("missing repository configuration uses conservative defaults", async () => 
   expect(await loadRepositoryConfig(directory)).toEqual({
     preferences: DEFAULT_REVIEW_PREFERENCES,
     retention: { includeArchived: false },
+    reviewPolicy: DEFAULT_REVIEW_POLICY,
   });
 });
 
@@ -34,6 +35,10 @@ test("loads every supported repository default", async () => {
     diff: { layout: "split", changedFilesOnly: true, contextLines: 25 },
     review: { requireAllFilesReviewed: true, closeOutcome: "cancelled" },
     retention: { maxAgeDays: 30, maxSessions: 50, includeArchived: true },
+    analysis: {
+      instructions: ["Treat authentication changes as high risk."],
+      findings: { enabled: true, categories: ["correctness", "security"], minimumSeverity: "medium" },
+    },
   }));
 
   expect(await loadRepositoryConfig(directory)).toEqual({
@@ -49,6 +54,10 @@ test("loads every supported repository default", async () => {
       closeOutcome: "cancelled",
     },
     retention: { maxAgeDays: 30, maxSessions: 50, includeArchived: true },
+    reviewPolicy: {
+      instructions: ["Treat authentication changes as high risk."],
+      findings: { enabled: true, categories: ["correctness", "security"], minimumSeverity: "medium" },
+    },
   });
 });
 
@@ -71,6 +80,11 @@ test("fails closed for unknown, mistyped, oversized, and linked configuration", 
     { review: { closeOutcome: "feedback" } },
     { agent: "unknown" },
     { retention: { maxSessions: 0 } },
+    { analysis: { instructions: "not-an-array" } },
+    { analysis: { instructions: ["x", "x"] } },
+    { analysis: { findings: { enabled: "yes" } } },
+    { analysis: { findings: { minimumSeverity: "info" } } },
+    { analysis: { findings: { categories: ["x", "x"] } } },
   ]) {
     await writeFile(path, JSON.stringify(value));
     await expect(loadRepositoryConfig(directory)).rejects.toThrow();

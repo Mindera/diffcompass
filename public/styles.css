@@ -337,8 +337,13 @@ button { color: inherit; }
 .finding-badges { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0; }
 .finding-badges span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 5px; color: var(--muted); font-size: 9px; }
 .flows { max-width: 1050px; margin: 0 auto; padding: 24px; }
+.flows-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 1002px; margin: 0 auto; padding: 18px 24px 0; }
+.flows-toolbar strong, .flows-toolbar span { display: block; }
+.flows-toolbar strong { font-size: 13px; }
+.flows-toolbar span { margin-top: 2px; font-size: 10px; }
 .flow-card { margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--surface-card); }
 .flow-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.flow-actions { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .flow-card h2 { display: inline; margin: 0 0 0 8px; font-size: 18px; }
 .flow-card > p { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .provenance, .blast { border: 1px solid var(--border); border-radius: 999px; padding: 3px 7px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
@@ -404,6 +409,12 @@ dialog::backdrop { background: var(--backdrop); }
 dialog h3 { margin: 7px 0 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 dialog h2 { margin: 4px 0 0; font-size: 20px; }
 dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-control); }
+.dialog-field { display: grid; gap: 6px; margin-top: 13px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.dialog-field input, .dialog-field select { border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; color: var(--text); background: var(--surface-control); }
+.dialog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.flow-editor { min-height: 260px; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+#flow-dialog { width: min(760px, calc(100vw - 30px)); }
+.export-control select { border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; color: var(--text); background: var(--panel-raised); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .sessions-dialog { width: min(760px, calc(100vw - 30px)); max-height: min(760px, calc(100vh - 40px)); overflow: hidden; }
 .dialog-heading, .session-summary, .session-detail, .session-actions { display: flex; align-items: center; }

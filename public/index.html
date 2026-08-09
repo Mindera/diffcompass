@@ -30,6 +30,8 @@
           </select>
         </label>
         <button id="sessions-button" class="button secondary">Sessions</button>
+        <label class="export-control"><span class="sr-only">Export format</span><select id="export-format" aria-label="Export format"><option value="markdown">Markdown</option><option value="html">HTML</option></select></label>
+        <button id="export-button" class="button secondary">Export</button>
         <button id="refresh-button" class="button secondary">Refresh</button>
         <button id="close-button" class="button secondary">Close</button>
         <button id="feedback-button" class="button primary hidden">Send feedback &amp; close</button>
@@ -75,6 +77,7 @@
           <div id="diff"></div>
         </div>
         <div id="flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="flows-tab">
+          <div class="flows-toolbar"><div><strong>Main flows</strong><span class="muted">Grounded Mermaid sequence diagrams</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate all</button></div>
           <div id="flows-empty" class="empty">Start the tour to generate grounded main-flow diagrams.</div>
           <div id="flows" class="flows"></div>
         </div>
@@ -183,6 +186,22 @@
       </div>
       <label class="archive-toggle"><input id="show-archived-sessions" type="checkbox" /> Show archived</label>
       <div id="sessions-list" class="sessions-list"></div>
+    </dialog>
+
+    <dialog id="flow-dialog">
+      <form id="flow-form">
+        <div class="eyebrow">Sequence diagram</div>
+        <h2>Edit flow</h2>
+        <input id="flow-id" type="hidden" />
+        <label class="dialog-field">Title<input id="flow-title" maxlength="8000" required /></label>
+        <label class="dialog-field">Summary<textarea id="flow-summary" rows="3" maxlength="50000" required></textarea></label>
+        <div class="dialog-grid">
+          <label class="dialog-field">Provenance<select id="flow-provenance"><option value="verified">Verified</option><option value="partial">Partial</option><option value="unverified">Unverified</option></select></label>
+          <label class="dialog-field">Blast radius<input id="flow-blast-radius" type="number" min="0" max="100000" step="1" required /></label>
+        </div>
+        <label class="dialog-field">Mermaid source<textarea id="flow-mermaid" class="flow-editor" rows="16" maxlength="12000" spellcheck="false" required></textarea></label>
+        <div class="dialog-actions"><button id="cancel-flow" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Save flow</button></div>
+      </form>
     </dialog>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>

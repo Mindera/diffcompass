@@ -20,7 +20,9 @@ to the relevant code, and stays available for follow-up questions.
 - generates each explanation as the reviewer moves forward;
 - keeps follow-up questions in the same agent conversation;
 - anchors tour stops, editable review comments, and evidence-backed P0–P3 findings to diff lines;
-- generates provenance-labelled sequence views for goal-critical, high-blast flows;
+- generates provenance-labelled sequence views for goal-critical, high-blast flows, with validated editing and agent regeneration;
+- applies bounded repository review instructions, finding categories, and a minimum finding severity;
+- exports the complete tour, flows, findings, reviewer feedback, changed-file state, and diff as Markdown or self-contained HTML;
 - refreshes when repository files change and marks stale annotations as outdated;
 - records agent-authored file changes, their triggering request, and verification in an Activity timeline;
 - prepares attached-agent edits in isolated worktrees with explicit Apply, Reject, and conflict-safe Undo controls;
@@ -209,6 +211,16 @@ Add `.code-review-tour.json` at the repository root to share review defaults:
     "requireAllFilesReviewed": true,
     "closeOutcome": "accepted"
   },
+  "analysis": {
+    "instructions": [
+      "Treat authentication and persisted-session changes as high risk."
+    ],
+    "findings": {
+      "enabled": true,
+      "categories": ["correctness", "security", "testing"],
+      "minimumSeverity": "medium"
+    }
+  },
   "retention": {
     "maxAgeDays": 30,
     "maxSessions": 50,
@@ -223,6 +235,24 @@ retains the settings it started with. For a new session, explicit CLI agent,
 model, reasoning, and base flags override repository defaults, which in turn
 override built-in and Git-inferred defaults. Unknown or mistyped settings fail
 closed so a misspelled policy cannot silently be ignored.
+
+`analysis.instructions` accepts at most 32 distinct instructions of up to 2,000
+characters each. Finding analysis can be disabled, restricted to at most 32
+distinct category names, or filtered to `low`, `medium`, `high`, or `critical`
+minimum severity. The server enforces the category and severity policy on agent
+output in addition to including it in the planning prompt. Repository
+instructions cannot override read-only execution, evidence requirements, or the
+tour response contract.
+
+The Flows tab accepts the documented Mermaid sequence subset: participants and
+actors, standard message and destruction arrows, notes, activation, autonumber,
+and `alt`, `loop`, `opt`, `par`, `critical`, `break`, `rect`, and `box` blocks.
+Edits are validated and bounded before persistence. Use `Regenerate` on one flow
+or `Regenerate all` to ask the active tour agent to re-inspect the current diff.
+
+Use the header's Export control at any point—including after closure—to download
+Markdown or a self-contained HTML artifact. Exports contain no scripts, remote
+assets, session tokens, or repository filesystem paths.
 
 Retention is always explicit. `sessions prune` previews its targets; add
 `--yes` to delete them. `--repo PATH` loads that repository's retention

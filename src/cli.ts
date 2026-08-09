@@ -179,6 +179,7 @@ try {
     stateFile: canonicalStatePath,
     resume: Boolean(options.resume),
     preferences: repositoryConfig.preferences,
+    reviewPolicy: repositoryConfig.reviewPolicy,
     pullRequest,
   });
   if (session.pullRequest?.workspaceRoot) {

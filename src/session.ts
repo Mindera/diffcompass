@@ -1,14 +1,15 @@
 import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
 import { TourAgent } from "./agent.ts";
+import { validateReviewFlow } from "./flows.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
-import { DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
+import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
 import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -18,6 +19,7 @@ interface AgentDefaults {
   stateFile?: string;
   resume?: boolean;
   preferences?: ReviewPreferences;
+  reviewPolicy?: ReviewPolicy;
   pullRequest?: PullRequestContext;
   githubRunner?: GitHubRunner;
   agentAdapters?: AgentAdapterOption[];
@@ -65,6 +67,7 @@ export class ReviewSession {
   readonly reviewedFiles: Set<string>;
   readonly browserToken: string;
   readonly preferences: ReviewPreferences;
+  readonly reviewPolicy: ReviewPolicy;
   pullRequest?: PullRequestContext;
   outline?: TourOutline;
   currentStepIndex = -1;
@@ -103,6 +106,7 @@ export class ReviewSession {
   ) {
     this.browserToken = persisted?.browserToken ?? crypto.randomUUID();
     this.preferences = structuredClone(persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES);
+    this.reviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
@@ -167,6 +171,7 @@ export class ReviewSession {
       activities: structuredClone(this.activities),
       reviewedFiles: [...this.reviewedFiles].sort(),
       preferences: structuredClone(this.preferences),
+      reviewPolicy: structuredClone(this.reviewPolicy),
       pullRequest: structuredClone(this.pullRequest),
       revision: this.revision,
       status: this.status,
@@ -377,6 +382,7 @@ export class ReviewSession {
       activities: this.activities.map(({ proposal, ...activity }) => ({ ...activity, hasProposal: Boolean(proposal) })),
       reviewedFiles: [...this.reviewedFiles].sort(),
       preferences: structuredClone(this.preferences),
+      reviewPolicy: structuredClone(this.reviewPolicy),
       pullRequest: structuredClone(this.pullRequest),
       revision: this.revision,
       status: this.status,
@@ -552,7 +558,7 @@ export class ReviewSession {
       this.agent.useComparison(this.comparison);
       try {
         if (!this.outline) {
-          const outline = await this.agent.createOutline(this.comparison);
+          const outline = await this.agent.createOutline(this.comparison, this.reviewPolicy);
           this.ensureComparisonCurrent(comparisonGeneration);
           this.outline = outline;
           this.currentStepIndex = 0;
@@ -606,6 +612,65 @@ export class ReviewSession {
       operationRevision = this.revision;
       await this.persistAgentResult();
       return this.snapshot();
+      } catch (error) {
+        this.restoreMutableState(before, terminalEpoch, operationRevision);
+        throw error;
+      }
+    });
+  }
+
+  async updateFlow(id: string, input: Omit<ReviewFlow, "id">) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!this.outline) throw new ReviewError("Start the tour first.");
+      const index = this.outline.flows.findIndex((flow) => flow.id === id);
+      if (index < 0) throw new ReviewError("The flow does not exist.");
+      let flow: ReviewFlow;
+      try {
+        flow = validateReviewFlow({ id, ...input });
+      } catch (error) {
+        throw new ReviewError(error instanceof Error ? error.message : String(error));
+      }
+      const previous = this.outline.flows[index]!;
+      const previousRevision = this.revision;
+      this.outline.flows[index] = flow;
+      this.revision += 1;
+      try {
+        await this.persist();
+        return this.snapshot();
+      } catch (error) {
+        this.outline.flows[index] = previous;
+        this.revision = previousRevision;
+        throw error;
+      }
+    });
+  }
+
+  async regenerateFlows(id?: string) {
+    return this.serialize(async () => {
+      const before = this.captureMutableState();
+      const terminalEpoch = this.terminalEpoch;
+      let operationRevision = before.revision;
+      const comparisonGeneration = this.comparisonGeneration;
+      try {
+        this.ensureOpen();
+        if (!this.outline || !this.agent) throw new ReviewError("Start the tour first.");
+        this.agent.useComparison(this.comparison);
+        const generated = await this.agent.regenerateFlows(this.comparison, this.outline.flows, id);
+        this.ensureComparisonCurrent(comparisonGeneration);
+        if (this.revision !== before.revision) throw new ReviewError("The review changed while flows were being regenerated. Retry against the latest session.");
+        if (id) {
+          const index = this.outline.flows.findIndex((flow) => flow.id === id);
+          if (index < 0 || generated.length !== 1) throw new ReviewError("The regenerated flow is invalid.");
+          this.outline.flows[index] = generated[0]!;
+        } else {
+          this.outline.flows = generated;
+        }
+        this.ensureOpen();
+        this.revision += 1;
+        operationRevision = this.revision;
+        await this.persistAgentResult();
+        return this.snapshot();
       } catch (error) {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
         throw error;

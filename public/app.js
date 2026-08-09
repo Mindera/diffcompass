@@ -34,11 +34,11 @@ const state = {
 const elements = Object.fromEntries(
   [
     "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "changed-only", "diff-layout", "filter-summary",
-    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
+    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-format", "export-button", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
     "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "toast",
-    "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count",
+    "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
 
@@ -106,6 +106,8 @@ function setBusy(busy, label = "Working…") {
   elements["refresh-button"].disabled = busy;
   elements["close-button"].disabled = busy;
   elements["feedback-button"].disabled = busy;
+  elements["export-button"].disabled = busy;
+  elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
   elements["chat-form"].querySelector("button").disabled = busy || !reviewIsOpen();
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
     elements["step-explanation"].innerHTML = `<span class="loading">${escapeHtml(label)}</span>`;
@@ -431,7 +433,11 @@ function renderModelOptions() {
     .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.label)}${model.isDefault ? " · default" : ""}</option>`)
     .join("");
   if (selected) elements["model-select"].value = selected;
-  elements["agent-note"].textContent = adapter?.note ?? "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.";
+  const policy = state.session.reviewPolicy;
+  const policyNote = policy
+    ? `Policy: ${policy.instructions.length} instruction${policy.instructions.length === 1 ? "" : "s"}; findings ${policy.findings.enabled ? `${policy.findings.minimumSeverity}+ in ${policy.findings.categories.join(", ") || "no categories"}` : "disabled"}.`
+    : "";
+  elements["agent-note"].textContent = [adapter ? adapter.note ?? "" : "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.", policyNote].filter(Boolean).join(" ");
   elements["agent-name"].textContent = adapter?.label ?? "No agent detected";
   renderReasoningOptions();
 }
@@ -538,7 +544,7 @@ function parseSequence(mermaid) {
       participantIds.add(participant[1]);
       continue;
     }
-    const message = /^(\S+)\s*(--?>>|--?>)\s*([^:]+):\s*(.+)$/.exec(line);
+    const message = /^([A-Za-z0-9_.-]+?)\s*(-{1,2}(?:>>|>|x|\)))\s*([A-Za-z0-9_.-]+)\s*:\s*(.+)$/.exec(line);
     if (message) {
       const from = message[1];
       const to = message[3].trim();
@@ -546,7 +552,7 @@ function parseSequence(mermaid) {
       if (!participantIds.has(to)) { participants.push({ id: to, label: to }); participantIds.add(to); }
       events.push({ from, to, label: message[4], return: message[2].startsWith("--") });
     }
-    else if (/^(alt|else|loop|opt|end)\b/i.test(line)) events.push({ control: line });
+    else if (/^(?:autonumber|activate\s+\S+|deactivate\s+\S+|note\s+(?:left of|right of|over)\s+\S+|alt\b|else\b|loop\b|opt\b|par\b|and\b|critical\b|option\b|break\b|rect\b|box\b|end$|create\s+(?:participant|actor)\b|destroy\s+\S+)/i.test(line)) events.push({ control: line });
     else unsupported.push(line);
   }
   return { participants, events, unsupported };
@@ -554,14 +560,15 @@ function parseSequence(mermaid) {
 
 function renderFlows() {
   const flows = state.session.outline?.flows ?? [];
+  elements["regenerate-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["flows-empty"].classList.toggle("hidden", flows.length > 0);
   elements["flows-empty"].textContent = state.session.outline
     ? "No goal-critical, high-blast runtime flow was identified for this change."
     : "Start the tour to generate grounded main-flow diagrams.";
   elements.flows.innerHTML = flows.map((flow) => {
     const sequence = parseSequence(flow.mermaid);
-    return `<article class="flow-card">
-      <header><div><span class="provenance ${flow.provenance}">${escapeHtml(flow.provenance)}</span><h2>${escapeHtml(flow.title)}</h2></div><span class="blast">affects ${flow.blastRadiusSize}</span></header>
+    return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
+      <header><div><span class="provenance ${flow.provenance}">${escapeHtml(flow.provenance)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><span class="blast">affects ${flow.blastRadiusSize}</span><button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
       ${sequence.unsupported.length > 0 ? `<div class="flow-warning">This flow uses unsupported Mermaid constructs, so only its source is shown to avoid a misleading partial diagram.</div>` : `<div class="sequence-diagram" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}">
         <div class="sequence-participants">${sequence.participants.map((participant) => `<div><strong>${escapeHtml(participant.label)}</strong><span>${escapeHtml(participant.id)}</span></div>`).join("")}</div>
@@ -798,6 +805,87 @@ async function navigate(direction) {
   }
 }
 
+function openFlowEditor(flow) {
+  if (!reviewIsOpen()) return;
+  elements["flow-id"].value = flow.id;
+  elements["flow-title"].value = flow.title;
+  elements["flow-summary"].value = flow.summary;
+  elements["flow-provenance"].value = flow.provenance;
+  elements["flow-blast-radius"].value = String(flow.blastRadiusSize);
+  elements["flow-mermaid"].value = flow.mermaid;
+  elements["flow-dialog"].showModal();
+}
+
+async function saveFlow(event) {
+  event.preventDefault();
+  if (!reviewIsOpen() || state.busy) return;
+  const id = elements["flow-id"].value;
+  setBusy(true, "Saving flow…");
+  try {
+    state.session = await api(`/api/flows/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: elements["flow-title"].value,
+        summary: elements["flow-summary"].value,
+        provenance: elements["flow-provenance"].value,
+        blastRadiusSize: Number(elements["flow-blast-radius"].value),
+        mermaid: elements["flow-mermaid"].value,
+      }),
+    });
+    elements["flow-dialog"].close();
+    renderSession();
+    toast("Flow saved");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+async function regenerateFlows(id) {
+  if (!reviewIsOpen() || state.busy || !state.session.outline) return;
+  setBusy(true, id ? "Regenerating flow…" : "Regenerating flows…");
+  try {
+    state.session = await api("/api/flows/regenerate", { method: "POST", body: JSON.stringify(id ? { id } : {}) });
+    renderSession();
+    toast(id ? "Flow regenerated" : "Flows regenerated");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+async function downloadExport() {
+  if (!state.apiToken || state.busy) return;
+  const format = elements["export-format"].value;
+  elements["export-button"].disabled = true;
+  try {
+    const response = await fetch(`/api/export?format=${encodeURIComponent(format)}`, {
+      headers: { "X-Review-Tour-Token": state.apiToken },
+    });
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      throw new Error(failure.error || `Export failed: ${response.status}`);
+    }
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `code-review.${format === "html" ? "html" : "md"}`;
+    const href = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = filename;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(href), 0);
+    toast(`${format === "html" ? "HTML" : "Markdown"} export downloaded`);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    elements["export-button"].disabled = state.busy;
+  }
+}
+
 function selectLine(row) {
   document.querySelectorAll(".diff-row.selected").forEach((item) => item.classList.remove("selected"));
   row.classList.add("selected");
@@ -921,6 +1009,10 @@ elements["cancel-comment"].addEventListener("click", () => elements["comment-dia
 elements["close-button"].addEventListener("click", () => close(state.session.preferences?.closeOutcome ?? "accepted"));
 elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
+elements["export-button"].addEventListener("click", downloadExport);
+elements["regenerate-flows"].addEventListener("click", () => regenerateFlows());
+elements["flow-form"].addEventListener("submit", saveFlow);
+elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
 elements["theme-select"].value = window.reviewTourTheme.preference();
 elements["theme-select"].addEventListener("change", () => window.reviewTourTheme.set(elements["theme-select"].value));
 elements["sessions-button"].addEventListener("click", () => { elements["sessions-dialog"].showModal(); void loadSessions(); });
@@ -985,6 +1077,15 @@ elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff";
 elements["flows-tab"].addEventListener("click", () => { state.activeTab = "flows"; renderFlows(); renderActiveTab(); });
 elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
 elements["pull-request-tab"].addEventListener("click", () => { state.activeTab = "pull-request"; renderPullRequest(); renderActiveTab(); });
+elements.flows.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-flow-action]");
+  const card = event.target.closest("[data-flow-id]");
+  if (!button || !card || state.busy || !reviewIsOpen()) return;
+  const flow = state.session.outline?.flows.find((candidate) => candidate.id === card.dataset.flowId);
+  if (!flow) return;
+  if (button.dataset.flowAction === "edit") openFlowEditor(flow);
+  if (button.dataset.flowAction === "regenerate") void regenerateFlows(flow.id);
+});
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();

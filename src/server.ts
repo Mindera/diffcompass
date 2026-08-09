@@ -9,6 +9,7 @@ import styles from "../public/styles.css" with { type: "text" };
 import themeScript from "../public/theme.js" with { type: "text" };
 import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
+import { exportReview, type ExportFormat } from "./export.ts";
 import { loadRepositoryFile } from "./git.ts";
 import { ReviewSession } from "./session.ts";
 import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
@@ -135,6 +136,19 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "GET" && url.pathname === "/api/export") {
+        const format = enumValue(url.searchParams.get("format"), "format", ["markdown", "html"]) as ExportFormat;
+        const artifact = exportReview(session, format);
+        const baseName = session.comparison.repositoryName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "code-review";
+        const response = new Response(artifact.content, {
+          headers: {
+            "content-type": artifact.contentType,
+            "content-disposition": `attachment; filename="${baseName}-review.${artifact.extension}"`,
+          },
+        });
+        for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
+        return response;
+      }
       if (request.method === "GET" && url.pathname === "/api/sessions") {
         return json(await listReviewSessions(sessionDirectory, url.searchParams.get("all") === "true"));
       }
@@ -215,6 +229,27 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
         const input = await readJsonObject(request);
         exactKeys(input, ["direction"]);
         return json(await session.navigate(enumValue(input.direction, "direction", ["previous", "next"])));
+      }
+      const flowMatch = /^\/api\/flows\/([^/]+)$/.exec(url.pathname);
+      if (flowMatch && request.method === "PATCH") {
+        const input = await readJsonObject(request, 128 * 1024);
+        exactKeys(input, ["title", "summary", "mermaid", "provenance", "blastRadiusSize"]);
+        const blastRadiusSize = Number(input.blastRadiusSize);
+        if (!Number.isInteger(blastRadiusSize) || blastRadiusSize < 0 || blastRadiusSize > 100_000) {
+          throw new HttpError(422, "blastRadiusSize must be an integer between 0 and 100000.");
+        }
+        return json(await session.updateFlow(decodeURIComponent(flowMatch[1]), {
+          title: requiredString(input.title, "title", 8_000),
+          summary: requiredString(input.summary, "summary", 50_000),
+          mermaid: requiredString(input.mermaid, "mermaid", 12_000),
+          provenance: enumValue(input.provenance, "provenance", ["verified", "partial", "unverified"]),
+          blastRadiusSize,
+        }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/flows/regenerate") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["id"]);
+        return json(await session.regenerateFlows(optionalString(input.id, "id", 128)));
       }
       if (request.method === "POST" && url.pathname === "/api/agent/message") {
         const input = await readJsonObject(request, 32 * 1024);

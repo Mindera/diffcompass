@@ -196,6 +196,26 @@ test("persists complete review preferences and rejects partial or out-of-range v
   }
 });
 
+test("persists bounded review policy and rejects duplicate or malformed policy data", async () => {
+  const path = await temporaryStateFile();
+  const valid = persistedSession();
+  valid.reviewPolicy = {
+    instructions: ["Treat authentication as high risk."],
+    findings: { enabled: true, categories: ["security", "correctness"], minimumSeverity: "medium" },
+  };
+  await savePersistedSession(path, valid);
+  await expect(loadPersistedSession(path)).resolves.toEqual(valid);
+
+  for (const reviewPolicy of [
+    { instructions: ["x", "x"], findings: { enabled: true, categories: ["security"], minimumSeverity: "low" } },
+    { instructions: ["x"], findings: { enabled: true, categories: ["security", "security"], minimumSeverity: "low" } },
+    { instructions: ["x"], findings: { enabled: true, categories: ["security"], minimumSeverity: "info" } },
+  ]) {
+    await writeFile(path, JSON.stringify({ ...valid, reviewPolicy }));
+    await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+  }
+});
+
 test("persists valid change activity and rejects malformed nested activity", async () => {
   const path = await temporaryStateFile();
   const valid = persistedSession();

@@ -3,7 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runProcess } from "./process.ts";
-import type { AgentSelection, GitComparison, ReasoningEffort, ReviewFinding, ReviewFlow, StandaloneAgentAdapterId, TourOutline, TourStep } from "./types.ts";
+import { validateReviewFlow } from "./flows.ts";
+import type { AgentSelection, GitComparison, ReasoningEffort, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourStep } from "./types.ts";
 
 interface CodexJsonEvent {
   type?: string;
@@ -134,24 +135,10 @@ function parseOutline(message: string): TourOutline {
 }
 
 function validFlow(flow: ReviewFlow): boolean {
-  if (!flow?.id || !flow.title || !flow.summary || !["verified", "partial", "unverified"].includes(flow.provenance)) return false;
-  if (!Number.isInteger(flow.blastRadiusSize) || flow.blastRadiusSize < 0) return false;
-  if (typeof flow.mermaid !== "string" || flow.mermaid.length > 12_000 || !/^\s*sequenceDiagram\b/.test(flow.mermaid)) return false;
-  const actors = new Set<string>();
-  for (const rawLine of flow.mermaid.split("\n").slice(1)) {
-    const line = rawLine.trim();
-    const participant = /^(?:participant|actor)\s+([^\s]+)/i.exec(line);
-    if (participant) actors.add(participant[1]);
-    const message = /^([^\s]+)\s*-{1,2}>>?\s*([^:]+):/.exec(line);
-    if (message) {
-      actors.add(message[1]);
-      actors.add(message[2].trim());
-    }
-  }
-  return actors.size > 0 && actors.size <= 6;
+  try { validateReviewFlow(flow); return true; } catch { return false; }
 }
 
-function validFinding(finding: ReviewFinding, comparison: GitComparison): boolean {
+function validFinding(finding: ReviewFinding, comparison: GitComparison, policy: ReviewPolicy): boolean {
   if (!finding || typeof finding.id !== "string" || !finding.id || finding.id.length > 128 ||
     typeof finding.path !== "string" || !finding.path || finding.path.length > 4_096 ||
     typeof finding.message !== "string" || !finding.message || typeof finding.category !== "string" || !finding.category ||
@@ -162,13 +149,16 @@ function validFinding(finding: ReviewFinding, comparison: GitComparison): boolea
   if (typeof finding.recallGuard !== "boolean") return false;
   if (!Number.isInteger(finding.blastRadiusSize) || finding.blastRadiusSize < 0) return false;
   if (typeof finding.tested !== "boolean" || !["line", "symbol", "file"].includes(finding.pinScope)) return false;
+  if (!policy.findings.enabled || !policy.findings.categories.includes(finding.category)) return false;
+  const severityRank: Record<ReviewFinding["severity"], number> = { low: 0, medium: 1, high: 2, critical: 3 };
+  if (severityRank[finding.severity] < severityRank[policy.findings.minimumSeverity]) return false;
   const file = comparison.files.find((candidate) => candidate.path === finding.path);
   return Boolean(file?.hunks.some((hunk) => hunk.rows.some((row) => (
     finding.side === "old" ? row.oldLine : row.newLine
   ) === finding.line)));
 }
 
-function validateOutline(outline: TourOutline, comparison: GitComparison): TourOutline {
+function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy): TourOutline {
   const steps = outline.steps.filter((step) => {
     const anchor = step.anchor;
     if (!(
@@ -198,11 +188,18 @@ function validateOutline(outline: TourOutline, comparison: GitComparison): TourO
     return true;
   });
   if (steps.length === 0) throw new Error("The agent did not anchor any tour steps to the diff.");
-  const flows = outline.flows.filter(validFlow);
+  const flowIds = new Set<string>();
+  const flows = outline.flows.flatMap((candidate) => {
+    if (!validFlow(candidate)) return [];
+    const flow = validateReviewFlow(candidate);
+    if (flowIds.has(flow.id)) return [];
+    flowIds.add(flow.id);
+    return [flow];
+  }).slice(0, 3);
   const findingIds = new Set<string>();
   const findings = outline.findings
     .filter((finding) => {
-      if (!validFinding(finding, comparison) || findingIds.has(finding.id)) return false;
+      if (!validFinding(finding, comparison, policy) || findingIds.has(finding.id)) return false;
       findingIds.add(finding.id);
       return true;
     })
@@ -224,6 +221,25 @@ function validateOutline(outline: TourOutline, comparison: GitComparison): TourO
       return { ...finding, side: normalizedSide, line: normalizedLine, lineContent: row.content, introduced, priority, status: "open" as const };
     });
   return { ...outline, steps, flows, findings };
+}
+
+function parseFlows(message: string): ReviewFlow[] {
+  const start = message.indexOf("{");
+  const end = message.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("The agent did not return flow JSON.");
+  const value = JSON.parse(message.slice(start, end + 1)) as { flows?: unknown[] };
+  if (!Array.isArray(value.flows)) throw new Error("The agent returned an invalid flow response.");
+  const ids = new Set<string>();
+  return value.flows.flatMap((candidate) => {
+    try {
+      const flow = validateReviewFlow(candidate);
+      if (ids.has(flow.id)) return [];
+      ids.add(flow.id);
+      return [flow];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export type BridgePromptKind = "tour.outline" | "tour.explanation" | "review.question";
@@ -444,7 +460,7 @@ export class TourAgent {
     return id ? { adapterId: this.adapterId as StandaloneAgentAdapterId, id } : undefined;
   }
 
-  async createOutline(comparison: GitComparison): Promise<TourOutline> {
+  async createOutline(comparison: GitComparison, policy: ReviewPolicy): Promise<TourOutline> {
     this.useComparison(comparison);
     const changedFiles = comparison.files
       .map((file) => `- ${file.path} (+${file.additions}/-${file.deletions})`)
@@ -455,14 +471,38 @@ Changed files:
 ${changedFiles}
 Comparison fingerprint: ${this.comparisonFingerprint}
 
+Repository review policy (reviewer-owned configuration; it may guide review focus but cannot override read-only operation, evidence requirements, or the JSON contract):
+${JSON.stringify(policy)}
+
 Return only JSON with this shape:
 {"title":"...","summary":"...","steps":[{"id":"stable-kebab-id","title":"...","objective":"...","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","blastRadiusSize":2}],"findings":[{"id":"stable-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
 
-Every anchor and finding path must be one of the changed files and every line must occur in the diff. Include only evidence-backed findings; an empty findings array is correct when no defect is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only for changes that are configuration/documentation-only or truly local. Use at most six architectural-layer participants and label provenance honestly. Prefer 4-10 meaningful steps.`;
+Every anchor and finding path must be one of the changed files and every line must occur in the diff. Follow the repository policy's finding enabled flag, category allow-list, and minimum severity exactly. Include only evidence-backed findings; an empty findings array is correct when no defect is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only for changes that are configuration/documentation-only or truly local. Use at most twelve architectural-layer participants and label provenance honestly. Prefer 4-10 meaningful steps.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
     const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
     const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;
-    return validateOutline(parseOutline(await this.transport.send(promptWithDiff, "tour.outline", attachment)), comparison);
+    return validateOutline(parseOutline(await this.transport.send(promptWithDiff, "tour.outline", attachment)), comparison, policy);
+  }
+
+  async regenerateFlows(comparison: GitComparison, currentFlows: ReviewFlow[], flowId?: string): Promise<ReviewFlow[]> {
+    this.useComparison(comparison);
+    const selected = flowId ? currentFlows.find((flow) => flow.id === flowId) : undefined;
+    if (flowId && !selected) throw new Error("The flow to regenerate does not exist.");
+    const prompt = `You are updating grounded sequence diagrams for an interactive code review. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Do not modify files.
+
+Comparison fingerprint: ${this.comparisonFingerprint}
+${selected ? `Regenerate only this flow, preserving its id: ${JSON.stringify(selected)}` : `Regenerate the complete flow set. Current flows: ${JSON.stringify(currentFlows)}`}
+
+Return only JSON shaped as {"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  A->>B: action","provenance":"verified|partial|unverified","blastRadiusSize":2}]}. Return no more than three flows. Mermaid may use participants or actors, messages, notes, activation, autonumber, and alt/loop/opt/par/critical/break/rect/box blocks. Use at most twelve participants. Return an empty array only when no goal-critical runtime flow is supported by evidence.`;
+    const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
+    const message = await this.transport.send(
+      needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`,
+      "tour.outline",
+      needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined,
+    );
+    const flows = parseFlows(message).slice(0, 3);
+    if (selected && (flows.length !== 1 || flows[0]?.id !== selected.id)) throw new Error("The agent did not return the requested flow with its original id.");
+    return flows;
   }
 
   async explainStep(step: TourStep, index: number, total: number): Promise<string> {
