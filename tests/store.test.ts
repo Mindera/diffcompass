@@ -54,6 +54,7 @@ function persistedSession(): PersistedReviewSession {
       body: "Why is this needed?",
       createdAt: "2026-08-08T00:00:00.000Z",
     }],
+    reviewedFiles: ["src/app.ts"],
     revision: 3,
     status: "open",
     selection: { adapterId: "attached", modelId: "current-session" },
@@ -154,6 +155,20 @@ test("rejects malformed nested persisted findings while accepting their complete
   const malformed = structuredClone(valid);
   const malformedFinding = malformed.outline!.findings[0]! as { evidence?: string };
   delete malformedFinding.evidence;
+  await writeFile(path, JSON.stringify(malformed));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+});
+
+test("rejects duplicate or malformed reviewed file paths", async () => {
+  const path = await temporaryStateFile();
+  await mkdir(join(path, ".."), { recursive: true });
+  const duplicate = persistedSession();
+  duplicate.reviewedFiles = ["src/app.ts", "src/app.ts"];
+  await writeFile(path, JSON.stringify(duplicate));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+
+  const malformed = persistedSession() as PersistedReviewSession & { reviewedFiles: unknown[] };
+  malformed.reviewedFiles = [""];
   await writeFile(path, JSON.stringify(malformed));
   await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
 });

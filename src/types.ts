@@ -215,6 +215,7 @@ export interface PersistedReviewSession {
   comments: ReviewComment[];
   messages: ChatMessage[];
   activities?: AgentChangeActivity[];
+  reviewedFiles?: string[];
   revision: number;
   status: ReviewStatus;
   selection?: AgentSelection;

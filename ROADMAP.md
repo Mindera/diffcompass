@@ -27,8 +27,6 @@ clear.
 ## Daily review backlog
 
 - Retention controls for old sessions and temporary data.
-- Diff search and filters, changed-files-only mode, context expansion, unified or
-  split view, and per-file reviewed state.
 - Repository-level defaults for parent branch, preferred agent/model, and review
   behavior.
 
@@ -41,7 +39,15 @@ clear.
 - Pending proposals block successful review closure, and later overlapping edits
   fail closed instead of being overwritten.
 
-## v0.4 — Pull request workflow
+## Shipped in v0.4
+
+- Search across changed paths and code plus file-status and reviewed-state filters.
+- Changed-files-only repository navigation and persistent per-file reviewed state.
+- Progressive hunk context expansion with bounded responses.
+- Unified and side-by-side diff layouts with comments, findings, and tour anchors
+  preserved on both sides.
+
+## v0.5 — Pull request workflow
 
 - Open a tour from a GitHub pull request URL or number without manually preparing
   the checkout and base reference.
@@ -50,7 +56,7 @@ clear.
   explicit confirmation.
 - Track remote updates and reconcile comments when the pull request changes.
 
-## v0.5 — Extensibility and richer analysis
+## v0.6 — Extensibility and richer analysis
 
 - A documented adapter contract for additional local agents such as Gemini,
   Aider, and OpenCode.

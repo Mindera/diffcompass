@@ -158,6 +158,8 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     !Array.isArray(session.comments) || session.comments.length > 10_000 || !session.comments.every(validComment) ||
     !Array.isArray(session.messages) || session.messages.length > 10_000 || !session.messages.every(validMessage) ||
     (session.activities !== undefined && (!Array.isArray(session.activities) || session.activities.length > 2_000 || !session.activities.every(validActivity))) ||
+    (session.reviewedFiles !== undefined && (!Array.isArray(session.reviewedFiles) || session.reviewedFiles.length > 10_000 ||
+      !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||
     (session.agentContinuation !== undefined && !validContinuation(session.agentContinuation)) ||

@@ -47,12 +47,28 @@
           </div>
           <span id="file-count" class="count"></span>
         </div>
+        <div class="file-controls">
+          <label class="search-control"><span class="sr-only">Search changed paths and code</span><input id="diff-search" type="search" placeholder="Search changes…" autocomplete="off" /></label>
+          <div class="filter-row">
+            <label><span class="sr-only">File status</span><select id="status-filter" aria-label="Filter by file status">
+              <option value="">All statuses</option><option value="modified">Modified</option><option value="added">Added</option><option value="deleted">Deleted</option><option value="renamed">Renamed</option>
+            </select></label>
+            <label><span class="sr-only">Review status</span><select id="review-filter" aria-label="Filter by review status">
+              <option value="">All files</option><option value="unreviewed">Unreviewed</option><option value="reviewed">Reviewed</option>
+            </select></label>
+          </div>
+          <label class="toggle-control"><input id="changed-only" type="checkbox" /> Changed files only</label>
+        </div>
         <div id="file-tree" class="file-tree"></div>
       </aside>
 
       <section class="diff-panel">
         <div id="diff-view" class="review-view" role="tabpanel" aria-labelledby="diff-tab">
           <p id="diff-instructions" class="sr-only">Choose a changed line once to select it and again to add feedback. Keyboard users can press Enter or Space.</p>
+          <div class="diff-toolbar">
+            <span id="filter-summary" class="muted"></span>
+            <label>View <select id="diff-layout"><option value="unified">Unified</option><option value="split">Split</option></select></label>
+          </div>
           <div id="large-diff-notice" class="view-notice hidden"></div>
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>

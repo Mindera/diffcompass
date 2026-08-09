@@ -97,6 +97,29 @@ test("serves the early theme bootstrap before the stylesheet", async () => {
   expect(page.indexOf('src="/theme.js"')).toBeLessThan(page.indexOf('href="/styles.css"'));
 });
 
+test("diff ergonomics API searches changes, expands context, and persists reviewed files", async () => {
+  const { session, url } = await fixture();
+  const headers = browserHeaders(url, session.browserToken);
+
+  const search = await (await jsonRequest(url, "/api/diff/search?q=changed&status=modified", { headers })).json() as { paths: string[] };
+  expect(search.paths).toEqual(["app.ts"]);
+  const statusOnly = await (await jsonRequest(url, "/api/diff/search?status=modified", { headers })).json() as { paths: string[] };
+  expect(statusOnly.paths).toEqual(["app.ts"]);
+  expect((await jsonRequest(url, "/api/diff/search?q=changed&status=unknown", { headers })).status).toBe(422);
+
+  const expanded = await (await jsonRequest(url, "/api/diff?path=app.ts&context=25", { headers })).json() as { context: number; file: { path: string } };
+  expect(expanded).toMatchObject({ context: 25, file: { path: "app.ts" } });
+
+  const reviewed = await (await jsonRequest(url, "/api/files/reviewed", {
+    method: "POST", headers, body: JSON.stringify({ path: "app.ts", reviewed: true }),
+  })).json() as { reviewedFiles: string[] };
+  expect(reviewed.reviewedFiles).toEqual(["app.ts"]);
+  const unreviewed = await (await jsonRequest(url, "/api/files/reviewed", {
+    method: "POST", headers, body: JSON.stringify({ path: "app.ts", reviewed: false }),
+  })).json() as { reviewedFiles: string[] };
+  expect(unreviewed.reviewedFiles).toEqual([]);
+});
+
 test("bridge responses require the active event lease", async () => {
   const { bridge, url } = await fixture();
   const answer = bridge.send("Explain", "tour.explanation");

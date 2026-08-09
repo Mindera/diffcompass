@@ -2,7 +2,7 @@ import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
 import { TourAgent } from "./agent.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
-import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
+import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewStatus, TourOutline } from "./types.ts";
@@ -55,6 +55,7 @@ export class ReviewSession {
   readonly comments: ReviewComment[];
   readonly messages: ChatMessage[];
   readonly activities: AgentChangeActivity[];
+  readonly reviewedFiles: Set<string>;
   readonly browserToken: string;
   outline?: TourOutline;
   currentStepIndex = -1;
@@ -95,6 +96,8 @@ export class ReviewSession {
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
     this.activities = structuredClone(persisted?.activities ?? []);
+    const changedPaths = new Set(this.comparison.files.map((file) => file.path));
+    this.reviewedFiles = new Set((persisted?.reviewedFiles ?? []).filter((path) => changedPaths.has(path)));
     this.sessionName = persisted?.name;
     this.archived = persisted?.archived ?? false;
     this.outline = persisted?.outline
@@ -145,6 +148,7 @@ export class ReviewSession {
       comments: structuredClone(this.comments),
       messages: structuredClone(this.messages),
       activities: structuredClone(this.activities),
+      reviewedFiles: [...this.reviewedFiles].sort(),
       revision: this.revision,
       status: this.status,
       selection: structuredClone(this.selection),
@@ -194,6 +198,7 @@ export class ReviewSession {
       currentStepIndex: this.currentStepIndex,
       comments: structuredClone(this.comments),
       messages: structuredClone(this.messages),
+      reviewedFiles: [...this.reviewedFiles],
       revision: this.revision,
       status: this.status,
       selection: structuredClone(this.selection),
@@ -207,6 +212,8 @@ export class ReviewSession {
     this.currentStepIndex = state.currentStepIndex;
     this.comments.splice(0, this.comments.length, ...state.comments);
     this.messages.splice(0, this.messages.length, ...state.messages);
+    this.reviewedFiles.clear();
+    for (const path of state.reviewedFiles) this.reviewedFiles.add(path);
     this.revision = state.revision;
     this.selection = state.selection;
     this.agentContinuation = state.agentContinuation;
@@ -348,6 +355,7 @@ export class ReviewSession {
       comments: this.comments,
       messages: this.messages,
       activities: this.activities.map(({ proposal, ...activity }) => ({ ...activity, hasProposal: Boolean(proposal) })),
+      reviewedFiles: [...this.reviewedFiles].sort(),
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,
@@ -385,6 +393,66 @@ export class ReviewSession {
       return [{ ...hunk, rows: hunk.rows.slice(startInHunk, endInHunk) }];
     });
     return { file: structuredClone({ ...file, hunks }), offset, limit, totalRows };
+  }
+
+  async expandedDiffFile(path: string, context: number, requestedOffset = 0, requestedLimit = 1_000) {
+    const file = await loadDiffFileWithContext(this.comparison, path, context);
+    return this.pageDiffFile(file, requestedOffset, requestedLimit);
+  }
+
+  private pageDiffFile(file: DiffFile, requestedOffset = 0, requestedLimit = 1_000, anchor?: { line: number; side: "old" | "new" }) {
+    const limit = Math.max(100, Math.min(2_000, requestedLimit));
+    const totalRows = file.hunks.reduce((total, hunk) => total + hunk.rows.length, 0);
+    let offset = Math.max(0, Math.min(requestedOffset, Math.max(0, totalRows - 1)));
+    if (anchor) {
+      let rowIndex = 0;
+      for (const hunk of file.hunks) {
+        const local = hunk.rows.findIndex((row) => (anchor.side === "old" ? row.oldLine : row.newLine) === anchor.line);
+        if (local >= 0) { offset = Math.floor((rowIndex + local) / limit) * limit; break; }
+        rowIndex += hunk.rows.length;
+      }
+    }
+    const end = Math.min(totalRows, offset + limit);
+    let cursor = 0;
+    const hunks = file.hunks.flatMap((hunk) => {
+      const startInHunk = Math.max(0, offset - cursor);
+      const endInHunk = Math.min(hunk.rows.length, end - cursor);
+      cursor += hunk.rows.length;
+      return startInHunk < endInHunk ? [{ ...hunk, rows: hunk.rows.slice(startInHunk, endInHunk) }] : [];
+    });
+    return { file: structuredClone({ ...file, hunks }), offset, limit, totalRows };
+  }
+
+  searchDiff(query: string, statuses: DiffFile["status"][] = []) {
+    const needle = query.trim().toLocaleLowerCase();
+    const allowed = new Set(statuses);
+    const matches = this.comparison.files.filter((file) => {
+      if (allowed.size > 0 && !allowed.has(file.status)) return false;
+      if (!needle) return true;
+      return file.path.toLocaleLowerCase().includes(needle) || file.oldPath?.toLocaleLowerCase().includes(needle) ||
+        file.metadata.some((line) => line.toLocaleLowerCase().includes(needle)) ||
+        file.hunks.some((hunk) => hunk.rows.some((row) => row.content.toLocaleLowerCase().includes(needle)));
+    });
+    return { paths: matches.map((file) => file.path), count: matches.length };
+  }
+
+  async setFileReviewed(path: string, reviewed: boolean) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!this.comparison.files.some((file) => file.path === path)) throw new ReviewError("Changed file does not exist in this comparison.");
+      const wasReviewed = this.reviewedFiles.has(path);
+      const previousRevision = this.revision;
+      if (reviewed) this.reviewedFiles.add(path); else this.reviewedFiles.delete(path);
+      this.revision += 1;
+      try {
+        await this.persist();
+        return this.snapshot();
+      } catch (error) {
+        if (wasReviewed) this.reviewedFiles.add(path); else this.reviewedFiles.delete(path);
+        this.revision = previousRevision;
+        throw error;
+      }
+    });
   }
 
   activityDiff(id: string, path: string) {
@@ -750,6 +818,8 @@ export class ReviewSession {
       const previousActivities = structuredClone(this.activities);
       try {
       this.comparison = refreshed;
+      const refreshedPaths = new Set(refreshed.files.map((file) => file.path));
+      for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
       this.comparisonGeneration += 1;
       this.revision += 1;
       operationRevision = this.revision;

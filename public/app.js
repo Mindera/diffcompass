@@ -18,13 +18,21 @@ const state = {
   diffCacheRevision: null,
   fileRequestId: 0,
   proposalPreview: false,
+  searchQuery: "",
+  searchMatches: null,
+  searchRequestId: 0,
+  searchTimer: null,
+  statusFilter: "",
+  reviewFilter: "",
+  changedOnly: window.localStorage.getItem("review-tour-changed-only") === "true",
+  diffLayout: window.localStorage.getItem("review-tour-diff-layout") === "split" ? "split" : "unified",
   pollInFlight: false,
   pollGeneration: 0,
 };
 
 const elements = Object.fromEntries(
   [
-    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "large-diff-notice", "connection-banner",
+    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "changed-only", "diff-layout", "filter-summary",
     "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
     "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
@@ -170,14 +178,40 @@ function renderTreeNode(node, depth = 0) {
       if (value.__file) {
         const file = value.__file;
         if (!file.changed) return `<button class="file-button unchanged" data-source="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span class="file-name">${escapeHtml(name)}</span></button>`;
-        return `<button class="file-button" data-file="${escapeHtml(file.path)}">
+        const reviewed = state.session.reviewedFiles?.includes(file.path);
+        return `<div class="file-entry${reviewed ? " reviewed" : ""}"><button class="file-button" data-file="${escapeHtml(file.path)}">
           <span class="file-name" title="${escapeHtml(file.path)}">${escapeHtml(name)}</span>
           <span class="file-stats"><span class="plus">+${file.changed.additions}</span> <span class="minus">-${file.changed.deletions}</span></span>
-        </button>`;
+        </button><button class="review-toggle" type="button" data-review-file="${escapeHtml(file.path)}" aria-label="${escapeHtml(`${reviewed ? "Mark unreviewed" : "Mark reviewed"}: ${file.path}`)}" title="${reviewed ? "Mark unreviewed" : "Mark reviewed"}"${reviewIsOpen() ? "" : " disabled"}>${reviewed ? "✓" : "○"}</button></div>`;
       }
       return `<details class="tree-directory" ${depth === 0 ? "open" : ""}><summary>${escapeHtml(name)}</summary><div class="tree-children">${renderTreeNode(value, depth + 1)}</div></details>`;
     })
     .join("");
+}
+
+function filteredChangedFiles() {
+  const reviewed = new Set(state.session.reviewedFiles ?? []);
+  const searchMatches = state.searchQuery && state.searchMatches ? new Set(state.searchMatches) : null;
+  return state.session.comparison.files.filter((file) =>
+    (!state.statusFilter || file.status === state.statusFilter) &&
+    (!state.reviewFilter || (state.reviewFilter === "reviewed") === reviewed.has(file.path)) &&
+    (!searchMatches || searchMatches.has(file.path))
+  );
+}
+
+function renderFileTree() {
+  const comparison = state.session.comparison;
+  const changedFiles = filteredChangedFiles();
+  const filtering = Boolean(state.searchQuery || state.statusFilter || state.reviewFilter);
+  const repositoryFiles = state.changedOnly || filtering
+    ? changedFiles.map((file) => file.path)
+    : comparison.repositoryFiles ?? comparison.files.map((file) => file.path);
+  elements["file-tree"].innerHTML = renderTreeNode(treeFromFiles(repositoryFiles, changedFiles));
+  const reviewedCount = (state.session.reviewedFiles ?? []).length;
+  elements["file-count"].textContent = filtering
+    ? `${changedFiles.length}/${comparison.files.length} match`
+    : `${comparison.files.length} changed · ${reviewedCount} reviewed`;
+  elements["filter-summary"].textContent = `${changedFiles.length} of ${comparison.files.length} changed files · ${reviewedCount} reviewed`;
 }
 
 function rowLine(row) {
@@ -188,29 +222,66 @@ function rowSide(row) {
   return row.kind === "deletion" ? "old" : "new";
 }
 
+function findingPins(file, row, side, findings) {
+  const line = side === "old" ? row?.oldLine : row?.newLine;
+  return findings
+    .filter((finding) => finding.path === file.path && finding.side === side && finding.line === line && finding.status !== "dismissed")
+    .map((finding) => `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" title="${escapeHtml(finding.message)}">${finding.priority}</button>`).join("");
+}
+
+function renderUnifiedRow(file, row, findings) {
+  const line = rowLine(row);
+  const side = rowSide(row);
+  const prefix = row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " ";
+  return `<div class="diff-row ${row.kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(row.content)}">
+    <span class="line-number">${row.oldLine ?? ""}</span><span class="line-number">${row.newLine ?? ""}</span>
+    <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
+    <span class="finding-markers">${findingPins(file, row, side, findings)}</span><pre class="line-code">${escapeHtml(row.content || " ")}</pre>
+  </div>`;
+}
+
+function splitRows(rows) {
+  const pairs = [];
+  for (let index = 0; index < rows.length;) {
+    const row = rows[index];
+    if (row.kind === "context") { pairs.push([row, row]); index += 1; continue; }
+    if (row.kind === "meta") { pairs.push([row, row]); index += 1; continue; }
+    const removed = [];
+    const added = [];
+    while (index < rows.length && rows[index].kind !== "context" && rows[index].kind !== "meta") {
+      if (rows[index].kind === "deletion") removed.push(rows[index]); else added.push(rows[index]);
+      index += 1;
+    }
+    for (let pair = 0; pair < Math.max(removed.length, added.length); pair += 1) pairs.push([removed[pair] ?? null, added[pair] ?? null]);
+  }
+  return pairs;
+}
+
+function renderSplitSide(file, row, side, findings) {
+  const line = side === "old" ? row?.oldLine : row?.newLine;
+  const content = row?.content ?? "";
+  const kind = row?.kind ?? "empty";
+  const prefix = kind === "addition" ? "+" : kind === "deletion" ? "−" : " ";
+  return `<div class="diff-row split-side ${kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(content)}">
+    <span class="line-number">${line ?? ""}</span>
+    <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
+    <span class="finding-markers">${row ? findingPins(file, row, side, findings) : ""}</span><pre class="line-code">${escapeHtml(content || " ")}</pre>
+  </div>`;
+}
+
 function renderDiff(files) {
   const findings = state.proposalPreview ? [] : state.session.outline?.findings ?? [];
   elements.diff.innerHTML = files
     .map((file) => `<section class="diff-file" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       <header class="diff-file-header">
         <span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span>
-        <span class="file-stats">${state.proposalPreview ? '<span class="proposal-label">pending proposal</span> · ' : ""}${file._page ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
+        <span class="file-stats">${state.proposalPreview ? '<span class="proposal-label">pending proposal</span> · ' : `<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `}${file._page ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${file._context ?? 3}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${file._context ?? 3}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
       </header>
       ${file.hunks.map((hunk) => `<div class="hunk">
-        <div class="hunk-header">${escapeHtml(hunk.header)}</div>
-        ${hunk.rows.map((row) => {
-          const line = rowLine(row);
-          const side = rowSide(row);
-          const prefix = row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " ";
-          const rowFindings = findings.filter((finding) => finding.path === file.path && finding.side === side && finding.line === line && finding.status !== "dismissed");
-          return `<div class="diff-row ${row.kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(row.content)}">
-            <span class="line-number">${row.oldLine ?? ""}</span>
-            <span class="line-number">${row.newLine ?? ""}</span>
-            <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
-            <span class="finding-markers">${rowFindings.map((finding) => `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" title="${escapeHtml(finding.message)}">${finding.priority}</button>`).join("")}</span>
-            <pre class="line-code">${escapeHtml(row.content || " ")}</pre>
-          </div>`;
-        }).join("")}
+        <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && (file._context ?? 3) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${file._context ?? 3}">Expand context</button>` : ""}</div>
+        ${state.diffLayout === "split"
+          ? splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings)}${renderSplitSide(file, newRow, "new", findings)}</div>`).join("")
+          : hunk.rows.map((row) => renderUnifiedRow(file, row, findings)).join("")}
       </div>`).join("")}
     </section>`)
     .join("");
@@ -222,7 +293,7 @@ function renderDiff(files) {
 
 function visibleDiffFiles() {
   const comparison = state.session.comparison;
-  const files = comparison.files;
+  const files = filteredChangedFiles();
   if (comparison.diffMode !== "file") return files;
   const path = currentStep()?.anchor.path ?? state.visibleFile ?? files[0]?.path;
   state.visibleFile = path;
@@ -230,26 +301,27 @@ function visibleDiffFiles() {
   return cached ? [cached] : [];
 }
 
-async function showChangedFile(path, line, side, requestedOffset) {
+async function showChangedFile(path, line, side, requestedOffset, requestedContext) {
   const requestId = ++state.fileRequestId;
   state.activeTab = "diff";
   state.proposalPreview = false;
   state.visibleFile = path;
   renderActiveTab();
-  let files = state.session.comparison.files;
-  if (state.session.comparison.diffMode === "file") {
+  let files = filteredChangedFiles();
+  if (state.session.comparison.diffMode === "file" || requestedContext !== undefined) {
     let file = state.diffCache.get(path);
     const containsAnchor = !line || !side || file?.hunks.some((hunk) => hunk.rows.some((row) => (side === "old" ? row.oldLine : row.newLine) === line));
-    if (!file || requestedOffset !== undefined || !containsAnchor) {
+    if (!file || requestedOffset !== undefined || requestedContext !== undefined || !containsAnchor) {
       elements.diff.innerHTML = '<div class="empty">Loading file diff…</div>';
       elements["empty-diff"].classList.add("hidden");
       try {
         const query = new URLSearchParams({ path });
         if (requestedOffset !== undefined) query.set("offset", String(requestedOffset));
+        if (requestedContext !== undefined) query.set("context", String(requestedContext));
         if (line && side) { query.set("line", String(line)); query.set("side", side); }
         const result = await api(`/api/diff?${query}`);
         if (requestId !== state.fileRequestId || state.visibleFile !== path) return;
-        file = { ...result.file, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } };
+        file = { ...result.file, _context: result.context, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } };
         state.diffCache.set(path, file);
       } catch (error) {
         if (requestId === state.fileRequestId) toast(error.message);
@@ -257,6 +329,9 @@ async function showChangedFile(path, line, side, requestedOffset) {
       }
     }
     files = [file];
+  } else if (!files.some((file) => file.path === path)) {
+    const requested = state.session.comparison.files.find((file) => file.path === path);
+    files = requested ? [requested] : files;
   }
   renderDiff(files);
   renderComments();
@@ -535,24 +610,81 @@ function renderTour() {
   highlightAnchor();
 }
 
+function renderFilteredDiff() {
+  renderFileTree();
+  const files = visibleDiffFiles();
+  renderDiff(files);
+  elements["empty-diff"].textContent = filteredChangedFiles().length === 0
+    ? "No changed files match these filters."
+    : "No changes found for this comparison.";
+  const large = state.session.comparison.diffMode === "file";
+  if (large && files.length === 0 && filteredChangedFiles().length > 0) {
+    const target = filteredChangedFiles()[0].path;
+    state.visibleFile = target;
+    void showChangedFile(target);
+  }
+  renderComments();
+  renderFindings();
+  highlightAnchor();
+}
+
+async function refreshDiffSearch() {
+  const requestId = ++state.searchRequestId;
+  if (!state.searchQuery.trim()) {
+    state.searchMatches = null;
+    renderFilteredDiff();
+    return;
+  }
+  try {
+    const query = new URLSearchParams({ q: state.searchQuery.trim() });
+    if (state.statusFilter) query.append("status", state.statusFilter);
+    const result = await api(`/api/diff/search?${query}`);
+    if (requestId !== state.searchRequestId) return;
+    state.searchMatches = result.paths;
+    renderFilteredDiff();
+  } catch (error) {
+    if (requestId === state.searchRequestId) toast(error.message);
+  }
+}
+
+async function setReviewed(path, reviewed) {
+  if (!reviewIsOpen() || state.busy) return;
+  try {
+    state.session = await api("/api/files/reviewed", {
+      method: "POST",
+      body: JSON.stringify({ path, reviewed }),
+    });
+    renderSession();
+    toast(reviewed ? "File marked reviewed" : "File marked unreviewed");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
 function renderSession() {
   const { comparison, comments } = state.session;
   state.proposalPreview = false;
   elements["repository-label"].textContent = comparison.repositoryName;
   elements["comparison-label"].textContent = `${comparison.base} → working tree`;
-  elements["file-count"].textContent = `${comparison.files.length} changed · ${(comparison.repositoryFiles ?? comparison.files.map((file) => file.path)).length} total`;
-  elements["file-tree"].innerHTML = renderTreeNode(treeFromFiles(comparison.repositoryFiles ?? comparison.files.map((file) => file.path), comparison.files));
+  elements["diff-search"].value = state.searchQuery;
+  elements["status-filter"].value = state.statusFilter;
+  elements["review-filter"].value = state.reviewFilter;
+  elements["changed-only"].checked = state.changedOnly;
+  elements["diff-layout"].value = state.diffLayout;
+  renderFileTree();
   const large = comparison.diffMode === "file";
   if (state.diffCacheRevision !== state.session.revision) {
     state.diffCache.clear();
     state.diffCacheRevision = state.session.revision;
+    if (state.searchQuery) void refreshDiffSearch();
   }
   elements["large-diff-notice"].classList.toggle("hidden", !large);
   elements["large-diff-notice"].textContent = large ? `Large diff (${comparison.diffRowCount.toLocaleString()} rows): loading one file at a time.` : "";
   renderDiff(visibleDiffFiles());
-  if (large && visibleDiffFiles().length === 0 && comparison.files.length > 0) {
+  if (large && visibleDiffFiles().length === 0 && filteredChangedFiles().length > 0) {
     const step = currentStep();
-    void showChangedFile(step?.anchor.path ?? state.visibleFile ?? comparison.files[0].path, step?.anchor.startLine, step?.anchor.side);
+    const target = filteredChangedFiles().some((file) => file.path === step?.anchor.path) ? step?.anchor.path : state.visibleFile;
+    void showChangedFile(target && filteredChangedFiles().some((file) => file.path === target) ? target : filteredChangedFiles()[0].path, step?.anchor.startLine, step?.anchor.side);
   }
   renderComments();
   renderFindings();
@@ -770,6 +902,30 @@ elements["sessions-list"].addEventListener("click", async (event) => {
 });
 elements["agent-select"].addEventListener("change", renderModelOptions);
 elements["model-select"].addEventListener("change", renderReasoningOptions);
+elements["diff-search"].addEventListener("input", () => {
+  state.searchQuery = elements["diff-search"].value;
+  state.searchMatches = null;
+  window.clearTimeout(state.searchTimer);
+  state.searchTimer = window.setTimeout(refreshDiffSearch, 180);
+});
+elements["status-filter"].addEventListener("change", () => {
+  state.statusFilter = elements["status-filter"].value;
+  if (state.searchQuery) void refreshDiffSearch(); else renderFilteredDiff();
+});
+elements["review-filter"].addEventListener("change", () => {
+  state.reviewFilter = elements["review-filter"].value;
+  renderFilteredDiff();
+});
+elements["changed-only"].addEventListener("change", () => {
+  state.changedOnly = elements["changed-only"].checked;
+  window.localStorage.setItem("review-tour-changed-only", String(state.changedOnly));
+  renderFileTree();
+});
+elements["diff-layout"].addEventListener("change", () => {
+  state.diffLayout = elements["diff-layout"].value;
+  window.localStorage.setItem("review-tour-diff-layout", state.diffLayout);
+  renderFilteredDiff();
+});
 elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });
 elements["flows-tab"].addEventListener("click", () => { state.activeTab = "flows"; renderFlows(); renderActiveTab(); });
 elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
@@ -826,7 +982,19 @@ elements["activity-list"].addEventListener("click", (event) => {
 elements.diff.addEventListener("click", (event) => {
   const pageButton = event.target.closest("[data-diff-page]");
   if (pageButton) {
-    void showChangedFile(pageButton.dataset.pageFile, undefined, undefined, Number(pageButton.dataset.diffPage));
+    void showChangedFile(pageButton.dataset.pageFile, undefined, undefined, Number(pageButton.dataset.diffPage), Number(pageButton.dataset.context));
+    return;
+  }
+  const contextButton = event.target.closest("[data-expand-context]");
+  if (contextButton) {
+    const current = Number(contextButton.dataset.context) || 3;
+    const next = current < 10 ? 10 : current < 25 ? 25 : current < 100 ? 100 : 200;
+    void showChangedFile(contextButton.dataset.expandContext, undefined, undefined, 0, next);
+    return;
+  }
+  const reviewedButton = event.target.closest("[data-reviewed-file]");
+  if (reviewedButton) {
+    void setReviewed(reviewedButton.dataset.reviewedFile, !(state.session.reviewedFiles ?? []).includes(reviewedButton.dataset.reviewedFile));
     return;
   }
   const findingPin = event.target.closest("[data-finding-id]");
@@ -865,6 +1033,11 @@ elements.diff.addEventListener("keydown", (event) => {
   actions[nextIndex].focus();
 });
 elements["file-tree"].addEventListener("click", (event) => {
+  const reviewButton = event.target.closest("[data-review-file]");
+  if (reviewButton) {
+    void setReviewed(reviewButton.dataset.reviewFile, !(state.session.reviewedFiles ?? []).includes(reviewButton.dataset.reviewFile));
+    return;
+  }
   const button = event.target.closest(".file-button");
   if (!button) return;
   if (button.dataset.source) return showRepositoryFile(button.dataset.source);

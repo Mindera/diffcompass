@@ -5,7 +5,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseUnifiedDiff } from "./diff.ts";
 import { ReviewError } from "./errors.ts";
 import { runProcess } from "./process.ts";
-import type { GitComparison } from "./types.ts";
+import type { DiffFile, GitComparison } from "./types.ts";
 
 const MAX_CHANGE_PATCH_BYTES = 12 * 1024 * 1024;
 
@@ -172,6 +172,25 @@ export async function loadComparison(cwd: string, explicitBase?: string): Promis
     files: parseUnifiedDiff(patch),
     repositoryFiles,
   };
+}
+
+export async function loadDiffFileWithContext(comparison: GitComparison, path: string, context: number): Promise<DiffFile> {
+  const existing = comparison.files.find((candidate) => candidate.path === path);
+  if (!existing) throw new ReviewError("Changed file does not exist in this comparison.");
+  const boundedContext = Math.max(3, Math.min(200, Math.trunc(context)));
+  const paths = [...new Set([existing.oldPath, existing.newPath].filter((candidate): candidate is string => Boolean(candidate)))];
+  let patch = await git(comparison.repositoryRoot, [
+    "diff", "--no-ext-diff", "--no-color", "--find-renames", `--unified=${boundedContext}`,
+    comparison.mergeBase, "--", ...paths,
+  ]);
+  if (!patch && existing.status === "added" && comparison.repositoryFiles.includes(path)) {
+    patch = (await runProcess(
+      ["git", "diff", "--no-index", "--no-color", `--unified=${boundedContext}`, "--", "/dev/null", path],
+      comparison.repositoryRoot,
+      [0, 1],
+    )).stdout.trimEnd();
+  }
+  return parseUnifiedDiff(patch).find((candidate) => candidate.path === path) ?? structuredClone(existing);
 }
 
 export async function loadRepositoryFile(comparison: GitComparison, path: string, maxBytes = 1_000_000): Promise<string> {

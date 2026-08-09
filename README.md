@@ -28,6 +28,8 @@ to the relevant code, and stays available for follow-up questions.
 - provides a session library to reopen, rename, archive, and delete saved tours;
 - follows the system light or dark appearance by default, with a persistent manual override;
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
+- searches changed paths and code, filters by file or review status, and can hide unchanged repository files;
+- switches between unified and split diffs, expands hunk context on demand, and persists per-file reviewed state;
 - exposes `Close` and `Send feedback & close` outcomes.
 
 Standalone Codex and Claude sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
@@ -135,6 +137,15 @@ pending. Manual and background refreshes outside an active attached request are
 not attributed to the agent.
 
 New state files live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/sessions` and are written atomically. A standalone server exits after the browser closes the review. An attached server waits until the triggering agent acknowledges that it handled the terminal outcome.
+
+## Navigating the diff
+
+The left panel searches both changed paths and changed code. Combine it with
+file-status and reviewed/unreviewed filters, or enable `Changed files only` to
+hide the unchanged repository tree. The diff toolbar switches between unified
+and side-by-side layouts. Each hunk can progressively load more surrounding
+context without making the initial session snapshot unbounded. Marking a file
+reviewed is stored with the session and survives server and browser restarts.
 
 Base resolution order when `--base` is omitted:
 

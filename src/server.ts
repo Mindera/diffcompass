@@ -164,6 +164,18 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
         const path = requiredString(url.searchParams.get("path"), "path", 4_096);
         return json({ path, content: await loadRepositoryFile(session.comparison, path) });
       }
+      if (request.method === "POST" && url.pathname === "/api/files/reviewed") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["path", "reviewed"]);
+        if (typeof input.reviewed !== "boolean") throw new HttpError(422, "reviewed must be a boolean.");
+        return json(await session.setFileReviewed(requiredString(input.path, "path", 4_096), input.reviewed));
+      }
+      if (request.method === "GET" && url.pathname === "/api/diff/search") {
+        const queryValue = url.searchParams.get("q");
+        const query = queryValue === null || queryValue === "" ? "" : optionalString(queryValue, "q", 200) ?? "";
+        const statuses = url.searchParams.getAll("status").map((status) => enumValue(status, "status", ["added", "deleted", "modified", "renamed"]));
+        return json(session.searchDiff(query, statuses));
+      }
       if (request.method === "GET" && url.pathname === "/api/diff") {
         const path = requiredString(url.searchParams.get("path"), "path", 4_096);
         const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
@@ -172,8 +184,13 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
         const line = lineValue === null ? undefined : finitePositiveInteger(Number(lineValue), "line");
         const sideValue = url.searchParams.get("side");
         const side = sideValue === null ? undefined : enumValue(sideValue, "side", ["old", "new"]);
+        const contextValue = url.searchParams.get("context");
+        const context = contextValue === null ? 3 : Math.min(200, finitePositiveInteger(Number(contextValue), "context"));
         if ((line === undefined) !== (side === undefined)) throw new HttpError(400, "line and side must be provided together.");
-        return json({ ...session.diffFile(path, offset, limit, line && side ? { line, side } : undefined), revision: session.revision });
+        const diff = context > 3
+          ? await session.expandedDiffFile(path, context, offset, limit)
+          : session.diffFile(path, offset, limit, line && side ? { line, side } : undefined);
+        return json({ ...diff, revision: session.revision, context });
       }
       const activityDiffMatch = /^\/api\/activities\/([^/]+)\/diff$/.exec(url.pathname);
       if (activityDiffMatch && request.method === "GET") {
