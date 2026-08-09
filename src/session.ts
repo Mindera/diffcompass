@@ -5,8 +5,10 @@ import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
+import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
+import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -16,6 +18,9 @@ interface AgentDefaults {
   stateFile?: string;
   resume?: boolean;
   preferences?: ReviewPreferences;
+  pullRequest?: PullRequestContext;
+  githubRunner?: GitHubRunner;
+  agentAdapters?: AgentAdapterOption[];
 }
 
 interface RefreshContext {
@@ -60,6 +65,7 @@ export class ReviewSession {
   readonly reviewedFiles: Set<string>;
   readonly browserToken: string;
   readonly preferences: ReviewPreferences;
+  pullRequest?: PullRequestContext;
   outline?: TourOutline;
   currentStepIndex = -1;
   revision = 1;
@@ -97,6 +103,7 @@ export class ReviewSession {
   ) {
     this.browserToken = persisted?.browserToken ?? crypto.randomUUID();
     this.preferences = structuredClone(persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES);
+    this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
     this.activities = structuredClone(persisted?.activities ?? []);
@@ -120,6 +127,12 @@ export class ReviewSession {
 
   private ensureOpen(): void {
     if (this.status !== "open") throw new ReviewError(`The review is closed (${this.status}).`);
+  }
+
+  private ensurePublicationMutable(): void {
+    if (this.pullRequest?.publication) {
+      throw new ReviewError("A GitHub review publication has started. Retry it before changing comments or refreshing the pull request.");
+    }
   }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -154,6 +167,7 @@ export class ReviewSession {
       activities: structuredClone(this.activities),
       reviewedFiles: [...this.reviewedFiles].sort(),
       preferences: structuredClone(this.preferences),
+      pullRequest: structuredClone(this.pullRequest),
       revision: this.revision,
       status: this.status,
       selection: structuredClone(this.selection),
@@ -281,7 +295,7 @@ export class ReviewSession {
       comparison.repositoryRoot !== persisted.repositoryRoot ||
       comparison.base !== persisted.base
     )) throw new ReviewError("The persisted review does not match the requested repository comparison.");
-    const adapters = await discoverAgentAdapters(comparison.repositoryRoot);
+    const adapters = structuredClone(defaults.agentAdapters ?? await discoverAgentAdapters(comparison.repositoryRoot));
     const attached = defaults.attached || Boolean(persisted?.bridgeToken);
     const bridge = attached ? new AttachedAgentBridge(
       persisted?.bridgeToken,
@@ -363,6 +377,7 @@ export class ReviewSession {
       activities: this.activities.map(({ proposal, ...activity }) => ({ ...activity, hasProposal: Boolean(proposal) })),
       reviewedFiles: [...this.reviewedFiles].sort(),
       preferences: structuredClone(this.preferences),
+      pullRequest: structuredClone(this.pullRequest),
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,
@@ -665,6 +680,7 @@ export class ReviewSession {
     let operationRevision = before.revision;
     try {
     this.ensureOpen();
+    this.ensurePublicationMutable();
     const body = input.body.trim();
     if (!body) throw new ReviewError("Comment cannot be empty.");
     const row = this.findRow(input.path, input.side, input.line);
@@ -675,6 +691,7 @@ export class ReviewSession {
       body,
       lineContent: row.content,
       status: "active",
+      publishToGitHub: Boolean(this.pullRequest),
       id: crypto.randomUUID(),
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -697,6 +714,7 @@ export class ReviewSession {
     let operationRevision = before.revision;
     try {
     this.ensureOpen();
+    this.ensurePublicationMutable();
     const comment = this.comments.find((candidate) => candidate.id === id);
     if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
     const nextBody = body.trim();
@@ -714,6 +732,25 @@ export class ReviewSession {
     });
   }
 
+  async setCommentPublication(id: string, publish: boolean) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      this.ensurePublicationMutable();
+      if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
+      const comment = this.comments.find((candidate) => candidate.id === id);
+      if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
+      const previous = comment.publishToGitHub;
+      const previousRevision = this.revision;
+      comment.publishToGitHub = publish;
+      this.revision += 1;
+      try { await this.persist(); return this.snapshot(); } catch (error) {
+        comment.publishToGitHub = previous;
+        this.revision = previousRevision;
+        throw error;
+      }
+    });
+  }
+
   async removeComment(id: string) {
     return this.serializeMutation(async () => {
     const before = this.captureMutableState();
@@ -721,6 +758,7 @@ export class ReviewSession {
     let operationRevision = before.revision;
     try {
     this.ensureOpen();
+    this.ensurePublicationMutable();
     const index = this.comments.findIndex((candidate) => candidate.id === id);
     if (index < 0) throw new ReviewError(`Review comment does not exist: ${id}`);
     this.comments.splice(index, 1);
@@ -860,16 +898,53 @@ export class ReviewSession {
     return operation;
   }
 
-  async close(outcome: ReviewOutcome) {
-    if (this.closePromise) {
-      const result = await this.closePromise;
-      if (result.outcome !== outcome) throw new ReviewError(`The review already closed as ${result.outcome}.`);
-      return result;
-    }
-    if (this.status !== "open") {
-      if (this.status !== outcome) throw new ReviewError(`The review already closed as ${this.status}.`);
-      return { outcome, comments: this.comments, status: this.status };
-    }
+  async refreshPullRequest() {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
+      this.ensurePublicationMutable();
+      if (this.activeAgentRequest) throw new ReviewError("Wait for the active agent request before refreshing the pull request.");
+      const previousContext = structuredClone(this.pullRequest);
+      const previousComparison = this.comparison;
+      const previousRevision = this.revision;
+      const previousGeneration = this.comparisonGeneration;
+      const previousMutable = this.captureMutableState();
+      let latest: PullRequestContext | undefined;
+      try {
+        latest = await updatePullRequestWorkspace(previousContext, this.defaults.githubRunner);
+        const refreshed = await loadComparison(latest.workspaceRoot, latest.baseRefOid, this.preferences.contextLines);
+        this.pullRequest = latest;
+        this.comparison = refreshed;
+        this.comparisonGeneration += 1;
+        this.revision += 1;
+        const refreshedPaths = new Set(refreshed.files.map((file) => file.path));
+        for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
+        for (const comment of this.comments) {
+          const row = this.findRow(comment.path, comment.side, comment.line);
+          comment.status = row?.content === comment.lineContent ? "active" : "outdated";
+        }
+        for (const step of this.outline?.steps ?? []) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
+        for (const finding of this.outline?.findings ?? []) {
+          const row = this.findRow(finding.path, finding.side, finding.line);
+          finding.outdated = row?.content !== finding.lineContent;
+        }
+        await this.persist();
+        return this.snapshot();
+      } catch (error) {
+        if (latest?.headRefOid !== previousContext.headRefOid) {
+          await runProcess(["git", "switch", "--detach", previousContext.headRefOid], previousContext.workspaceRoot).catch(() => undefined);
+        }
+        this.pullRequest = previousContext;
+        this.comparison = previousComparison;
+        this.revision = previousRevision;
+        this.comparisonGeneration = previousGeneration;
+        this.restoreMutableState(previousMutable, this.terminalEpoch, this.revision);
+        throw error;
+      }
+    });
+  }
+
+  private assertCloseAllowed(outcome: ReviewOutcome): void {
     if (outcome !== "cancelled" && this.activities.some((activity) => activity.changeStatus === "pending")) {
       throw new ReviewError("Apply or reject every pending agent change before closing the review.");
     }
@@ -880,6 +955,52 @@ export class ReviewSession {
     if (outcome === "accepted" && this.comments.length > 0) {
       throw new ReviewError("Resolve or remove feedback before accepting, or close with feedback.");
     }
+  }
+
+  async publishPullRequest(outcome: Extract<ReviewOutcome, "accepted" | "feedback">, expectedHeadOid: string) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
+      if (expectedHeadOid !== this.pullRequest.headRefOid) throw new ReviewError("The confirmation is for an outdated pull request revision. Refresh and confirm again.");
+      this.assertCloseAllowed(outcome);
+      const selected = this.comments.filter((comment) => comment.publishToGitHub);
+      if (selected.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
+      const commentIds = selected.map((comment) => comment.id).sort();
+      const existing = this.pullRequest.publication;
+      if (existing && (existing.outcome !== outcome || JSON.stringify(existing.commentIds) !== JSON.stringify(commentIds))) {
+        throw new ReviewError("A different GitHub review publication is already pending. Retry the original selection before changing it.");
+      }
+      const publication = existing ?? { intentId: crypto.randomUUID(), outcome, commentIds, status: "pending" as const };
+      this.pullRequest.publication = publication;
+      this.revision += 1;
+      await this.persist();
+      if (publication.status !== "published") {
+        const result = await publishGitHubReview(this.pullRequest, selected, outcome, publication.intentId, this.defaults.githubRunner);
+        this.pullRequest.publication = { ...publication, status: "published", reviewId: result.id, url: result.url };
+        this.revision += 1;
+        await this.persist();
+      }
+      return this.close(outcome, { githubPublished: true });
+    });
+  }
+
+  async close(outcome: ReviewOutcome, options: { githubPublished?: boolean } = {}) {
+    if (this.closePromise) {
+      const result = await this.closePromise;
+      if (result.outcome !== outcome) throw new ReviewError(`The review already closed as ${result.outcome}.`);
+      return result;
+    }
+    if (this.status !== "open") {
+      if (this.status !== outcome) throw new ReviewError(`The review already closed as ${this.status}.`);
+      return { outcome, comments: this.comments, status: this.status };
+    }
+    if (this.pullRequest && outcome !== "cancelled" && !options.githubPublished) {
+      throw new ReviewError("Publish the pull request review to GitHub, or cancel the local review.");
+    }
+    if (this.pullRequest?.publication && outcome === "cancelled") {
+      throw new ReviewError("A GitHub review publication has already started. Retry it to determine the final remote result.");
+    }
+    this.assertCloseAllowed(outcome);
     this.closePromise = (async () => {
       const previousRevision = this.revision;
       this.terminalEpoch += 1;

@@ -51,7 +51,35 @@ function validComment(value: unknown): boolean {
   return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.path, 4_096) &&
     ["old", "new"].includes(String(value.side)) && Number.isInteger(value.line) && Number(value.line) > 0 &&
     nonEmptyString(value.body, 8_000) && boundedString(value.lineContent) && ["active", "outdated"].includes(String(value.status)) &&
+    (value.publishToGitHub === undefined || typeof value.publishToGitHub === "boolean") &&
     nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
+}
+
+function validPullRequest(value: unknown): boolean {
+  if (!record(value)) return false;
+  const validOid = (candidate: unknown) => typeof candidate === "string" && /^[0-9a-f]{40,64}$/.test(candidate);
+  const publication = value.publication;
+  return nonEmptyString(value.repository, 500) && /^\S+\/\S+$/.test(String(value.repository)) &&
+    Number.isInteger(value.number) && Number(value.number) > 0 && nonEmptyString(value.url, 4_096) &&
+    nonEmptyString(value.title, 8_000) && boundedString(value.body, 100_000) && nonEmptyString(value.author, 500) &&
+    nonEmptyString(value.baseRefName, 4_096) && validOid(value.baseRefOid) && nonEmptyString(value.headRefName, 4_096) && validOid(value.headRefOid) &&
+    nonEmptyString(value.sourceRepositoryRoot, 4_096) && nonEmptyString(value.workspaceRoot, 4_096) && nonEmptyString(value.refNamespace, 4_096) &&
+    (value.reviewDecision === undefined || nonEmptyString(value.reviewDecision, 500)) &&
+    Array.isArray(value.commits) && value.commits.length <= 500 && value.commits.every((commit) => record(commit) && validOid(commit.oid) &&
+      boundedString(commit.headline, 8_000) && Array.isArray(commit.authors) && commit.authors.length <= 20 && commit.authors.every((author) => nonEmptyString(author, 500))) &&
+    Array.isArray(value.checks) && value.checks.length <= 500 && value.checks.every((check) => record(check) && nonEmptyString(check.name, 8_000) &&
+      nonEmptyString(check.state, 500) && (check.url === undefined || nonEmptyString(check.url, 4_096))) &&
+    Array.isArray(value.threads) && value.threads.length <= 100 && value.threads.every((thread) => record(thread) && nonEmptyString(thread.id, 500) &&
+      nonEmptyString(thread.path, 4_096) && (thread.line === undefined || (Number.isInteger(thread.line) && Number(thread.line) > 0)) &&
+      (thread.side === undefined || ["old", "new"].includes(String(thread.side))) && typeof thread.resolved === "boolean" &&
+      Array.isArray(thread.comments) && thread.comments.length <= 50 && thread.comments.every((comment) => record(comment) && nonEmptyString(comment.id, 500) &&
+        nonEmptyString(comment.author, 500) && boundedString(comment.body, 100_000) && nonEmptyString(comment.url, 4_096))) &&
+    typeof value.threadsTruncated === "boolean" && nonEmptyString(value.updatedAt, 64) &&
+    (publication === undefined || (record(publication) && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(publication.intentId)) &&
+      ["accepted", "feedback"].includes(String(publication.outcome)) && Array.isArray(publication.commentIds) && publication.commentIds.length <= 10_000 &&
+      publication.commentIds.every((id) => nonEmptyString(id, 128)) && new Set(publication.commentIds).size === publication.commentIds.length &&
+      ["pending", "published"].includes(String(publication.status)) && (publication.reviewId === undefined || nonEmptyString(publication.reviewId, 500)) &&
+      (publication.url === undefined || nonEmptyString(publication.url, 4_096))));
 }
 
 function validMessage(value: unknown): boolean {
@@ -168,6 +196,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.reviewedFiles !== undefined && (!Array.isArray(session.reviewedFiles) || session.reviewedFiles.length > 10_000 ||
       !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
     (session.preferences !== undefined && !validPreferences(session.preferences)) ||
+    (session.pullRequest !== undefined && !validPullRequest(session.pullRequest)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||
     (session.agentContinuation !== undefined && !validContinuation(session.agentContinuation)) ||
@@ -198,6 +227,13 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       new Set(session.bridgeLeases.map((lease) => lease.eventId)).size !== session.bridgeLeases.length ||
       session.bridgeLeases.some((lease) => !bridgeEventIds.has(lease.eventId)))) ||
     (continuation !== undefined && (selection === undefined || continuation.adapterId !== selection.adapterId)) ||
+    (session.pullRequest !== undefined && (
+      session.repositoryRoot !== session.pullRequest.workspaceRoot || session.base !== session.pullRequest.baseRefOid ||
+      (session.pullRequest.publication !== undefined && session.pullRequest.publication.commentIds.some((id) =>
+        !session.comments!.some((comment) => comment.id === id && comment.publishToGitHub === true))) ||
+      (["accepted", "feedback"].includes(session.status ?? "") &&
+        (session.pullRequest.publication?.status !== "published" || session.pullRequest.publication.outcome !== session.status))
+    )) ||
     (terminal !== undefined && (
       session.bridgeToken === undefined || session.bridgeSequence === undefined || terminal.sequence > session.bridgeSequence ||
       terminal.outcome !== session.status

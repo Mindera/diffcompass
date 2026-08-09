@@ -1,10 +1,11 @@
 import { chmod, lstat, mkdir, readFile, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { loadRepositoryConfig, type RetentionConfig } from "./config.ts";
 import { resolveRepositoryRoot } from "./git.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import type { PersistedReviewSession } from "./types.ts";
+import { removePullRequestWorkspace } from "./github.ts";
 
 export interface SessionSummary {
   id: string;
@@ -162,6 +163,11 @@ export async function pruneReviewSessions(
       if (!file.isFile() || file.isSymbolicLink()) { result.changedSessions.push(target); continue; }
       const current = await loadPersistedSession(target.path);
       if (current.updatedAt !== target.updatedAt) { result.changedSessions.push(target); continue; }
+      if (current.pullRequest) {
+        const expectedWorkspace = resolve(dirname(directory), "worktrees", target.id, "workspace");
+        if (resolve(current.pullRequest.workspaceRoot) !== expectedWorkspace) throw new Error("Persisted pull request workspace is outside the owned worktree directory.");
+        await removePullRequestWorkspace(current.pullRequest);
+      }
       await unlink(target.path);
       delete metadata.sessions[target.id];
       result.sessions.push(target);

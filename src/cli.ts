@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -11,6 +11,8 @@ import packageJson from "../package.json" with { type: "json" };
 import { runDoctor } from "./doctor.ts";
 import { acquireSessionLock, runSessionCommand } from "./session-library.ts";
 import { loadRepositoryConfig } from "./config.ts";
+import { createPullRequestWorkspace, loadPullRequestContext, removePullRequestWorkspace } from "./github.ts";
+import type { PullRequestContext } from "./types.ts";
 
 interface Options {
   repository: string;
@@ -22,6 +24,7 @@ interface Options {
   attached: boolean;
   open: boolean;
   resume?: string;
+  pullRequest?: string;
 }
 
 function printHelp(): void {
@@ -30,6 +33,7 @@ function printHelp(): void {
 Usage:
   code-review-tour [options]
   code-review-tour doctor
+  code-review-tour pr URL|NUMBER [options]
   code-review-tour sessions [list|resume|rename|archive|unarchive|delete|prune]
 
 Options:
@@ -106,7 +110,14 @@ if (command === "sessions") {
   }
   cliArguments = ["--resume", result.resumePath, ...(result.open ? ["--open"] : [])];
 }
+let pullRequestIdentifier: string | undefined;
+if (command === "pr") {
+  pullRequestIdentifier = cliArguments[1];
+  if (!pullRequestIdentifier) throw new Error("The pr command requires a GitHub pull request URL or number.");
+  cliArguments = cliArguments.slice(2);
+}
 const options = parseOptions(cliArguments);
+options.pullRequest = pullRequestIdentifier;
 const stateFile = options.resume ?? join(
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),
   "code-review-tour",
@@ -147,8 +158,20 @@ if (!stateWithinRepository || (!stateWithinRepository.startsWith("..") && !isAbs
 await mkdir(canonicalStateDirectory, { recursive: true, mode: 0o700 });
 const releaseSessionLock = await acquireSessionLock(canonicalStatePath);
 let session: ReviewSession;
+let pullRequest: PullRequestContext | undefined;
+let createdPullRequestWorkspace = false;
 try {
-  session = await ReviewSession.create(options.repository, options.base ?? repositoryConfig.base, {
+  let reviewRepository = options.repository;
+  let reviewBase = options.base ?? repositoryConfig.base;
+  if (options.pullRequest) {
+    pullRequest = await loadPullRequestContext(canonicalRepositoryRoot, options.pullRequest);
+    const sessionId = basename(canonicalStatePath, ".json");
+    const container = join(dirname(dirname(canonicalStatePath)), "worktrees", sessionId);
+    reviewRepository = await createPullRequestWorkspace(pullRequest, container);
+    createdPullRequestWorkspace = true;
+    reviewBase = pullRequest.baseRefOid;
+  }
+  session = await ReviewSession.create(reviewRepository, reviewBase, {
     adapterId: options.attached ? "attached" : options.agent ?? repositoryConfig.agent,
     modelId: options.model ?? repositoryConfig.model,
     reasoningEffort: options.reasoning ?? repositoryConfig.reasoning,
@@ -156,23 +179,34 @@ try {
     stateFile: canonicalStatePath,
     resume: Boolean(options.resume),
     preferences: repositoryConfig.preferences,
+    pullRequest,
   });
+  if (session.pullRequest?.workspaceRoot) {
+    await writeFile(join(session.pullRequest.workspaceRoot, "..", ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
+  }
 } catch (error) {
-  await releaseSessionLock();
+  let cleanupError: unknown;
+  if (createdPullRequestWorkspace && pullRequest) {
+    try { await removePullRequestWorkspace(pullRequest); } catch (failure) { cleanupError = failure; }
+  }
+  await releaseSessionLock().catch((failure) => { cleanupError ??= failure; });
+  if (cleanupError) throw new Error(`Review startup failed and its isolated workspace could not be cleaned up: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`, { cause: error });
   throw error;
 }
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let repositoryWatcher: ReturnType<typeof watch> | undefined;
-try {
-  repositoryWatcher = watch(session.comparison.repositoryRoot, { recursive: true }, (_event, filename) => {
-    if (!filename || String(filename).split(/[\\/]/).includes(".git")) return;
-    if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => {
-      session.refreshComparison({ source: "watcher" }).catch((error) => console.error("Could not refresh the review comparison:", error));
-    }, 500);
-  });
-} catch (error) {
-  console.warn(`Automatic repository watching is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+if (!session.pullRequest) {
+  try {
+    repositoryWatcher = watch(session.comparison.repositoryRoot, { recursive: true }, (_event, filename) => {
+      if (!filename || String(filename).split(/[\\/]/).includes(".git")) return;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        session.refreshComparison({ source: "watcher" }).catch((error) => console.error("Could not refresh the review comparison:", error));
+      }, 500);
+    });
+  } catch (error) {
+    console.warn(`Automatic repository watching is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 const server = startServer(session, options.port);
 const baseUrl = `http://${server.hostname}:${server.port}`;
@@ -191,6 +225,7 @@ const shutdown = async (bridgeDirectory?: string, force = false) => {
   repositoryWatcher?.close();
   server.stop(force);
   await session.dispose();
+  if (session.pullRequest?.workspaceRoot) await unlink(join(session.pullRequest.workspaceRoot, "..", ".active.json")).catch(() => undefined);
   await releaseSessionLock();
   if (bridgeDirectory) await rm(bridgeDirectory, { recursive: true, force: true });
 };

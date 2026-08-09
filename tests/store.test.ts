@@ -228,6 +228,35 @@ test("persists valid change activity and rejects malformed nested activity", asy
   await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
 });
 
+test("pull request state is bounded and cannot redirect its workspace or publication", async () => {
+  const path = await temporaryStateFile();
+  const valid = persistedSession();
+  const workspace = "/private/tmp/review-state/worktrees/session/workspace";
+  valid.repositoryRoot = workspace;
+  valid.base = "a".repeat(40);
+  valid.comments[0]!.publishToGitHub = true;
+  valid.pullRequest = {
+    repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
+    baseRefName: "main", baseRefOid: valid.base, headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/private/tmp/repository",
+    workspaceRoot: workspace, refNamespace: "refs/code-review-tour/session", commits: [], checks: [], threads: [], threadsTruncated: false,
+    publication: { intentId: crypto.randomUUID(), outcome: "feedback", commentIds: ["comment-1"], status: "pending" },
+    updatedAt: "2026-08-09T00:00:00.000Z",
+  };
+  await savePersistedSession(path, valid);
+  await expect(loadPersistedSession(path)).resolves.toEqual(valid);
+
+  for (const mutate of [
+    (copy: PersistedReviewSession) => { copy.repositoryRoot = "/private/tmp/other"; },
+    (copy: PersistedReviewSession) => { copy.pullRequest!.publication!.commentIds = ["missing"]; },
+    (copy: PersistedReviewSession) => { copy.pullRequest!.headRefOid = "not-an-oid"; },
+  ]) {
+    const malformed = structuredClone(valid);
+    mutate(malformed);
+    await writeFile(path, JSON.stringify(malformed));
+    await expect(loadPersistedSession(path)).rejects.toThrow();
+  }
+});
+
 test("preserving an existing parent mode does not loosen or tighten it", async () => {
   const path = await temporaryStateFile();
   const parent = join(path, "..");

@@ -30,6 +30,7 @@ to the relevant code, and stays available for follow-up questions.
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - searches changed paths and code, filters by file or review status, and can hide unchanged repository files;
 - switches between unified and split diffs, expands hunk context on demand, and persists per-file reviewed state;
+- opens GitHub pull requests in isolated worktrees, shows their metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
 - exposes `Close` and `Send feedback & close` outcomes.
 
 Standalone Codex and Claude sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
@@ -112,6 +113,26 @@ The server prints an owner-only session-state path. Resume it after a restart:
 ```sh
 code-review-tour --resume "/path/printed/by/the/server.json" --open
 ```
+
+To review a GitHub pull request without checking out its branch, authenticate
+GitHub CLI and launch it from a matching repository checkout:
+
+```sh
+gh auth login
+code-review-tour pr 106 --repo /path/to/repository --open
+code-review-tour pr https://github.com/OWNER/REPOSITORY/pull/106 --repo /path/to/repository --attached --open
+```
+
+The source checkout stays on its current branch. Code Review Tour fetches the
+pull request into a persistent isolated worktree, compares the exact base and
+head commits reported by GitHub, and retains that workspace for session resume.
+The Pull request tab shows metadata, checks, commits, and the first 100 existing
+review threads. Each local line comment can be included in or excluded from the
+GitHub review. Approving or requesting changes shows a final confirmation bound
+to the current head SHA; the server rechecks that SHA before publishing. A
+durable hidden marker makes a retry reuse the remote review instead of submitting
+a duplicate if the first response was interrupted. Remote updates apply only to
+a clean isolated worktree and stale local annotations are marked outdated.
 
 Saved tours can also be managed without handling state-file paths. Open the
 `Sessions` dialog in the browser, or use a session's displayed short ID:
@@ -203,6 +224,8 @@ matching repository setting) is enabled. `--temp-hours N` also targets stale
 tool-owned temporary directories. Active sessions and live proposal/bridge
 workspaces are process-locked and cannot be pruned; session files are rechecked
 immediately before deletion so concurrent changes fail safely.
+An expired pull-request session removes its associated worktree only when the
+path is inside the tool-owned state directory and the worktree is clean.
 
 ## Verify
 

@@ -155,7 +155,7 @@ button { color: inherit; }
 .topbar {
   height: 58px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto max-content;
   align-items: center;
   padding: 0 18px;
   border-bottom: 1px solid var(--border);
@@ -167,6 +167,7 @@ button { color: inherit; }
 .brand-mark { color: var(--accent); font-size: 20px; }
 .muted { color: var(--muted); }
 .actions { justify-content: flex-end; gap: 8px; }
+.actions > * { flex: 0 0 auto; }
 .tabs { gap: 4px; }
 .tab { border: 0; border-radius: 7px; padding: 8px 13px; background: transparent; color: var(--muted); }
 .tab.active { color: var(--text); background: var(--panel-raised); }
@@ -302,6 +303,7 @@ button { color: inherit; }
 .chat-message.user { align-self: flex-end; max-width: 88%; background: var(--surface-user-message); }
 .chat-message.agent { background: var(--surface-agent); border: 1px solid var(--border-soft); }
 .comment-drawer, .finding-drawer { margin-top: 20px; border-top: 1px solid var(--border-soft); padding-top: 14px; }
+.persistent-comment-drawer { flex: 0 1 36%; min-height: 112px; margin-top: 0; padding: 14px 18px 18px; overflow: auto; background: var(--panel); }
 .comment-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .comment-drawer h3 { margin: 4px 0 0; font-size: 14px; }
 .comment-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -362,6 +364,10 @@ button { color: inherit; }
 .activity-list { max-width: 980px; margin: 0 auto; padding: 24px; }
 .activity-card { margin-bottom: 16px; border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--surface-card); }
 .activity-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.pull-request-content { max-width: 920px; margin: 0 auto; padding: 24px; line-height: 1.55; }
+.pull-request-content h2 { margin: 4px 0; font-size: 22px; }
+.pull-request-content h3 { margin: 24px 0 8px; font-size: 13px; }
+.pull-request-content ul { padding-left: 22px; }
 .activity-card h2 { display: inline; margin: 0 0 0 8px; font-size: 15px; line-height: 1.4; }
 .activity-card time, .activity-agent { color: var(--muted); font-size: 10px; }
 .activity-card time { white-space: nowrap; }

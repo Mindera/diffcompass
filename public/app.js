@@ -33,7 +33,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "changed-only", "diff-layout", "filter-summary",
+    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "changed-only", "diff-layout", "filter-summary",
     "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
     "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
@@ -411,7 +411,7 @@ function renderReasoningOptions() {
   const adapter = selectedAdapter();
   const model = adapter?.models.find((candidate) => candidate.id === elements["model-select"].value)
     ?? adapter?.models[0];
-  const selected = state.session.agentSelection?.adapterId === adapter?.id && state.session.agentSelection?.modelId === model?.id
+  const selected = state.session.agentSelection && state.session.agentSelection.adapterId === adapter?.id && state.session.agentSelection.modelId === model?.id
     ? state.session.agentSelection.reasoningEffort ?? ""
     : model?.defaultReasoningEffort ?? "";
   elements["reasoning-select"].innerHTML = [
@@ -424,14 +424,14 @@ function renderReasoningOptions() {
 
 function renderModelOptions() {
   const adapter = selectedAdapter();
-  const selected = state.session.agentSelection?.adapterId === adapter?.id
+  const selected = state.session.agentSelection && state.session.agentSelection.adapterId === adapter?.id
     ? state.session.agentSelection.modelId
     : adapter?.models.find((model) => model.isDefault)?.id;
   elements["model-select"].innerHTML = (adapter?.models ?? [])
     .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.label)}${model.isDefault ? " · default" : ""}</option>`)
     .join("");
   if (selected) elements["model-select"].value = selected;
-  elements["agent-note"].textContent = adapter?.note ?? "Models detected from the installed CLI.";
+  elements["agent-note"].textContent = adapter?.note ?? "Install Codex or Claude Code, then restart the server.";
   elements["agent-name"].textContent = adapter?.label ?? "No agent detected";
   renderReasoningOptions();
 }
@@ -472,11 +472,32 @@ function renderComments() {
     : state.session.comments.map((comment) => `<article class="comment-item ${escapeHtml(comment.status)}" data-comment-id="${escapeHtml(comment.id)}">
       <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(comment.path)}:${comment.line}</button><span class="comment-status">${escapeHtml(comment.status)}</span></div>
       <p>${renderInlineMarkdown(comment.body)}</p>
+      ${state.session.pullRequest ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
         <button class="text-button" data-action="edit" type="button"${disabled}>Edit</button>
         <button class="text-button danger" data-action="delete" type="button"${disabled}>Delete</button>
       </div>
     </article>`).join("");
+}
+
+function renderPullRequest() {
+  const pullRequest = state.session.pullRequest;
+  elements["pull-request-tab"].classList.toggle("hidden", !pullRequest);
+  if (!pullRequest) {
+    if (state.activeTab === "pull-request") state.activeTab = "diff";
+    elements["pull-request-content"].innerHTML = "";
+    return;
+  }
+  const checks = pullRequest.checks.length === 0 ? "<li>No checks reported.</li>" : pullRequest.checks.map((check) => `<li><strong>${escapeHtml(check.name)}</strong> — ${escapeHtml(check.state)}</li>`).join("");
+  const commits = pullRequest.commits.length === 0 ? "<li>No commits reported.</li>" : pullRequest.commits.map((commit) => `<li><code>${escapeHtml(commit.oid.slice(0, 8))}</code> ${escapeHtml(commit.headline)} <span class="muted">${escapeHtml(commit.authors.join(", "))}</span></li>`).join("");
+  const threads = pullRequest.threads.length === 0 ? "<p class=\"muted\">No existing review threads.</p>" : pullRequest.threads.map((thread) => `<article class="comment-item"><div class="comment-meta"><span>${escapeHtml(thread.path)}${thread.line ? `:${thread.line}` : ""}</span><span>${thread.resolved ? "resolved" : "open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}</article>`).join("");
+  elements["pull-request-content"].innerHTML = `
+    <div class="panel-heading"><div><div class="eyebrow">GitHub pull request</div><h2>#${pullRequest.number} ${escapeHtml(pullRequest.title)}</h2></div><span class="mode">${escapeHtml(pullRequest.reviewDecision ?? "REVIEW REQUIRED")}</span></div>
+    <p class="muted">${escapeHtml(pullRequest.repository)} · ${escapeHtml(pullRequest.author)} · ${escapeHtml(pullRequest.baseRefName)} ← ${escapeHtml(pullRequest.headRefName)} · ${escapeHtml(pullRequest.headRefOid.slice(0, 8))}</p>
+    <div>${renderMarkdown(pullRequest.body || "No description provided.")}</div>
+    <h3>Checks</h3><ul>${checks}</ul>
+    <h3>Commits</h3><ul>${commits}</ul>
+    <h3>Existing review threads${pullRequest.threadsTruncated ? " (first 100)" : ""}</h3>${threads}`;
 }
 
 function renderFindings() {
@@ -577,8 +598,12 @@ function renderActivities() {
   </article>`).join("");
 }
 
+function availableTabs() {
+  return ["diff", "flows", "activity", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+}
+
 function renderActiveTab() {
-  for (const tabName of ["diff", "flows", "activity"]) {
+  for (const tabName of ["diff", "flows", "activity", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -710,6 +735,7 @@ function renderSession() {
   renderFindings();
   renderFlows();
   renderActivities();
+  renderPullRequest();
   renderActiveTab();
   elements["feedback-button"].classList.toggle("hidden", comments.length === 0);
   const closed = !reviewIsOpen();
@@ -852,7 +878,15 @@ async function close(outcome) {
     return;
   }
   try {
-    const result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome }) });
+    let result;
+    if (state.session.pullRequest && outcome !== "cancelled") {
+      const selected = state.session.comments.filter((comment) => comment.publishToGitHub).length;
+      const action = outcome === "accepted" ? "approve" : "request changes on";
+      if (!window.confirm(`Publish a GitHub review to ${action} ${state.session.pullRequest.repository}#${state.session.pullRequest.number} at ${state.session.pullRequest.headRefOid.slice(0, 8)} with ${selected} selected inline comment(s)?`)) return;
+      result = await api("/api/github/review", { method: "POST", body: JSON.stringify({ outcome, headOid: state.session.pullRequest.headRefOid, confirm: true }) });
+    } else {
+      result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome }) });
+    }
     state.session = { ...state.session, status: result.status };
     renderSession();
     toast(outcome === "feedback" ? `${result.comments.length} feedback item(s) delivered` : "Review closed");
@@ -865,7 +899,7 @@ async function refresh() {
   if (!reviewIsOpen() || state.busy) return;
   setBusy(true, "Refreshing the comparison…");
   try {
-    state.session = await api("/api/refresh", { method: "POST", body: "{}" });
+    state.session = await api(state.session.pullRequest ? "/api/github/refresh" : "/api/refresh", { method: "POST", body: "{}" });
     state.selectedLine = null;
     elements["selection-pill"].classList.add("hidden");
     renderSession();
@@ -950,10 +984,11 @@ elements["diff-layout"].addEventListener("change", () => {
 elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });
 elements["flows-tab"].addEventListener("click", () => { state.activeTab = "flows"; renderFlows(); renderActiveTab(); });
 elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
+elements["pull-request-tab"].addEventListener("click", () => { state.activeTab = "pull-request"; renderPullRequest(); renderActiveTab(); });
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  const tabs = ["diff", "flows", "activity"];
+  const tabs = availableTabs();
   const currentIndex = tabs.indexOf(state.activeTab);
   const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
     (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
@@ -1105,6 +1140,24 @@ elements["comment-list"].addEventListener("click", async (event) => {
     } catch (error) {
       toast(error.message);
     }
+  }
+});
+
+elements["comment-list"].addEventListener("change", async (event) => {
+  const checkbox = event.target.closest('input[data-action="github"]');
+  const item = event.target.closest("[data-comment-id]");
+  if (!checkbox || !item || !reviewIsOpen()) return;
+  checkbox.disabled = true;
+  try {
+    state.session = await api(`/api/comments/${encodeURIComponent(item.dataset.commentId)}/github`, {
+      method: "PATCH",
+      body: JSON.stringify({ publish: checkbox.checked }),
+    });
+    renderSession();
+  } catch (error) {
+    checkbox.checked = !checkbox.checked;
+    checkbox.disabled = false;
+    toast(error.message);
   }
 });
 

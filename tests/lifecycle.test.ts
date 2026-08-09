@@ -8,6 +8,7 @@ import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
 import type { PersistedReviewSession } from "../src/types.ts";
 
 const directories: string[] = [];
+const noAdapters = { agentAdapters: [] };
 
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
@@ -85,7 +86,7 @@ test("a resumed open attached session retains its stop and drives the rehydrated
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
 
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge;
   if (!bridge) throw new Error("Expected an attached bridge after resume.");
   expect(session.snapshot().currentStepIndex).toBe(1);
@@ -115,7 +116,7 @@ test("a resumed closed attached session emits an immutable terminal event beyond
   }];
   await savePersistedSession(stateFile, persistedAttachedSession(repository, { status: "feedback", comments }));
 
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge;
   if (!bridge) throw new Error("Expected an attached bridge after resume.");
   const [closed] = await bridge.eventsAfter(7);
@@ -128,7 +129,7 @@ test("a resumed closed attached session emits an immutable terminal event beyond
 
 test("terminal delivery and acknowledgement remain durable across resume", async () => {
   const { repository, stateFile } = await repositoryFixture();
-  const session = await ReviewSession.create(repository, undefined, { stateFile, attached: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
   const bridge = session.bridge;
   if (!bridge) throw new Error("Expected an attached bridge.");
 
@@ -140,13 +141,13 @@ test("terminal delivery and acknowledgement remain durable across resume", async
   await bridge.ack(terminal!.id);
   expect((await loadPersistedSession(stateFile)).bridgeTerminalEvent?.acknowledged).toBe(true);
 
-  const resumed = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   expect(await resumed.bridge!.eventsAfter(sequence)).toEqual([]);
 });
 
 test("refresh is rejected after close", async () => {
   const { repository, stateFile } = await repositoryFixture();
-  const session = await ReviewSession.create(repository, undefined, { stateFile });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
 
   await session.close("cancelled");
   await expect(session.refreshComparison()).rejects.toThrow("review is closed");
@@ -159,7 +160,7 @@ test("closing during an attached tour prompt cannot be undone by the rejected op
     currentStepIndex: -1,
     selection: undefined,
   }));
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge;
   if (!bridge) throw new Error("Expected an attached bridge.");
 
@@ -176,7 +177,7 @@ for (const operation of ["ask", "navigate"] as const) {
   test(`closing during an attached ${operation} prompt remains terminal`, async () => {
     const { repository, stateFile } = await repositoryFixture();
     await savePersistedSession(stateFile, persistedAttachedSession(repository));
-    const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+    const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
     const bridge = session.bridge!;
 
     const pending = operation === "ask" ? session.ask("Why?") : session.navigate("previous");
@@ -189,7 +190,7 @@ for (const operation of ["ask", "navigate"] as const) {
 
 test("closing during refresh remains terminal", async () => {
   const { repository, stateFile } = await repositoryFixture();
-  const session = await ReviewSession.create(repository, undefined, { stateFile });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
 
   const refreshing = session.refreshComparison();
   const refreshSettled = refreshing.then(() => "resolved", () => "rejected");
@@ -200,7 +201,7 @@ test("closing during refresh remains terminal", async () => {
 
 test("concurrent identical closes share persistence failure instead of reporting early success", async () => {
   const { repository } = await repositoryFixture();
-  const session = await ReviewSession.create(repository);
+  const session = await ReviewSession.create(repository, undefined, noAdapters);
   (session as unknown as { defaults: { stateFile?: string } }).defaults.stateFile = "/dev/null/review-session.json";
 
   const first = session.close("cancelled");
@@ -214,7 +215,7 @@ test("concurrent identical closes share persistence failure instead of reporting
 
 test("a refresh rejects an in-flight outline generated for the previous comparison", async () => {
   const { repository, stateFile } = await repositoryFixture();
-  const session = await ReviewSession.create(repository, undefined, { stateFile, attached: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
   const bridge = session.bridge!;
   const starting = session.startTour({ adapterId: "attached", modelId: "current-session" });
   const [prompt] = await bridge.eventsAfter(0, 1_000);
@@ -240,7 +241,7 @@ test("a refresh rejects an in-flight outline generated for the previous comparis
 test("an attached review question can refresh after requested edits and still return its answer", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge!;
   const asking = session.ask("Please make the requested change.");
   const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
@@ -276,7 +277,7 @@ test("an attached review question can refresh after requested edits and still re
 test("watcher refreshes do not expose edits while an isolated agent proposal is in flight", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge!;
   const asking = session.ask("Update the implementation and add coverage.");
   const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);
@@ -306,7 +307,7 @@ test("watcher refreshes do not expose edits while an isolated agent proposal is 
 test("reject discards a pending proposal and apply conflicts preserve later reviewer edits", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge!;
 
   const firstAsk = session.ask("Prepare one change.");
@@ -336,7 +337,7 @@ test("reject discards a pending proposal and apply conflicts preserve later revi
 
 test("manual refreshes are not attributed to an attached agent request", async () => {
   const { repository, stateFile } = await repositoryFixture();
-  const session = await ReviewSession.create(repository, undefined, { stateFile, attached: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
   await writeFile(join(repository, "app.ts"), "const base = 1;\nconst manual = 9;\n");
   await session.refreshComparison({ source: "manual" });
   expect(session.snapshot().activities).toEqual([]);
@@ -345,7 +346,7 @@ test("manual refreshes are not attributed to an attached agent request", async (
 test("an unrelated refresh still rejects an in-flight attached question", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge!;
   const asking = session.ask("Explain this.");
   const [prompt] = await bridge.eventsAfter(7, 1_000);
@@ -361,7 +362,7 @@ test("an unrelated refresh still rejects an in-flight attached question", async 
 test("a later unrelated refresh invalidates an earlier event-authorized refresh", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
-  const session = await ReviewSession.create(repository, undefined, { stateFile, resume: true });
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   const bridge = session.bridge!;
   const asking = session.ask("Please edit this.");
   const [prompt] = await bridge.eventsAfter(7, 1_000, undefined, true);

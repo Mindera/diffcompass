@@ -155,3 +155,27 @@ test("temporary retention removes only stale owned directories", async () => {
   const release = await acquireSessionLock(staleLock);
   await release();
 });
+
+test("retention refuses a persisted PR workspace outside its owned session directory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "review-tour-retention-pr-"));
+  directories.push(root);
+  const directory = join(root, "sessions");
+  const id = "aaaaaaaa-1111";
+  const maliciousWorkspace = join(root, "unowned", "workspace");
+  const path = join(directory, `${id}.json`);
+  await savePersistedSession(path, session({
+    repositoryRoot: maliciousWorkspace,
+    base: "a".repeat(40),
+    pullRequest: {
+      repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
+      baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: join(root, "source"),
+      workspaceRoot: maliciousWorkspace, refNamespace: "refs/code-review-tour/session", commits: [], checks: [], threads: [], threadsTruncated: false,
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    },
+    updatedAt: "2026-08-01T00:00:00.000Z",
+  }));
+  const result = await pruneReviewSessions({ maxAgeDays: 1, includeArchived: true }, { directory, apply: true, now: new Date("2026-08-09T00:00:00.000Z") });
+  expect(result.sessions).toEqual([]);
+  expect(result.changedSessions.map((item) => item.id)).toEqual([id]);
+  await expect(access(path)).resolves.toBeNull();
+});

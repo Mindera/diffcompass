@@ -85,6 +85,37 @@ test("browser and bridge endpoints require their own non-interchangeable token",
   })).status).toBe(200);
 });
 
+test("GitHub publication requires confirmation, current head, and uses only selected comments", async () => {
+  const { comparison, repository, session, url } = await fixture();
+  const headers = browserHeaders(url, session.browserToken);
+  const head = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
+  const base = comparison.mergeBase;
+  let publishedPayload: Record<string, unknown> | undefined;
+  const runner = async (command: string[], _cwd: string, _accepted: number[] = [0], options: { input?: string } = {}) => {
+    let value: unknown;
+    if (command.slice(0, 3).join(" ") === "gh repo view") value = { nameWithOwner: "acme/widgets" };
+    else if (command.slice(0, 3).join(" ") === "gh pr view") value = { number: 7, title: "PR", body: "", url: "https://github.com/acme/widgets/pull/7", author: { login: "author" }, baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, commits: [], statusCheckRollup: [], reviewDecision: "REVIEW_REQUIRED" };
+    else if (command.includes("graphql")) value = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } };
+    else if (command.at(-1)?.includes("reviews?per_page")) value = [];
+    else if (command.includes("--method")) { publishedPayload = JSON.parse(options.input ?? "{}"); value = { id: 77 }; }
+    else throw new Error(`Unexpected command: ${command.join(" ")}`);
+    return { stdout: JSON.stringify(value), stderr: "", exitCode: 0 };
+  };
+  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/code-review-tour/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
+  (session as unknown as { defaults: { githubRunner?: typeof runner } }).defaults.githubRunner = runner;
+
+  const added = await (await jsonRequest(url, "/api/comments", { method: "POST", headers, body: JSON.stringify({ path: "app.ts", side: "new", line: 2, body: "Fix this" }) })).json() as { comments: Array<{ id: string }> };
+  const commentId = added.comments[0].id;
+  expect((await jsonRequest(url, "/api/github/review", { method: "POST", headers, body: JSON.stringify({ outcome: "feedback", headOid: head, confirm: false }) })).status).toBe(422);
+  expect((await jsonRequest(url, "/api/github/review", { method: "POST", headers, body: JSON.stringify({ outcome: "feedback", headOid: "0".repeat(40), confirm: true }) })).status).toBe(409);
+  expect((await jsonRequest(url, "/api/close", { method: "POST", headers, body: JSON.stringify({ outcome: "feedback" }) })).status).toBe(409);
+  const deselected = await jsonRequest(url, `/api/comments/${commentId}/github`, { method: "PATCH", headers, body: JSON.stringify({ publish: false }) });
+  expect(deselected.status).toBe(200);
+  const published = await jsonRequest(url, "/api/github/review", { method: "POST", headers, body: JSON.stringify({ outcome: "feedback", headOid: head, confirm: true }) });
+  expect(published.status).toBe(200);
+  expect(publishedPayload).toMatchObject({ commit_id: head, event: "REQUEST_CHANGES", comments: [] });
+});
+
 test("serves the early theme bootstrap before the stylesheet", async () => {
   const { url } = await fixture();
   const page = await (await jsonRequest(url, "/")).text();

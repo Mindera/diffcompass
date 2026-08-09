@@ -24,7 +24,7 @@ clear.
   and flow metadata.
 - System-aware light and dark themes with a persistent per-browser override.
 
-## In progress for v0.5
+## Shipped in v0.5
 
 - Strict repository-level defaults for parent branch, preferred agent/model,
   diff layout and context, changed-file navigation, and successful-close policy.
@@ -48,7 +48,7 @@ clear.
 - Unified and side-by-side diff layouts with comments, findings, and tour anchors
   preserved on both sides.
 
-## v0.6 — Pull request workflow
+## Shipped in v0.6
 
 - Open a tour from a GitHub pull request URL or number without manually preparing
   the checkout and base reference.

@@ -101,6 +101,7 @@ export interface ReviewComment {
   body: string;
   lineContent: string;
   status: "active" | "outdated";
+  publishToGitHub?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -114,6 +115,43 @@ export interface ReviewPreferences {
   contextLines: number;
   requireAllFilesReviewed: boolean;
   closeOutcome: Extract<ReviewOutcome, "accepted" | "cancelled">;
+}
+
+export interface PullRequestContext {
+  repository: string;
+  number: number;
+  url: string;
+  title: string;
+  body: string;
+  author: string;
+  baseRefName: string;
+  baseRefOid: string;
+  headRefName: string;
+  headRefOid: string;
+  sourceRepositoryRoot: string;
+  workspaceRoot: string;
+  refNamespace: string;
+  reviewDecision?: string;
+  commits: Array<{ oid: string; headline: string; authors: string[] }>;
+  checks: Array<{ name: string; state: string; url?: string }>;
+  threads: Array<{
+    id: string;
+    path: string;
+    line?: number;
+    side?: "old" | "new";
+    resolved: boolean;
+    comments: Array<{ id: string; author: string; body: string; url: string }>;
+  }>;
+  threadsTruncated: boolean;
+  publication?: {
+    intentId: string;
+    outcome: Extract<ReviewOutcome, "accepted" | "feedback">;
+    commentIds: string[];
+    status: "pending" | "published";
+    reviewId?: string;
+    url?: string;
+  };
+  updatedAt: string;
 }
 
 export interface ChatMessage {
@@ -225,6 +263,7 @@ export interface PersistedReviewSession {
   activities?: AgentChangeActivity[];
   reviewedFiles?: string[];
   preferences?: ReviewPreferences;
+  pullRequest?: PullRequestContext;
   revision: number;
   status: ReviewStatus;
   selection?: AgentSelection;

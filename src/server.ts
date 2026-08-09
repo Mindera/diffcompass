@@ -235,6 +235,13 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
         }));
       }
       const commentMatch = /^\/api\/comments\/([^/]+)$/.exec(url.pathname);
+      const commentPublicationMatch = /^\/api\/comments\/([^/]+)\/github$/.exec(url.pathname);
+      if (commentPublicationMatch && request.method === "PATCH") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["publish"]);
+        if (typeof input.publish !== "boolean") throw new HttpError(422, "publish must be a boolean.");
+        return json(await session.setCommentPublication(decodeURIComponent(commentPublicationMatch[1]), input.publish));
+      }
       if (commentMatch && request.method === "PATCH") {
         const input = await readJsonObject(request, 16 * 1024);
         exactKeys(input, ["body"]);
@@ -255,6 +262,17 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
       if (request.method === "POST" && url.pathname === "/api/refresh") {
         await readJsonObject(request);
         return json(await session.refreshComparison({ source: "manual" }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/github/refresh") {
+        await readJsonObject(request);
+        return json(await session.refreshPullRequest());
+      }
+      if (request.method === "POST" && url.pathname === "/api/github/review") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["outcome", "headOid", "confirm"]);
+        if (input.confirm !== true) throw new HttpError(422, "Publishing a GitHub review requires explicit confirmation.");
+        const outcome = enumValue(input.outcome, "outcome", ["accepted", "feedback"]);
+        return json(await session.publishPullRequest(outcome, requiredString(input.headOid, "headOid", 64)));
       }
       if (request.method === "POST" && url.pathname === "/api/close") {
         const input = await readJsonObject(request);
