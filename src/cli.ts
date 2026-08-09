@@ -41,7 +41,7 @@ Options:
   --base REF           Parent branch or Git reference to compare
   --attached           Use the launching agent as the conversation backend
   --open               Open the review automatically in the default browser
-  --agent ID           Standalone agent: codex or claude
+  --agent ID           Standalone agent: codex, claude, gemini, or copilot
   --model MODEL        Model identifier reported by the selected agent
   --reasoning EFFORT   minimal, low, medium, high, xhigh, max, or ultra
   --port PORT          Loopback port (default: random)

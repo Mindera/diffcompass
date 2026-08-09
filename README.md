@@ -14,7 +14,7 @@ to the relevant code, and stays available for follow-up questions.
 - compares the merge base of a parent branch with the current working tree;
 - includes committed, staged, unstaged, and untracked changes;
 - renders the complete repository tree, unchanged source files, and the branch diff;
-- detects installed Codex and Claude Code CLIs;
+- detects installed Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI agents;
 - lets the reviewer choose an available agent, model, and reasoning effort;
 - asks the selected agent to create a logically ordered tour;
 - generates each explanation as the reviewer moves forward;
@@ -33,7 +33,7 @@ to the relevant code, and stays available for follow-up questions.
 - opens GitHub pull requests in isolated worktrees, shows their metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
 - exposes `Close` and `Send feedback & close` outcomes.
 
-Standalone Codex and Claude sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
+All standalone agent sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
 
 ## Attached-agent mode
 
@@ -49,7 +49,7 @@ and bridge capability tokens are separate, browser mutations require same-origin
 requests, and the bridge token is passed through an owner-only temporary file.
 Closing with feedback emits the collected line comments back to that same agent. The
 bundled skill at `skills/code-review-tour` contains the complete polling and
-response workflow; Codex and Claude adapters remain available as standalone
+response workflow; Codex, Claude, Gemini, and Copilot adapters remain available as standalone
 fallbacks in the picker.
 
 ## Install
@@ -68,14 +68,16 @@ code-review-tour doctor
 ```
 
 The installer verifies the release checksum, installs commands under
-`${XDG_BIN_HOME:-~/.local/bin}`, and links the bundled skill into both
-`${CODEX_HOME:-~/.codex}/skills` and `~/.claude/skills`. Re-run it to update to
+`${XDG_BIN_HOME:-~/.local/bin}`, and links the bundled skill into
+`${CODEX_HOME:-~/.codex}/skills`, `~/.claude/skills`, `~/.gemini/skills`, and
+`${COPILOT_HOME:-~/.copilot}/skills`. Re-run it to update to
 the latest release. Override those locations with
 `CODE_REVIEW_TOUR_BIN_ROOT`, `CODE_REVIEW_TOUR_INSTALL_ROOT`,
-`CODE_REVIEW_TOUR_CODEX_SKILL_ROOT`, and
-`CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT`.
+`CODE_REVIEW_TOUR_CODEX_SKILL_ROOT`, `CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT`,
+`CODE_REVIEW_TOUR_GEMINI_SKILL_ROOT`, and
+`CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT`.
 
-If either agent already has a real `code-review-tour` skill directory, the
+If an agent already has a real `code-review-tour` skill directory, the
 installer preserves it and exits with instructions instead of overwriting user
 files. Existing installer-managed symlinks are updated automatically.
 
@@ -86,8 +88,9 @@ CLI is not required in that case.
 ## Run
 
 An installed release requires Git and, for standalone mode, at least one
-authenticated Codex or Claude Code CLI. Attached mode does not require a
-standalone agent CLI. For development from a checkout, Bun is also required.
+authenticated Codex, Claude Code, Gemini, or GitHub Copilot CLI. Attached mode
+does not require a standalone agent CLI. For development from a checkout, Bun
+is also required.
 
 ```sh
 bun install
@@ -105,8 +108,13 @@ The server binds to `127.0.0.1` on a random port and prints the review URL.
 Codex models and reasoning levels are loaded from the installed App Server's live
 `model/list` catalog. Claude Code has no model-list command, so its adapter uses
 the authenticated CLI default model and exposes the installed command's effort
-levels. Optional picker defaults can be supplied with `--agent codex|claude`,
+levels. Gemini exposes its documented `auto`, `pro`, `flash`, and `flash-lite`
+routing aliases. Copilot models are read from the installed CLI's help catalog,
+with `auto` as a safe fallback. Optional picker defaults can be supplied with
+`--agent codex|claude|gemini|copilot`,
 `--model MODEL`, and `--reasoning EFFORT`.
+See the [standalone adapter contract](docs/agent-adapters.md) for discovery,
+read-only execution, continuation, and output requirements.
 
 The server prints an owner-only session-state path. Resume it after a restart:
 

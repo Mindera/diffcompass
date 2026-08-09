@@ -297,3 +297,14 @@ test("rejects inconsistent persisted session relationships", async () => {
   await writeFile(path, JSON.stringify(attachedWithoutToken));
   await expect(loadPersistedSession(path)).rejects.toThrow("inconsistent state");
 });
+
+test("accepts matched Gemini and Copilot continuation state", async () => {
+  const path = await temporaryStateFile();
+  for (const adapterId of ["gemini", "copilot"] as const) {
+    const valid = persistedSession();
+    valid.selection = { adapterId, modelId: "auto" };
+    valid.agentContinuation = { adapterId, id: `${adapterId}-session` };
+    await savePersistedSession(path, valid);
+    await expect(loadPersistedSession(path)).resolves.toEqual(valid);
+  }
+});

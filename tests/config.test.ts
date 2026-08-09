@@ -52,6 +52,14 @@ test("loads every supported repository default", async () => {
   });
 });
 
+test("accepts the v0.7 standalone adapters", async () => {
+  for (const agent of ["gemini", "copilot"] as const) {
+    const directory = await repository();
+    await writeFile(join(directory, ".code-review-tour.json"), JSON.stringify({ agent }));
+    expect((await loadRepositoryConfig(directory)).agent).toBe(agent);
+  }
+});
+
 test("fails closed for unknown, mistyped, oversized, and linked configuration", async () => {
   const directory = await repository();
   const path = join(directory, ".code-review-tour.json");

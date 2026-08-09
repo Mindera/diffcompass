@@ -38,7 +38,7 @@ export async function runDoctor(): Promise<number> {
   const adapters = await discoverAgentAdapters(process.cwd());
   checks.push(adapters.length > 0
     ? { level: "ok", label: "Agents", detail: adapters.map((adapter) => adapter.label).join(", ") }
-    : { level: "warn", label: "Agents", detail: "no standalone Codex or Claude CLI detected; attached mode remains available" });
+    : { level: "warn", label: "Agents", detail: "no supported standalone agent CLI detected; attached mode remains available" });
 
   for (const check of checks) {
     const marker = check.level === "ok" ? "✓" : check.level === "warn" ? "!" : "✗";

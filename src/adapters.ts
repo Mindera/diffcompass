@@ -94,10 +94,33 @@ async function executableVersion(executable: string, cwd: string): Promise<strin
   }
 }
 
+export function parseCopilotModelList(output: string): AgentModelOption[] {
+  const section = /(?:^|\n)\s*Supported models:?\s*\n([\s\S]*?)(?=\n\s*(?:Options|Commands|Tool availability|Environment variables)\b|$)/i.exec(output)?.[1];
+  if (!section) return [];
+  const ids = new Set<string>();
+  for (const line of section.split("\n")) {
+    const match = /^\s*(?:[-*]\s*)?`?([a-z][a-z0-9.-]*(?:-[a-z0-9.-]+)+|auto)`?(?:\s{2,}|\s+\|)/i.exec(line);
+    if (match) ids.add(match[1]!);
+  }
+  return [...ids].map((id, index) => ({
+    id,
+    label: id === "auto" ? "Copilot auto" : id,
+    isDefault: id === "auto" || (index === 0 && !ids.has("auto")),
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+  }));
+}
+
+async function discoverCopilotModels(executable: string, cwd: string): Promise<AgentModelOption[]> {
+  const result = await runProcess([executable, "help"], cwd, [0], { timeoutMs: 5_000 });
+  return parseCopilotModelList(`${result.stdout}\n${result.stderr}`);
+}
+
 export async function discoverAgentAdapters(cwd: string): Promise<AgentAdapterOption[]> {
   const adapters: AgentAdapterOption[] = [];
   const codex = Bun.which("codex");
   const claude = Bun.which("claude");
+  const gemini = Bun.which("gemini");
+  const copilot = Bun.which("copilot");
 
   if (codex) {
     let models: AgentModelOption[] = [];
@@ -127,6 +150,44 @@ export async function discoverAgentAdapters(cwd: string): Promise<AgentAdapterOp
         reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
       }],
       note: `${version ? `${version}. ` : ""}Claude Code does not expose a model-list command, so the CLI's authenticated default is used.`,
+    });
+  }
+
+  if (gemini) {
+    const version = await executableVersion(gemini, cwd);
+    adapters.push({
+      id: "gemini",
+      label: "Gemini CLI",
+      modelDiscovery: "aliases",
+      models: [
+        { id: "auto", label: "Gemini auto", isDefault: true, reasoningEfforts: [] },
+        { id: "pro", label: "Gemini Pro routing", isDefault: false, reasoningEfforts: [] },
+        { id: "flash", label: "Gemini Flash routing", isDefault: false, reasoningEfforts: [] },
+        { id: "flash-lite", label: "Gemini Flash-Lite routing", isDefault: false, reasoningEfforts: [] },
+      ],
+      note: `${version ? `${version}. ` : ""}Gemini CLI exposes routing aliases rather than an authenticated headless model catalog; account availability is checked by the CLI.`,
+    });
+  }
+
+  if (copilot) {
+    const version = await executableVersion(copilot, cwd);
+    let models: AgentModelOption[] = [];
+    let note: string | undefined;
+    try {
+      models = await discoverCopilotModels(copilot, cwd);
+    } catch (error) {
+      note = `Model discovery failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    if (models.length === 0) {
+      models = [{ id: "auto", label: "Copilot auto", isDefault: true, reasoningEfforts: ["low", "medium", "high", "xhigh", "max"] }];
+      note ??= "The installed Copilot CLI did not expose its model catalog; automatic model selection will be used.";
+    }
+    adapters.push({
+      id: "copilot",
+      label: "GitHub Copilot CLI",
+      modelDiscovery: models.length > 1 ? "catalog" : "default-only",
+      models,
+      note: `${version ? `${version}. ` : ""}${note ?? "Models were detected from the installed CLI."}`,
     });
   }
 

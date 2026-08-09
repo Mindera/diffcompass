@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { runProcess } from "./process.ts";
-import type { AgentSelection, GitComparison, ReasoningEffort, ReviewFinding, ReviewFlow, TourOutline, TourStep } from "./types.ts";
+import type { AgentSelection, GitComparison, ReasoningEffort, ReviewFinding, ReviewFlow, StandaloneAgentAdapterId, TourOutline, TourStep } from "./types.ts";
 
 interface CodexJsonEvent {
   type?: string;
@@ -44,6 +47,79 @@ export function parseClaudeJson(output: string): { sessionId?: string; message: 
     sessionId: value.session_id ?? value.sessionId,
     message: value.result ?? value.error ?? "",
   };
+}
+
+interface GeminiStreamEvent {
+  type?: string;
+  session_id?: string;
+  role?: string;
+  content?: unknown;
+  response?: string;
+}
+
+function textContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value.map((part) => {
+    if (typeof part === "string") return part;
+    if (part && typeof part === "object" && "text" in part && typeof part.text === "string") return part.text;
+    return "";
+  }).join("");
+}
+
+export function parseGeminiStreamJson(output: string): { sessionId?: string; message: string } {
+  let sessionId: string | undefined;
+  const messages: string[] = [];
+  for (const line of output.split("\n")) {
+    if (!line.trim()) continue;
+    let event: GeminiStreamEvent;
+    try { event = JSON.parse(line) as GeminiStreamEvent; } catch { continue; }
+    if (event.type === "init" && event.session_id) sessionId = event.session_id;
+    if (event.type === "message" && event.role === "assistant") {
+      const message = textContent(event.content);
+      if (message) messages.push(message);
+    }
+    if (!event.type && typeof event.response === "string" && event.response) messages.push(event.response);
+  }
+  return { sessionId, message: messages.join("") };
+}
+
+export function buildGeminiArgs(prompt: string, model?: string, sessionId?: string, attachmentPath?: string): string[] {
+  return [
+    "gemini",
+    "--output-format", "stream-json",
+    "--approval-mode", "plan",
+    ...(model && model !== "default" ? ["--model", model] : []),
+    ...(sessionId ? ["--resume", sessionId] : []),
+    ...(attachmentPath ? ["--include-directories", dirname(attachmentPath)] : []),
+    "--prompt", prompt,
+  ];
+}
+
+export function buildCopilotArgs(prompt: string, sessionId: string, model?: string, reasoning?: ReasoningEffort, attachmentPath?: string): string[] {
+  return [
+    "copilot",
+    "--prompt", prompt,
+    "--silent",
+    "--session-id", sessionId,
+    ...(attachmentPath ? ["--attachment", attachmentPath] : []),
+    "--available-tools=view,glob,grep",
+    "--allow-tool=read",
+    "--deny-tool=write",
+    "--deny-tool=shell",
+    "--deny-tool=url",
+    "--disable-builtin-mcps",
+    "--disallow-temp-dir",
+    "--no-ask-user",
+    "--no-auto-update",
+    "--no-bash-env",
+    "--no-custom-instructions",
+    "--no-experimental",
+    "--no-remote",
+    "--no-remote-export",
+    ...(model && model !== "default" ? [`--model=${model}`] : []),
+    ...(reasoning ? [`--effort=${reasoning}`] : []),
+  ];
 }
 
 function parseOutline(message: string): TourOutline {
@@ -153,8 +229,19 @@ function validateOutline(outline: TourOutline, comparison: GitComparison): TourO
 export type BridgePromptKind = "tour.outline" | "tour.explanation" | "review.question";
 
 export interface AgentTransport {
-  send(prompt: string, kind: BridgePromptKind): Promise<string>;
+  send(prompt: string, kind: BridgePromptKind, attachment?: { name: string; content: string }): Promise<string>;
   continuationId?(): string | undefined;
+}
+
+async function withTemporaryAttachment<T>(attachment: { name: string; content: string }, action: (path: string) => Promise<T>): Promise<T> {
+  const directory = await mkdtemp(join(tmpdir(), "code-review-tour-agent-"));
+  const path = join(directory, attachment.name);
+  try {
+    await writeFile(path, attachment.content, { encoding: "utf8", mode: 0o600 });
+    return await action(path);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 class CodexTransport implements AgentTransport {
@@ -246,26 +333,100 @@ class ClaudeTransport implements AgentTransport {
   }
 }
 
+class GeminiTransport implements AgentTransport {
+  private sessionId?: string;
+
+  constructor(
+    private readonly repositoryRoot: string,
+    private readonly model?: string,
+    private readonly signal?: AbortSignal,
+    sessionId?: string,
+  ) {
+    this.sessionId = sessionId;
+  }
+
+  continuationId(): string | undefined { return this.sessionId; }
+
+  async send(prompt: string, _kind: BridgePromptKind, attachment?: { name: string; content: string }): Promise<string> {
+    const invoke = (attachmentPath?: string) => runProcess(buildGeminiArgs(
+      attachmentPath ? `${prompt}\n\nRead the complete review diff from ${JSON.stringify(attachmentPath)}.` : prompt,
+      this.model,
+      this.sessionId,
+      attachmentPath,
+    ), this.repositoryRoot, [0], { signal: this.signal, timeoutMs: 15 * 60 * 1_000 });
+    const result = attachment ? await withTemporaryAttachment(attachment, invoke) : await invoke();
+    const parsed = parseGeminiStreamJson(result.stdout);
+    if (!this.sessionId && parsed.sessionId) this.sessionId = parsed.sessionId;
+    if (!parsed.message) throw new Error(result.stderr.trim() || "The tour agent returned no message.");
+    return parsed.message;
+  }
+}
+
+class CopilotTransport implements AgentTransport {
+  private readonly sessionId: string;
+
+  constructor(
+    private readonly repositoryRoot: string,
+    private readonly model?: string,
+    private readonly reasoning?: ReasoningEffort,
+    private readonly signal?: AbortSignal,
+    sessionId?: string,
+  ) {
+    this.sessionId = sessionId ?? crypto.randomUUID();
+  }
+
+  continuationId(): string { return this.sessionId; }
+
+  async send(prompt: string, _kind: BridgePromptKind, attachment?: { name: string; content: string }): Promise<string> {
+    const invoke = (attachmentPath?: string) => runProcess(buildCopilotArgs(
+      attachmentPath ? `${prompt}\n\nThe complete review diff is attached.` : prompt,
+      this.sessionId,
+      this.model,
+      this.reasoning,
+      attachmentPath,
+    ), this.repositoryRoot, [0], { signal: this.signal, timeoutMs: 15 * 60 * 1_000 });
+    const result = attachment ? await withTemporaryAttachment(attachment, invoke) : await invoke();
+    const message = result.stdout.trim();
+    if (!message) throw new Error(result.stderr.trim() || "The tour agent returned no message.");
+    return message;
+  }
+}
+
 export class TourAgent {
   private readonly transport: AgentTransport;
   private readonly attached: boolean;
   private readonly abortController = new AbortController();
   private comparisonFingerprint = "unknown";
+  private readonly adapterId: AgentSelection["adapterId"];
 
   constructor(
     repositoryRoot: string,
     selection: AgentSelection,
     attachedTransport?: AgentTransport,
-    continuation?: { adapterId: "codex" | "claude"; id: string },
+    continuation?: { adapterId: StandaloneAgentAdapterId; id: string },
   ) {
+    this.adapterId = selection.adapterId;
     this.attached = selection.adapterId === "attached";
     if (selection.adapterId === "attached") {
       if (!attachedTransport) throw new Error("The attached-agent bridge is not available.");
       this.transport = attachedTransport;
     } else {
-      this.transport = selection.adapterId === "claude"
-        ? new ClaudeTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "claude" ? continuation.id : undefined)
-        : new CodexTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "codex" ? continuation.id : undefined);
+      switch (selection.adapterId) {
+        case "claude":
+          this.transport = new ClaudeTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "claude" ? continuation.id : undefined);
+          break;
+        case "gemini":
+          this.transport = new GeminiTransport(repositoryRoot, selection.modelId, this.abortController.signal, continuation?.adapterId === "gemini" ? continuation.id : undefined);
+          break;
+        case "copilot":
+          this.transport = new CopilotTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "copilot" ? continuation.id : undefined);
+          break;
+        case "codex":
+          this.transport = new CodexTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "codex" ? continuation.id : undefined);
+          break;
+        default:
+          throw new Error(`Unsupported agent adapter: ${selection.adapterId}`);
+      }
     }
   }
 
@@ -277,10 +438,10 @@ export class TourAgent {
     this.comparisonFingerprint = createHash("sha256").update(comparison.patch).digest("hex");
   }
 
-  continuation(adapterId: AgentSelection["adapterId"]): { adapterId: "codex" | "claude"; id: string } | undefined {
-    if (adapterId !== "codex" && adapterId !== "claude") return undefined;
+  continuation(): { adapterId: StandaloneAgentAdapterId; id: string } | undefined {
+    if (!["codex", "claude", "gemini", "copilot"].includes(this.adapterId)) return undefined;
     const id = this.transport.continuationId?.();
-    return id ? { adapterId, id } : undefined;
+    return id ? { adapterId: this.adapterId as StandaloneAgentAdapterId, id } : undefined;
   }
 
   async createOutline(comparison: GitComparison): Promise<TourOutline> {
@@ -298,7 +459,10 @@ Return only JSON with this shape:
 {"title":"...","summary":"...","steps":[{"id":"stable-kebab-id","title":"...","objective":"...","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","blastRadiusSize":2}],"findings":[{"id":"stable-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
 
 Every anchor and finding path must be one of the changed files and every line must occur in the diff. Include only evidence-backed findings; an empty findings array is correct when no defect is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only for changes that are configuration/documentation-only or truly local. Use at most six architectural-layer participants and label provenance honestly. Prefer 4-10 meaningful steps.`;
-    return validateOutline(parseOutline(await this.transport.send(prompt, "tour.outline")), comparison);
+    const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
+    const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
+    const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;
+    return validateOutline(parseOutline(await this.transport.send(promptWithDiff, "tour.outline", attachment)), comparison);
   }
 
   async explainStep(step: TourStep, index: number, total: number): Promise<string> {

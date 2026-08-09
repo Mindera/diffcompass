@@ -201,6 +201,7 @@ export interface AgentChangeActivity {
 }
 
 export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+export type StandaloneAgentAdapterId = "codex" | "claude" | "gemini" | "copilot";
 
 export interface AgentModelOption {
   id: string;
@@ -214,7 +215,7 @@ export interface AgentAdapterOption {
   id: string;
   label: string;
   models: AgentModelOption[];
-  modelDiscovery: "catalog" | "default-only";
+  modelDiscovery: "catalog" | "aliases" | "default-only";
   note?: string;
 }
 
@@ -267,6 +268,6 @@ export interface PersistedReviewSession {
   revision: number;
   status: ReviewStatus;
   selection?: AgentSelection;
-  agentContinuation?: { adapterId: "codex" | "claude"; id: string };
+  agentContinuation?: { adapterId: StandaloneAgentAdapterId; id: string };
   updatedAt: string;
 }

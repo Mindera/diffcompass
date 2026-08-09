@@ -172,7 +172,7 @@ export class ReviewSession {
       status: this.status,
       selection: structuredClone(this.selection),
       agentContinuation: this.selection && this.agent
-        ? this.agent.continuation(this.selection.adapterId) ?? this.agentContinuation
+        ? this.agent.continuation() ?? this.agentContinuation
         : this.agentContinuation,
       updatedAt: new Date().toISOString(),
     };
@@ -335,7 +335,7 @@ export class ReviewSession {
       : undefined;
     if (adapterId && !requestedAdapter) throw new ReviewError(`Agent adapter is not available: ${adapterId}`);
     const adapter = requestedAdapter ?? this.agentAdapters[0];
-    if (!adapter) throw new ReviewError("No supported agent CLI was detected. Install Codex or Claude Code and restart.");
+    if (!adapter) throw new ReviewError("No supported agent CLI was detected. Install Codex, Claude Code, Gemini, or Copilot and restart.");
 
     const requestedModel = input.modelId ?? this.defaults.modelId;
     const requestedModelOption = requestedModel

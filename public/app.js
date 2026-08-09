@@ -431,7 +431,7 @@ function renderModelOptions() {
     .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.label)}${model.isDefault ? " · default" : ""}</option>`)
     .join("");
   if (selected) elements["model-select"].value = selected;
-  elements["agent-note"].textContent = adapter?.note ?? "Install Codex or Claude Code, then restart the server.";
+  elements["agent-note"].textContent = adapter?.note ?? "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.";
   elements["agent-name"].textContent = adapter?.label ?? "No agent detected";
   renderReasoningOptions();
 }
@@ -446,7 +446,7 @@ function renderAgentOptions() {
   elements["agent-select"].disabled = state.busy || !reviewIsOpen();
   elements["model-select"].disabled = state.busy || !reviewIsOpen();
   elements["start-tour"].disabled = state.busy || !reviewIsOpen() || adapters.length === 0;
-  if (adapters.length === 0) elements["agent-note"].textContent = "Install Codex or Claude Code, then restart the server.";
+  if (adapters.length === 0) elements["agent-note"].textContent = "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.";
   renderModelOptions();
 }
 

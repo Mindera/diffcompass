@@ -57,10 +57,15 @@ clear.
   explicit confirmation.
 - Track remote updates and reconcile comments when the pull request changes.
 
-## v0.7 — Extensibility and richer analysis
+## Shipped in v0.7
 
-- A documented adapter contract for additional local agents such as Gemini,
-  Aider, and OpenCode.
+- A documented adapter contract for standalone local agents.
+- Read-only, resumable Gemini CLI and GitHub Copilot CLI adapters.
+- Gemini routing aliases and installed Copilot model-catalog discovery.
+- Automatic skill installation for Gemini CLI and GitHub Copilot CLI.
+
+## v0.8 — Review policy and richer artifacts
+
 - Repository-specific finding policies and review instructions.
 - Regenerate and edit flow diagrams, with broader Mermaid sequence syntax.
 - Export a completed tour as a durable Markdown or HTML review artifact.

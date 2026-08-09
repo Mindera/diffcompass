@@ -1,6 +1,6 @@
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ReasoningEffort, ReviewPreferences } from "./types.ts";
+import type { ReasoningEffort, ReviewPreferences, StandaloneAgentAdapterId } from "./types.ts";
 
 export interface RetentionConfig {
   maxAgeDays?: number;
@@ -10,7 +10,7 @@ export interface RetentionConfig {
 
 export interface RepositoryConfig {
   base?: string;
-  agent?: "codex" | "claude";
+  agent?: StandaloneAgentAdapterId;
   model?: string;
   reasoning?: ReasoningEffort;
   preferences: ReviewPreferences;
@@ -75,7 +75,9 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
   exactKeys(retention, ["maxAgeDays", "maxSessions", "includeArchived"], `${path} retention`);
 
   const agent = value.agent === undefined ? undefined : String(value.agent);
-  if (agent !== undefined && !["codex", "claude"].includes(agent)) throw new Error(`${path} agent must be codex or claude.`);
+  if (agent !== undefined && !["codex", "claude", "gemini", "copilot"].includes(agent)) {
+    throw new Error(`${path} agent must be codex, claude, gemini, or copilot.`);
+  }
   const reasoning = value.reasoning === undefined ? undefined : String(value.reasoning);
   if (reasoning !== undefined && !["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(reasoning)) {
     throw new Error(`${path} reasoning is unsupported.`);

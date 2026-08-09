@@ -124,7 +124,7 @@ function validSelection(value: unknown): boolean {
 }
 
 function validContinuation(value: unknown): boolean {
-  return record(value) && ["codex", "claude"].includes(String(value.adapterId)) && nonEmptyString(value.id, 256);
+  return record(value) && ["codex", "claude", "gemini", "copilot"].includes(String(value.adapterId)) && nonEmptyString(value.id, 256);
 }
 
 function validPreferences(value: unknown): boolean {
