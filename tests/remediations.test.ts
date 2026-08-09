@@ -7,7 +7,7 @@ import { loadComparison } from "../src/git.ts";
 import { runProcess } from "../src/process.ts";
 import { startServer } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
-import type { ReviewFinding, TourOutline } from "../src/types.ts";
+import type { ReviewFinding, ReviewPreferences, TourOutline } from "../src/types.ts";
 
 const repositories: string[] = [];
 const servers: Array<ReturnType<typeof startServer>> = [];
@@ -24,7 +24,7 @@ async function git(cwd: string, ...args: string[]) {
 type ReviewSessionConstructor = new (
   comparison: Awaited<ReturnType<typeof loadComparison>>,
   adapters: [],
-  defaults: Record<string, never>,
+  defaults: { preferences?: ReviewPreferences },
   bridge?: AttachedAgentBridge,
 ) => ReviewSession;
 
@@ -197,6 +197,26 @@ test("repository file endpoint rejects traversal, symlink, binary, and oversized
   });
   expect(plain.status).toBe(200);
   await expect(plain.json()).resolves.toEqual({ path: "plain.txt", content: "plain text\n" });
+});
+
+test("required reviewed-file policy blocks successful closure but never blocks cancellation", async () => {
+  const { comparison } = await reviewFixture();
+  const preferences: ReviewPreferences = {
+    diffLayout: "split",
+    changedFilesOnly: true,
+    contextLines: 25,
+    requireAllFilesReviewed: true,
+    closeOutcome: "accepted",
+  };
+  const session = new (ReviewSession as unknown as ReviewSessionConstructor)(comparison, [], { preferences });
+
+  expect(session.snapshot().preferences).toEqual(preferences);
+  await expect(session.close("accepted")).rejects.toThrow("Mark every changed file as reviewed");
+  await session.setFileReviewed("app.ts", true);
+  await expect(session.close("accepted")).resolves.toMatchObject({ status: "accepted" });
+
+  const cancelled = new (ReviewSession as unknown as ReviewSessionConstructor)(comparison, [], { preferences });
+  await expect(cancelled.close("cancelled")).resolves.toMatchObject({ status: "cancelled" });
 });
 
 test("process execution rejects deterministically for cancellation and timeout", async () => {

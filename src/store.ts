@@ -99,6 +99,13 @@ function validContinuation(value: unknown): boolean {
   return record(value) && ["codex", "claude"].includes(String(value.adapterId)) && nonEmptyString(value.id, 256);
 }
 
+function validPreferences(value: unknown): boolean {
+  return record(value) && ["unified", "split"].includes(String(value.diffLayout)) &&
+    typeof value.changedFilesOnly === "boolean" && Number.isInteger(value.contextLines) &&
+    Number(value.contextLines) >= 3 && Number(value.contextLines) <= 200 &&
+    typeof value.requireAllFilesReviewed === "boolean" && ["accepted", "cancelled"].includes(String(value.closeOutcome));
+}
+
 function validTerminalEvent(value: unknown): boolean {
   return record(value) && Number.isInteger(value.sequence) && Number(value.sequence) > 0 &&
     nonEmptyString(value.id, 128) && value.type === "review.closed" &&
@@ -160,6 +167,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.activities !== undefined && (!Array.isArray(session.activities) || session.activities.length > 2_000 || !session.activities.every(validActivity))) ||
     (session.reviewedFiles !== undefined && (!Array.isArray(session.reviewedFiles) || session.reviewedFiles.length > 10_000 ||
       !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
+    (session.preferences !== undefined && !validPreferences(session.preferences)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||
     (session.agentContinuation !== undefined && !validContinuation(session.agentContinuation)) ||

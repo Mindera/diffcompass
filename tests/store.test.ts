@@ -173,6 +173,29 @@ test("rejects duplicate or malformed reviewed file paths", async () => {
   await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
 });
 
+test("persists complete review preferences and rejects partial or out-of-range values", async () => {
+  const path = await temporaryStateFile();
+  const valid = persistedSession();
+  valid.preferences = {
+    diffLayout: "split",
+    changedFilesOnly: true,
+    contextLines: 25,
+    requireAllFilesReviewed: true,
+    closeOutcome: "cancelled",
+  };
+  await savePersistedSession(path, valid);
+  await expect(loadPersistedSession(path)).resolves.toEqual(valid);
+
+  for (const preferences of [
+    { ...valid.preferences, contextLines: 2 },
+    { ...valid.preferences, diffLayout: "columns" },
+    { diffLayout: "split" },
+  ]) {
+    await writeFile(path, JSON.stringify({ ...valid, preferences }));
+    await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+  }
+});
+
 test("persists valid change activity and rejects malformed nested activity", async () => {
   const path = await temporaryStateFile();
   const valid = persistedSession();

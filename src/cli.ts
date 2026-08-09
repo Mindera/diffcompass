@@ -10,6 +10,7 @@ import { startServer } from "./server.ts";
 import packageJson from "../package.json" with { type: "json" };
 import { runDoctor } from "./doctor.ts";
 import { runSessionCommand } from "./session-library.ts";
+import { loadRepositoryConfig } from "./config.ts";
 
 interface Options {
   repository: string;
@@ -116,6 +117,7 @@ const intendedRepositoryRoot = options.resume
   ? (await loadPersistedSession(stateFile)).repositoryRoot
   : await resolveRepositoryRoot(options.repository);
 const canonicalRepositoryRoot = await realpath(intendedRepositoryRoot);
+const repositoryConfig = await loadRepositoryConfig(canonicalRepositoryRoot);
 const absoluteStatePath = resolve(stateFile);
 const lexicalStateLocation = relative(canonicalRepositoryRoot, absoluteStatePath);
 if (!lexicalStateLocation || (!lexicalStateLocation.startsWith("..") && !isAbsolute(lexicalStateLocation))) {
@@ -143,13 +145,14 @@ if (!stateWithinRepository || (!stateWithinRepository.startsWith("..") && !isAbs
   throw new Error("Review session state must be stored outside the reviewed repository.");
 }
 await mkdir(canonicalStateDirectory, { recursive: true, mode: 0o700 });
-const session = await ReviewSession.create(options.repository, options.base, {
-  adapterId: options.agent ?? (options.attached ? "attached" : undefined),
-  modelId: options.model,
-  reasoningEffort: options.reasoning,
+const session = await ReviewSession.create(options.repository, options.base ?? repositoryConfig.base, {
+  adapterId: options.attached ? "attached" : options.agent ?? repositoryConfig.agent,
+  modelId: options.model ?? repositoryConfig.model,
+  reasoningEffort: options.reasoning ?? repositoryConfig.reasoning,
   attached: options.attached,
   stateFile: canonicalStatePath,
   resume: Boolean(options.resume),
+  preferences: repositoryConfig.preferences,
 });
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let repositoryWatcher: ReturnType<typeof watch> | undefined;

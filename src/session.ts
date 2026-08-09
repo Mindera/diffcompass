@@ -4,8 +4,9 @@ import { TourAgent } from "./agent.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
+import { DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, ReasoningEffort, ReviewComment, ReviewOutcome, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -14,6 +15,7 @@ interface AgentDefaults {
   attached?: boolean;
   stateFile?: string;
   resume?: boolean;
+  preferences?: ReviewPreferences;
 }
 
 interface RefreshContext {
@@ -57,6 +59,7 @@ export class ReviewSession {
   readonly activities: AgentChangeActivity[];
   readonly reviewedFiles: Set<string>;
   readonly browserToken: string;
+  readonly preferences: ReviewPreferences;
   outline?: TourOutline;
   currentStepIndex = -1;
   revision = 1;
@@ -93,6 +96,7 @@ export class ReviewSession {
     persisted?: PersistedReviewSession,
   ) {
     this.browserToken = persisted?.browserToken ?? crypto.randomUUID();
+    this.preferences = structuredClone(persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES);
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
     this.activities = structuredClone(persisted?.activities ?? []);
@@ -149,6 +153,7 @@ export class ReviewSession {
       messages: structuredClone(this.messages),
       activities: structuredClone(this.activities),
       reviewedFiles: [...this.reviewedFiles].sort(),
+      preferences: structuredClone(this.preferences),
       revision: this.revision,
       status: this.status,
       selection: structuredClone(this.selection),
@@ -270,7 +275,8 @@ export class ReviewSession {
     const persisted = defaults.resume && defaults.stateFile
       ? await loadPersistedSession(defaults.stateFile)
       : undefined;
-    const comparison = await loadComparison(persisted?.repositoryRoot ?? cwd, persisted?.base ?? base);
+    const preferences = persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES;
+    const comparison = await loadComparison(persisted?.repositoryRoot ?? cwd, persisted?.base ?? base, preferences.contextLines);
     if (persisted && (
       comparison.repositoryRoot !== persisted.repositoryRoot ||
       comparison.base !== persisted.base
@@ -298,7 +304,7 @@ export class ReviewSession {
         note: "Questions and tour prompts return to the agent that launched this page.",
       });
     }
-    const session = new ReviewSession(comparison, adapters, { ...defaults, attached }, bridge, persisted);
+    const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences }, bridge, persisted);
     bridge?.setPersistence(() => session.persist());
     if (bridge && persisted && persisted.status !== "open" && !persisted.bridgeTerminalEvent) {
       bridge.prepareClose(persisted.status, persisted.comments);
@@ -356,6 +362,7 @@ export class ReviewSession {
       messages: this.messages,
       activities: this.activities.map(({ proposal, ...activity }) => ({ ...activity, hasProposal: Boolean(proposal) })),
       reviewedFiles: [...this.reviewedFiles].sort(),
+      preferences: structuredClone(this.preferences),
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,
@@ -486,7 +493,7 @@ export class ReviewSession {
           patched = true;
         }
         if (modifiesWorkingTree) {
-          this.comparison = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
+          this.comparison = await loadComparison(this.comparison.repositoryRoot, this.comparison.base, this.preferences.contextLines);
           this.comparisonGeneration += 1;
         }
         activity.changeStatus = action === "apply" ? "applied" : action === "reject" ? "rejected" : "undone";
@@ -803,11 +810,11 @@ export class ReviewSession {
         }
         const result = await captureWorkingTreeSnapshot(activeRequest.workspace.path);
         const patch = await createChangePatch(activeRequest.workspace.path, activeRequest.workspace.tree, result.tree);
-        proposed = await loadComparison(activeRequest.workspace.path, this.comparison.base);
+        proposed = await loadComparison(activeRequest.workspace.path, this.comparison.base, this.preferences.contextLines);
         proposal = { patch, baselineTree: activeRequest.workspace.tree, resultTree: result.tree };
-        refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
+        refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base, this.preferences.contextLines);
       } else {
-        refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base);
+        refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base, this.preferences.contextLines);
       }
       this.ensureOpen();
       const before = this.captureMutableState();
@@ -865,6 +872,10 @@ export class ReviewSession {
     }
     if (outcome !== "cancelled" && this.activities.some((activity) => activity.changeStatus === "pending")) {
       throw new ReviewError("Apply or reject every pending agent change before closing the review.");
+    }
+    if (outcome !== "cancelled" && this.preferences.requireAllFilesReviewed &&
+      this.comparison.files.some((file) => !this.reviewedFiles.has(file.path))) {
+      throw new ReviewError("Mark every changed file as reviewed before completing this review.");
     }
     if (outcome === "accepted" && this.comments.length > 0) {
       throw new ReviewError("Resolve or remove feedback before accepting, or close with feedback.");

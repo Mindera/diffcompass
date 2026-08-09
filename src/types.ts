@@ -108,6 +108,14 @@ export interface ReviewComment {
 export type ReviewOutcome = "accepted" | "feedback" | "cancelled";
 export type ReviewStatus = "open" | ReviewOutcome;
 
+export interface ReviewPreferences {
+  diffLayout: "unified" | "split";
+  changedFilesOnly: boolean;
+  contextLines: number;
+  requireAllFilesReviewed: boolean;
+  closeOutcome: Extract<ReviewOutcome, "accepted" | "cancelled">;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "agent";
@@ -216,6 +224,7 @@ export interface PersistedReviewSession {
   messages: ChatMessage[];
   activities?: AgentChangeActivity[];
   reviewedFiles?: string[];
+  preferences?: ReviewPreferences;
   revision: number;
   status: ReviewStatus;
   selection?: AgentSelection;

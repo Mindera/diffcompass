@@ -24,8 +24,9 @@ const state = {
   searchTimer: null,
   statusFilter: "",
   reviewFilter: "",
-  changedOnly: window.localStorage.getItem("review-tour-changed-only") === "true",
-  diffLayout: window.localStorage.getItem("review-tour-diff-layout") === "split" ? "split" : "unified",
+  preferenceRepository: null,
+  changedOnly: null,
+  diffLayout: null,
   pollInFlight: false,
   pollGeneration: 0,
 };
@@ -146,6 +147,24 @@ async function updateLibrarySession(id, action, name) {
 
 function reviewIsOpen() {
   return state.session?.status === "open";
+}
+
+function preferenceKey(name) {
+  return `review-tour:${state.session.comparison.repositoryRoot}:${name}`;
+}
+
+function initializeUiPreferences() {
+  const repository = state.session.comparison.repositoryRoot;
+  if (state.preferenceRepository === repository) return;
+  state.preferenceRepository = repository;
+  const savedLayout = window.localStorage.getItem(preferenceKey("diff-layout"));
+  const savedChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
+  state.diffLayout = ["unified", "split"].includes(savedLayout) ? savedLayout : state.session.preferences?.diffLayout ?? "unified";
+  state.changedOnly = savedChangedOnly === null ? state.session.preferences?.changedFilesOnly ?? false : savedChangedOnly === "true";
+}
+
+function fileContext(file) {
+  return file._context ?? state.session.preferences?.contextLines ?? 3;
 }
 
 function treeFromFiles(repositoryFiles, changedFiles) {
@@ -275,10 +294,10 @@ function renderDiff(files) {
     .map((file) => `<section class="diff-file" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       <header class="diff-file-header">
         <span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span>
-        <span class="file-stats">${state.proposalPreview ? '<span class="proposal-label">pending proposal</span> · ' : `<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `}${file._page ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${file._context ?? 3}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${file._context ?? 3}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
+        <span class="file-stats">${state.proposalPreview ? '<span class="proposal-label">pending proposal</span> · ' : `<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `}${file._page ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
       </header>
       ${file.hunks.map((hunk) => `<div class="hunk">
-        <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && (file._context ?? 3) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${file._context ?? 3}">Expand context</button>` : ""}</div>
+        <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && fileContext(file) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${fileContext(file)}">Expand context</button>` : ""}</div>
         ${state.diffLayout === "split"
           ? splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings)}${renderSplitSide(file, newRow, "new", findings)}</div>`).join("")
           : hunk.rows.map((row) => renderUnifiedRow(file, row, findings)).join("")}
@@ -663,6 +682,7 @@ async function setReviewed(path, reviewed) {
 
 function renderSession() {
   const { comparison, comments } = state.session;
+  initializeUiPreferences();
   state.proposalPreview = false;
   elements["repository-label"].textContent = comparison.repositoryName;
   elements["comparison-label"].textContent = `${comparison.base} → working tree`;
@@ -697,6 +717,7 @@ function renderSession() {
   elements["closed-banner"].textContent = closed ? `This review is closed as ${state.session.status}. It is now read-only.` : "";
   elements["refresh-button"].disabled = state.busy || closed;
   elements["close-button"].disabled = state.busy || closed;
+  elements["close-button"].textContent = state.session.preferences?.closeOutcome === "cancelled" ? "Cancel review" : "Close";
   elements["feedback-button"].disabled = state.busy || closed;
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
@@ -863,7 +884,7 @@ elements["next-step"].addEventListener("click", () => navigate("next"));
 elements["chat-form"].addEventListener("submit", askAgent);
 elements["comment-form"].addEventListener("submit", saveComment);
 elements["cancel-comment"].addEventListener("click", () => elements["comment-dialog"].close());
-elements["close-button"].addEventListener("click", () => close("accepted"));
+elements["close-button"].addEventListener("click", () => close(state.session.preferences?.closeOutcome ?? "accepted"));
 elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
 elements["theme-select"].value = window.reviewTourTheme.preference();
@@ -918,12 +939,12 @@ elements["review-filter"].addEventListener("change", () => {
 });
 elements["changed-only"].addEventListener("change", () => {
   state.changedOnly = elements["changed-only"].checked;
-  window.localStorage.setItem("review-tour-changed-only", String(state.changedOnly));
+  window.localStorage.setItem(preferenceKey("changed-only"), String(state.changedOnly));
   renderFileTree();
 });
 elements["diff-layout"].addEventListener("change", () => {
   state.diffLayout = elements["diff-layout"].value;
-  window.localStorage.setItem("review-tour-diff-layout", state.diffLayout);
+  window.localStorage.setItem(preferenceKey("diff-layout"), state.diffLayout);
   renderFilteredDiff();
 });
 elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });

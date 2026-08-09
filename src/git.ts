@@ -124,14 +124,14 @@ export async function resolveBase(repositoryRoot: string, explicitBase?: string)
   throw new Error("Could not infer a base branch. Pass --base <ref>.");
 }
 
-async function untrackedPatch(repositoryRoot: string): Promise<string> {
+async function untrackedPatch(repositoryRoot: string, contextLines = 3): Promise<string> {
   const output = await git(repositoryRoot, ["ls-files", "--others", "--exclude-standard", "-z"]);
   const paths = output.split("\0").filter(Boolean);
   const patches: string[] = [];
 
   for (const path of paths) {
     const result = await runProcess(
-      ["git", "diff", "--no-index", "--no-color", "--unified=3", "--", "/dev/null", path],
+      ["git", "diff", "--no-index", "--no-color", `--unified=${contextLines}`, "--", "/dev/null", path],
       repositoryRoot,
       [0, 1],
     );
@@ -141,7 +141,7 @@ async function untrackedPatch(repositoryRoot: string): Promise<string> {
   return patches.filter(Boolean).join("\n");
 }
 
-export async function loadComparison(cwd: string, explicitBase?: string): Promise<GitComparison> {
+export async function loadComparison(cwd: string, explicitBase?: string, contextLines = 3): Promise<GitComparison> {
   const repositoryRoot = await resolveRepositoryRoot(cwd);
   const base = await resolveBase(repositoryRoot, explicitBase);
   const mergeBase = await git(repositoryRoot, ["merge-base", base, "HEAD"]);
@@ -151,11 +151,11 @@ export async function loadComparison(cwd: string, explicitBase?: string): Promis
     "--no-ext-diff",
     "--no-color",
     "--find-renames",
-    "--unified=3",
+    `--unified=${Math.max(3, Math.min(200, Math.trunc(contextLines)))}`,
     mergeBase,
     "--",
   ]);
-  const extraPatch = await untrackedPatch(repositoryRoot);
+  const extraPatch = await untrackedPatch(repositoryRoot, contextLines);
   const patch = [trackedPatch, extraPatch].filter(Boolean).join("\n");
   const repositoryFiles = (await git(repositoryRoot, ["ls-files", "-co", "--exclude-standard", "-z"]))
     .split("\0")

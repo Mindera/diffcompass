@@ -159,6 +159,35 @@ For a stacked branch, set the parent explicitly or configure it:
 git config branch.my-feature.reviewTourBase parent-feature
 ```
 
+## Repository defaults
+
+Add `.code-review-tour.json` at the repository root to share review defaults:
+
+```json
+{
+  "base": "origin/main",
+  "agent": "codex",
+  "model": "gpt-5.6",
+  "reasoning": "high",
+  "diff": {
+    "layout": "split",
+    "changedFilesOnly": true,
+    "contextLines": 25
+  },
+  "review": {
+    "requireAllFilesReviewed": true,
+    "closeOutcome": "accepted"
+  }
+}
+```
+
+`contextLines` accepts 3–200. `closeOutcome` accepts `accepted` or
+`cancelled`; feedback remains an explicit separate action. A resumed session
+retains the settings it started with. For a new session, explicit CLI agent,
+model, reasoning, and base flags override repository defaults, which in turn
+override built-in and Git-inferred defaults. Unknown or mistyped settings fail
+closed so a misspelled policy cannot silently be ignored.
+
 ## Verify
 
 ```sh

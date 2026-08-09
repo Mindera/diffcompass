@@ -185,7 +185,7 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
         const sideValue = url.searchParams.get("side");
         const side = sideValue === null ? undefined : enumValue(sideValue, "side", ["old", "new"]);
         const contextValue = url.searchParams.get("context");
-        const context = contextValue === null ? 3 : Math.min(200, finitePositiveInteger(Number(contextValue), "context"));
+        const context = contextValue === null ? session.preferences.contextLines : Math.min(200, finitePositiveInteger(Number(contextValue), "context"));
         if ((line === undefined) !== (side === undefined)) throw new HttpError(400, "line and side must be provided together.");
         const diff = context > 3
           ? await session.expandedDiffFile(path, context, offset, limit)
