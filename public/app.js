@@ -17,6 +17,8 @@ const state = {
   diffCache: new Map(),
   diffCacheRevision: null,
   fileRequestId: 0,
+  highlightRequestId: 0,
+  flowRenderGeneration: 0,
   proposalPreview: false,
   searchQuery: "",
   searchMatches: null,
@@ -34,9 +36,9 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
+    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
     "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-format", "export-button", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
-    "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
+    "tour-summary", "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-mermaid", "cancel-flow",
@@ -339,6 +341,45 @@ function renderDiff(files) {
   const selected = actions.find((action) => action.closest(".diff-row")?.classList.contains("selected")) ?? actions[0];
   if (selected) selected.tabIndex = 0;
   elements["empty-diff"].classList.toggle("hidden", files.length > 0);
+  void highlightRenderedCode();
+}
+
+function syntaxTokenHtml(token) {
+  const styles = [token.fontStyle & 1 ? "syntax-italic" : "", token.fontStyle & 2 ? "syntax-bold" : "", token.fontStyle & 4 ? "syntax-underline" : ""].filter(Boolean).join(" ");
+  return `<span class="syntax-token sl-${escapeHtml(token.light)} sd-${escapeHtml(token.dark)} ${styles}">${escapeHtml(token.content)}</span>`;
+}
+
+async function highlightRenderedCode() {
+  const requestId = ++state.highlightRequestId;
+  const groups = [...elements.diff.querySelectorAll(".diff-file")].flatMap((section, index) => {
+    const nodes = [...section.querySelectorAll(".line-code")];
+    if (nodes.length === 0) return [];
+    const id = `diff-${index}`;
+    nodes.forEach((node) => { node.dataset.highlightGroup = id; });
+    return [{ id, path: section.dataset.path, lines: nodes.map((node) => node.textContent ?? "") }];
+  });
+  const source = elements.diff.querySelector(".source-file .source-code");
+  if (source) {
+    const lines = (source.textContent ?? "").split("\n");
+    source.dataset.highlightGroup = "source";
+    groups.push({ id: "source", path: source.closest(".source-file")?.dataset.path ?? "source.txt", lines });
+  }
+  if (groups.length === 0 || groups.reduce((sum, group) => sum + group.lines.length, 0) > 12_000) return;
+  try {
+    const result = await api("/api/highlight", { method: "POST", body: JSON.stringify({ groups }) });
+    if (requestId !== state.highlightRequestId) return;
+    for (const group of result.groups) {
+      if (group.id === "source") {
+        const target = elements.diff.querySelector('.source-code[data-highlight-group="source"]');
+        if (target) target.innerHTML = group.lines.map((line) => line.map(syntaxTokenHtml).join("")).join("\n");
+        continue;
+      }
+      const nodes = [...elements.diff.querySelectorAll(`.line-code[data-highlight-group="${CSS.escape(group.id)}"]`)];
+      group.lines.forEach((line, index) => { if (nodes[index]) nodes[index].innerHTML = line.map(syntaxTokenHtml).join("") || " "; });
+    }
+  } catch {
+    // Raw escaped source remains readable if highlighting is unavailable.
+  }
 }
 
 function visibleDiffFiles() {
@@ -404,8 +445,9 @@ async function showRepositoryFile(path) {
   try {
     const file = await api(`/api/files?path=${encodeURIComponent(path)}`);
     if (requestId !== state.fileRequestId) return;
-    elements.diff.innerHTML = `<section class="source-file"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="muted">unchanged</span></header><pre class="source-code">${escapeHtml(file.content)}</pre></section>`;
+    elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="muted">unchanged</span></header><pre class="source-code">${escapeHtml(file.content)}</pre></section>`;
     elements["empty-diff"].classList.add("hidden");
+    void highlightRenderedCode();
   } catch (error) {
     if (requestId === state.fileRequestId) toast(error.message);
   }
@@ -430,7 +472,12 @@ async function showActivityFile(activityId, path) {
 
 function currentStep() {
   const { outline, currentStepIndex } = state.session;
-  return outline?.steps[currentStepIndex];
+  return outline?.phases.flatMap((phase) => phase.steps)[currentStepIndex];
+}
+
+function currentPhase() {
+  const step = currentStep();
+  return state.session.outline?.phases.find((phase) => phase.steps.some((candidate) => candidate.id === step?.id));
 }
 
 function selectedAdapter() {
@@ -536,18 +583,11 @@ function renderPullRequest() {
     <h3>Existing review threads${pullRequest.threadsTruncated ? " (first 100)" : ""}</h3>${threads}`;
 }
 
-function renderFindings() {
-  document.querySelectorAll(".diff-row.has-finding").forEach((row) => row.classList.remove("has-finding"));
-  const findings = state.session.outline?.findings ?? [];
-  for (const finding of findings.filter((candidate) => candidate.status === "open")) {
-    const row = document.querySelector(`.diff-row[data-path="${CSS.escape(finding.path)}"][data-side="${finding.side}"][data-line="${finding.line}"]`);
-    row?.classList.add("has-finding");
-  }
-  elements["finding-count"].textContent = String(findings.filter((finding) => finding.status === "open").length);
+function findingCards(findings) {
   const disabled = reviewIsOpen() ? "" : " disabled";
   const ordered = [...findings].sort((left, right) => left.priority.localeCompare(right.priority) || left.path.localeCompare(right.path) || left.line - right.line);
-  elements["finding-list"].innerHTML = ordered.length === 0
-    ? '<p class="comment-empty">No evidence-backed findings were generated.</p>'
+  return ordered.length === 0
+    ? '<p class="comment-empty">No findings in this scope.</p>'
     : ordered.map((finding) => `<article class="finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${finding.outdated ? " outdated" : ""}" data-finding-id="${escapeHtml(finding.id)}">
       <div class="finding-heading"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(finding.path)}:${finding.line}</button><span class="finding-priority">${finding.priority}</span></div>
       <strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong>
@@ -560,55 +600,78 @@ function renderFindings() {
     </article>`).join("");
 }
 
-function parseSequence(mermaid) {
-  const participants = [];
-  const participantIds = new Set();
-  const events = [];
-  const unsupported = [];
-  for (const rawLine of String(mermaid).split("\n").slice(1)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("%%")) continue;
-    const participant = /^(?:participant|actor)\s+([^\s]+)(?:\s+as\s+(.+))?$/i.exec(line);
-    if (participant) {
-      participants.push({ id: participant[1], label: participant[2] ?? participant[1] });
-      participantIds.add(participant[1]);
-      continue;
-    }
-    const message = /^([A-Za-z0-9_.-]+?)\s*(-{1,2}(?:>>|>|x|\)))\s*([A-Za-z0-9_.-]+)\s*:\s*(.+)$/.exec(line);
-    if (message) {
-      const from = message[1];
-      const to = message[3].trim();
-      if (!participantIds.has(from)) { participants.push({ id: from, label: from }); participantIds.add(from); }
-      if (!participantIds.has(to)) { participants.push({ id: to, label: to }); participantIds.add(to); }
-      events.push({ from, to, label: message[4], return: message[2].startsWith("--") });
-    }
-    else if (/^(?:autonumber|activate\s+\S+|deactivate\s+\S+|note\s+(?:left of|right of|over)\s+\S+|alt\b|else\b|loop\b|opt\b|par\b|and\b|critical\b|option\b|break\b|rect\b|box\b|end$|create\s+(?:participant|actor)\b|destroy\s+\S+)/i.test(line)) events.push({ control: line });
-    else unsupported.push(line);
+function renderFindings() {
+  document.querySelectorAll(".diff-row.has-finding").forEach((row) => row.classList.remove("has-finding"));
+  const findings = state.session.outline?.findings ?? [];
+  for (const finding of findings.filter((candidate) => candidate.status === "open")) {
+    const row = document.querySelector(`.diff-row[data-path="${CSS.escape(finding.path)}"][data-side="${finding.side}"][data-line="${finding.line}"]`);
+    row?.classList.add("has-finding");
   }
-  return { participants, events, unsupported };
+  const step = currentStep();
+  const phase = currentPhase();
+  const stepFindings = findings.filter((finding) => finding.stepId === step?.id);
+  const phaseFindings = findings.filter((finding) => finding.phaseId === phase?.id && !finding.stepId);
+  elements["finding-count"].textContent = String(stepFindings.filter((finding) => finding.status === "open").length);
+  elements["finding-list"].innerHTML = findingCards(stepFindings);
+  elements["finding-drawer"].classList.toggle("hidden", stepFindings.length === 0);
+  elements["phase-finding-count"].textContent = String(phaseFindings.filter((finding) => finding.status === "open").length);
+  elements["phase-finding-list"].innerHTML = findingCards(phaseFindings);
+  elements["phase-finding-drawer"].classList.toggle("hidden", phaseFindings.length === 0);
+  elements["findings-tab-count"].textContent = String(findings.filter((finding) => finding.status === "open").length);
+  elements["findings-tab-count"].classList.toggle("hidden", findings.length === 0);
+  elements["all-findings-empty"].classList.toggle("hidden", findings.length > 0);
+  elements["all-findings-list"].innerHTML = findingCards(findings);
 }
 
 function renderFlows() {
   const flows = state.session.outline?.flows ?? [];
+  const generation = ++state.flowRenderGeneration;
   elements["regenerate-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["flows-empty"].classList.toggle("hidden", flows.length > 0);
   elements["flows-empty"].textContent = state.session.outline
     ? "No goal-critical, high-blast runtime flow was identified for this change."
     : "Start the tour to generate grounded main-flow diagrams.";
-  elements.flows.innerHTML = flows.map((flow) => {
-    const sequence = parseSequence(flow.mermaid);
-    return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
+  elements.flows.innerHTML = flows.map((flow, index) => `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
       <header><div><span class="provenance ${flow.provenance}">${escapeHtml(flow.provenance)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><span class="blast">affects ${flow.blastRadiusSize}</span><button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
-      ${sequence.unsupported.length > 0 ? `<div class="flow-warning">This flow uses unsupported Mermaid constructs, so only its source is shown to avoid a misleading partial diagram.</div>` : `<div class="sequence-diagram" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}">
-        <div class="sequence-participants">${sequence.participants.map((participant) => `<div><strong>${escapeHtml(participant.label)}</strong><span>${escapeHtml(participant.id)}</span></div>`).join("")}</div>
-        <div class="sequence-events">${sequence.events.map((event) => event.control
-          ? `<div class="sequence-control">${escapeHtml(event.control)}</div>`
-          : `<div class="sequence-event${event.return ? " return" : ""}"><span>${escapeHtml(event.from)}</span><b>${event.return ? "⇠" : "→"}</b><span>${escapeHtml(event.to)}</span><em>${escapeHtml(event.label)}</em></div>`).join("")}</div>
-      </div>`}
-      <details class="mermaid-source"${sequence.unsupported.length > 0 ? " open" : ""}><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
-    </article>`;
-  }).join("");
+      <div class="sequence-diagram mermaid-render" data-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
+      <div class="flow-warning hidden" data-flow-error>Could not render this diagram safely. Inspect or edit its source below.</div>
+      <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
+    </article>`).join("");
+  void renderFlowDiagrams(flows, generation);
+}
+
+async function renderFlowDiagrams(flows, generation) {
+  if (!window.mermaid || flows.length === 0) return;
+  const theme = document.documentElement.dataset.theme === "light" ? "default" : "dark";
+  window.mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    suppressErrorRendering: true,
+    theme,
+    maxTextSize: 12_000,
+    maxEdges: 500,
+    deterministicIds: true,
+    deterministicIDSeed: `review-tour-${state.session.revision}-${theme}`,
+    sequence: { useMaxWidth: true, wrap: true },
+  });
+  for (let index = 0; index < flows.length; index += 1) {
+    if (generation !== state.flowRenderGeneration) return;
+    const card = elements.flows.querySelector(`[data-flow-id="${CSS.escape(flows[index].id)}"]`);
+    const target = card?.querySelector(`[data-flow-index="${index}"]`);
+    if (!target) continue;
+    try {
+      const result = await window.mermaid.render(`review-tour-flow-${generation}-${index}`, flows[index].mermaid);
+      if (generation !== state.flowRenderGeneration || !target.isConnected) return;
+      target.innerHTML = result.svg;
+      target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+    } catch {
+      target.innerHTML = '<span class="muted">Diagram unavailable</span>';
+      card.querySelector("[data-flow-error]")?.classList.remove("hidden");
+      const source = card.querySelector(".mermaid-source");
+      if (source) source.open = true;
+    }
+  }
 }
 
 function renderActivities() {
@@ -636,11 +699,11 @@ function renderActivities() {
 }
 
 function availableTabs() {
-  return ["diff", "flows", "activity", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "flows", "findings", "activity", ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "flows", "activity", "pull-request"]) {
+  for (const tabName of ["diff", "flows", "findings", "activity", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -652,19 +715,23 @@ function renderActiveTab() {
 function renderTourAnnotation() {
   document.querySelectorAll(".tour-anchor").forEach((row) => row.classList.remove("tour-anchor"));
   document.querySelectorAll(".tour-code-note").forEach((note) => note.remove());
-  const step = currentStep();
-  if (!step) return;
-  const { path, side, startLine, endLine } = step.anchor;
-  const rows = [...document.querySelectorAll(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"]`)]
-    .filter((row) => Number(row.dataset.line) >= startLine && Number(row.dataset.line) <= endLine);
-  rows.forEach((row) => row.classList.add("tour-anchor"));
-  const lastRow = rows.at(-1);
-  if (!lastRow) return;
-  const note = document.createElement("aside");
-  note.className = "tour-code-note";
-  note.setAttribute("aria-label", `Current tour step: ${step.title}`);
-  note.innerHTML = `<span>Step ${state.session.currentStepIndex + 1}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 220))}</p>`;
-  (lastRow.closest(".split-row") ?? lastRow).insertAdjacentElement("afterend", note);
+  const activeStep = currentStep();
+  const phase = currentPhase();
+  if (!activeStep || !phase) return;
+  for (let index = phase.steps.length - 1; index >= 0; index -= 1) {
+    const step = phase.steps[index];
+    const { path, side, startLine, endLine } = step.anchor;
+    const rows = [...document.querySelectorAll(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"]`)]
+      .filter((row) => Number(row.dataset.line) >= startLine && Number(row.dataset.line) <= endLine);
+    if (step.id === activeStep.id) rows.forEach((row) => row.classList.add("tour-anchor"));
+    const lastRow = rows.at(-1);
+    if (!lastRow) continue;
+    const note = document.createElement("aside");
+    note.className = `tour-code-note${step.id === activeStep.id ? " active" : ""}`;
+    note.setAttribute("aria-label", `${step.id === activeStep.id ? "Current" : "Upcoming"} tour stop: ${step.title}`);
+    note.innerHTML = `<span>Stop ${index + 1}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 220))}</p>`;
+    (lastRow.closest(".split-row") ?? lastRow).insertAdjacentElement("afterend", note);
+  }
 }
 
 async function focusCurrentStep() {
@@ -698,11 +765,22 @@ function renderTour() {
   elements["tour-active"].classList.toggle("hidden", !active);
   if (!outline) return;
 
-  const step = outline.steps[currentStepIndex];
+  const steps = outline.phases.flatMap((phase) => phase.steps);
+  const step = steps[currentStepIndex];
+  const phase = outline.phases.find((candidate) => candidate.steps.some((item) => item.id === step.id));
+  const phaseIndex = outline.phases.indexOf(phase);
+  const stopInPhase = phase.steps.findIndex((candidate) => candidate.id === step.id);
   elements["tour-title"].textContent = outline.title;
   elements["tour-summary"].textContent = outline.summary;
-  elements["step-count"].textContent = `Step ${currentStepIndex + 1} of ${outline.steps.length}`;
-  elements["progress-value"].value = ((currentStepIndex + 1) / outline.steps.length) * 100;
+  elements["step-count"].textContent = `Phase ${phaseIndex + 1} of ${outline.phases.length} · Stop ${stopInPhase + 1} of ${phase.steps.length}`;
+  elements["progress-value"].value = ((currentStepIndex + 1) / steps.length) * 100;
+  elements["phase-count"].textContent = `Phase ${phaseIndex + 1}`;
+  elements["phase-title"].textContent = phase.title;
+  elements["phase-summary"].textContent = phase.summary;
+  elements["phase-files"].innerHTML = phase.fileChanges.map((change) => {
+    const file = state.session.comparison.files.find((candidate) => candidate.path === change.path);
+    return `<button type="button" class="phase-file" data-phase-file="${escapeHtml(change.path)}"><span><strong>${escapeHtml(change.path)}</strong><small>${escapeHtml(change.summary)}</small></span>${file ? `<span class="file-stats"><span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>` : ""}</button>`;
+  }).join("");
   elements["step-anchor"].textContent = `${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine}`;
   elements["step-title"].textContent = step.title;
   elements["step-objective"].textContent = step.objective;
@@ -711,7 +789,7 @@ function renderTour() {
   elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
   elements["planning-note-list"].innerHTML = planningNotes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
   elements["previous-step"].disabled = state.busy || !reviewIsOpen() || currentStepIndex === 0;
-  elements["next-step"].disabled = state.busy || !reviewIsOpen() || currentStepIndex === outline.steps.length - 1;
+  elements["next-step"].disabled = state.busy || !reviewIsOpen() || currentStepIndex === steps.length - 1;
   renderMessages();
   renderTourAnnotation();
 }
@@ -1076,6 +1154,9 @@ elements["flow-form"].addEventListener("submit", saveFlow);
 elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
 elements["theme-select"].value = window.reviewTourTheme.preference();
 elements["theme-select"].addEventListener("change", () => window.reviewTourTheme.set(elements["theme-select"].value));
+window.addEventListener("review-tour-theme-change", () => {
+  if (state.session && state.activeTab === "flows") renderFlows();
+});
 elements["sessions-button"].addEventListener("click", () => { elements["sessions-dialog"].showModal(); void loadSessions(); });
 elements["close-sessions"].addEventListener("click", () => elements["sessions-dialog"].close());
 elements["show-archived-sessions"].addEventListener("change", loadSessions);
@@ -1136,6 +1217,7 @@ elements["diff-layout"].addEventListener("change", () => {
 });
 elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });
 elements["flows-tab"].addEventListener("click", () => { state.activeTab = "flows"; renderFlows(); renderActiveTab(); });
+elements["findings-tab"].addEventListener("click", () => { state.activeTab = "findings"; renderFindings(); renderActiveTab(); });
 elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
 elements["pull-request-tab"].addEventListener("click", () => { state.activeTab = "pull-request"; renderPullRequest(); renderActiveTab(); });
 elements.flows.addEventListener("click", (event) => {
@@ -1217,7 +1299,16 @@ elements.diff.addEventListener("click", (event) => {
   }
   const findingPin = event.target.closest("[data-finding-id]");
   if (findingPin) {
-    document.querySelector(`.finding-item[data-finding-id="${CSS.escape(findingPin.dataset.findingId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const selector = `.finding-item[data-finding-id="${CSS.escape(findingPin.dataset.findingId)}"]`;
+    let item = [...document.querySelectorAll(selector)].find((candidate) => candidate.offsetParent !== null);
+    if (!item) {
+      state.activeTab = "findings";
+      renderActiveTab();
+      item = elements["all-findings-list"].querySelector(selector);
+    }
+    const evidence = item?.querySelector("details");
+    if (evidence) evidence.open = true;
+    item?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
   if (!reviewIsOpen()) return;
@@ -1262,7 +1353,7 @@ elements["file-tree"].addEventListener("click", (event) => {
   if (button.dataset.file) void showChangedFile(button.dataset.file);
 });
 
-elements["finding-list"].addEventListener("click", async (event) => {
+async function handleFindingClick(event) {
   const action = event.target.closest("button")?.dataset.action;
   const item = event.target.closest("[data-finding-id]");
   if (!action || !item) return;
@@ -1280,6 +1371,14 @@ elements["finding-list"].addEventListener("click", async (event) => {
   } catch (error) {
     toast(error.message);
   }
+}
+
+elements["finding-list"].addEventListener("click", handleFindingClick);
+elements["phase-finding-list"].addEventListener("click", handleFindingClick);
+elements["all-findings-list"].addEventListener("click", handleFindingClick);
+elements["phase-files"].addEventListener("click", (event) => {
+  const path = event.target.closest("[data-phase-file]")?.dataset.phaseFile;
+  if (path) void showChangedFile(path);
 });
 
 elements["comment-list"].addEventListener("click", async (event) => {

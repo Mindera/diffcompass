@@ -139,13 +139,42 @@ test("serves the early theme bootstrap before the stylesheet", async () => {
   expect(page.indexOf('src="/theme.js"')).toBeLessThan(page.indexOf('href="/styles.css"'));
 });
 
+test("serves local Mermaid and bounds authenticated syntax highlighting", async () => {
+  const { session, url } = await fixture();
+  const headers = browserHeaders(url, session.browserToken);
+  const mermaid = await jsonRequest(url, "/mermaid.min.js");
+  expect(mermaid.status).toBe(200);
+  expect(mermaid.headers.get("content-type")).toContain("text/javascript");
+  expect((await mermaid.text()).length).toBeGreaterThan(1_000_000);
+
+  expect((await jsonRequest(url, "/api/highlight", {
+    method: "POST", headers: { "content-type": "application/json", origin: url },
+    body: JSON.stringify({ groups: [] }),
+  })).status).toBe(401);
+  const response = await jsonRequest(url, "/api/highlight", {
+    method: "POST", headers,
+    body: JSON.stringify({ groups: [{ id: "app", path: "app.ts", lines: ["const changed = 2;"] }] }),
+  });
+  expect(response.status).toBe(200);
+  const highlighted = await response.json() as { groups: Array<{ id: string; lines: Array<Array<{ content: string; light: string; dark: string }>> }> };
+  expect(highlighted.groups[0]?.id).toBe("app");
+  expect(highlighted.groups[0]?.lines[0]?.map((token) => token.content).join("")).toBe("const changed = 2;");
+  expect(highlighted.groups[0]?.lines[0]?.every((token) => /^[0-9a-f]{6}$/.test(token.light) && /^[0-9a-f]{6}$/.test(token.dark))).toBe(true);
+
+  const duplicate = await jsonRequest(url, "/api/highlight", {
+    method: "POST", headers,
+    body: JSON.stringify({ groups: [{ id: "same", path: "a.ts", lines: ["a"] }, { id: "same", path: "b.ts", lines: ["b"] }] }),
+  });
+  expect(duplicate.status).toBe(422);
+});
+
 test("flow edits are validated and exports are authenticated downloadable artifacts", async () => {
   const { session, url } = await fixture();
   const headers = browserHeaders(url, session.browserToken);
   session.outline = {
     title: "<script>Review</script>",
     summary: "Summary",
-    steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
+    phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
     findings: [],
     flows: [{ id: "flow", title: "Old", summary: "Old", mermaid: "sequenceDiagram\n  A->>B: old", provenance: "partial", blastRadiusSize: 2 }],
   };
@@ -341,7 +370,7 @@ test("session library API lists, renames, archives, and explicitly deletes sessi
   const { repository, session, url } = await fixture();
   const directory = join(repository, ".test-sessions");
   const state: PersistedReviewSession = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     repositoryRoot: repository,
     base: "origin/main",
     browserToken: "another-browser-token",

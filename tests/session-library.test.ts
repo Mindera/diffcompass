@@ -14,7 +14,7 @@ afterEach(async () => {
 
 function session(overrides: Partial<PersistedReviewSession> = {}): PersistedReviewSession {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     repositoryRoot: "/private/tmp/example-repository",
     base: "origin/main",
     browserToken: "browser-token",

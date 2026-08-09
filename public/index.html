@@ -17,6 +17,7 @@
       <div class="tabs" role="tablist">
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
         <button id="flows-tab" class="tab" data-tab="flows" role="tab" aria-selected="false" aria-controls="flows-view" tabindex="-1">Flows</button>
+        <button id="findings-tab" class="tab" data-tab="findings" role="tab" aria-selected="false" aria-controls="findings-view" tabindex="-1">Findings <span id="findings-tab-count" class="tab-count hidden">0</span></button>
         <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
         <button id="pull-request-tab" class="tab hidden" data-tab="pull-request" role="tab" aria-selected="false" aria-controls="pull-request-view" tabindex="-1">Pull request</button>
       </div>
@@ -83,6 +84,11 @@
           <div id="flows-empty" class="empty">Start the tour to generate grounded main-flow diagrams.</div>
           <div id="flows" class="flows"></div>
         </div>
+        <div id="findings-view" class="review-view hidden" role="tabpanel" aria-labelledby="findings-tab">
+          <div class="flows-toolbar"><div><strong>All findings</strong><span class="muted">Evidence-backed analysis across the complete tour</span></div></div>
+          <div id="all-findings-empty" class="empty">No evidence-backed findings were generated.</div>
+          <div id="all-findings-list" class="all-findings-list"></div>
+        </div>
         <div id="activity-view" class="review-view hidden" role="tabpanel" aria-labelledby="activity-tab">
           <div id="activity-empty" class="empty">Agent-authored repository changes will appear here.</div>
           <div id="activity-list" class="activity-list"></div>
@@ -130,6 +136,17 @@
               <summary>How the agent organized this tour</summary>
               <ul id="planning-note-list"></ul>
             </details>
+            <section class="phase-card">
+              <div id="phase-count" class="anchor"></div>
+              <h3 id="phase-title"></h3>
+              <p id="phase-summary" class="objective"></p>
+              <div class="eyebrow">Files in this phase</div>
+              <div id="phase-files" class="phase-files"></div>
+              <section id="phase-finding-drawer" class="finding-drawer" aria-labelledby="phase-finding-title">
+                <div class="comment-drawer-heading"><h3 id="phase-finding-title">Phase findings</h3><span id="phase-finding-count" class="count">0</span></div>
+                <div id="phase-finding-list" class="finding-list"></div>
+              </section>
+            </section>
             <article class="step-card">
               <div id="step-anchor" class="anchor"></div>
               <h3 id="step-title"></h3>
@@ -141,7 +158,7 @@
             <div class="comment-drawer-heading">
               <div>
                 <div class="eyebrow">Agent analysis</div>
-                <h3 id="finding-drawer-title">Findings</h3>
+                <h3 id="finding-drawer-title">Current stop findings</h3>
               </div>
               <span id="finding-count" class="count">0</span>
             </div>
@@ -215,6 +232,7 @@
     </dialog>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <script src="/mermaid.min.js"></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

@@ -16,6 +16,7 @@
     const resolved = choice === "system" ? (media.matches ? "dark" : "light") : choice;
     document.documentElement.dataset.theme = resolved;
     document.documentElement.style.colorScheme = resolved;
+    window.dispatchEvent(new CustomEvent("review-tour-theme-change", { detail: { theme: resolved } }));
     return resolved;
   }
 

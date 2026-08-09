@@ -24,17 +24,53 @@ function validAnchor(value: unknown): boolean {
 function validOutline(value: unknown): boolean {
   if (!record(value) || !nonEmptyString(value.title, 8_000) || !nonEmptyString(value.summary, 50_000)) return false;
   if (value.planningNotes !== undefined && (!Array.isArray(value.planningNotes) || value.planningNotes.length > 20 || !value.planningNotes.every((note) => nonEmptyString(note, 2_000)))) return false;
-  if (!Array.isArray(value.steps) || !Array.isArray(value.flows) || !Array.isArray(value.findings)) return false;
-  if (value.steps.length > 100 || value.flows.length > 50 || value.findings.length > 2_000) return false;
-  return value.steps.every((step) => record(step) && nonEmptyString(step.id, 128) && nonEmptyString(step.title, 8_000) &&
-    nonEmptyString(step.objective, 50_000) && validAnchor(step.anchor) &&
-    (step.explanation === undefined || nonEmptyString(step.explanation, 500_000)) &&
-    (step.outdated === undefined || typeof step.outdated === "boolean")) &&
-    value.flows.every((flow) => record(flow) && nonEmptyString(flow.id, 128) && nonEmptyString(flow.title, 8_000) &&
+  if (!Array.isArray(value.phases) || !Array.isArray(value.flows) || !Array.isArray(value.findings)) return false;
+  if (value.phases.length === 0 || value.phases.length > 50 || value.flows.length > 50 || value.findings.length > 2_000) return false;
+  const phases = value.phases;
+  const phaseIds = new Set<string>();
+  const stepIds = new Set<string>();
+  const filePathsByPhase = new Map<string, Set<string>>();
+  const stepsByPhase = new Map<string, Map<string, Record<string, unknown>>>();
+  let stepCount = 0;
+  for (const phase of phases) {
+    if (!record(phase) || !nonEmptyString(phase.id, 128) || phaseIds.has(phase.id) || !nonEmptyString(phase.title, 8_000) ||
+      !nonEmptyString(phase.summary, 50_000) || !Array.isArray(phase.fileChanges) || phase.fileChanges.length === 0 || phase.fileChanges.length > 10_000 ||
+      !Array.isArray(phase.steps) || phase.steps.length === 0 || phase.steps.length > 100) return false;
+    phaseIds.add(phase.id);
+    const filePaths = new Set<string>();
+    if (!phase.fileChanges.every((file) => record(file) && nonEmptyString(file.path, 4_096) && !filePaths.has(file.path) &&
+      Boolean(filePaths.add(file.path)) && nonEmptyString(file.summary, 50_000))) return false;
+    filePathsByPhase.set(phase.id, filePaths);
+    const phaseSteps = new Map<string, Record<string, unknown>>();
+    for (const step of phase.steps) {
+      if (!record(step) || !nonEmptyString(step.id, 128) || stepIds.has(step.id) || !nonEmptyString(step.title, 8_000) ||
+        !nonEmptyString(step.objective, 50_000) || !validAnchor(step.anchor) || !filePaths.has(String((step.anchor as Record<string, unknown>).path)) ||
+        (step.explanation !== undefined && !nonEmptyString(step.explanation, 500_000)) ||
+        (step.outdated !== undefined && typeof step.outdated !== "boolean")) return false;
+      stepIds.add(step.id);
+      phaseSteps.set(step.id, step);
+      stepCount += 1;
+    }
+    stepsByPhase.set(phase.id, phaseSteps);
+  }
+  if (stepCount > 100) return false;
+  const flowIds = new Set<string>();
+  const validFlows = value.flows.every((flow) => record(flow) && nonEmptyString(flow.id, 128) && !flowIds.has(flow.id) && Boolean(flowIds.add(flow.id)) && nonEmptyString(flow.title, 8_000) &&
       nonEmptyString(flow.summary, 50_000) && nonEmptyString(flow.mermaid, 12_000) &&
       ["verified", "partial", "unverified"].includes(String(flow.provenance)) &&
-      Number.isInteger(flow.blastRadiusSize) && Number(flow.blastRadiusSize) >= 0) &&
-    value.findings.every((finding) => record(finding) && nonEmptyString(finding.id, 128) &&
+      Number.isInteger(flow.blastRadiusSize) && Number(flow.blastRadiusSize) >= 0);
+  if (!validFlows) return false;
+  const findingIds = new Set<string>();
+  return value.findings.every((finding) => record(finding) && nonEmptyString(finding.id, 128) && !findingIds.has(finding.id) && Boolean(findingIds.add(finding.id)) &&
+      (finding.phaseId === undefined || (nonEmptyString(finding.phaseId, 128) && phaseIds.has(finding.phaseId))) &&
+      (finding.phaseId === undefined || filePathsByPhase.get(String(finding.phaseId))?.has(String(finding.path))) &&
+      (finding.stepId === undefined || (() => {
+        if (!nonEmptyString(finding.stepId, 128) || finding.phaseId === undefined) return false;
+        const step = stepsByPhase.get(String(finding.phaseId))?.get(finding.stepId);
+        const anchor = step?.anchor;
+        return record(anchor) && anchor.path === finding.path && anchor.side === finding.side &&
+          Number(finding.line) >= Number(anchor.startLine) && Number(finding.line) <= Number(anchor.endLine);
+      })()) &&
       nonEmptyString(finding.path, 4_096) && ["old", "new"].includes(String(finding.side)) &&
       Number.isInteger(finding.line) && Number(finding.line) > 0 && boundedString(finding.lineContent) && nonEmptyString(finding.message, 50_000) &&
       nonEmptyString(finding.category, 128) && ["critical", "high", "medium", "low"].includes(String(finding.severity)) &&
@@ -175,6 +211,19 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
   }
   if (!record(value)) throw new Error("The review session file is invalid.");
   if (value.schemaVersion === 1 && record(value.outline)) {
+    const legacySteps = Array.isArray(value.outline.steps) ? value.outline.steps : [];
+    const legacyPaths = [...new Set(legacySteps.flatMap((step) => record(step) && record(step.anchor) && typeof step.anchor.path === "string" ? [step.anchor.path] : []))];
+    value.outline.phases = [{
+      id: "legacy-tour",
+      title: "Guided review",
+      summary: typeof value.outline.summary === "string" ? value.outline.summary : "Imported from an earlier Code Review Tour session.",
+      fileChanges: legacyPaths.map((filePath) => ({ path: filePath, summary: "Changed file included in the original tour." })),
+      steps: legacySteps,
+    }];
+    delete value.outline.steps;
+    value.schemaVersion = 2;
+  }
+  if (value.schemaVersion === 2 && record(value.outline)) {
     value.outline.flows ??= [];
     value.outline.findings ??= [];
     if (Array.isArray(value.outline.findings)) {
@@ -188,7 +237,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
   }
   const session = value as Partial<PersistedReviewSession>;
   if (
-    session.schemaVersion !== 1 ||
+    session.schemaVersion !== 2 ||
     (session.name !== undefined && !nonEmptyString(session.name, 200)) ||
     (session.archived !== undefined && typeof session.archived !== "boolean") ||
     !nonEmptyString(session.repositoryRoot, 16_384) ||
@@ -231,7 +280,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
   if (
     (outline !== undefined && selection === undefined) ||
     (outline === undefined && session.currentStepIndex !== -1) ||
-    (outline !== undefined && (session.currentStepIndex! < 0 || session.currentStepIndex! >= outline.steps.length)) ||
+    (outline !== undefined && (session.currentStepIndex! < 0 || session.currentStepIndex! >= outline.phases.flatMap((phase) => phase.steps).length)) ||
     (selection?.adapterId === "attached" && session.bridgeToken === undefined) ||
     (session.bridgePrompts !== undefined && (session.bridgeToken === undefined || session.bridgeSequence === undefined ||
       new Set(session.bridgePrompts.map((record) => record.event.id)).size !== session.bridgePrompts.length ||

@@ -9,6 +9,7 @@ import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
 import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
+import { tourSteps } from "./tour.ts";
 import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
 
 interface AgentDefaults {
@@ -153,7 +154,7 @@ export class ReviewSession {
 
   private persistedState(): PersistedReviewSession {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       name: this.sessionName,
       archived: this.archived,
       repositoryRoot: this.comparison.repositoryRoot,
@@ -562,13 +563,14 @@ export class ReviewSession {
           this.ensureComparisonCurrent(comparisonGeneration);
           this.outline = outline;
           this.currentStepIndex = 0;
-        } else if (this.currentStepIndex < 0 || this.currentStepIndex >= this.outline.steps.length) {
+        } else if (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length) {
           this.currentStepIndex = 0;
         }
         this.ensureOpen();
-        const step = this.outline.steps[this.currentStepIndex];
+        const steps = tourSteps(this.outline);
+        const step = steps[this.currentStepIndex]!;
         if (!step.explanation) {
-          const explanation = await this.agent.explainStep(step, this.currentStepIndex, this.outline.steps.length);
+          const explanation = await this.agent.explainStep(step, this.currentStepIndex, steps.length);
           this.ensureComparisonCurrent(comparisonGeneration);
           step.explanation = explanation;
         }
@@ -599,10 +601,11 @@ export class ReviewSession {
       if (!this.outline || !this.agent) throw new ReviewError("Start the tour first.");
       this.agent.useComparison(this.comparison);
       const delta = direction === "next" ? 1 : -1;
-      const index = Math.max(0, Math.min(this.outline.steps.length - 1, this.currentStepIndex + delta));
-      const step = this.outline.steps[index];
+      const steps = tourSteps(this.outline);
+      const index = Math.max(0, Math.min(steps.length - 1, this.currentStepIndex + delta));
+      const step = steps[index]!;
       if (!step.explanation) {
-        const explanation = await this.agent.explainStep(step, index, this.outline.steps.length);
+        const explanation = await this.agent.explainStep(step, index, steps.length);
         this.ensureComparisonCurrent(comparisonGeneration);
         step.explanation = explanation;
       }
@@ -692,7 +695,7 @@ export class ReviewSession {
         this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge);
       }
       this.agent.useComparison(this.comparison);
-      const step = this.outline?.steps[this.currentStepIndex];
+      const step = tourSteps(this.outline)[this.currentStepIndex];
       const stepId = step?.id;
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -937,7 +940,7 @@ export class ReviewSession {
         const row = this.findRow(comment.path, comment.side, comment.line);
         comment.status = row?.content === comment.lineContent ? "active" : "outdated";
       }
-      for (const step of this.outline?.steps ?? []) {
+      for (const step of tourSteps(this.outline)) {
         step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
       }
       for (const finding of this.outline?.findings ?? []) {
@@ -988,7 +991,7 @@ export class ReviewSession {
           const row = this.findRow(comment.path, comment.side, comment.line);
           comment.status = row?.content === comment.lineContent ? "active" : "outdated";
         }
-        for (const step of this.outline?.steps ?? []) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
+        for (const step of tourSteps(this.outline)) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
         for (const finding of this.outline?.findings ?? []) {
           const row = this.findRow(finding.path, finding.side, finding.line);
           finding.outdated = row?.content !== finding.lineContent;

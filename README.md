@@ -16,13 +16,15 @@ to the relevant code, and stays available for follow-up questions.
 - renders the complete repository tree, unchanged source files, and the branch diff;
 - detects installed Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI agents;
 - lets the reviewer choose an available agent, model, and reasoning effort;
-- asks the selected agent to create a logically ordered tour;
+- asks the selected agent to organize the change into logical phases and precise code stops;
 - generates each explanation as the reviewer moves forward;
 - keeps follow-up questions in the same agent conversation;
 - places a compact tour annotation beside the active code while the agent gives the deeper explanation in a separately scrollable panel;
 - keeps the diff and file navigation reviewer-controlled; only Start, Previous, and Next jump to a tour anchor;
-- anchors editable review comments and evidence-backed P0–P3 findings to diff lines;
-- generates provenance-labelled sequence views for goal-critical, high-blast flows, with validated editing and agent regeneration;
+- declares each phase's changed files and their role, with Git-derived additions and deletions;
+- separates stop-scoped and phase-scoped P0–P3 findings, while keeping a complete Findings view for global and migrated analysis;
+- syntax-highlights loaded diffs locally in both light and dark themes;
+- renders provenance-labelled Mermaid sequence diagrams as strict local SVG for goal-critical, high-blast flows, with validated editing, source fallback, and agent regeneration;
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
 - exports the complete tour, flows, findings, reviewer feedback, changed-file state, and diff as Markdown or self-contained HTML;
 - refreshes when repository files change and marks stale annotations as outdated;
@@ -247,11 +249,24 @@ output in addition to including it in the planning prompt. Repository
 instructions cannot override read-only execution, evidence requirements, or the
 tour response contract.
 
-The Flows tab accepts the documented Mermaid sequence subset: participants and
+The Flows tab renders the documented Mermaid sequence subset as SVG using the
+locally bundled Mermaid runtime in strict mode; it never loads a CDN. The
+validated source stays available in a collapsed disclosure and opens
+automatically if rendering fails. Supported syntax includes participants and
 actors, standard message and destruction arrows, notes, activation, autonumber,
 and `alt`, `loop`, `opt`, `par`, `critical`, `break`, `rect`, and `box` blocks.
 Edits are validated and bounded before persistence. Use `Regenerate` on one flow
 or `Regenerate all` to ask the active tour agent to re-inspect the current diff.
+
+Guided reviews are organized as `Tour → Phases → Stops`. A phase represents one
+coherent behavioral or architectural change and declares the changed files that
+participate in it. A stop is an exact old/new diff anchor with a short inline
+annotation and a deeper agent explanation. Previous and Next traverse the
+flattened stop route across phase boundaries; file-tree and free-form diff
+navigation remain under the reviewer's control. Findings shown below a stop are
+limited to that exact anchor, phase findings sit with the phase overview, and
+the Findings tab contains the complete set. Sessions created before v0.9 are
+migrated into a legacy phase without guessing finding scope.
 
 Use the header's Export control at any point—including after closure—to download
 Markdown or a self-contained HTML artifact. Exports contain no scripts, remote

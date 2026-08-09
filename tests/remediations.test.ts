@@ -64,6 +64,8 @@ async function reviewFixture(options: { extraFiles?: boolean; lineCount?: number
 function finding(lineContent = "const changed = 2;"): ReviewFinding {
   return {
     id: "finding-1",
+    phaseId: "behavior",
+    stepId: "changed-line",
     path: "app.ts",
     side: "new",
     line: 2,
@@ -87,7 +89,13 @@ function outline(reviewFinding: ReviewFinding): TourOutline {
   return {
     title: "Review",
     summary: "Review the changed behavior.",
-    steps: [],
+    phases: [{
+      id: "behavior",
+      title: "Changed behavior",
+      summary: "Inspect the changed line.",
+      fileChanges: [{ path: "app.ts", summary: "Contains the changed value." }],
+      steps: [{ id: "changed-line", title: "Changed line", objective: "Inspect the value.", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
+    }],
     flows: [],
     findings: [reviewFinding],
   };

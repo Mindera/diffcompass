@@ -28,11 +28,18 @@ function markdown(session: ReviewSession): string {
     `- Status: ${session.status}`,
     "",
   ];
-  if (outline?.steps.length) {
+  if (outline?.phases.length) {
     lines.push("## Tour", "");
-    outline.steps.forEach((step, index) => {
-      lines.push(`### ${index + 1}. ${markdownText(step.title)}`, "", `${markdownText(step.anchor.path)}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side})`, "", markdownText(step.objective), "");
-      if (step.explanation) lines.push(markdownText(step.explanation), "");
+    let stopNumber = 0;
+    outline.phases.forEach((phase, phaseIndex) => {
+      lines.push(`### Phase ${phaseIndex + 1}: ${markdownText(phase.title)}`, "", markdownText(phase.summary), "", "Files:", "");
+      for (const file of phase.fileChanges) lines.push(`- ${markdownText(file.path)} — ${markdownText(file.summary)}`);
+      lines.push("");
+      for (const step of phase.steps) {
+        stopNumber += 1;
+        lines.push(`#### Stop ${stopNumber}: ${markdownText(step.title)}`, "", `${markdownText(step.anchor.path)}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side})`, "", markdownText(step.objective), "");
+        if (step.explanation) lines.push(markdownText(step.explanation), "");
+      }
     });
   }
   if (outline?.flows.length) {
@@ -44,7 +51,7 @@ function markdown(session: ReviewSession): string {
   if (outline?.findings.length) {
     lines.push("## Findings", "");
     for (const finding of outline.findings) {
-      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Status: ${finding.status}; severity: ${finding.severity}; confidence: ${finding.confidence}`, "", markdownText(finding.message), "", `Evidence: ${markdownText(finding.evidence)}`, "");
+      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Scope: ${markdownText(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${markdownText(finding.stepId)}` : ""}; status: ${finding.status}; severity: ${finding.severity}; confidence: ${finding.confidence}`, "", markdownText(finding.message), "", `Evidence: ${markdownText(finding.evidence)}`, "");
     }
   }
   if (session.comments.length) {
@@ -67,9 +74,10 @@ function escapeHtml(value: unknown): string {
 
 function html(session: ReviewSession): string {
   const outline = session.outline;
-  const steps = outline?.steps.map((step, index) => `<section><h3>${index + 1}. ${escapeHtml(step.title)}</h3><code>${escapeHtml(step.anchor.path)}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side})</code><p>${escapeHtml(step.objective)}</p>${step.explanation ? `<div class="prose">${escapeHtml(step.explanation)}</div>` : ""}</section>`).join("") ?? "";
+  let stopNumber = 0;
+  const steps = outline?.phases.map((phase, phaseIndex) => `<section><h3>Phase ${phaseIndex + 1}: ${escapeHtml(phase.title)}</h3><p>${escapeHtml(phase.summary)}</p><ul>${phase.fileChanges.map((file) => `<li><code>${escapeHtml(file.path)}</code> — ${escapeHtml(file.summary)}</li>`).join("")}</ul>${phase.steps.map((step) => { stopNumber += 1; return `<section><h4>Stop ${stopNumber}: ${escapeHtml(step.title)}</h4><code>${escapeHtml(step.anchor.path)}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side})</code><p>${escapeHtml(step.objective)}</p>${step.explanation ? `<div class="prose">${escapeHtml(step.explanation)}</div>` : ""}</section>`; }).join("")}</section>`).join("") ?? "";
   const flows = outline?.flows.map((flow) => `<section><h3>${escapeHtml(flow.title)}</h3><p class="meta">${flow.provenance}; blast radius ${flow.blastRadiusSize}</p><p>${escapeHtml(flow.summary)}</p><pre><code>${escapeHtml(flow.mermaid)}</code></pre></section>`).join("") ?? "";
-  const findings = outline?.findings.map((finding) => `<section class="finding"><h3>${finding.priority}: ${escapeHtml(finding.category)} at ${escapeHtml(finding.path)}:${finding.line}</h3><p class="meta">Status: ${finding.status}; severity: ${finding.severity}; confidence: ${finding.confidence}</p><p>${escapeHtml(finding.message)}</p><p><strong>Evidence:</strong> ${escapeHtml(finding.evidence)}</p></section>`).join("") ?? "";
+  const findings = outline?.findings.map((finding) => `<section class="finding"><h3>${finding.priority}: ${escapeHtml(finding.category)} at ${escapeHtml(finding.path)}:${finding.line}</h3><p class="meta">Scope: ${escapeHtml(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${escapeHtml(finding.stepId)}` : ""}; status: ${finding.status}; severity: ${finding.severity}; confidence: ${finding.confidence}</p><p>${escapeHtml(finding.message)}</p><p><strong>Evidence:</strong> ${escapeHtml(finding.evidence)}</p></section>`).join("") ?? "";
   const comments = session.comments.map((comment) => `<section class="comment"><h3>${escapeHtml(comment.path)}:${comment.line} (${comment.side})</h3><p class="meta">Status: ${comment.status}</p><p>${escapeHtml(comment.body)}</p></section>`).join("");
   const files = session.comparison.files.map((file) => `<li><code>${escapeHtml(file.path)}</code> (${file.status}, +${file.additions}/-${file.deletions})${session.reviewedFiles.has(file.path) ? " — reviewed" : ""}</li>`).join("");
   return `<!doctype html>

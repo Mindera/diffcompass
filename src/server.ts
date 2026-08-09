@@ -7,10 +7,13 @@ import indexHtml from "../public/index.html" with { type: "text" };
 import styles from "../public/styles.css" with { type: "text" };
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
 import themeScript from "../public/theme.js" with { type: "text" };
+// @ts-expect-error Bun's text loader embeds the local browser runtime in release binaries.
+import mermaidScript from "mermaid/dist/mermaid.min.js" with { type: "text" };
 import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
 import { exportReview, type ExportFormat } from "./export.ts";
 import { loadRepositoryFile } from "./git.ts";
+import { highlightGroups, type HighlightGroup } from "./highlight.ts";
 import { ReviewSession } from "./session.ts";
 import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
 import {
@@ -29,11 +32,12 @@ const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
   "app.js": { body: String(appScript), contentType: "text/javascript; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
+  "mermaid.min.js": { body: String(mermaidScript), contentType: "text/javascript; charset=utf-8" },
   "styles.css": { body: String(styles), contentType: "text/css; charset=utf-8" },
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
-  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -78,7 +82,7 @@ function requireBrowserAuthorization(request: Request, session: ReviewSession): 
   }
 }
 
-export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory()) {
+export function createRequestHandler(session: ReviewSession, sessionDirectory = reviewSessionDirectory()) {
   const fetch = async (request: Request) => {
     const url = new URL(request.url);
     try {
@@ -189,6 +193,31 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
         const query = queryValue === null || queryValue === "" ? "" : optionalString(queryValue, "q", 200) ?? "";
         const statuses = url.searchParams.getAll("status").map((status) => enumValue(status, "status", ["added", "deleted", "modified", "renamed"]));
         return json(session.searchDiff(query, statuses));
+      }
+      if (request.method === "POST" && url.pathname === "/api/highlight") {
+        const input = await readJsonObject(request, 4 * 1024 * 1024);
+        exactKeys(input, ["groups"]);
+        if (!Array.isArray(input.groups) || input.groups.length > 200) throw new HttpError(422, "groups must be an array with at most 200 entries.");
+        let totalLines = 0;
+        let totalCharacters = 0;
+        const ids = new Set<string>();
+        const groups = input.groups.map((candidate): HighlightGroup => {
+          if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new HttpError(422, "Each highlight group must be an object.");
+          const value = candidate as Record<string, unknown>;
+          exactKeys(value, ["id", "path", "lines"]);
+          const id = requiredString(value.id, "id", 128);
+          const path = requiredString(value.path, "path", 4_096);
+          if (ids.has(id)) throw new HttpError(422, "Highlight group ids must be unique.");
+          ids.add(id);
+          if (!Array.isArray(value.lines) || value.lines.length > 12_000 || !value.lines.every((line) => typeof line === "string" && line.length <= 20_000)) {
+            throw new HttpError(422, "Highlight lines are malformed or exceed their limits.");
+          }
+          totalLines += value.lines.length;
+          totalCharacters += value.lines.reduce((sum, line) => sum + String(line).length, 0);
+          return { id, path, lines: value.lines as string[] };
+        });
+        if (totalLines > 12_000 || totalCharacters > 2_000_000) throw new HttpError(413, "The highlight request is too large.");
+        return json({ groups: await highlightGroups(groups) });
       }
       if (request.method === "GET" && url.pathname === "/api/diff") {
         const path = requiredString(url.searchParams.get("path"), "path", 4_096);
@@ -329,5 +358,9 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
     }
   };
 
-  return Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 60, fetch });
+  return fetch;
+}
+
+export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory()) {
+  return Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 60, fetch: createRequestHandler(session, sessionDirectory) });
 }

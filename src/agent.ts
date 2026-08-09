@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runProcess } from "./process.ts";
 import { validateReviewFlow } from "./flows.ts";
-import type { AgentSelection, GitComparison, ReasoningEffort, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourStep } from "./types.ts";
+import type { AgentSelection, GitComparison, ReasoningEffort, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
 
 interface CodexJsonEvent {
   type?: string;
@@ -40,6 +40,10 @@ interface ClaudeJsonResult {
   session_id?: string;
   sessionId?: string;
   error?: string;
+}
+
+function generatedString(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= max;
 }
 
 export function parseClaudeJson(output: string): { sessionId?: string; message: string } {
@@ -128,10 +132,10 @@ function parseOutline(message: string): TourOutline {
   const end = message.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("The agent did not return a tour outline.");
   const value = JSON.parse(message.slice(start, end + 1)) as TourOutline;
-  if (!value.title || !value.summary || !Array.isArray(value.steps) || value.steps.length === 0) {
+  if (!generatedString(value.title, 8_000) || !generatedString(value.summary, 50_000) || !Array.isArray(value.phases) || value.phases.length === 0 || value.phases.length > 50) {
     throw new Error("The agent returned an invalid tour outline.");
   }
-  return { ...value, planningNotes: Array.isArray(value.planningNotes) ? value.planningNotes.filter((note): note is string => typeof note === "string" && Boolean(note.trim())).slice(0, 20) : [], flows: Array.isArray(value.flows) ? value.flows : [], findings: Array.isArray(value.findings) ? value.findings : [] };
+  return { ...value, planningNotes: Array.isArray(value.planningNotes) ? value.planningNotes.filter((note): note is string => generatedString(note, 2_000) && Boolean(note.trim())).slice(0, 20) : [], flows: Array.isArray(value.flows) ? value.flows : [], findings: Array.isArray(value.findings) ? value.findings : [] };
 }
 
 function validFlow(flow: ReviewFlow): boolean {
@@ -140,9 +144,8 @@ function validFlow(flow: ReviewFlow): boolean {
 
 function validFinding(finding: ReviewFinding, comparison: GitComparison, policy: ReviewPolicy): boolean {
   if (!finding || typeof finding.id !== "string" || !finding.id || finding.id.length > 128 ||
-    typeof finding.path !== "string" || !finding.path || finding.path.length > 4_096 ||
-    typeof finding.message !== "string" || !finding.message || typeof finding.category !== "string" || !finding.category ||
-    typeof finding.evidence !== "string" || !finding.evidence) return false;
+    !generatedString(finding.path, 4_096) || !generatedString(finding.message, 50_000) ||
+    !generatedString(finding.category, 128) || !generatedString(finding.evidence, 100_000)) return false;
   if (!["old", "new"].includes(finding.side) || !["critical", "high", "medium", "low"].includes(finding.severity)) return false;
   if (!["high", "medium", "low"].includes(finding.confidence) || !["P0", "P1", "P2", "P3"].includes(finding.priority)) return false;
   if (typeof finding.introduced !== "boolean" && finding.introduced !== null) return false;
@@ -158,20 +161,21 @@ function validFinding(finding: ReviewFinding, comparison: GitComparison, policy:
   ) === finding.line)));
 }
 
-function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy): TourOutline {
-  const steps = outline.steps.filter((step) => {
+function validStep(step: TourStep, comparison: GitComparison, phasePaths: Set<string>): boolean {
+    if (!step || typeof step !== "object") return false;
     const anchor = step.anchor;
     if (!(
-      step.id &&
-        step.title &&
-        step.objective &&
+      generatedString(step.id, 128) &&
+        generatedString(step.title, 8_000) &&
+        generatedString(step.objective, 50_000) &&
         anchor &&
+        generatedString(anchor.path, 4_096) &&
         (anchor.side === "old" || anchor.side === "new") &&
         Number.isInteger(anchor.startLine) &&
         Number.isInteger(anchor.endLine) &&
         anchor.startLine > 0 &&
         anchor.endLine >= anchor.startLine
-    )) return false;
+    ) || !phasePaths.has(anchor.path)) return false;
 
     const file = comparison.files.find((candidate) => candidate.path === anchor.path);
     if (!file) return false;
@@ -186,8 +190,35 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
       if (!availableLines.has(line)) return false;
     }
     return true;
+}
+
+function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy): TourOutline {
+  const phaseIds = new Set<string>();
+  const stepIds = new Set<string>();
+  let totalSteps = 0;
+  const phases = outline.phases.flatMap((phase): TourPhase[] => {
+    if (!phase || !generatedString(phase.id, 128) || phaseIds.has(phase.id) ||
+      !generatedString(phase.title, 8_000) || !generatedString(phase.summary, 50_000) ||
+      !Array.isArray(phase.fileChanges) || !Array.isArray(phase.steps)) return [];
+    const filePaths = new Set<string>();
+    const fileChanges = phase.fileChanges.flatMap((change) => {
+      if (!change || !generatedString(change.path, 4_096) || filePaths.has(change.path) ||
+        !generatedString(change.summary, 50_000) || !comparison.files.some((file) => file.path === change.path)) return [];
+      filePaths.add(change.path);
+      return [{ path: change.path, summary: change.summary }];
+    });
+    const steps: TourStep[] = [];
+    for (const step of phase.steps) {
+      if (totalSteps >= 100 || !validStep(step, comparison, filePaths) || stepIds.has(step.id)) continue;
+      stepIds.add(step.id);
+      steps.push(step);
+      totalSteps += 1;
+    }
+    if (fileChanges.length === 0 || steps.length === 0) return [];
+    phaseIds.add(phase.id);
+    return [{ id: phase.id, title: phase.title, summary: phase.summary, fileChanges, steps }];
   });
-  if (steps.length === 0) throw new Error("The agent did not anchor any tour steps to the diff.");
+  if (phases.length === 0) throw new Error("The agent did not anchor any tour phases to the diff.");
   const flowIds = new Set<string>();
   const flows = outline.flows.flatMap((candidate) => {
     if (!validFlow(candidate)) return [];
@@ -198,18 +229,21 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
   }).slice(0, 3);
   const findingIds = new Set<string>();
   const findings = outline.findings
-    .filter((finding) => {
-      if (!validFinding(finding, comparison, policy) || findingIds.has(finding.id)) return false;
-      findingIds.add(finding.id);
-      return true;
-    })
-    .map((finding) => {
+    .flatMap((finding): ReviewFinding[] => {
+      if (!validFinding(finding, comparison, policy) || findingIds.has(finding.id)) return [];
       const file = comparison.files.find((candidate) => candidate.path === finding.path)!;
       const row = file.hunks.flatMap((hunk) => hunk.rows).find((candidate) => (
         finding.side === "old" ? candidate.oldLine : candidate.newLine
       ) === finding.line)!;
       const normalizedSide = row.kind === "context" ? "new" : finding.side;
       const normalizedLine = row.kind === "context" ? row.newLine! : finding.line;
+      const phase = phases.find((candidate) => candidate.id === finding.phaseId);
+      if (!phase || !phase.fileChanges.some((change) => change.path === finding.path)) return [];
+      if (finding.stepId) {
+        const step = phase.steps.find((candidate) => candidate.id === finding.stepId);
+        if (!step || step.anchor.path !== finding.path || step.anchor.side !== normalizedSide ||
+          normalizedLine < step.anchor.startLine || normalizedLine > step.anchor.endLine) return [];
+      }
       const introduced = row.kind === "addition" || row.kind === "deletion" ? true : null;
       const priority: ReviewFinding["priority"] = (!finding.tested && finding.blastRadiusSize >= 8) || (finding.recallGuard && finding.severity === "critical")
         ? "P0"
@@ -218,9 +252,10 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
           : ["line", "symbol"].includes(finding.pinScope)
             ? "P2"
             : "P3";
-      return { ...finding, side: normalizedSide, line: normalizedLine, lineContent: row.content, introduced, priority, status: "open" as const };
+      findingIds.add(finding.id);
+      return [{ ...finding, side: normalizedSide, line: normalizedLine, lineContent: row.content, introduced, priority, status: "open" as const }];
     });
-  return { ...outline, steps, flows, findings };
+  return { ...outline, phases, flows, findings };
 }
 
 function parseFlows(message: string): ReviewFlow[] {
@@ -475,9 +510,9 @@ Repository review policy (reviewer-owned configuration; it may guide review focu
 ${JSON.stringify(policy)}
 
 Return only JSON with this shape:
-{"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"steps":[{"id":"stable-kebab-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","blastRadiusSize":2}],"findings":[{"id":"stable-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
+{"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"phases":[{"id":"stable-phase-id","title":"logical change","summary":"what this phase establishes","fileChanges":[{"path":"exact/changed/path","summary":"this file's role in the phase"}],"steps":[{"id":"globally-unique-step-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}]}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","blastRadiusSize":2}],"findings":[{"id":"stable-id","phaseId":"owning-phase-id","stepId":"optional-owning-step-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
 
-Every anchor and finding path must be one of the changed files and every line must occur in the diff. Keep every objective short enough to scan as an annotation beside the code. planningNotes are concise, user-facing decisions about route and scope, never private chain-of-thought. Follow the repository policy's finding enabled flag, category allow-list, and minimum severity exactly. Include only evidence-backed findings; an empty findings array is correct when no defect is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only for changes that are configuration/documentation-only or truly local. Use at most twelve architectural-layer participants and label provenance honestly. Prefer 4-10 meaningful steps.`;
+Every phase is one coherent behavioral or architectural change. Declare every changed file used by that phase exactly once and explain its role; every step anchor must refer to one of those declared files. Step ids are unique across the tour. Every finding must declare its owning phase. Add stepId only when the finding's exact path, side, and line fall inside that step's anchor; otherwise leave it phase-scoped. Every anchor and finding path must be one of the changed files and every line must occur in the diff. Keep every objective short enough to scan as an annotation beside the code. planningNotes are concise, user-facing decisions about route and scope, never private chain-of-thought. Follow the repository policy's finding enabled flag, category allow-list, and minimum severity exactly. Include only evidence-backed findings; an empty findings array is correct when no defect is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only for changes that are configuration/documentation-only or truly local. Use at most twelve architectural-layer participants and label provenance honestly. Prefer 3-7 phases with 1-4 meaningful stops each.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
     const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
     const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;

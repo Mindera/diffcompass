@@ -19,7 +19,7 @@ async function temporaryStateFile(): Promise<string> {
 
 function persistedSession(): PersistedReviewSession {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     repositoryRoot: "/private/tmp/repository",
     base: "origin/main",
     browserToken: "browser-token",
@@ -27,11 +27,17 @@ function persistedSession(): PersistedReviewSession {
     outline: {
       title: "Review the change",
       summary: "A short summary",
-      steps: [{
-        id: "entrypoint",
-        title: "Entry point",
-        objective: "Understand the changed behavior",
-        anchor: { path: "src/app.ts", side: "new", startLine: 2, endLine: 2 },
+      phases: [{
+        id: "behavior",
+        title: "Changed behavior",
+        summary: "Review the changed behavior.",
+        fileChanges: [{ path: "src/app.ts", summary: "Implements the changed behavior." }],
+        steps: [{
+          id: "entrypoint",
+          title: "Entry point",
+          objective: "Understand the changed behavior",
+          anchor: { path: "src/app.ts", side: "new", startLine: 2, endLine: 2 },
+        }],
       }],
       flows: [],
       findings: [],
@@ -86,14 +92,14 @@ test("rejects unreadable JSON and unsupported persisted schemas", async () => {
   );
   expect((unreadable as Error).message).toContain("Could not read review session");
 
-  await writeFile(path, JSON.stringify({ ...persistedSession(), schemaVersion: 2 }));
+  await writeFile(path, JSON.stringify({ ...persistedSession(), schemaVersion: 3 }));
   const unsupported = await loadPersistedSession(path).then(
     () => undefined,
     (error: unknown) => error,
   );
   expect((unsupported as Error).message).toContain("unsupported or invalid schema");
 
-  await writeFile(path, JSON.stringify({ schemaVersion: 1, repositoryRoot: "/tmp" }));
+  await writeFile(path, JSON.stringify({ schemaVersion: 2, repositoryRoot: "/tmp" }));
   const incomplete = await loadPersistedSession(path).then(
     () => undefined,
     (error: unknown) => error,
@@ -103,8 +109,12 @@ test("rejects unreadable JSON and unsupported persisted schemas", async () => {
 
 test("migrates legacy v1 finding metadata without discarding the session", async () => {
   const path = await temporaryStateFile();
-  const legacy = persistedSession();
-  legacy.outline!.findings = [{
+  const current = persistedSession();
+  const legacy = structuredClone(current) as unknown as Record<string, any>;
+  legacy.schemaVersion = 1;
+  legacy.outline.steps = legacy.outline.phases[0].steps;
+  delete legacy.outline.phases;
+  legacy.outline.findings = [{
     id: "legacy-finding",
     path: "src/app.ts",
     side: "new",
@@ -124,7 +134,81 @@ test("migrates legacy v1 finding metadata without discarding the session", async
   await writeFile(path, JSON.stringify(legacy));
 
   const migrated = await loadPersistedSession(path);
+  expect(migrated.schemaVersion).toBe(2);
+  expect(migrated.outline?.phases[0]).toMatchObject({ id: "legacy-tour", fileChanges: [{ path: "src/app.ts" }] });
   expect(migrated.outline?.findings[0]).toMatchObject({ blastRadiusSize: 0, tested: false, pinScope: "line" });
+  expect(migrated.outline?.findings[0]?.phaseId).toBeUndefined();
+  expect(migrated.outline?.findings[0]?.stepId).toBeUndefined();
+});
+
+test("rejects duplicate tour identities and finding scopes that do not match their anchors", async () => {
+  const path = await temporaryStateFile();
+  await mkdir(join(path, ".."), { recursive: true });
+
+  const duplicateStep = persistedSession();
+  duplicateStep.outline!.phases.push({
+    id: "testing",
+    title: "Test behavior",
+    summary: "Verify the changed behavior.",
+    fileChanges: [{ path: "src/app.test.ts", summary: "Verifies the behavior." }],
+    steps: [{
+      id: "entrypoint",
+      title: "Duplicate stop",
+      objective: "Inspect the duplicate stop",
+      anchor: { path: "src/app.test.ts", side: "new", startLine: 1, endLine: 1 },
+    }],
+  });
+  await writeFile(path, JSON.stringify(duplicateStep));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+
+  const duplicateFinding = persistedSession();
+  const finding = {
+    id: "duplicate",
+    path: "src/app.ts",
+    side: "new" as const,
+    line: 2,
+    lineContent: "return result;",
+    message: "Duplicate finding.",
+    category: "correctness",
+    severity: "medium" as const,
+    confidence: "high" as const,
+    evidence: "Specific evidence.",
+    priority: "P2" as const,
+    introduced: true,
+    recallGuard: false,
+    blastRadiusSize: 1,
+    tested: false,
+    pinScope: "line" as const,
+    status: "open" as const,
+  };
+  duplicateFinding.outline!.findings = [finding, { ...finding }];
+  await writeFile(path, JSON.stringify(duplicateFinding));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+
+  const mismatchedScope = persistedSession();
+  mismatchedScope.outline!.findings = [{
+    id: "wrong-stop",
+    phaseId: "behavior",
+    stepId: "entrypoint",
+    path: "src/app.ts",
+    side: "old",
+    line: 2,
+    lineContent: "return result;",
+    message: "This does not belong to the new-side stop.",
+    category: "correctness",
+    severity: "medium",
+    confidence: "high",
+    evidence: "The side does not match.",
+    priority: "P2",
+    introduced: null,
+    recallGuard: false,
+    blastRadiusSize: 1,
+    tested: false,
+    pinScope: "line",
+    status: "open",
+  }];
+  await writeFile(path, JSON.stringify(mismatchedScope));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
 });
 
 test("rejects malformed nested persisted findings while accepting their complete schema", async () => {

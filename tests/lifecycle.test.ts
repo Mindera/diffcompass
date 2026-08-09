@@ -39,7 +39,7 @@ async function repositoryFixture() {
 
 function persistedAttachedSession(repositoryRoot: string, overrides: Partial<PersistedReviewSession> = {}): PersistedReviewSession {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     repositoryRoot,
     base: "origin/main",
     browserToken: "browser-token",
@@ -48,8 +48,12 @@ function persistedAttachedSession(repositoryRoot: string, overrides: Partial<Per
     outline: {
       title: "A resumed review",
       summary: "Continue from the saved stop.",
-      steps: [
-        {
+      phases: [{
+        id: "behavior",
+        title: "Changed behavior",
+        summary: "Inspect the changed behavior.",
+        fileChanges: [{ path: "app.ts", summary: "Contains the changed behavior." }],
+        steps: [{
           id: "first-step",
           title: "First step",
           objective: "Review the changed line.",
@@ -60,8 +64,19 @@ function persistedAttachedSession(repositoryRoot: string, overrides: Partial<Per
           title: "Second step",
           objective: "Review the same changed line from another angle.",
           anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
-        },
-      ],
+        }],
+      }, {
+        id: "verification",
+        title: "Verification",
+        summary: "Verify the changed behavior.",
+        fileChanges: [{ path: "app.ts", summary: "Provides the behavior to verify." }],
+        steps: [{
+          id: "third-step",
+          title: "Verification stop",
+          objective: "Verify the changed line.",
+          anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
+        }],
+      }],
       flows: [],
       findings: [],
     },
@@ -98,7 +113,21 @@ test("a resumed open attached session retains its stop and drives the rehydrated
 
   const snapshot = await started;
   expect(snapshot.currentStepIndex).toBe(1);
-  expect(snapshot.outline?.steps[1]?.explanation).toBe("This is the saved second stop.");
+  expect(snapshot.outline?.phases[0]?.steps[1]?.explanation).toBe("This is the saved second stop.");
+});
+
+test("next traverses the flattened route across a phase boundary", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  const pending = session.navigate("next");
+  const [prompt] = await session.bridge!.eventsAfter(7, 1_000);
+  if (!prompt || prompt.type !== "agent.prompt") throw new Error("Expected a phase-boundary explanation prompt.");
+  expect(prompt?.prompt).toContain("Verification stop");
+  await session.bridge!.respond(prompt!.id, "Verify the behavior at the phase boundary.");
+  const snapshot = await pending;
+  expect(snapshot.currentStepIndex).toBe(2);
+  expect(snapshot.outline?.phases[1]?.steps[0]).toMatchObject({ id: "third-step", explanation: "Verify the behavior at the phase boundary." });
 });
 
 test("a resumed closed attached session emits an immutable terminal event beyond its persisted sequence", async () => {
@@ -224,7 +253,7 @@ test("a refresh rejects an in-flight outline generated for the previous comparis
   await session.refreshComparison();
   await bridge.respond(prompt!.id, JSON.stringify({
     title: "Old outline", summary: "Generated before refresh", flows: [], findings: [],
-    steps: [{ id: "old", title: "Old", objective: "Old", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
+    phases: [{ id: "old-phase", title: "Old", summary: "Old phase", fileChanges: [{ path: "app.ts", summary: "Old file" }], steps: [{ id: "old", title: "Old", objective: "Old", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
   }));
 
   await expect(starting).rejects.toThrow("comparison changed");

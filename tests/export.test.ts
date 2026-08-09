@@ -17,7 +17,7 @@ function fixture(): ReviewSession {
     outline: {
       title: "</title><script>bad()</script>",
       summary: "Summary <img src=x onerror=bad()>",
-      steps: [{ id: "one", title: "Step", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 }, explanation: "Explanation" }],
+      phases: [{ id: "behavior", title: "Behavior", summary: "Review behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "one", title: "Step", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 }, explanation: "Explanation" }] }],
       flows: [{ id: "flow", title: "Flow", summary: "Summary", mermaid: "sequenceDiagram\n  A->>B: call", provenance: "verified", blastRadiusSize: 2 }],
       findings: [],
     },

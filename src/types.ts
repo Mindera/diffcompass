@@ -54,11 +54,24 @@ export interface TourStep {
   outdated?: boolean;
 }
 
+export interface TourFileChange {
+  path: string;
+  summary: string;
+}
+
+export interface TourPhase {
+  id: string;
+  title: string;
+  summary: string;
+  fileChanges: TourFileChange[];
+  steps: TourStep[];
+}
+
 export interface TourOutline {
   title: string;
   summary: string;
   planningNotes?: string[];
-  steps: TourStep[];
+  phases: TourPhase[];
   flows: ReviewFlow[];
   findings: ReviewFinding[];
 }
@@ -74,6 +87,8 @@ export interface ReviewFlow {
 
 export interface ReviewFinding {
   id: string;
+  phaseId?: string;
+  stepId?: string;
   path: string;
   side: "old" | "new";
   line: number;
@@ -238,7 +253,7 @@ export interface AgentSelection {
 }
 
 export interface PersistedReviewSession {
-  schemaVersion: 1;
+  schemaVersion: 2;
   name?: string;
   archived?: boolean;
   repositoryRoot: string;
