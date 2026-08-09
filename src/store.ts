@@ -1,6 +1,7 @@
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { PersistedReviewSession } from "./types.ts";
+import { normalizeSequenceDiagram } from "./flows.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -58,6 +59,7 @@ function validOutline(value: unknown): boolean {
   const validFlows = value.flows.every((flow) => record(flow) && nonEmptyString(flow.id, 128) && !flowIds.has(flow.id) && Boolean(flowIds.add(flow.id)) && nonEmptyString(flow.title, 8_000) &&
       nonEmptyString(flow.summary, 50_000) && nonEmptyString(flow.mermaid, 12_000) &&
       ["verified", "partial", "unverified"].includes(String(flow.provenance)) &&
+      Array.isArray(flow.affectedFiles) && flow.affectedFiles.length <= 100 && flow.affectedFiles.every((path) => nonEmptyString(path, 4_096)) && new Set(flow.affectedFiles).size === flow.affectedFiles.length &&
       Number.isInteger(flow.blastRadiusSize) && Number(flow.blastRadiusSize) >= 0);
   if (!validFlows) return false;
   const findingIds = new Set<string>();
@@ -157,7 +159,9 @@ function validActivity(value: unknown): boolean {
 
 function validSelection(value: unknown): boolean {
   return record(value) && nonEmptyString(value.adapterId, 128) && nonEmptyString(value.modelId, 256) &&
-    (value.reasoningEffort === undefined || ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(String(value.reasoningEffort)));
+    (value.reasoningEffort === undefined || ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(String(value.reasoningEffort))) &&
+    (value.includeFlows === undefined || typeof value.includeFlows === "boolean") &&
+    (value.includeFindings === undefined || typeof value.includeFindings === "boolean");
 }
 
 function validContinuation(value: unknown): boolean {
@@ -226,6 +230,13 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
   if (value.schemaVersion === 2 && record(value.outline)) {
     value.outline.flows ??= [];
     value.outline.findings ??= [];
+    if (Array.isArray(value.outline.flows)) {
+      for (const flow of value.outline.flows) {
+        if (!record(flow)) continue;
+        flow.affectedFiles ??= [];
+        if (typeof flow.mermaid === "string") flow.mermaid = normalizeSequenceDiagram(flow.mermaid);
+      }
+    }
     if (Array.isArray(value.outline.findings)) {
       for (const finding of value.outline.findings) {
         if (!record(finding)) continue;

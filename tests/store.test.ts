@@ -130,6 +130,14 @@ test("migrates legacy v1 finding metadata without discarding the session", async
     recallGuard: false,
     status: "open",
   } as unknown as ReviewFinding];
+  legacy.outline.flows = [{
+    id: "legacy-flow",
+    title: "Legacy flow",
+    summary: "Saved before exact affected files were recorded.",
+    mermaid: "sequenceDiagram\n  A-->>B: returns; failures are logged",
+    provenance: "verified",
+    blastRadiusSize: 2,
+  }];
   await mkdir(join(path, ".."), { recursive: true });
   await writeFile(path, JSON.stringify(legacy));
 
@@ -139,6 +147,11 @@ test("migrates legacy v1 finding metadata without discarding the session", async
   expect(migrated.outline?.findings[0]).toMatchObject({ blastRadiusSize: 0, tested: false, pinScope: "line" });
   expect(migrated.outline?.findings[0]?.phaseId).toBeUndefined();
   expect(migrated.outline?.findings[0]?.stepId).toBeUndefined();
+  expect(migrated.outline?.flows[0]).toMatchObject({
+    affectedFiles: [],
+    blastRadiusSize: 2,
+    mermaid: "sequenceDiagram\n  A-->>B: returns&#59; failures are logged",
+  });
 });
 
 test("rejects duplicate tour identities and finding scopes that do not match their anchors", async () => {

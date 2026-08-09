@@ -1,31 +1,43 @@
 # Code Review Tour
 
-A local, agent-led walkthrough for Git changes. The browser keeps the repository tree, full diff, ordered tour, review comments, and a resumable agent conversation in one place.
+A local, agent-led walkthrough for Git changes. The browser keeps the repository tree, full diff, ordered tour, findings, sequence diagrams, review comments, and a resumable agent conversation in one place. The persistent header names the repository and branch being reviewed, so parallel review sessions remain easy to distinguish.
 
-![Code Review Tour diff with repository tree and agent setup](docs/images/overview.jpg)
+![Code Review Tour showing the repository tree, split diff, repository and branch identity, and tour options](docs/images/overview.png)
+
+Before the tour starts, choose the attached or installed agent, its model and
+reasoning level, and whether this run should include sequence diagrams and
+findings. Both optional outputs are enabled by default; disabling either skips
+that generation work.
 
 The selected agent plans an ordered route through the change, anchors every stop
 to the relevant code, and stays available for follow-up questions.
 
-![Guided review with an anchored diff and live agent explanation](docs/images/guided-tour.jpg)
+![Guided review with an inline stop annotation, highlighted code, phase context, and live agent explanation](docs/images/guided-tour.png)
+
+During the tour, the active stop is highlighted and summarized directly in the
+diff. The agent pane shows the current phase and a short explanation, while the
+file tree and code remain freely navigable. `Previous` and `Next` return the
+reviewer to the ordered route without locking ordinary browsing.
 
 ## Features
 
 - compares the merge base of a parent branch with the current working tree;
 - includes committed, staged, unstaged, and untracked changes;
-- renders the complete repository tree, unchanged source files, and the branch diff in a resizable file pane;
+- identifies the active repository and branch in the persistent top bar, using pull-request metadata when reviewing an isolated GitHub PR workspace;
+- renders the complete repository tree, unchanged source files, and the branch diff between independently resizable file and agent panes;
 - detects installed Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI agents;
-- lets the reviewer choose an available agent, model, and reasoning effort;
+- lets the reviewer choose an available agent, model, and reasoning effort, plus whether to generate sequence diagrams and findings;
 - asks the selected agent to organize the change into logical phases and precise code stops;
 - preloads the next explanation while the reviewer reads the current stop;
 - keeps follow-up questions in the same agent conversation;
 - places a prominent tour annotation immediately before the active code while the agent gives a short, plain-language explanation in a separately scrollable panel;
 - keeps the diff and file navigation reviewer-controlled; only Start, Previous, and Next jump to a tour anchor;
-- declares each phase's changed files and their role, with Git-derived additions and deletions;
-- separates stop-scoped and phase-scoped P0–P3 findings, with pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
+- declares each phase's changed files and their role in a collapsed-on-entry section, with Git-derived additions and deletions;
+- separates stop-scoped and phase-scoped P0–P3 findings, with collapsed phase summaries matching the in-code pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
 - syntax-highlights loaded diffs locally in both light and dark themes;
-- renders Mermaid sequence diagrams as strict local SVG for goal-critical, high-blast flows, with explicit fully traced, partly inferred, or unverified provenance wording, validated editing, source fallback, and agent regeneration;
+- renders Mermaid sequence diagrams as strict local SVG for goal-critical flows, with exact expandable affected-file lists, explicit fully traced, partly inferred, or unverified provenance wording, validated editing, source fallback, and agent regeneration;
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
+- validates findings in a separate repository-aware pass that traces consequential candidates through their actual runtime, build, signing, CI, and delivery consumers and performs a focused recall audit before results are shown;
 - exports the complete tour, flows, findings, reviewer feedback, changed-file state, and diff as Markdown or self-contained HTML;
 - refreshes when repository files change and marks stale annotations as outdated;
 - records agent-authored file changes, their triggering request, and verification in an Activity timeline;
@@ -36,7 +48,7 @@ to the relevant code, and stays available for follow-up questions.
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
 - starts with a dense split diff by default, also supports unified diffs, expands hunk context on demand, and persists per-file reviewed state;
-- opens GitHub pull requests in isolated worktrees, shows their metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
+- opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
 - exposes `Close` and `Send feedback & close` outcomes.
 
 All standalone agent sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
@@ -48,6 +60,19 @@ An agent can launch the page and remain its conversation backend:
 ```sh
 code-review-tour --attached --open --repo /path/to/repository
 ```
+
+Agents may optionally identify their current model and effort so the page starts
+with matching attached-session metadata:
+
+```sh
+code-review-tour --attached --open --repo /path/to/repository \
+  --caller-model gpt-5.6-codex \
+  --caller-reasoning high
+```
+
+Both caller flags are optional and independent. They label the triggering
+session; they do not start or switch to another model. If omitted, the picker
+continues to show `Current agent session` and the CLI default effort.
 
 In this mode, tour planning, step explanations, and reviewer questions are sent
 to the triggering agent through an authenticated loopback event bridge. Browser
@@ -248,6 +273,13 @@ minimum severity. The server enforces the category and severity policy on agent
 output in addition to including it in the planning prompt. Repository
 instructions cannot override read-only execution, evidence requirements, or the
 tour response contract.
+
+The tour start panel includes Sequence diagrams and Findings by default. Turning
+either off skips that optional analysis instead of merely hiding its output.
+When findings are enabled, broad tour planning produces candidates and a second,
+authoritative audit validates their causal chain, removes unsupported guesses,
+and searches high-impact boundaries for omissions. A malformed audit fails the
+tour rather than presenting unvalidated findings.
 
 The Flows tab renders the documented Mermaid sequence subset as SVG using the
 locally bundled Mermaid runtime in strict mode; it never loads a CDN. The

@@ -10,6 +10,14 @@ export interface SequenceSyntax {
   unsupported: string[];
 }
 
+export function normalizeSequenceDiagram(source: string): string {
+  return source.split("\n").map((line) => {
+    const colon = line.indexOf(":");
+    if (colon < 0) return line;
+    return `${line.slice(0, colon + 1)}${line.slice(colon + 1).replaceAll(";", "&#59;")}`;
+  }).join("\n");
+}
+
 export function inspectSequenceDiagram(source: string): SequenceSyntax {
   const actors = new Set<string>();
   const unsupported: string[] = [];
@@ -35,7 +43,7 @@ export function inspectSequenceDiagram(source: string): SequenceSyntax {
 export function validateReviewFlow(value: unknown): ReviewFlow {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Flow must be an object.");
   const flow = value as Record<string, unknown>;
-  const allowed = ["id", "title", "summary", "mermaid", "provenance", "blastRadiusSize"];
+  const allowed = ["id", "title", "summary", "mermaid", "provenance", "blastRadiusSize", "affectedFiles"];
   const unknown = Object.keys(flow).find((key) => !allowed.includes(key));
   if (unknown) throw new Error(`Flow contains an unsupported field: ${unknown}`);
   const bounded = (field: string, max: number) => {
@@ -46,14 +54,19 @@ export function validateReviewFlow(value: unknown): ReviewFlow {
   const id = bounded("id", 128);
   const title = bounded("title", 8_000);
   const summary = bounded("summary", 50_000);
-  const mermaid = bounded("mermaid", 12_000).replaceAll("\r\n", "\n");
+  const mermaid = normalizeSequenceDiagram(bounded("mermaid", 12_000).replaceAll("\r\n", "\n"));
   const provenance = String(flow.provenance);
   if (!["verified", "partial", "unverified"].includes(provenance)) throw new Error("Flow provenance must be verified, partial, or unverified.");
-  if (!Number.isInteger(flow.blastRadiusSize) || Number(flow.blastRadiusSize) < 0 || Number(flow.blastRadiusSize) > 100_000) {
+  const affectedFiles = flow.affectedFiles === undefined ? [] : flow.affectedFiles;
+  if (!Array.isArray(affectedFiles) || affectedFiles.length > 100 || affectedFiles.some((path) => typeof path !== "string" || !path.trim() || path.length > 4_096) || new Set(affectedFiles).size !== affectedFiles.length) {
+    throw new Error("Flow affectedFiles must contain at most 100 unique changed paths.");
+  }
+  if (flow.blastRadiusSize !== undefined && (!Number.isInteger(flow.blastRadiusSize) || Number(flow.blastRadiusSize) < 0 || Number(flow.blastRadiusSize) > 100_000)) {
     throw new Error("Flow blastRadiusSize must be an integer between 0 and 100000.");
   }
+  if (flow.blastRadiusSize === undefined && affectedFiles.length === 0) throw new Error("Flow must declare at least one affected file.");
   const syntax = inspectSequenceDiagram(mermaid);
   if (syntax.unsupported.length > 0) throw new Error(`Flow contains unsupported Mermaid syntax: ${syntax.unsupported[0]}`);
   if (syntax.actors.length === 0 || syntax.actors.length > 12) throw new Error("Flow must reference between 1 and 12 participants.");
-  return { id, title, summary, mermaid, provenance: provenance as ReviewFlow["provenance"], blastRadiusSize: Number(flow.blastRadiusSize) };
+  return { id, title, summary, mermaid, provenance: provenance as ReviewFlow["provenance"], blastRadiusSize: affectedFiles.length || Number(flow.blastRadiusSize), affectedFiles: affectedFiles.map((path) => path.trim()) };
 }

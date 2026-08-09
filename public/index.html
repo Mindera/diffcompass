@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-mark">⌘</span>
         <strong>Code Review Tour</strong>
-        <span id="repository-label" class="muted"></span>
+        <span id="repository-label" class="repository-identity"></span>
       </div>
       <div class="tabs" role="tablist">
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
@@ -31,8 +31,13 @@
           </select>
         </label>
         <button id="sessions-button" class="button secondary">Sessions</button>
-        <label class="export-control"><span class="sr-only">Export format</span><select id="export-format" aria-label="Export format"><option value="markdown">Markdown</option><option value="html">HTML</option></select></label>
-        <button id="export-button" class="button secondary">Export</button>
+        <details id="export-menu" class="export-menu">
+          <summary class="button secondary">Export</summary>
+          <div class="export-options">
+            <button class="text-button" type="button" data-export-format="markdown">Markdown report</button>
+            <button class="text-button" type="button" data-export-format="html">HTML report</button>
+          </div>
+        </details>
         <button id="refresh-button" class="button secondary">Refresh</button>
         <button id="close-button" class="button secondary">Close</button>
         <button id="feedback-button" class="button primary hidden">Send feedback &amp; close</button>
@@ -72,6 +77,17 @@
       <section id="diff-panel" class="diff-panel">
         <div id="diff-view" class="review-view" role="tabpanel" aria-labelledby="diff-tab">
           <p id="diff-instructions" class="sr-only">Choose a changed line once to select it and again to add feedback. Keyboard users can press Enter or Space.</p>
+          <section id="review-overview" class="review-overview hidden">
+            <div id="tour-overview" class="tour-overview hidden">
+              <div class="eyebrow">Guided tour</div>
+              <h1 id="review-overview-title"></h1>
+              <p id="review-overview-summary"></p>
+            </div>
+            <details id="pull-request-description" class="pull-request-description hidden">
+              <summary>Pull request description</summary>
+              <div id="pull-request-description-body" class="pull-request-description-body"></div>
+            </details>
+          </section>
           <div class="diff-toolbar">
             <span id="filter-summary" class="muted"></span>
             <label>View <select id="diff-layout"><option value="unified">Unified</option><option value="split">Split</option></select></label>
@@ -100,6 +116,7 @@
       </section>
 
       <aside class="agent-panel">
+        <div id="agent-resizer" class="agent-resizer" role="separator" aria-label="Resize agent pane" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="720" aria-valuenow="420" tabindex="0"></div>
         <div class="agent-heading">
           <div>
             <div class="eyebrow">Tour agent</div>
@@ -116,6 +133,11 @@
             <label>Agent<select id="agent-select"></select></label>
             <label>Model<select id="model-select"></select></label>
             <label>Reasoning<select id="reasoning-select"></select></label>
+            <fieldset class="tour-includes">
+              <legend>Include</legend>
+              <label><input id="include-flows" type="checkbox" checked /> Sequence diagrams</label>
+              <label><input id="include-findings" type="checkbox" checked /> Findings</label>
+            </fieldset>
             <div id="agent-note" class="agent-note"></div>
           </div>
           <details id="planning-activity" class="planning-activity hidden" open>
@@ -131,8 +153,6 @@
             <progress id="progress-value" class="progress-track" max="100" value="0" aria-label="Tour progress"></progress>
           </div>
           <div id="tour-scroll" class="tour-scroll">
-            <h2 id="tour-title"></h2>
-            <p id="tour-summary" class="muted"></p>
             <details id="planning-notes" class="planning-notes hidden">
               <summary>How the agent organized this tour</summary>
               <ul id="planning-note-list"></ul>
@@ -141,12 +161,14 @@
               <div id="phase-count" class="anchor"></div>
               <h3 id="phase-title"></h3>
               <p id="phase-summary" class="objective"></p>
-              <div class="eyebrow">Files in this phase</div>
-              <div id="phase-files" class="phase-files"></div>
-              <section id="phase-finding-drawer" class="finding-drawer" aria-labelledby="phase-finding-title">
-                <div class="comment-drawer-heading"><h3 id="phase-finding-title">Phase findings</h3><span id="phase-finding-count" class="count">0</span></div>
+              <details id="phase-files-details" class="phase-files-details">
+                <summary><span>Files in this phase</span><span id="phase-files-count" class="count"></span></summary>
+                <div id="phase-files" class="phase-files"></div>
+              </details>
+              <details id="phase-finding-drawer" class="finding-drawer phase-findings-details">
+                <summary><span>Phase findings</span><span id="phase-finding-count" class="count">0</span></summary>
                 <div id="phase-finding-list" class="finding-list"></div>
-              </section>
+              </details>
             </section>
             <article class="step-card">
               <div id="step-anchor" class="anchor"></div>
@@ -225,8 +247,9 @@
         <label class="dialog-field">Summary<textarea id="flow-summary" rows="3" maxlength="50000" required></textarea></label>
         <div class="dialog-grid">
           <label class="dialog-field">Provenance<select id="flow-provenance"><option value="verified">Verified</option><option value="partial">Partial</option><option value="unverified">Unverified</option></select></label>
-          <label class="dialog-field">Blast radius<input id="flow-blast-radius" type="number" min="0" max="100000" step="1" required /></label>
         </div>
+        <input id="flow-blast-radius" type="hidden" />
+        <label class="dialog-field">Affected changed files <span class="field-hint">one path per line</span><textarea id="flow-affected-files" rows="5" maxlength="100000" spellcheck="false"></textarea></label>
         <label class="dialog-field">Mermaid source<textarea id="flow-mermaid" class="flow-editor" rows="16" maxlength="12000" spellcheck="false" required></textarea></label>
         <div class="dialog-actions"><button id="cancel-flow" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Save flow</button></div>
       </form>

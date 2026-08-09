@@ -45,7 +45,8 @@ function markdown(session: ReviewSession): string {
   if (outline?.flows.length) {
     lines.push("## Flows", "");
     for (const flow of outline.flows) {
-      lines.push(`### ${markdownText(flow.title)}`, "", `${flow.provenance}; blast radius ${flow.blastRadiusSize}`, "", markdownText(flow.summary), "", markdownFence("mermaid", flow.mermaid), "");
+      const affected = flow.affectedFiles?.length ? flow.affectedFiles.map((path) => `- ${markdownText(path)}`) : ["- Exact affected files were not captured for this saved tour."];
+      lines.push(`### ${markdownText(flow.title)}`, "", `${flow.provenance}; affects ${flow.affectedFiles?.length || flow.blastRadiusSize} changed files`, "", markdownText(flow.summary), "", "Affected changed files:", "", ...affected, "", markdownFence("mermaid", flow.mermaid), "");
     }
   }
   if (outline?.findings.length) {
@@ -76,7 +77,7 @@ function html(session: ReviewSession): string {
   const outline = session.outline;
   let stopNumber = 0;
   const steps = outline?.phases.map((phase, phaseIndex) => `<section><h3>Phase ${phaseIndex + 1}: ${escapeHtml(phase.title)}</h3><p>${escapeHtml(phase.summary)}</p><ul>${phase.fileChanges.map((file) => `<li><code>${escapeHtml(file.path)}</code> — ${escapeHtml(file.summary)}</li>`).join("")}</ul>${phase.steps.map((step) => { stopNumber += 1; return `<section><h4>Stop ${stopNumber}: ${escapeHtml(step.title)}</h4><code>${escapeHtml(step.anchor.path)}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side})</code><p>${escapeHtml(step.objective)}</p>${step.explanation ? `<div class="prose">${escapeHtml(step.explanation)}</div>` : ""}</section>`; }).join("")}</section>`).join("") ?? "";
-  const flows = outline?.flows.map((flow) => `<section><h3>${escapeHtml(flow.title)}</h3><p class="meta">${flow.provenance}; blast radius ${flow.blastRadiusSize}</p><p>${escapeHtml(flow.summary)}</p><pre><code>${escapeHtml(flow.mermaid)}</code></pre></section>`).join("") ?? "";
+  const flows = outline?.flows.map((flow) => `<section><h3>${escapeHtml(flow.title)}</h3><p class="meta">${flow.provenance}; affects ${flow.affectedFiles?.length || flow.blastRadiusSize} changed files</p><p>${escapeHtml(flow.summary)}</p><h4>Affected changed files</h4>${flow.affectedFiles?.length ? `<ul>${flow.affectedFiles.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}</ul>` : "<p>Exact affected files were not captured for this saved tour.</p>"}<pre><code>${escapeHtml(flow.mermaid)}</code></pre></section>`).join("") ?? "";
   const findings = outline?.findings.map((finding) => `<section class="finding"><h3>${finding.priority}: ${escapeHtml(finding.category)} at ${escapeHtml(finding.path)}:${finding.line}</h3><p class="meta">Scope: ${escapeHtml(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${escapeHtml(finding.stepId)}` : ""}; status: ${finding.status}; severity: ${finding.severity}; confidence: ${finding.confidence}</p><p>${escapeHtml(finding.message)}</p><p><strong>Evidence:</strong> ${escapeHtml(finding.evidence)}</p></section>`).join("") ?? "";
   const comments = session.comments.map((comment) => `<section class="comment"><h3>${escapeHtml(comment.path)}:${comment.line} (${comment.side})</h3><p class="meta">Status: ${comment.status}</p><p>${escapeHtml(comment.body)}</p></section>`).join("");
   const files = session.comparison.files.map((file) => `<li><code>${escapeHtml(file.path)}</code> (${file.status}, +${file.additions}/-${file.deletions})${session.reviewedFiles.has(file.path) ? " — reviewed" : ""}</li>`).join("");

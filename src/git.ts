@@ -147,6 +147,7 @@ export async function loadComparison(cwd: string, explicitBase?: string, context
   const base = await resolveBase(repositoryRoot, explicitBase);
   const mergeBase = await git(repositoryRoot, ["merge-base", base, "HEAD"]);
   const head = await git(repositoryRoot, ["rev-parse", "HEAD"]);
+  const branch = await git(repositoryRoot, ["branch", "--show-current"]);
   const trackedPatch = await git(repositoryRoot, [
     "diff",
     "--no-ext-diff",
@@ -166,6 +167,7 @@ export async function loadComparison(cwd: string, explicitBase?: string, context
   return {
     repositoryRoot,
     repositoryName: basename(repositoryRoot),
+    branch: branch || undefined,
     base,
     mergeBase,
     head,

@@ -176,7 +176,7 @@ test("flow edits are validated and exports are authenticated downloadable artifa
     summary: "Summary",
     phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
     findings: [],
-    flows: [{ id: "flow", title: "Old", summary: "Old", mermaid: "sequenceDiagram\n  A->>B: old", provenance: "partial", blastRadiusSize: 2 }],
+    flows: [{ id: "flow", title: "Old", summary: "Old", mermaid: "sequenceDiagram\n  A->>B: old", provenance: "partial", blastRadiusSize: 1, affectedFiles: ["app.ts"] }],
   };
 
   expect((await jsonRequest(url, "/api/export?format=html")).status).toBe(401);
@@ -187,13 +187,13 @@ test("flow edits are validated and exports are authenticated downloadable artifa
   expect(await exported.text()).toContain("&lt;script&gt;Review&lt;/script&gt;");
 
   const invalid = await jsonRequest(url, "/api/flows/flow", {
-    method: "PATCH", headers, body: JSON.stringify({ title: "Flow", summary: "Summary", mermaid: "graph TD\nA-->B", provenance: "verified", blastRadiusSize: 1 }),
+    method: "PATCH", headers, body: JSON.stringify({ title: "Flow", summary: "Summary", mermaid: "graph TD\nA-->B", provenance: "verified", blastRadiusSize: 1, affectedFiles: ["app.ts"] }),
   });
   expect(invalid.status).toBe(409);
   const edited = await (await jsonRequest(url, "/api/flows/flow", {
-    method: "PATCH", headers, body: JSON.stringify({ title: "Flow", summary: "Updated", mermaid: "sequenceDiagram\n  A->>B: call\n  Note right of B: checked", provenance: "verified", blastRadiusSize: 3 }),
+    method: "PATCH", headers, body: JSON.stringify({ title: "Flow", summary: "Updated", mermaid: "sequenceDiagram\n  A->>B: call; safely\n  Note right of B: checked", provenance: "verified", blastRadiusSize: 3, affectedFiles: ["app.ts"] }),
   })).json() as { outline: { flows: Array<{ summary: string; blastRadiusSize: number }> } };
-  expect(edited.outline.flows[0]).toMatchObject({ summary: "Updated", blastRadiusSize: 3 });
+  expect(edited.outline.flows[0]).toMatchObject({ summary: "Updated", blastRadiusSize: 1, affectedFiles: ["app.ts"], mermaid: expect.stringContaining("call&#59; safely") });
 });
 
 test("diff ergonomics API searches changes, expands context, and persists reviewed files", async () => {

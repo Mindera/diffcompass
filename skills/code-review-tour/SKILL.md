@@ -16,8 +16,10 @@ Run the local tour in attached mode so every explanation and reviewer question r
 2. Start a persistent terminal process from the repository being reviewed:
 
    ```text
-   code-review-tour --attached --open --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF]
+   code-review-tour --attached --open --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT]
    ```
+
+   When reliable runtime metadata is available, pass the triggering model and effort with `--caller-model` and `--caller-reasoning`. Both flags are optional and independent; omit any value that is unavailable rather than guessing it. They describe the attached session in the page and do not switch the conversation to another model.
 
    Use a short initial yield and retain the running terminal session. Do not wait synchronously for the server to exit.
 3. Read the printed `Attached bridge URL` and `Attached bridge token file`. Treat the token file as a local secret; never read or include its contents in a user-facing response.
@@ -41,7 +43,7 @@ After the bridge accepts the response, acknowledge that prompt event with the `a
 
 Prompt kinds:
 
-- `tour.outline`: return only the JSON shape requested by the event. Inspect the diff and repository before responding.
+- `tour.outline`: return only the JSON shape requested by the event. Inspect the diff and repository before responding. Tour startup may send two consecutive outline-kind prompts: the first requests the full route and candidate analysis; the second is a focused, authoritative finding audit and requests only final finding JSON. Complete and acknowledge both in order.
 - `tour.explanation`: return the conversational explanation for that stop.
 - `review.question`: answer the reviewer using the current step and selected-line context. When the event prompt supplies an isolated proposal workspace, modify files only inside that exact workspace and only when the reviewer explicitly requests a concrete change. Never edit the original reviewed repository, stage, or commit. Run proportionate checks inside the proposal workspace and write a concise UTF-8 verification summary to a temporary file. Include commands and outcomes, or state why a relevant check was not run. Then call `code-review-tour-bridge refresh --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID --verification-file VERIFICATION_FILE` before responding. The refresh captures the isolated edits as a pending bundle; it does not apply them to the reviewed working tree. Delete the verification file after the bridge accepts the refresh. Tell the reviewer that the proposal is ready for Apply or Reject rather than claiming it is already applied. This event-bound refresh is what authorizes the question's answer to cross that comparison update.
 

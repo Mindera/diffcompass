@@ -57,14 +57,18 @@ export function enumValue<const T extends string>(value: unknown, name: string, 
 }
 
 export function parseAgentSelection(value: JsonObject): Partial<AgentSelection> {
-  exactKeys(value, ["adapterId", "modelId", "reasoningEffort"]);
+  exactKeys(value, ["adapterId", "modelId", "reasoningEffort", "includeFlows", "includeFindings"]);
   const efforts: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+  if (value.includeFlows !== undefined && typeof value.includeFlows !== "boolean") throw new HttpError(422, "includeFlows must be a boolean.");
+  if (value.includeFindings !== undefined && typeof value.includeFindings !== "boolean") throw new HttpError(422, "includeFindings must be a boolean.");
   return {
     adapterId: optionalString(value.adapterId, "adapterId", 64),
     modelId: optionalString(value.modelId, "modelId", 128),
     reasoningEffort: value.reasoningEffort === undefined
       ? undefined
       : enumValue(value.reasoningEffort, "reasoningEffort", efforts),
+    includeFlows: value.includeFlows as boolean | undefined,
+    includeFindings: value.includeFindings as boolean | undefined,
   };
 }
 

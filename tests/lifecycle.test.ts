@@ -97,6 +97,34 @@ function proposalWorkspace(prompt: { type: string; prompt?: string }): string {
   return JSON.parse(match[1]) as string;
 }
 
+test("attached sessions optionally display the caller model and effort", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, {
+    ...noAdapters,
+    stateFile,
+    attached: true,
+    callerModel: "gpt-5.6-codex",
+    callerReasoningEffort: "high",
+  });
+
+  expect(session.snapshot().agentAdapters[0]).toMatchObject({
+    id: "attached",
+    models: [{
+      id: "gpt-5.6-codex",
+      label: "gpt-5.6-codex · current session",
+      defaultReasoningEffort: "high",
+      reasoningEfforts: ["high"],
+    }],
+  });
+  expect(session.snapshot().agentSelection).toEqual({
+    adapterId: "attached",
+    modelId: "gpt-5.6-codex",
+    reasoningEffort: "high",
+    includeFlows: true,
+    includeFindings: true,
+  });
+});
+
 test("a resumed open attached session retains its stop and drives the rehydrated agent bridge", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));

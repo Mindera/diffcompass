@@ -262,10 +262,13 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       const flowMatch = /^\/api\/flows\/([^/]+)$/.exec(url.pathname);
       if (flowMatch && request.method === "PATCH") {
         const input = await readJsonObject(request, 128 * 1024);
-        exactKeys(input, ["title", "summary", "mermaid", "provenance", "blastRadiusSize"]);
+        exactKeys(input, ["title", "summary", "mermaid", "provenance", "blastRadiusSize", "affectedFiles"]);
         const blastRadiusSize = Number(input.blastRadiusSize);
         if (!Number.isInteger(blastRadiusSize) || blastRadiusSize < 0 || blastRadiusSize > 100_000) {
           throw new HttpError(422, "blastRadiusSize must be an integer between 0 and 100000.");
+        }
+        if (!Array.isArray(input.affectedFiles) || input.affectedFiles.length > 100 || input.affectedFiles.some((path) => typeof path !== "string" || !path.trim() || path.length > 4_096)) {
+          throw new HttpError(422, "affectedFiles must contain at most 100 changed paths.");
         }
         return json(await session.updateFlow(decodeURIComponent(flowMatch[1]), {
           title: requiredString(input.title, "title", 8_000),
@@ -273,6 +276,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           mermaid: requiredString(input.mermaid, "mermaid", 12_000),
           provenance: enumValue(input.provenance, "provenance", ["verified", "partial", "unverified"]),
           blastRadiusSize,
+          affectedFiles: input.affectedFiles,
         }));
       }
       if (request.method === "POST" && url.pathname === "/api/flows/regenerate") {

@@ -48,14 +48,18 @@ test("readJsonObject requires JSON objects and enforces the byte limit", async (
   }), 8)).rejects.toMatchObject({ status: 413 });
 });
 
-test("selection parsing rejects unknown fields and unsupported reasoning", () => {
-  expect(parseAgentSelection({ adapterId: "codex", modelId: "gpt-test", reasoningEffort: "high" })).toEqual({
+test("selection parsing accepts optional tour outputs and rejects malformed values", () => {
+  expect(parseAgentSelection({ adapterId: "codex", modelId: "gpt-test", reasoningEffort: "high", includeFlows: false, includeFindings: true })).toEqual({
     adapterId: "codex",
     modelId: "gpt-test",
     reasoningEffort: "high",
+    includeFlows: false,
+    includeFindings: true,
   });
   expectHttpError(() => parseAgentSelection({ adapterId: "codex", unexpected: true }), 422, "Unexpected field");
   expectHttpError(() => parseAgentSelection({ reasoningEffort: "turbo" }), 422, "reasoningEffort");
+  expectHttpError(() => parseAgentSelection({ includeFlows: "yes" }), 422, "includeFlows");
+  expectHttpError(() => parseAgentSelection({ includeFindings: 1 }), 422, "includeFindings");
 });
 
 test("primitive validation has strict runtime semantics", () => {

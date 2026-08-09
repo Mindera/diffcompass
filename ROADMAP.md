@@ -106,6 +106,16 @@ clear.
   selected Findings card with back-to-code navigation.
 - Flow provenance is worded as Verified, Partly verified, or Unverified, with
   the evidence meaning explained in the UI.
+- Stable tour and pull request context appears above the diff, leaving the
+  agent pane focused on the current phase and stop.
+- Phase file lists start collapsed, the agent pane is resizable, and active
+  code ranges use a stronger bounded highlight in split and unified views.
+- Phase findings start collapsed and reuse the concise in-code pin summary;
+  sequence flows list their exact affected changed files and normalize Mermaid
+  message punctuation before rendering.
+- Tour startup exposes default-on controls for sequence diagrams and findings;
+  enabled findings receive a separate causal-validation and high-impact recall
+  pass before they are shown.
 
 ## Release hardening
 

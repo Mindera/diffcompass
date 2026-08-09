@@ -20,6 +20,8 @@ interface Options {
   agent?: string;
   model?: string;
   reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+  callerModel?: string;
+  callerReasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
   port: number;
   attached: boolean;
   open: boolean;
@@ -44,6 +46,9 @@ Options:
   --agent ID           Standalone agent: codex, claude, gemini, or copilot
   --model MODEL        Model identifier reported by the selected agent
   --reasoning EFFORT   minimal, low, medium, high, xhigh, max, or ultra
+  --caller-model MODEL Optional attached-agent model label
+  --caller-reasoning EFFORT
+                       Optional attached-agent effort label
   --port PORT          Loopback port (default: random)
   --resume FILE        Resume a persisted review session
   --version            Print the installed version
@@ -79,6 +84,15 @@ function parseOptions(args: string[]): Options {
         throw new Error(`Unsupported reasoning effort: ${value}`);
       }
       options.reasoning = value as Options["reasoning"];
+      index += 1;
+    } else if (arg === "--caller-model" && value) {
+      options.callerModel = value;
+      index += 1;
+    } else if (arg === "--caller-reasoning" && value) {
+      if (!["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(value)) {
+        throw new Error(`Unsupported caller reasoning effort: ${value}`);
+      }
+      options.callerReasoning = value as Options["callerReasoning"];
       index += 1;
     } else if (arg === "--port" && value) {
       options.port = Number(value);
@@ -117,6 +131,9 @@ if (command === "pr") {
   cliArguments = cliArguments.slice(2);
 }
 const options = parseOptions(cliArguments);
+if ((options.callerModel || options.callerReasoning) && !options.attached && !options.resume) {
+  throw new Error("--caller-model and --caller-reasoning require --attached or --resume.");
+}
 options.pullRequest = pullRequestIdentifier;
 const stateFile = options.resume ?? join(
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),
@@ -173,8 +190,10 @@ try {
   }
   session = await ReviewSession.create(reviewRepository, reviewBase, {
     adapterId: options.attached ? "attached" : options.agent ?? repositoryConfig.agent,
-    modelId: options.model ?? repositoryConfig.model,
-    reasoningEffort: options.reasoning ?? repositoryConfig.reasoning,
+    modelId: options.attached ? undefined : options.model ?? repositoryConfig.model,
+    reasoningEffort: options.attached ? undefined : options.reasoning ?? repositoryConfig.reasoning,
+    callerModel: options.callerModel,
+    callerReasoningEffort: options.callerReasoning,
     attached: options.attached,
     stateFile: canonicalStatePath,
     resume: Boolean(options.resume),

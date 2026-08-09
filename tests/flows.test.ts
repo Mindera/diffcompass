@@ -46,3 +46,25 @@ test("rejects extra fields and bounded metadata violations", () => {
   expect(() => validateReviewFlow({ ...flow("sequenceDiagram\n  A->>B: ok"), blastRadiusSize: -1 })).toThrow("blastRadiusSize");
   expect(() => validateReviewFlow({ ...flow("sequenceDiagram\n  A->>B: ok"), provenance: "guessed" })).toThrow("provenance");
 });
+
+test("normalizes semicolons in message text and derives impact from exact changed files", () => {
+  expect(validateReviewFlow({
+    ...flow("sequenceDiagram\n  A->>B: returns; failures are logged"),
+    blastRadiusSize: undefined,
+    affectedFiles: ["src/startup.ts", "src/logging.ts"],
+  })).toMatchObject({
+    mermaid: "sequenceDiagram\n  A->>B: returns&#59; failures are logged",
+    blastRadiusSize: 2,
+    affectedFiles: ["src/startup.ts", "src/logging.ts"],
+  });
+});
+
+test("normalized message text is accepted by the bundled Mermaid parser", async () => {
+  const moduleName = "mermaid";
+  const mermaid = (await import(moduleName)).default;
+  const normalized = validateReviewFlow({
+    ...flow("sequenceDiagram\n  A-->>B: returns; failures are logged"),
+    affectedFiles: ["src/startup.ts"],
+  }).mermaid;
+  await expect(mermaid.parse(normalized)).resolves.toBeTruthy();
+});

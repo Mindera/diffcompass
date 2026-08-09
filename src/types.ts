@@ -30,6 +30,7 @@ export interface DiffFile {
 export interface GitComparison {
   repositoryRoot: string;
   repositoryName: string;
+  branch?: string;
   base: string;
   mergeBase: string;
   head: string;
@@ -83,6 +84,7 @@ export interface ReviewFlow {
   mermaid: string;
   provenance: "verified" | "partial" | "unverified";
   blastRadiusSize: number;
+  affectedFiles?: string[];
 }
 
 export interface ReviewFinding {
@@ -250,6 +252,8 @@ export interface AgentSelection {
   adapterId: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+  includeFlows?: boolean;
+  includeFindings?: boolean;
 }
 
 export interface PersistedReviewSession {

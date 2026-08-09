@@ -115,15 +115,24 @@ test("normalizes context findings and derives all priority levels from the docum
     id, phaseId: "behavior", ...(line === 2 ? { stepId: "step" } : {}), path: "app.ts", side, line, message: `${id} issue`, category: "correctness", severity: "medium", confidence: "high",
     evidence: "The diff demonstrates the issue.", priority: "P3", introduced: true, recallGuard: false, blastRadiusSize, tested, pinScope, status: "open",
   });
+  const candidateFindings = [
+    finding("p0", 2, "new", 8, false, "line"),
+    finding("p1", 2, "new", 4, true, "line"),
+    finding("p2", 2, "new", 1, true, "symbol"),
+    finding("p3", 1, "old", 1, true, "file"),
+  ];
   await bridge.respond(event!.id, JSON.stringify({
     title: "Review", summary: "Review changes", planningNotes: ["Start at the behavior boundary."], flows: [],
     phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
-    findings: [
-      finding("p0", 2, "new", 8, false, "line"),
-      finding("p1", 2, "new", 4, true, "line"),
-      finding("p2", 2, "new", 1, true, "symbol"),
-      finding("p3", 1, "old", 1, true, "file"),
-    ],
+    findings: candidateFindings,
+  }));
+  await bridge.ack(event.id);
+  const [auditEvent] = await bridge.eventsAfter(event.sequence, 1_000);
+  if (!auditEvent || auditEvent.type !== "agent.prompt") throw new Error("Expected a finding-audit prompt.");
+  expect(auditEvent.prompt).toContain("focused findings auditor");
+  await bridge.respond(auditEvent.id, JSON.stringify({
+    candidateDecisions: candidateFindings.map(({ id }) => ({ id, disposition: "kept", reason: "The evidence supports this candidate." })),
+    findings: candidateFindings,
   }));
 
   const outline = await pending;
@@ -174,10 +183,17 @@ test("repository policy is bounded context and findings are enforced after gener
     id, phaseId: "behavior", stepId: "step", path: "app.ts", side: "new", line: 2, message: "Issue", category, severity, confidence: "high",
     evidence: "Specific evidence", priority: "P2", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: true, pinScope: "line", status: "open",
   });
+  const allowedFinding = finding("allowed", "security", "high");
   await bridge.respond(event!.id, JSON.stringify({
     title: "Review", summary: "Summary", flows: [],
     phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
-    findings: [finding("allowed", "security", "high"), finding("wrong-category", "correctness", "high"), finding("too-low", "security", "low")],
+    findings: [allowedFinding, finding("wrong-category", "correctness", "high"), finding("too-low", "security", "low")],
+  }));
+  await bridge.ack(event!.id);
+  const [auditEvent] = await bridge.eventsAfter(event!.sequence, 1_000);
+  await bridge.respond(auditEvent!.id, JSON.stringify({
+    candidateDecisions: [{ id: "allowed", disposition: "kept", reason: "The finding matches the enforced policy." }],
+    findings: [allowedFinding, finding("wrong-category", "correctness", "high"), finding("too-low", "security", "low")],
   }));
   expect((await pending).findings.map((finding) => finding.id)).toEqual(["allowed"]);
 });
@@ -200,6 +216,7 @@ test("drops undeclared stops and findings whose declared scope does not match th
     id, phaseId, ...(stepId ? { stepId } : {}), path: "app.ts", side, line, message: "Issue", category: "correctness", severity: "medium", confidence: "high",
     evidence: "Specific evidence", priority: "P2", introduced: null, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open",
   });
+  const phaseOnly = finding("phase-only", "new", 2);
   await bridge.respond(event!.id, JSON.stringify({
     title: "Review", summary: "Summary", flows: [],
     phases: [{
@@ -213,11 +230,17 @@ test("drops undeclared stops and findings whose declared scope does not match th
       ],
     }],
     findings: [
-      finding("phase-only", "new", 2),
+      phaseOnly,
       finding("wrong-phase", "new", 2, "missing"),
       finding("wrong-stop-line", "new", 1, "behavior", "changed"),
       finding("normalized-side-mismatch", "old", 1, "behavior", "changed"),
     ],
+  }));
+  await bridge.ack(event!.id);
+  const [auditEvent] = await bridge.eventsAfter(event!.sequence, 1_000);
+  await bridge.respond(auditEvent!.id, JSON.stringify({
+    candidateDecisions: [{ id: "phase-only", disposition: "kept", reason: "The phase scope and changed anchor are valid." }],
+    findings: [phaseOnly],
   }));
 
   const outline = await pending;
@@ -225,14 +248,115 @@ test("drops undeclared stops and findings whose declared scope does not match th
   expect(outline.findings.map((candidate) => candidate.id)).toEqual(["phase-only"]);
 });
 
+test("audits release-path candidates to a concrete causal finding before returning the tour", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head",
+    patch: "+aps-environment = development", repositoryFiles: ["ios/App.entitlements", "ios/project.pbxproj", "fastlane/Fastfile"],
+    files: [{ oldPath: "ios/App.entitlements", newPath: "ios/App.entitlements", path: "ios/App.entitlements", status: "modified", metadata: [], additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, rows: [
+        { kind: "addition", content: "aps-environment = development", oldLine: null, newLine: 1 },
+      ] }],
+    }],
+  };
+  const candidate = {
+    id: "sandbox-push", phaseId: "delivery", path: "ios/App.entitlements", side: "new" as const, line: 1,
+    message: "Production notifications may fail unless the archive replaces this value.", category: "correctness", severity: "medium" as const, confidence: "medium" as const,
+    evidence: "The changed entitlement selects the sandbox environment.", priority: "P2" as const, introduced: true, recallGuard: false, blastRadiusSize: 2, tested: false, pinScope: "line" as const, status: "open" as const,
+  };
+  const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
+  const [outlineEvent] = await bridge.eventsAfter(0, 1_000);
+  await bridge.respond(outlineEvent!.id, JSON.stringify({
+    title: "Delivery review", summary: "Review notification delivery.", flows: [],
+    phases: [{ id: "delivery", title: "Delivery", summary: "Inspect delivery settings.", fileChanges: [{ path: "ios/App.entitlements", summary: "Selects the notification environment." }], steps: [{ id: "entitlement", title: "Notification environment", objective: "Check the shipped environment.", anchor: { path: "ios/App.entitlements", side: "new", startLine: 1, endLine: 1 } }] }],
+    findings: [candidate],
+  }));
+  await bridge.ack(outlineEvent!.id);
+  const [auditEvent] = await bridge.eventsAfter(outlineEvent!.sequence, 1_000);
+  if (!auditEvent || auditEvent.type !== "agent.prompt") throw new Error("Expected a finding-audit prompt.");
+  expect(auditEvent?.prompt).toContain("trace the changed source or configuration through its actual consumers");
+  expect(auditEvent?.prompt).toContain("release/deployment automation");
+  expect(auditEvent?.prompt).toContain('do not leave an "unless" or "confirm whether" escape hatch');
+  await bridge.respond(auditEvent!.id, JSON.stringify({ candidateDecisions: [{
+    id: "sandbox-push", disposition: "revised", reason: "The release automation resolves the candidate's condition.",
+  }], findings: [{
+    ...candidate,
+    message: "Test distribution archives the sandbox notification entitlement, so production notifications do not arrive.",
+    severity: "high",
+    confidence: "high",
+    evidence: "ios/project.pbxproj assigns App.entitlements to Debug. fastlane/Fastfile archives Debug and uploads that archive to test distribution.",
+    blastRadiusSize: 5,
+  }] }));
+
+  expect((await pending).findings).toEqual([expect.objectContaining({
+    id: "sandbox-push",
+    severity: "high",
+    confidence: "high",
+    priority: "P1",
+    message: expect.stringContaining("production notifications do not arrive"),
+  })]);
+});
+
+test("fails closed instead of showing candidates when the finding audit is malformed", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+changed", repositoryFiles: ["app.ts"],
+    files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, rows: [{ kind: "addition", content: "changed", oldLine: null, newLine: 1 }] }],
+    }],
+  };
+  const finding = { id: "candidate", phaseId: "behavior", path: "app.ts", side: "new", line: 1, message: "Candidate issue", category: "correctness", severity: "medium", confidence: "medium", evidence: "Candidate evidence", priority: "P2", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" };
+  const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
+  const [outlineEvent] = await bridge.eventsAfter(0, 1_000);
+  await bridge.respond(outlineEvent!.id, JSON.stringify({
+    title: "Review", summary: "Summary", flows: [], findings: [finding],
+    phases: [{ id: "behavior", title: "Behavior", summary: "Summary", fileChanges: [{ path: "app.ts", summary: "Changes behavior." }], steps: [{ id: "step", title: "Step", objective: "Inspect.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
+  }));
+  await bridge.ack(outlineEvent!.id);
+  const [auditEvent] = await bridge.eventsAfter(outlineEvent!.sequence, 1_000);
+  await bridge.respond(auditEvent!.id, JSON.stringify({ candidateDecisions: [], findings: [finding] }));
+  await expect(pending).rejects.toThrow("invalid finding audit");
+});
+
+test("skips optional findings and diagrams at generation time", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", {
+    adapterId: "attached", modelId: "current-session", includeFlows: false, includeFindings: false,
+  }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+changed", repositoryFiles: ["app.ts"],
+    files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, rows: [{ kind: "addition", content: "changed", oldLine: null, newLine: 1 }] }],
+    }],
+  };
+  const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
+  const [event] = await bridge.eventsAfter(0, 1_000);
+  if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
+  expect(event.prompt).toContain("Sequence diagrams: omit");
+  expect(event.prompt).toContain("Findings: omit");
+  await bridge.respond(event.id, JSON.stringify({
+    title: "Review", summary: "Summary",
+    phases: [{ id: "behavior", title: "Behavior", summary: "Summary", fileChanges: [{ path: "app.ts", summary: "Changes behavior." }], steps: [{ id: "step", title: "Step", objective: "Inspect.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
+    flows: [{ id: "ignored", title: "Ignored", summary: "Ignored", mermaid: "sequenceDiagram\n  A->>B: call", provenance: "verified", affectedFiles: ["app.ts"] }],
+    findings: [{ id: "ignored", phaseId: "behavior", path: "app.ts", side: "new", line: 1, message: "Ignored", category: "correctness", severity: "high", confidence: "high", evidence: "Ignored", priority: "P2", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" }],
+  }));
+  await bridge.ack(event.id);
+  const outline = await pending;
+  expect(outline.flows).toEqual([]);
+  expect(outline.findings).toEqual([]);
+  expect(await bridge.eventsAfter(event.sequence, 20)).toEqual([]);
+});
+
 test("regenerates one validated flow while preserving its identity", async () => {
   const bridge = new AttachedAgentBridge();
   const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "patch", repositoryFiles: [],
-    files: [],
+    files: [{ path: "src/request.ts", oldPath: "src/request.ts", newPath: "src/request.ts", status: "modified", metadata: [], hunks: [], additions: 1, deletions: 0 }],
   };
-  const current = [{ id: "request", title: "Request", summary: "Old", mermaid: "sequenceDiagram\n  A->>B: old", provenance: "partial" as const, blastRadiusSize: 2 }];
+  const current = [{ id: "request", title: "Request", summary: "Old", mermaid: "sequenceDiagram\n  A->>B: old", provenance: "partial" as const, blastRadiusSize: 1, affectedFiles: ["src/request.ts"] }];
   const pending = agent.regenerateFlows(comparison, current, "request");
   const [event] = await bridge.eventsAfter(0, 1_000);
   await bridge.respond(event!.id, JSON.stringify({ flows: [{

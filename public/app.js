@@ -30,21 +30,24 @@ const state = {
   treeMode: null,
   diffLayout: null,
   filePanelWidth: 240,
+  agentPanelWidth: 420,
+  renderedPhaseId: null,
   focusedStepId: null,
   focusedFindingId: null,
   findingReturn: null,
   pollInFlight: false,
   pollGeneration: 0,
+  prDescriptionMode: "rendered",
 };
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
-    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-format", "export-button", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
-    "tour-summary", "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
+    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "include-flows", "include-findings",
+    "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
-    "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-mermaid", "cancel-flow",
+    "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
 
@@ -62,6 +65,10 @@ function compactText(value, limit) {
   return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
 }
 
+function findingSummary(finding) {
+  return compactText(finding.message, 220);
+}
+
 function renderInlineMarkdown(value) {
   return escapeHtml(value)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -70,23 +77,52 @@ function renderInlineMarkdown(value) {
 
 function renderMarkdown(value) {
   const output = [];
-  let listOpen = false;
+  let listType = null;
+  const closeList = () => {
+    if (listType) output.push(`</${listType}>`);
+    listType = null;
+  };
   for (const line of String(value).split("\n")) {
-    const item = /^\s*[-*]\s+(.+)$/.exec(line);
-    if (item) {
-      if (!listOpen) output.push("<ul>");
-      listOpen = true;
-      output.push(`<li>${renderInlineMarkdown(item[1])}</li>`);
+    const heading = /^\s*(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      closeList();
+      const level = Math.min(6, heading[1].length + 1);
+      output.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
       continue;
     }
-    if (listOpen) {
-      output.push("</ul>");
-      listOpen = false;
+    const item = /^\s*([-*]|\d+[.)])\s+(.+)$/.exec(line);
+    if (item) {
+      const nextListType = /^\d/.test(item[1]) ? "ol" : "ul";
+      if (listType !== nextListType) {
+        closeList();
+        output.push(`<${nextListType}>`);
+        listType = nextListType;
+      }
+      output.push(`<li>${renderInlineMarkdown(item[2])}</li>`);
+      continue;
     }
+    closeList();
     if (line.trim()) output.push(`<p>${renderInlineMarkdown(line)}</p>`);
   }
-  if (listOpen) output.push("</ul>");
+  closeList();
   return output.join("");
+}
+
+function pullRequestDescription(body) {
+  const value = body || "No description provided.";
+  const rendered = state.prDescriptionMode === "rendered";
+  return `<div class="description-mode" role="group" aria-label="Pull request description display">
+    <button class="text-button${rendered ? " active" : ""}" type="button" data-pr-description-mode="rendered" aria-pressed="${rendered}">Rendered</button>
+    <button class="text-button${rendered ? "" : " active"}" type="button" data-pr-description-mode="source" aria-pressed="${!rendered}">Source</button>
+  </div>${rendered ? `<div class="rendered-markdown">${renderMarkdown(value)}</div>` : `<pre class="markdown-source">${escapeHtml(value)}</pre>`}`;
+}
+
+function setPullRequestDescriptionMode(event) {
+  const button = event.target.closest("[data-pr-description-mode]");
+  if (!button) return;
+  state.prDescriptionMode = button.dataset.prDescriptionMode;
+  renderPullRequest();
+  renderReviewOverview();
 }
 
 async function api(path, options = {}) {
@@ -114,10 +150,12 @@ function setBusy(busy, label = "Working…") {
   elements["agent-select"].disabled = busy;
   elements["model-select"].disabled = busy;
   elements["reasoning-select"].disabled = busy;
+  elements["include-flows"].disabled = busy;
+  elements["include-findings"].disabled = busy;
   elements["refresh-button"].disabled = busy;
   elements["close-button"].disabled = busy;
   elements["feedback-button"].disabled = busy;
-  elements["export-button"].disabled = busy;
+  elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
   elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
   elements["chat-form"].querySelector("button").disabled = busy || !reviewIsOpen();
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
@@ -163,14 +201,21 @@ function reviewIsOpen() {
 }
 
 function preferenceKey(name) {
-  return `review-tour:${state.session.comparison.repositoryRoot}:${name}`;
+  const repository = state.session.pullRequest?.sourceRepositoryRoot ?? state.session.comparison.repositoryRoot;
+  return `review-tour:${repository}:${name}`;
 }
 
 const FILE_PANEL_MIN = 180;
 const FILE_PANEL_MAX = 480;
+const AGENT_PANEL_MIN = 320;
+const AGENT_PANEL_MAX = 720;
+
+function diffPanelMinimum() {
+  return window.innerWidth <= 1050 ? 360 : 420;
+}
 
 function setFilePanelWidth(value, persist = false) {
-  const viewportLimit = Math.max(FILE_PANEL_MIN, Math.min(FILE_PANEL_MAX, window.innerWidth - 700));
+  const viewportLimit = Math.max(FILE_PANEL_MIN, Math.min(FILE_PANEL_MAX, window.innerWidth - state.agentPanelWidth - diffPanelMinimum()));
   const width = Math.round(Math.max(FILE_PANEL_MIN, Math.min(viewportLimit, value)));
   state.filePanelWidth = width;
   elements.workspace.style.setProperty("--file-panel-width", `${width}px`);
@@ -178,13 +223,23 @@ function setFilePanelWidth(value, persist = false) {
   if (persist) window.localStorage.setItem(preferenceKey("file-panel-width"), String(width));
 }
 
+function setAgentPanelWidth(value, persist = false) {
+  const viewportLimit = Math.max(AGENT_PANEL_MIN, Math.min(AGENT_PANEL_MAX, window.innerWidth - state.filePanelWidth - diffPanelMinimum()));
+  const width = Math.round(Math.max(AGENT_PANEL_MIN, Math.min(viewportLimit, value)));
+  state.agentPanelWidth = width;
+  elements.workspace.style.setProperty("--agent-panel-width", `${width}px`);
+  elements["agent-resizer"].setAttribute("aria-valuenow", String(width));
+  if (persist) window.localStorage.setItem(preferenceKey("agent-panel-width"), String(width));
+}
+
 function initializeUiPreferences() {
-  const repository = state.session.comparison.repositoryRoot;
+  const repository = state.session.pullRequest?.sourceRepositoryRoot ?? state.session.comparison.repositoryRoot;
   if (state.preferenceRepository === repository) return;
   state.preferenceRepository = repository;
   const savedLayout = window.localStorage.getItem(preferenceKey("diff-layout"));
   const savedTreeMode = window.localStorage.getItem(preferenceKey("tree-mode"));
   const savedFilePanelWidth = Number(window.localStorage.getItem(preferenceKey("file-panel-width")));
+  const savedAgentPanelWidth = Number(window.localStorage.getItem(preferenceKey("agent-panel-width")));
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = ["unified", "split"].includes(savedLayout) ? savedLayout : state.session.preferences?.diffLayout ?? "split";
   state.treeMode = ["changes", "repository"].includes(savedTreeMode)
@@ -193,6 +248,8 @@ function initializeUiPreferences() {
       ? (legacyChangedOnly === "true" ? "changes" : "repository")
       : state.session.preferences?.changedFilesOnly ? "changes" : "repository";
   setFilePanelWidth(Number.isFinite(savedFilePanelWidth) && savedFilePanelWidth > 0 ? savedFilePanelWidth : 240);
+  setAgentPanelWidth(Number.isFinite(savedAgentPanelWidth) && savedAgentPanelWidth > 0 ? savedAgentPanelWidth : 420);
+  setFilePanelWidth(state.filePanelWidth);
 }
 
 function fileContext(file) {
@@ -296,7 +353,7 @@ function findingPins(file, row, side, findings) {
   return findings
     .filter((finding) => finding.path === file.path && finding.side === side && finding.line === line && finding.status !== "dismissed")
     .map((finding) => {
-      const summary = compactText(finding.message, 220);
+      const summary = findingSummary(finding);
       return `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" data-tooltip="${escapeHtml(summary)}" aria-label="${escapeHtml(`${finding.priority} finding: ${summary}`)}" aria-describedby="finding-tooltip">${finding.priority}</button>`;
     }).join("");
 }
@@ -597,28 +654,49 @@ function renderPullRequest() {
   elements["pull-request-content"].innerHTML = `
     <div class="panel-heading"><div><div class="eyebrow">GitHub pull request</div><h2>#${pullRequest.number} ${escapeHtml(pullRequest.title)}</h2></div><span class="mode">${escapeHtml(pullRequest.reviewDecision ?? "REVIEW REQUIRED")}</span></div>
     <p class="muted">${escapeHtml(pullRequest.repository)} · ${escapeHtml(pullRequest.author)} · ${escapeHtml(pullRequest.baseRefName)} ← ${escapeHtml(pullRequest.headRefName)} · ${escapeHtml(pullRequest.headRefOid.slice(0, 8))}</p>
-    <div>${renderMarkdown(pullRequest.body || "No description provided.")}</div>
+    <div class="pull-request-body">${pullRequestDescription(pullRequest.body)}</div>
     <h3>Checks</h3><ul>${checks}</ul>
     <h3>Commits</h3><ul>${commits}</ul>
     <h3>Existing review threads${pullRequest.threadsTruncated ? " (first 100)" : ""}</h3>${threads}`;
 }
 
-function findingCards(findings) {
+function renderReviewOverview() {
+  const outline = state.session.outline;
+  const pullRequest = state.session.pullRequest;
+  elements["review-overview"].classList.toggle("hidden", !outline && !pullRequest);
+  elements["tour-overview"].classList.toggle("hidden", !outline);
+  if (outline) {
+    elements["review-overview-title"].textContent = outline.title;
+    elements["review-overview-summary"].textContent = outline.summary;
+  }
+  elements["pull-request-description"].classList.toggle("hidden", !pullRequest);
+  if (pullRequest) {
+    elements["pull-request-description-body"].innerHTML = pullRequestDescription(pullRequest.body);
+  }
+}
+
+function findingCards(findings, compact = false) {
   const disabled = reviewIsOpen() ? "" : " disabled";
   const ordered = [...findings].sort((left, right) => left.priority.localeCompare(right.priority) || left.path.localeCompare(right.path) || left.line - right.line);
   return ordered.length === 0
     ? '<p class="comment-empty">No findings in this scope.</p>'
     : ordered.map((finding) => {
       const focused = finding.id === state.focusedFindingId;
-      return `<article class="finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${finding.outdated ? " outdated" : ""}${focused ? " focused" : ""}" data-finding-id="${escapeHtml(finding.id)}"${focused ? ' aria-current="true" tabindex="-1"' : ""}>
-      <div class="finding-heading"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(finding.path)}:${finding.line}</button><span class="finding-priority">${finding.priority}</span></div>
+      const classes = `finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${finding.outdated ? " outdated" : ""}${focused ? " focused" : ""}`;
+      const body = `<div class="finding-heading"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(finding.path)}:${finding.line}</button><span class="finding-priority">${finding.priority}</span></div>
       <strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong>
       <p>${renderInlineMarkdown(finding.message)}</p>
       <details><summary>Evidence · ${escapeHtml(finding.confidence)} confidence</summary><p>${renderInlineMarkdown(finding.evidence)}</p></details>
       <div class="finding-badges"><span>${finding.introduced === true ? "introduced" : finding.introduced === false ? "pre-existing" : "attribution unknown"}</span><span>${finding.tested ? "tested" : "untested"}</span><span>blast ${finding.blastRadiusSize}</span><span>${escapeHtml(finding.pinScope)} pin</span>${finding.recallGuard ? "<span>recall-protected</span>" : ""}${finding.outdated ? "<span>outdated</span>" : ""}</div>
       <div class="comment-actions">
         ${finding.status === "open" ? `<button class="text-button" data-action="convert" type="button"${disabled}${finding.outdated ? " disabled" : ""}>Add as feedback</button><button class="text-button" data-action="dismiss" type="button"${disabled}>Dismiss</button>` : finding.status === "dismissed" ? `<button class="text-button" data-action="reopen" type="button"${disabled}>Reopen</button>` : '<span class="muted">Added to feedback</span>'}
-      </div>
+      </div>`;
+      if (compact) {
+        const fileName = finding.path.split("/").at(-1) || finding.path;
+        return `<details class="${classes} compact-finding" data-finding-id="${escapeHtml(finding.id)}"><summary><span class="finding-priority">${finding.priority}</span><button class="compact-finding-file" data-action="jump" type="button" title="Go to ${escapeHtml(finding.path)}:${finding.line}">${escapeHtml(fileName)}</button></summary><div class="compact-finding-summary"><p>${escapeHtml(findingSummary(finding))}</p><div class="compact-finding-actions"><button class="text-button" data-action="open-finding" type="button">View finding</button></div></div></details>`;
+      }
+      return `<article class="${classes}" data-finding-id="${escapeHtml(finding.id)}"${focused ? ' aria-current="true" tabindex="-1"' : ""}>
+      ${body}
     </article>`;
     }).join("");
 }
@@ -638,7 +716,7 @@ function renderFindings() {
   elements["finding-list"].innerHTML = findingCards(stepFindings);
   elements["finding-drawer"].classList.toggle("hidden", stepFindings.length === 0);
   elements["phase-finding-count"].textContent = String(phaseFindings.filter((finding) => finding.status === "open").length);
-  elements["phase-finding-list"].innerHTML = findingCards(phaseFindings);
+  elements["phase-finding-list"].innerHTML = findingCards(phaseFindings, true);
   elements["phase-finding-drawer"].classList.toggle("hidden", phaseFindings.length === 0);
   elements["findings-tab-count"].textContent = String(findings.filter((finding) => finding.status === "open").length);
   elements["findings-tab-count"].classList.toggle("hidden", findings.length === 0);
@@ -714,11 +792,16 @@ function renderFlows() {
     : "Start the tour to generate grounded main-flow diagrams.";
   elements.flows.innerHTML = flows.map((flow, index) => {
     const provenance = flowProvenanceCopy(flow.provenance);
+    const affectedFiles = flow.affectedFiles ?? [];
+    const affectedCount = affectedFiles.length || flow.blastRadiusSize;
+    const affectedDetails = affectedFiles.length > 0
+      ? affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")
+      : '<p class="muted">Exact files were not captured for this saved tour. Regenerate this diagram to add them.</p>';
     return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
-      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><span class="blast">affects ${flow.blastRadiusSize}</span><button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
+      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details><button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
       <div class="sequence-diagram mermaid-render" data-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
-      <div class="flow-warning hidden" data-flow-error>Could not render this diagram safely. Inspect or edit its source below.</div>
+      <div class="flow-warning hidden" data-flow-error>The diagram source is invalid or unsupported. Inspect or edit it below.</div>
       <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
     </article>`;
   }).join("");
@@ -797,7 +880,7 @@ function renderActiveTab() {
 }
 
 function renderTourAnnotation() {
-  document.querySelectorAll(".tour-anchor").forEach((row) => row.classList.remove("tour-anchor"));
+  document.querySelectorAll(".tour-anchor, .tour-anchor-start, .tour-anchor-end").forEach((row) => row.classList.remove("tour-anchor", "tour-anchor-start", "tour-anchor-end"));
   document.querySelectorAll(".tour-code-note").forEach((note) => note.remove());
   const activeStep = currentStep();
   const phase = currentPhase();
@@ -807,7 +890,11 @@ function renderTourAnnotation() {
     const { path, side, startLine, endLine } = step.anchor;
     const rows = [...document.querySelectorAll(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"]`)]
       .filter((row) => Number(row.dataset.line) >= startLine && Number(row.dataset.line) <= endLine);
-    if (step.id === activeStep.id) rows.forEach((row) => row.classList.add("tour-anchor"));
+    if (step.id === activeStep.id && rows.length > 0) {
+      rows.forEach((row) => row.classList.add("tour-anchor"));
+      rows[0].classList.add("tour-anchor-start");
+      rows.at(-1).classList.add("tour-anchor-end");
+    }
     const firstRow = rows[0];
     if (!firstRow) continue;
     const note = document.createElement("aside");
@@ -845,6 +932,7 @@ function renderMessages() {
 
 function renderTour() {
   const { outline, currentStepIndex } = state.session;
+  renderReviewOverview();
   const active = Boolean(outline);
   elements["tour-empty"].classList.toggle("hidden", active);
   elements["tour-active"].classList.toggle("hidden", !active);
@@ -855,13 +943,17 @@ function renderTour() {
   const phase = outline.phases.find((candidate) => candidate.steps.some((item) => item.id === step.id));
   const phaseIndex = outline.phases.indexOf(phase);
   const stopInPhase = phase.steps.findIndex((candidate) => candidate.id === step.id);
-  elements["tour-title"].textContent = outline.title;
-  elements["tour-summary"].textContent = outline.summary;
   elements["step-count"].textContent = `Phase ${phaseIndex + 1} of ${outline.phases.length} · Stop ${stopInPhase + 1} of ${phase.steps.length}`;
   elements["progress-value"].value = ((currentStepIndex + 1) / steps.length) * 100;
   elements["phase-count"].textContent = `Phase ${phaseIndex + 1}`;
   elements["phase-title"].textContent = phase.title;
   elements["phase-summary"].textContent = phase.summary;
+  if (state.renderedPhaseId !== phase.id) {
+    elements["phase-files-details"].open = false;
+    elements["phase-finding-drawer"].open = false;
+    state.renderedPhaseId = phase.id;
+  }
+  elements["phase-files-count"].textContent = String(phase.fileChanges.length);
   elements["phase-files"].innerHTML = phase.fileChanges.map((change) => {
     const file = state.session.comparison.files.find((candidate) => candidate.path === change.path);
     return `<button type="button" class="phase-file" data-phase-file="${escapeHtml(change.path)}"><span><strong>${escapeHtml(change.path)}</strong><small>${escapeHtml(change.summary)}</small></span>${file ? `<span class="file-stats"><span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>` : ""}</button>`;
@@ -934,7 +1026,11 @@ function renderSession() {
   const { comparison, comments } = state.session;
   initializeUiPreferences();
   state.proposalPreview = false;
-  elements["repository-label"].textContent = comparison.repositoryName;
+  const repositoryName = state.session.pullRequest?.repository ?? comparison.repositoryName;
+  const branchName = state.session.pullRequest?.headRefName ?? comparison.branch ?? `detached@${comparison.head.slice(0, 8)}`;
+  const repositoryIdentity = `${repositoryName} · ${branchName}`;
+  elements["repository-label"].textContent = repositoryIdentity;
+  elements["repository-label"].title = repositoryIdentity;
   elements["comparison-label"].textContent = `${comparison.base} → working tree`;
   elements["diff-search"].value = state.searchQuery;
   elements["status-filter"].value = state.statusFilter;
@@ -964,6 +1060,7 @@ function renderSession() {
   renderFlows();
   renderActivities();
   renderPullRequest();
+  renderReviewOverview();
   renderActiveTab();
   elements["feedback-button"].classList.toggle("hidden", comments.length === 0);
   const closed = !reviewIsOpen();
@@ -997,6 +1094,8 @@ async function startTour() {
         adapterId: elements["agent-select"].value,
         modelId: elements["model-select"].value,
         reasoningEffort: elements["reasoning-select"].value || undefined,
+        includeFlows: elements["include-flows"].checked,
+        includeFindings: elements["include-findings"].checked,
       }),
     });
     state.focusedStepId = currentStep()?.id ?? null;
@@ -1036,6 +1135,7 @@ function openFlowEditor(flow) {
   elements["flow-summary"].value = flow.summary;
   elements["flow-provenance"].value = flow.provenance;
   elements["flow-blast-radius"].value = String(flow.blastRadiusSize);
+  elements["flow-affected-files"].value = (flow.affectedFiles ?? []).join("\n");
   elements["flow-mermaid"].value = flow.mermaid;
   elements["flow-dialog"].showModal();
 }
@@ -1053,6 +1153,7 @@ async function saveFlow(event) {
         summary: elements["flow-summary"].value,
         provenance: elements["flow-provenance"].value,
         blastRadiusSize: Number(elements["flow-blast-radius"].value),
+        affectedFiles: elements["flow-affected-files"].value.split("\n").map((path) => path.trim()).filter(Boolean),
         mermaid: elements["flow-mermaid"].value,
       }),
     });
@@ -1082,10 +1183,10 @@ async function regenerateFlows(id) {
   }
 }
 
-async function downloadExport() {
+async function downloadExport(format) {
   if (!state.apiToken || state.busy) return;
-  const format = elements["export-format"].value;
-  elements["export-button"].disabled = true;
+  const buttons = elements["export-menu"].querySelectorAll("button");
+  buttons.forEach((button) => { button.disabled = true; });
   try {
     const response = await fetch(`/api/export?format=${encodeURIComponent(format)}`, {
       headers: { "X-Review-Tour-Token": state.apiToken },
@@ -1106,7 +1207,8 @@ async function downloadExport() {
   } catch (error) {
     toast(error.message);
   } finally {
-    elements["export-button"].disabled = state.busy;
+    buttons.forEach((button) => { button.disabled = state.busy; });
+    elements["export-menu"].open = false;
   }
 }
 
@@ -1233,7 +1335,12 @@ elements["cancel-comment"].addEventListener("click", () => elements["comment-dia
 elements["close-button"].addEventListener("click", () => close(state.session.preferences?.closeOutcome ?? "accepted"));
 elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
-elements["export-button"].addEventListener("click", downloadExport);
+elements["export-menu"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-export-format]");
+  if (button) void downloadExport(button.dataset.exportFormat);
+});
+elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode);
+elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);
 elements["regenerate-flows"].addEventListener("click", () => regenerateFlows());
 elements["flow-form"].addEventListener("submit", saveFlow);
 elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
@@ -1255,13 +1362,47 @@ elements["file-resizer"].addEventListener("pointerup", (event) => {
   elements["file-resizer"].classList.remove("dragging");
   setFilePanelWidth(state.filePanelWidth, true);
 });
+elements["file-resizer"].addEventListener("pointercancel", () => {
+  fileResizeStart = null;
+  elements["file-resizer"].classList.remove("dragging");
+});
 elements["file-resizer"].addEventListener("keydown", (event) => {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
   const width = event.key === "Home" ? FILE_PANEL_MIN : event.key === "End" ? FILE_PANEL_MAX : state.filePanelWidth + (event.key === "ArrowRight" ? 20 : -20);
   setFilePanelWidth(width, true);
 });
-window.addEventListener("resize", () => { if (state.session) setFilePanelWidth(state.filePanelWidth); });
+let agentResizeStart = null;
+elements["agent-resizer"].addEventListener("pointerdown", (event) => {
+  agentResizeStart = { pointerId: event.pointerId, x: event.clientX, width: state.agentPanelWidth };
+  elements["agent-resizer"].classList.add("dragging");
+  elements["agent-resizer"].setPointerCapture(event.pointerId);
+});
+elements["agent-resizer"].addEventListener("pointermove", (event) => {
+  if (!agentResizeStart || event.pointerId !== agentResizeStart.pointerId) return;
+  setAgentPanelWidth(agentResizeStart.width + agentResizeStart.x - event.clientX);
+});
+elements["agent-resizer"].addEventListener("pointerup", (event) => {
+  if (!agentResizeStart || event.pointerId !== agentResizeStart.pointerId) return;
+  agentResizeStart = null;
+  elements["agent-resizer"].classList.remove("dragging");
+  setAgentPanelWidth(state.agentPanelWidth, true);
+});
+elements["agent-resizer"].addEventListener("pointercancel", () => {
+  agentResizeStart = null;
+  elements["agent-resizer"].classList.remove("dragging");
+});
+elements["agent-resizer"].addEventListener("keydown", (event) => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const width = event.key === "Home" ? AGENT_PANEL_MIN : event.key === "End" ? AGENT_PANEL_MAX : state.agentPanelWidth + (event.key === "ArrowLeft" ? 20 : -20);
+  setAgentPanelWidth(width, true);
+});
+window.addEventListener("resize", () => {
+  if (!state.session) return;
+  setAgentPanelWidth(state.agentPanelWidth);
+  setFilePanelWidth(state.filePanelWidth);
+});
 window.addEventListener("review-tour-theme-change", () => {
   if (state.session && state.activeTab === "flows") renderFlows();
 });
@@ -1330,6 +1471,11 @@ elements["findings-back"].addEventListener("click", returnToFindingCode);
 elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
 elements["pull-request-tab"].addEventListener("click", () => { state.activeTab = "pull-request"; renderPullRequest(); renderActiveTab(); });
 elements.flows.addEventListener("click", (event) => {
+  const fileButton = event.target.closest("[data-flow-file]");
+  if (fileButton) {
+    void showChangedFile(fileButton.dataset.flowFile);
+    return;
+  }
   const button = event.target.closest("[data-flow-action]");
   const card = event.target.closest("[data-flow-id]");
   if (!button || !card || state.busy || !reviewIsOpen()) return;
@@ -1475,7 +1621,13 @@ async function handleFindingClick(event) {
   if (!action || !item) return;
   const finding = state.session.outline?.findings.find((candidate) => candidate.id === item.dataset.findingId);
   if (!finding) return;
+  if (action === "open-finding") {
+    event.preventDefault();
+    openFindingFromCode(finding.id);
+    return;
+  }
   if (action === "jump") {
+    event.preventDefault();
     state.findingReturn = null;
     state.focusedFindingId = null;
     return showChangedFile(finding.path, finding.line, finding.side);

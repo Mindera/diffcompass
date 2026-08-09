@@ -16,6 +16,8 @@ interface AgentDefaults {
   adapterId?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort;
+  callerModel?: string;
+  callerReasoningEffort?: ReasoningEffort;
   attached?: boolean;
   stateFile?: string;
   resume?: boolean;
@@ -311,17 +313,23 @@ export class ReviewSession {
       persisted?.bridgeLeases,
     ) : undefined;
     if (bridge) {
+      const persistedAttachedSelection = persisted?.selection?.adapterId === "attached" ? persisted.selection : undefined;
+      const callerModel = defaults.callerModel?.trim() || persistedAttachedSelection?.modelId || "current-session";
+      const callerReasoning = defaults.callerReasoningEffort ?? persistedAttachedSelection?.reasoningEffort;
       adapters.unshift({
         id: "attached",
         label: "Triggering agent",
         modelDiscovery: "default-only",
         models: [{
-          id: "current-session",
-          label: "Current agent session",
+          id: callerModel,
+          label: callerModel === "current-session" ? "Current agent session" : `${callerModel} · current session`,
           isDefault: true,
-          reasoningEfforts: [],
+          reasoningEfforts: callerReasoning ? [callerReasoning] : [],
+          defaultReasoningEffort: callerReasoning,
         }],
-        note: "Questions and tour prompts return to the agent that launched this page.",
+        note: callerReasoning
+          ? `Questions and tour prompts return to the launching agent (${callerModel}, ${callerReasoning} effort).`
+          : `Questions and tour prompts return to the launching agent${callerModel === "current-session" ? "." : ` (${callerModel}).`}`,
       });
     }
     const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences }, bridge, persisted);
@@ -356,7 +364,13 @@ export class ReviewSession {
       throw new ReviewError(`${model.label} does not support ${requestedReasoning} reasoning.`);
     }
     const reasoningEffort = requestedReasoning ?? model.defaultReasoningEffort;
-    return { adapterId: adapter.id, modelId: model.id, reasoningEffort };
+    return {
+      adapterId: adapter.id,
+      modelId: model.id,
+      reasoningEffort,
+      includeFlows: input.includeFlows ?? true,
+      includeFindings: input.includeFindings ?? true,
+    };
   }
 
   snapshot() {
@@ -581,14 +595,20 @@ export class ReviewSession {
       } else if (selection && (
         (selection.adapterId !== undefined && selection.adapterId !== this.selection?.adapterId) ||
         (selection.modelId !== undefined && selection.modelId !== this.selection?.modelId) ||
-        (selection.reasoningEffort !== undefined && selection.reasoningEffort !== this.selection?.reasoningEffort)
+        (selection.reasoningEffort !== undefined && selection.reasoningEffort !== this.selection?.reasoningEffort) ||
+        (selection.includeFlows !== undefined && selection.includeFlows !== this.selection?.includeFlows) ||
+        (selection.includeFindings !== undefined && selection.includeFindings !== this.selection?.includeFindings)
       )) {
         throw new ReviewError("The agent and model cannot be changed after the tour starts.");
       }
       this.agent.useComparison(this.comparison);
       try {
         if (!this.outline) {
-          const outline = await this.agent.createOutline(this.comparison, this.reviewPolicy);
+          const outline = await this.agent.createOutline(
+            this.comparison,
+            this.reviewPolicy,
+            () => this.ensureComparisonCurrent(comparisonGeneration),
+          );
           this.ensureComparisonCurrent(comparisonGeneration);
           this.outline = outline;
           this.currentStepIndex = 0;
@@ -662,6 +682,9 @@ export class ReviewSession {
       let flow: ReviewFlow;
       try {
         flow = validateReviewFlow({ id, ...input });
+        if (flow.affectedFiles?.some((path) => !this.comparison.files.some((file) => file.path === path))) {
+          throw new Error("Flow affectedFiles must reference changed files in this comparison.");
+        }
       } catch (error) {
         throw new ReviewError(error instanceof Error ? error.message : String(error));
       }
