@@ -19,7 +19,9 @@ to the relevant code, and stays available for follow-up questions.
 - asks the selected agent to create a logically ordered tour;
 - generates each explanation as the reviewer moves forward;
 - keeps follow-up questions in the same agent conversation;
-- anchors tour stops, editable review comments, and evidence-backed P0–P3 findings to diff lines;
+- places a compact tour annotation beside the active code while the agent gives the deeper explanation in a separately scrollable panel;
+- keeps the diff and file navigation reviewer-controlled; only Start, Previous, and Next jump to a tour anchor;
+- anchors editable review comments and evidence-backed P0–P3 findings to diff lines;
 - generates provenance-labelled sequence views for goal-critical, high-blast flows, with validated editing and agent regeneration;
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
 - exports the complete tour, flows, findings, reviewer feedback, changed-file state, and diff as Markdown or self-contained HTML;
@@ -30,8 +32,8 @@ to the relevant code, and stays available for follow-up questions.
 - provides a session library to reopen, rename, archive, and delete saved tours;
 - follows the system light or dark appearance by default, with a persistent manual override;
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
-- searches changed paths and code, filters by file or review status, and can hide unchanged repository files;
-- switches between unified and split diffs, expands hunk context on demand, and persists per-file reviewed state;
+- searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
+- starts with a dense split diff by default, also supports unified diffs, expands hunk context on demand, and persists per-file reviewed state;
 - opens GitHub pull requests in isolated worktrees, shows their metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
 - exposes `Close` and `Send feedback & close` outcomes.
 
@@ -174,9 +176,10 @@ New state files live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/s
 ## Navigating the diff
 
 The left panel searches both changed paths and changed code. Combine it with
-file-status and reviewed/unreviewed filters, or enable `Changed files only` to
-hide the unchanged repository tree. The diff toolbar switches between unified
-and side-by-side layouts. Each hunk can progressively load more surrounding
+file-status and reviewed/unreviewed filters. `Changed paths` shows a flat,
+Git-style list of changed files; `Full repository` restores the hierarchical
+tree and unchanged source navigation. The diff toolbar switches between dense
+side-by-side and unified layouts. Each hunk can progressively load more surrounding
 context without making the initial session snapshot unbounded. Marking a file
 reviewed is stored with the session and survives server and browser restarts.
 

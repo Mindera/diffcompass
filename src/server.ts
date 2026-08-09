@@ -329,5 +329,5 @@ export function startServer(session: ReviewSession, port: number, sessionDirecto
     }
   };
 
-  return Bun.serve({ hostname: "127.0.0.1", port, fetch });
+  return Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 60, fetch });
 }

@@ -85,6 +85,17 @@ test("browser and bridge endpoints require their own non-interchangeable token",
   })).status).toBe(200);
 });
 
+test("attached bridge long-polls survive beyond Bun's ten-second default", async () => {
+  const { bridge, url } = await fixture();
+  const startedAt = Date.now();
+  const response = await jsonRequest(url, "/api/bridge/events?after=0&waitMs=11000", {
+    headers: { "x-review-tour-token": bridge.token },
+  });
+  expect(response.status).toBe(200);
+  expect(Date.now() - startedAt).toBeGreaterThanOrEqual(10_500);
+  expect(await response.json()).toEqual({ events: [] });
+}, 15_000);
+
 test("GitHub publication requires confirmation, current head, and uses only selected comments", async () => {
   const { comparison, repository, session, url } = await fixture();
   const headers = browserHeaders(url, session.browserToken);

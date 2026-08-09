@@ -60,7 +60,9 @@
               <option value="">All files</option><option value="unreviewed">Unreviewed</option><option value="reviewed">Reviewed</option>
             </select></label>
           </div>
-          <label class="toggle-control"><input id="changed-only" type="checkbox" /> Changed files only</label>
+          <label class="tree-mode-control"><span>Tree</span><select id="tree-mode" aria-label="File tree mode">
+            <option value="changes">Changed paths</option><option value="repository">Full repository</option>
+          </select></label>
         </div>
         <div id="file-tree" class="file-tree"></div>
       </aside>
@@ -109,6 +111,10 @@
             <label>Reasoning<select id="reasoning-select"></select></label>
             <div id="agent-note" class="agent-note"></div>
           </div>
+          <details id="planning-activity" class="planning-activity hidden" open>
+            <summary><span class="planning-spinner" aria-hidden="true"></span>Planning activity</summary>
+            <div id="planning-activity-body" class="planning-activity-body"></div>
+          </details>
           <button id="start-tour" class="button primary wide">Start tour</button>
         </div>
 
@@ -117,9 +123,13 @@
             <span id="step-count"></span>
             <progress id="progress-value" class="progress-track" max="100" value="0" aria-label="Tour progress"></progress>
           </div>
-          <div class="tour-scroll">
+          <div id="tour-scroll" class="tour-scroll">
             <h2 id="tour-title"></h2>
             <p id="tour-summary" class="muted"></p>
+            <details id="planning-notes" class="planning-notes hidden">
+              <summary>How the agent organized this tour</summary>
+              <ul id="planning-note-list"></ul>
+            </details>
             <article class="step-card">
               <div id="step-anchor" class="anchor"></div>
               <h3 id="step-title"></h3>

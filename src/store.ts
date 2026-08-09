@@ -23,6 +23,7 @@ function validAnchor(value: unknown): boolean {
 
 function validOutline(value: unknown): boolean {
   if (!record(value) || !nonEmptyString(value.title, 8_000) || !nonEmptyString(value.summary, 50_000)) return false;
+  if (value.planningNotes !== undefined && (!Array.isArray(value.planningNotes) || value.planningNotes.length > 20 || !value.planningNotes.every((note) => nonEmptyString(note, 2_000)))) return false;
   if (!Array.isArray(value.steps) || !Array.isArray(value.flows) || !Array.isArray(value.findings)) return false;
   if (value.steps.length > 100 || value.flows.length > 50 || value.findings.length > 2_000) return false;
   return value.steps.every((step) => record(step) && nonEmptyString(step.id, 128) && nonEmptyString(step.title, 8_000) &&

@@ -113,7 +113,7 @@ test("normalizes context findings and derives all priority levels from the docum
     evidence: "The diff demonstrates the issue.", priority: "P3", introduced: true, recallGuard: false, blastRadiusSize, tested, pinScope, status: "open",
   });
   await bridge.respond(event!.id, JSON.stringify({
-    title: "Review", summary: "Review changes", flows: [],
+    title: "Review", summary: "Review changes", planningNotes: ["Start at the behavior boundary."], flows: [],
     steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
     findings: [
       finding("p0", 2, "new", 8, false, "line"),
@@ -124,6 +124,7 @@ test("normalizes context findings and derives all priority levels from the docum
   }));
 
   const outline = await pending;
+  expect(outline.planningNotes).toEqual(["Start at the behavior boundary."]);
   expect(outline.findings.map(({ id, priority }) => [id, priority])).toEqual([["p0", "P0"], ["p1", "P1"], ["p2", "P2"], ["p3", "P3"]]);
   expect(outline.findings[3]).toMatchObject({ side: "new", line: 1 });
 });

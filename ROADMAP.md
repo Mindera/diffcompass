@@ -72,6 +72,16 @@ clear.
   sequence syntax.
 - Durable Markdown and self-contained, escaped HTML review artifacts.
 
+## Shipped in v0.8.1
+
+- Reviewer-controlled guided navigation: compact annotations stay beside the
+  active code, while only explicit tour controls jump between anchors.
+- Flat Git-style changed paths alongside the complete repository tree.
+- Dense split diffs by default, with one-sided rows isolated from global empty
+  states and a bounded, independently scrollable explanation panel.
+- Indeterminate planning activity plus collapsible, user-facing route notes.
+- Attached bridge long polls remain connected beyond Bun's default idle timeout.
+
 ## Release hardening
 
 - Native CI execution on macOS and ARM runners, not only cross-compilation.

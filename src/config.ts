@@ -28,7 +28,7 @@ export const DEFAULT_REVIEW_POLICY: ReviewPolicy = {
 };
 
 export const DEFAULT_REVIEW_PREFERENCES: ReviewPreferences = {
-  diffLayout: "unified",
+  diffLayout: "split",
   changedFilesOnly: false,
   contextLines: 3,
   requireAllFilesReviewed: false,

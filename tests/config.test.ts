@@ -23,6 +23,7 @@ test("missing repository configuration uses conservative defaults", async () => 
     retention: { includeArchived: false },
     reviewPolicy: DEFAULT_REVIEW_POLICY,
   });
+  expect(DEFAULT_REVIEW_PREFERENCES.diffLayout).toBe("split");
 });
 
 test("loads every supported repository default", async () => {

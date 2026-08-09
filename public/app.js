@@ -25,17 +25,18 @@ const state = {
   statusFilter: "",
   reviewFilter: "",
   preferenceRepository: null,
-  changedOnly: null,
+  treeMode: null,
   diffLayout: null,
+  focusedStepId: null,
   pollInFlight: false,
   pollGeneration: 0,
 };
 
 const elements = Object.fromEntries(
   [
-    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "changed-only", "diff-layout", "filter-summary",
+    "repository-label", "comparison-label", "file-count", "file-tree", "diff", "empty-diff", "diff-view", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
     "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-format", "export-button", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "tour-title",
-    "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective",
+    "tour-summary", "step-count", "progress-value", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-mermaid", "cancel-flow",
@@ -49,6 +50,11 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function compactText(value, limit) {
+  const text = String(value).replace(/\s+/g, " ").trim();
+  return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
 }
 
 function renderInlineMarkdown(value) {
@@ -160,9 +166,14 @@ function initializeUiPreferences() {
   if (state.preferenceRepository === repository) return;
   state.preferenceRepository = repository;
   const savedLayout = window.localStorage.getItem(preferenceKey("diff-layout"));
-  const savedChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
-  state.diffLayout = ["unified", "split"].includes(savedLayout) ? savedLayout : state.session.preferences?.diffLayout ?? "unified";
-  state.changedOnly = savedChangedOnly === null ? state.session.preferences?.changedFilesOnly ?? false : savedChangedOnly === "true";
+  const savedTreeMode = window.localStorage.getItem(preferenceKey("tree-mode"));
+  const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
+  state.diffLayout = ["unified", "split"].includes(savedLayout) ? savedLayout : state.session.preferences?.diffLayout ?? "split";
+  state.treeMode = ["changes", "repository"].includes(savedTreeMode)
+    ? savedTreeMode
+    : legacyChangedOnly !== null
+      ? (legacyChangedOnly === "true" ? "changes" : "repository")
+      : state.session.preferences?.changedFilesOnly ? "changes" : "repository";
 }
 
 function fileContext(file) {
@@ -192,20 +203,35 @@ function treeFromFiles(repositoryFiles, changedFiles) {
   return root;
 }
 
-function renderTreeNode(node, depth = 0) {
+function renderChangedFileEntry(file, label, flat = false) {
+  const reviewed = state.session.reviewedFiles?.includes(file.path);
+  const parts = file.path.split("/");
+  const basename = parts.pop() ?? file.path;
+  const display = flat && parts.length > 0
+    ? `<span class="path-prefix">${escapeHtml(`${parts.join("/")}/`)}</span><span class="path-basename">${escapeHtml(basename)}</span>`
+    : escapeHtml(label);
+  return `<div class="file-entry${flat ? " flat-path" : ""}${reviewed ? " reviewed" : ""}"><button class="file-button" data-file="${escapeHtml(file.path)}">
+    <span class="file-name" title="${escapeHtml(file.path)}">${display}</span>
+    <span class="file-stats"><span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
+  </button><button class="review-toggle" type="button" data-review-file="${escapeHtml(file.path)}" aria-label="${escapeHtml(`${reviewed ? "Mark unreviewed" : "Mark reviewed"}: ${file.path}`)}" title="${reviewed ? "Mark unreviewed" : "Mark reviewed"}"${reviewIsOpen() ? "" : " disabled"}>${reviewed ? "✓" : "○"}</button></div>`;
+}
+
+function renderChangedPathList(files) {
+  return [...files].sort((left, right) => left.path.localeCompare(right.path))
+    .map((file) => renderChangedFileEntry(file, file.path, true))
+    .join("");
+}
+
+function renderTreeNode(node, depth = 0, expandAll = false) {
   return Object.entries(node)
     .sort(([a, av], [b, bv]) => Number(Boolean(av.__file)) - Number(Boolean(bv.__file)) || a.localeCompare(b))
     .map(([name, value]) => {
       if (value.__file) {
         const file = value.__file;
         if (!file.changed) return `<button class="file-button unchanged" data-source="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span class="file-name">${escapeHtml(name)}</span></button>`;
-        const reviewed = state.session.reviewedFiles?.includes(file.path);
-        return `<div class="file-entry${reviewed ? " reviewed" : ""}"><button class="file-button" data-file="${escapeHtml(file.path)}">
-          <span class="file-name" title="${escapeHtml(file.path)}">${escapeHtml(name)}</span>
-          <span class="file-stats"><span class="plus">+${file.changed.additions}</span> <span class="minus">-${file.changed.deletions}</span></span>
-        </button><button class="review-toggle" type="button" data-review-file="${escapeHtml(file.path)}" aria-label="${escapeHtml(`${reviewed ? "Mark unreviewed" : "Mark reviewed"}: ${file.path}`)}" title="${reviewed ? "Mark unreviewed" : "Mark reviewed"}"${reviewIsOpen() ? "" : " disabled"}>${reviewed ? "✓" : "○"}</button></div>`;
+        return renderChangedFileEntry(file.changed, name);
       }
-      return `<details class="tree-directory" ${depth === 0 ? "open" : ""}><summary>${escapeHtml(name)}</summary><div class="tree-children">${renderTreeNode(value, depth + 1)}</div></details>`;
+      return `<details class="tree-directory" ${expandAll || depth === 0 ? "open" : ""}><summary>${escapeHtml(name)}</summary><div class="tree-children">${renderTreeNode(value, depth + 1, expandAll)}</div></details>`;
     })
     .join("");
 }
@@ -224,10 +250,13 @@ function renderFileTree() {
   const comparison = state.session.comparison;
   const changedFiles = filteredChangedFiles();
   const filtering = Boolean(state.searchQuery || state.statusFilter || state.reviewFilter);
-  const repositoryFiles = state.changedOnly || filtering
+  const changedPathsOnly = state.treeMode === "changes" || filtering;
+  const repositoryFiles = changedPathsOnly
     ? changedFiles.map((file) => file.path)
     : comparison.repositoryFiles ?? comparison.files.map((file) => file.path);
-  elements["file-tree"].innerHTML = renderTreeNode(treeFromFiles(repositoryFiles, changedFiles));
+  elements["file-tree"].innerHTML = changedPathsOnly
+    ? renderChangedPathList(changedFiles)
+    : renderTreeNode(treeFromFiles(repositoryFiles, changedFiles));
   const reviewedCount = (state.session.reviewedFiles ?? []).length;
   elements["file-count"].textContent = filtering
     ? `${changedFiles.length}/${comparison.files.length} match`
@@ -281,7 +310,7 @@ function splitRows(rows) {
 function renderSplitSide(file, row, side, findings) {
   const line = side === "old" ? row?.oldLine : row?.newLine;
   const content = row?.content ?? "";
-  const kind = row?.kind ?? "empty";
+  const kind = row?.kind ?? "split-empty";
   const prefix = kind === "addition" ? "+" : kind === "deletion" ? "−" : " ";
   return `<div class="diff-row split-side ${kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(content)}">
     <span class="line-number">${line ?? ""}</span>
@@ -363,7 +392,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
     row?.scrollIntoView({ behavior: "smooth", block: "center" });
     row?.classList.add("selected");
   }
-  highlightAnchor();
+  renderTourAnnotation();
 }
 
 async function showRepositoryFile(path) {
@@ -471,6 +500,7 @@ function renderComments() {
     row.querySelector(".review-dot")?.classList.remove("hidden");
   }
   elements["comment-count"].textContent = String(state.session.comments.length);
+  elements["comment-drawer"].classList.toggle("hidden", state.session.comments.length === 0);
   const closed = !reviewIsOpen();
   const disabled = closed ? " disabled" : "";
   elements["comment-list"].innerHTML = state.session.comments.length === 0
@@ -619,15 +649,38 @@ function renderActiveTab() {
   }
 }
 
-function highlightAnchor() {
+function renderTourAnnotation() {
   document.querySelectorAll(".tour-anchor").forEach((row) => row.classList.remove("tour-anchor"));
+  document.querySelectorAll(".tour-code-note").forEach((note) => note.remove());
   const step = currentStep();
   if (!step) return;
   const { path, side, startLine, endLine } = step.anchor;
   const rows = [...document.querySelectorAll(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"]`)]
     .filter((row) => Number(row.dataset.line) >= startLine && Number(row.dataset.line) <= endLine);
   rows.forEach((row) => row.classList.add("tour-anchor"));
-  (rows[0] ?? document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`))?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const lastRow = rows.at(-1);
+  if (!lastRow) return;
+  const note = document.createElement("aside");
+  note.className = "tour-code-note";
+  note.setAttribute("aria-label", `Current tour step: ${step.title}`);
+  note.innerHTML = `<span>Step ${state.session.currentStepIndex + 1}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 220))}</p>`;
+  (lastRow.closest(".split-row") ?? lastRow).insertAdjacentElement("afterend", note);
+}
+
+async function focusCurrentStep() {
+  const step = currentStep();
+  if (!step) return;
+  state.focusedStepId = step.id;
+  if (state.session.comparison.diffMode === "file" && state.visibleFile !== step.anchor.path) {
+    await showChangedFile(step.anchor.path, step.anchor.startLine, step.anchor.side);
+    return;
+  }
+  state.activeTab = "diff";
+  renderActiveTab();
+  renderTourAnnotation();
+  const target = document.querySelector(`.diff-row[data-path="${CSS.escape(step.anchor.path)}"][data-side="${step.anchor.side}"][data-line="${step.anchor.startLine}"]`)
+    ?? document.querySelector(`.diff-file[data-path="${CSS.escape(step.anchor.path)}"]`);
+  target?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function renderMessages() {
@@ -646,7 +699,6 @@ function renderTour() {
   if (!outline) return;
 
   const step = outline.steps[currentStepIndex];
-  if (state.session.comparison.diffMode === "file" && state.visibleFile !== step.anchor.path) void showChangedFile(step.anchor.path, step.anchor.startLine, step.anchor.side);
   elements["tour-title"].textContent = outline.title;
   elements["tour-summary"].textContent = outline.summary;
   elements["step-count"].textContent = `Step ${currentStepIndex + 1} of ${outline.steps.length}`;
@@ -655,10 +707,13 @@ function renderTour() {
   elements["step-title"].textContent = step.title;
   elements["step-objective"].textContent = step.objective;
   elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
+  const planningNotes = outline.planningNotes ?? [];
+  elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
+  elements["planning-note-list"].innerHTML = planningNotes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
   elements["previous-step"].disabled = state.busy || !reviewIsOpen() || currentStepIndex === 0;
   elements["next-step"].disabled = state.busy || !reviewIsOpen() || currentStepIndex === outline.steps.length - 1;
   renderMessages();
-  highlightAnchor();
+  renderTourAnnotation();
 }
 
 function renderFilteredDiff() {
@@ -676,7 +731,7 @@ function renderFilteredDiff() {
   }
   renderComments();
   renderFindings();
-  highlightAnchor();
+  renderTourAnnotation();
 }
 
 async function refreshDiffSearch() {
@@ -721,7 +776,7 @@ function renderSession() {
   elements["diff-search"].value = state.searchQuery;
   elements["status-filter"].value = state.statusFilter;
   elements["review-filter"].value = state.reviewFilter;
-  elements["changed-only"].checked = state.changedOnly;
+  elements["tree-mode"].value = state.treeMode;
   elements["diff-layout"].value = state.diffLayout;
   renderFileTree();
   const large = comparison.diffMode === "file";
@@ -735,8 +790,11 @@ function renderSession() {
   renderDiff(visibleDiffFiles());
   if (large && visibleDiffFiles().length === 0 && filteredChangedFiles().length > 0) {
     const step = currentStep();
-    const target = filteredChangedFiles().some((file) => file.path === step?.anchor.path) ? step?.anchor.path : state.visibleFile;
-    void showChangedFile(target && filteredChangedFiles().some((file) => file.path === target) ? target : filteredChangedFiles()[0].path, step?.anchor.startLine, step?.anchor.side);
+    const target = state.visibleFile && filteredChangedFiles().some((file) => file.path === state.visibleFile)
+      ? state.visibleFile
+      : filteredChangedFiles().some((file) => file.path === step?.anchor.path) ? step?.anchor.path : filteredChangedFiles()[0].path;
+    const targetsStep = target === step?.anchor.path;
+    void showChangedFile(target, targetsStep ? step.anchor.startLine : undefined, targetsStep ? step.anchor.side : undefined);
   }
   renderComments();
   renderFindings();
@@ -760,17 +818,15 @@ function renderSession() {
   elements["agent-mode"].textContent = state.session.agentSelection?.adapterId === "attached" ? "edits on request" : "read-only";
   renderAgentOptions();
   renderTour();
+  if (state.session.outline && state.focusedStepId === null) void focusCurrentStep();
 }
 
 async function startTour() {
   if (!reviewIsOpen()) return;
   setBusy(true);
-  const startedAt = Date.now();
-  const timer = window.setInterval(() => {
-    const seconds = Math.floor((Date.now() - startedAt) / 1000);
-    elements["start-tour"].textContent = `Planning tour · ${seconds}s`;
-  }, 1000);
-  elements["start-tour"].textContent = "Planning tour · 0s";
+  elements["planning-activity"].classList.remove("hidden");
+  elements["planning-activity-body"].innerHTML = `<p>Inspecting ${state.session.comparison.files.length.toLocaleString()} changed files and ${state.session.comparison.diffRowCount.toLocaleString()} diff rows.</p><p class="planning-live">Waiting for the agent to return a grounded route…</p>`;
+  elements["start-tour"].innerHTML = '<span class="button-spinner" aria-hidden="true"></span>Planning tour';
   try {
     state.session = await api("/api/tour/start", {
       method: "POST",
@@ -780,13 +836,16 @@ async function startTour() {
         reasoningEffort: elements["reasoning-select"].value || undefined,
       }),
     });
+    state.focusedStepId = currentStep()?.id ?? null;
     renderSession();
+    elements["tour-scroll"].scrollTop = 0;
+    await focusCurrentStep();
   } catch (error) {
     toast(error.message);
   } finally {
-    window.clearInterval(timer);
     setBusy(false);
     elements["start-tour"].textContent = "Start tour";
+    elements["planning-activity"].classList.add("hidden");
     renderTour();
   }
 }
@@ -797,6 +856,8 @@ async function navigate(direction) {
   try {
     state.session = await api("/api/tour/navigate", { method: "POST", body: JSON.stringify({ direction }) });
     renderTour();
+    elements["tour-scroll"].scrollTop = 0;
+    await focusCurrentStep();
   } catch (error) {
     toast(error.message);
   } finally {
@@ -1063,9 +1124,9 @@ elements["review-filter"].addEventListener("change", () => {
   state.reviewFilter = elements["review-filter"].value;
   renderFilteredDiff();
 });
-elements["changed-only"].addEventListener("change", () => {
-  state.changedOnly = elements["changed-only"].checked;
-  window.localStorage.setItem(preferenceKey("changed-only"), String(state.changedOnly));
+elements["tree-mode"].addEventListener("change", () => {
+  state.treeMode = elements["tree-mode"].value;
+  window.localStorage.setItem(preferenceKey("tree-mode"), state.treeMode);
   renderFileTree();
 });
 elements["diff-layout"].addEventListener("change", () => {

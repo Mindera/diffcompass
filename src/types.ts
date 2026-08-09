@@ -57,6 +57,7 @@ export interface TourStep {
 export interface TourOutline {
   title: string;
   summary: string;
+  planningNotes?: string[];
   steps: TourStep[];
   flows: ReviewFlow[];
   findings: ReviewFinding[];
