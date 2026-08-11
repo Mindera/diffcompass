@@ -188,14 +188,19 @@ test("flow provenance uses clear reviewer-facing wording", async () => {
 });
 
 test("diff rows stay dense and the explanation owns a bounded scroll area", async () => {
-  const [html, styles] = await Promise.all([
+  const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain('id="tour-scroll" class="tour-scroll"');
+  expect(app).toContain('<div class="diff-file-scroll">');
   expect(styles).toContain("grid-template-rows: auto minmax(0, 1fr) auto");
   expect(styles).toContain("white-space: pre;");
   expect(styles).toContain("max-height: min(180px, 26vh)");
   expect(styles).toContain(".diff-row.split-side.split-empty");
   expect(styles).not.toContain(".diff-row.split-side.empty");
+  expect(html).toContain('id="tour-scroll" class="tour-scroll"');
+  expect(styles).toContain(".diff-file-scroll { max-width: 100%; overflow-x: auto;");
+  expect(styles).toContain(".split-row { display: contents; }");
+  expect(styles).not.toContain(".line-code::-webkit-scrollbar");
 });
