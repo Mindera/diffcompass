@@ -13,6 +13,7 @@ import { acquireSessionLock, runSessionCommand } from "./session-library.ts";
 import { loadRepositoryConfig } from "./config.ts";
 import { createPullRequestWorkspace, loadPullRequestContext, removePullRequestWorkspace } from "./github.ts";
 import type { PullRequestContext } from "./types.ts";
+import { runBridgeCommand } from "./bridge-command.ts";
 
 interface Options {
   repository: string;
@@ -35,6 +36,7 @@ function printHelp(): void {
 Usage:
   code-review-tour [options]
   code-review-tour doctor
+  code-review-tour bridge context|next|respond|ack|renew|refresh [options]
   code-review-tour pr URL|NUMBER [options]
   code-review-tour sessions [list|resume|rename|archive|unarchive|delete|prune]
 
@@ -115,6 +117,9 @@ if (command === "--version" || command === "-v") {
 }
 if (command === "doctor") {
   process.exit(await runDoctor());
+}
+if (command === "bridge") {
+  process.exit(await runBridgeCommand(cliArguments.slice(1)));
 }
 if (command === "sessions") {
   const result = await runSessionCommand(cliArguments.slice(1));

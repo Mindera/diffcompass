@@ -9,12 +9,11 @@
   },
   "type": "module",
   "bin": {
-    "code-review-tour": "src/cli.ts",
-    "code-review-tour-bridge": "src/bridge-client.ts"
+    "code-review-tour": "src/cli.ts"
   },
   "scripts": {
     "start": "bun run src/cli.ts",
-    "bridge": "bun run src/bridge-client.ts",
+    "bridge": "bun run src/cli.ts bridge",
     "build:release": "bash scripts/build-release.sh",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",

@@ -27,7 +27,7 @@ CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT="$test_root/copilot/skills" \
   ./scripts/install.sh
 
 "$test_root/bin/code-review-tour" --version
-"$test_root/bin/code-review-tour-bridge" >/dev/null
+"$test_root/bin/code-review-tour" bridge >/dev/null
 [[ -L "$test_root/codex/skills/code-review-tour" ]]
 [[ -L "$test_root/claude/skills/code-review-tour" ]]
 [[ -L "$test_root/gemini/skills/code-review-tour" ]]
@@ -43,3 +43,15 @@ CODE_REVIEW_TOUR_GEMINI_SKILL_ROOT="$test_root/gemini/skills" \
 CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT="$test_root/copilot/skills" \
   ./scripts/install.sh >/dev/null
 [[ ! -d "$test_root/install/$package_version/bin/bin" ]]
+
+minimal_root="$test_root/minimal"
+CODE_REVIEW_TOUR_ARCHIVE="$archive" \
+CODE_REVIEW_TOUR_INSTALL_ROOT="$minimal_root/install" \
+CODE_REVIEW_TOUR_BIN_ROOT="$minimal_root/bin" \
+CODE_REVIEW_TOUR_CODEX_SKILL_ROOT="$minimal_root/codex/skills" \
+CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT="$minimal_root/claude/skills" \
+CODE_REVIEW_TOUR_GEMINI_SKILL_ROOT="$minimal_root/gemini/skills" \
+CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT="$minimal_root/copilot/skills" \
+  ./scripts/install.sh --minimal >/dev/null
+"$minimal_root/bin/code-review-tour" bridge >/dev/null
+[[ ! -e "$minimal_root/codex/skills/code-review-tour" ]]

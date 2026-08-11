@@ -98,7 +98,7 @@ cd code-review-tour
 code-review-tour doctor
 ```
 
-The installer verifies the release checksum, installs commands under
+The installer verifies the release checksum, installs the self-contained command under
 `${XDG_BIN_HOME:-~/.local/bin}`, and links the bundled skill into
 `${CODEX_HOME:-~/.codex}/skills`, `~/.claude/skills`, `~/.gemini/skills`, and
 `${COPILOT_HOME:-~/.copilot}/skills`. Re-run it to update to
@@ -111,6 +111,13 @@ the latest release. Override those locations with
 If an agent already has a real `code-review-tour` skill directory, the
 installer preserves it and exits with instructions instead of overwriting user
 files. Existing installer-managed symlinks are updated automatically.
+
+For a binary-only installation that leaves every agent skill untouched, pass
+`--minimal` (or `--binary-only`):
+
+```sh
+./scripts/install.sh --minimal
+```
 
 Once the repository is public, a versioned installation needs only the checked
 out installer and `CODE_REVIEW_TOUR_VERSION=vX.Y.Z ./scripts/install.sh`; GitHub
@@ -129,8 +136,9 @@ bun run start -- --repo /path/to/repository --base origin/main
 ```
 
 For a development-only command installation, run `bun install --global .` from this checkout.
-This provides `code-review-tour` and `code-review-tour-bridge` in Bun's global
-binary directory (`bun pm bin -g`); ensure that directory is on `PATH`.
+This provides `code-review-tour` in Bun's global binary directory (`bun pm bin
+-g`); ensure that directory is on `PATH`. Attached-agent protocol operations
+use the internal `code-review-tour bridge` subcommand.
 Install or symlink `skills/code-review-tour` into the agent's skill directory
 to make requests such as “start a code review tour” trigger the attached flow
 automatically.

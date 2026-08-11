@@ -9,6 +9,15 @@ codex_skill_root="${CODE_REVIEW_TOUR_CODEX_SKILL_ROOT:-${CODEX_HOME:-$HOME/.code
 claude_skill_root="${CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT:-$HOME/.claude/skills}"
 gemini_skill_root="${CODE_REVIEW_TOUR_GEMINI_SKILL_ROOT:-$HOME/.gemini/skills}"
 copilot_skill_root="${CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/skills}"
+minimal="${CODE_REVIEW_TOUR_MINIMAL:-0}"
+
+for argument in "$@"; do
+  case "$argument" in
+    --minimal|--binary-only) minimal=1 ;;
+    --no-minimal) minimal=0 ;;
+    *) echo "Unknown installer option: $argument" >&2; exit 1 ;;
+  esac
+done
 
 case "$(uname -s)" in
   Darwin) os="darwin" ;;
@@ -62,12 +71,11 @@ package_root="$(find "$temporary" -maxdepth 1 -type d -name 'code-review-tour-v*
 [[ -n "$package_root" ]] || { echo "The release archive has an unexpected layout." >&2; exit 1; }
 release_version="$(basename "$package_root" | sed -E "s/^code-review-tour-v(.+)-${os}-${arch}$/\1/")"
 version_root="$install_root/$release_version"
-mkdir -p "$version_root/bin" "$version_root/share" "$bin_root" "$codex_skill_root" "$claude_skill_root" "$gemini_skill_root" "$copilot_skill_root"
+mkdir -p "$version_root/bin" "$version_root/share" "$bin_root"
 cp -R "$package_root/bin/." "$version_root/bin/"
 cp -R "$package_root/share/." "$version_root/share/"
 ln -sfn "$version_root" "$install_root/current"
 ln -sfn "$install_root/current/bin/code-review-tour" "$bin_root/code-review-tour"
-ln -sfn "$install_root/current/bin/code-review-tour-bridge" "$bin_root/code-review-tour-bridge"
 
 install_skill() {
   local target="$1/code-review-tour"
@@ -83,17 +91,24 @@ install_skill() {
 }
 
 skill_error=0
-install_skill "$codex_skill_root" || skill_error=1
-install_skill "$claude_skill_root" || skill_error=1
-install_skill "$gemini_skill_root" || skill_error=1
-install_skill "$copilot_skill_root" || skill_error=1
+if [[ "$minimal" != "1" && "$minimal" != "true" ]]; then
+  mkdir -p "$codex_skill_root" "$claude_skill_root" "$gemini_skill_root" "$copilot_skill_root"
+  install_skill "$codex_skill_root" || skill_error=1
+  install_skill "$claude_skill_root" || skill_error=1
+  install_skill "$gemini_skill_root" || skill_error=1
+  install_skill "$copilot_skill_root" || skill_error=1
+fi
 
 echo "Installed Code Review Tour $release_version"
-echo "Commands: $bin_root/code-review-tour and $bin_root/code-review-tour-bridge"
-echo "Codex skill: $codex_skill_root/code-review-tour"
-echo "Claude skill: $claude_skill_root/code-review-tour"
-echo "Gemini skill: $gemini_skill_root/code-review-tour"
-echo "Copilot skill: $copilot_skill_root/code-review-tour"
+echo "Command: $bin_root/code-review-tour"
+if [[ "$minimal" == "1" || "$minimal" == "true" ]]; then
+  echo "Skills: skipped (--minimal)"
+else
+  echo "Codex skill: $codex_skill_root/code-review-tour"
+  echo "Claude skill: $claude_skill_root/code-review-tour"
+  echo "Gemini skill: $gemini_skill_root/code-review-tour"
+  echo "Copilot skill: $copilot_skill_root/code-review-tour"
+fi
 case ":$PATH:" in
   *":$bin_root:"*) ;;
   *) echo "Add $bin_root to PATH to invoke code-review-tour directly." ;;

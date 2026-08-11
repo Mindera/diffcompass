@@ -21,7 +21,6 @@ for entry in "${targets[@]}"; do
   package_root="$release_root/code-review-tour-v${version}-${platform}"
   mkdir -p "$package_root/bin" "$package_root/share/code-review-tour/skills"
   bun build --compile --minify --target="$bun_target" src/cli.ts --outfile "$package_root/bin/code-review-tour"
-  bun build --compile --minify --target="$bun_target" src/bridge-client.ts --outfile "$package_root/bin/code-review-tour-bridge"
   cp -R skills/code-review-tour "$package_root/share/code-review-tour/skills/code-review-tour"
   cp README.md "$package_root/README.md"
   tar -C "$release_root" -czf "$release_root/code-review-tour-v${version}-${platform}.tar.gz" "$(basename "$package_root")"

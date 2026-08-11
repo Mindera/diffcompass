@@ -119,6 +119,8 @@ clear.
 
 ## Release hardening
 
+- Consolidate the attached bridge into the main executable and provide a
+  binary-only installer mode. *(implemented for the next release)*
 - Native CI execution on macOS and ARM runners, not only cross-compilation.
 - Windows packaging and installer support.
 - Signed and notarized macOS binaries.
