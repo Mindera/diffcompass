@@ -28,7 +28,7 @@ try {
   & $Command update --minimal
   if ($LASTEXITCODE -ne 0) { throw "Bundled Windows update failed." }
   $Preview = & $Command uninstall --dry-run
-  if ($Preview -notmatch "Review sessions are preserved") { throw "Uninstall preview was incomplete." }
+  if (($Preview -join "`n") -notmatch "Review sessions are preserved") { throw "Uninstall preview was incomplete." }
   & $Command uninstall --yes
   if ($LASTEXITCODE -ne 0) { throw "Windows uninstall command failed." }
   for ($Attempt = 0; $Attempt -lt 50 -and (Test-Path $env:CODE_REVIEW_TOUR_INSTALL_ROOT); $Attempt += 1) { Start-Sleep -Milliseconds 100 }
