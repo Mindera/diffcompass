@@ -21,10 +21,14 @@ $Pattern = "code-review-tour-v*-windows-$Architecture.zip"
 $Temporary = Join-Path ([System.IO.Path]::GetTempPath()) ("code-review-tour-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Temporary | Out-Null
 
-$GhAuthenticated = $false
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-  & gh auth status 2>$null
-  $GhAuthenticated = $LASTEXITCODE -eq 0
+function Test-GhAuthentication {
+  if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { return $false }
+  $PreviousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = "SilentlyContinue"
+  & gh auth status *> $null
+  $Authenticated = $LASTEXITCODE -eq 0
+  $ErrorActionPreference = $PreviousErrorAction
+  return $Authenticated
 }
 
 try {
@@ -34,7 +38,7 @@ try {
     $ChecksumSource = Join-Path (Split-Path $env:CODE_REVIEW_TOUR_ARCHIVE) "checksums.txt"
     if (-not (Test-Path -LiteralPath $ChecksumSource -PathType Leaf)) { throw "checksums.txt must be beside the local release archive." }
     Copy-Item -LiteralPath $ChecksumSource -Destination (Join-Path $Temporary "checksums.txt")
-  } elseif ($GhAuthenticated) {
+  } elseif (Test-GhAuthentication) {
     $Arguments = @("release", "download")
     if ($Version -ne "latest") { $Arguments += $Version }
     $Arguments += @("--repo", $Repository, "--pattern", $Pattern, "--pattern", "checksums.txt", "--dir", $Temporary)
