@@ -120,13 +120,15 @@ clear.
 ## Release hardening
 
 - Consolidate the attached bridge into the main executable and provide a
-  binary-only installer mode. *(implemented for the next release)*
+  binary-only installer mode. *(shipped in v1.0.0)*
 - Native CI execution on macOS and ARM runners, not only cross-compilation.
-- Windows packaging and installer support.
+- Windows x64/ARM64 packaging, PowerShell installation, and native Windows CI.
+  *(shipped in v1.0.0)*
 - Signed and notarized macOS binaries.
 - A public installation path such as Homebrew once repository visibility and
   licensing are decided.
-- Versioned upgrade, rollback, and uninstall commands.
+- Versioned update, local rollback, and preview-first uninstall commands.
+  *(shipped in v1.0.0)*
 
 ## Explicitly out of scope for now
 

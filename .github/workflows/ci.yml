@@ -17,3 +17,16 @@ jobs:
       - run: bun run verify
       - run: bun run build:release
       - run: ./scripts/smoke-install.sh
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run verify
+      - shell: powershell
+        run: ./scripts/build-windows-release.ps1
+      - shell: powershell
+        run: ./scripts/smoke-install.ps1

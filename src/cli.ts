@@ -14,6 +14,7 @@ import { loadRepositoryConfig } from "./config.ts";
 import { createPullRequestWorkspace, loadPullRequestContext, removePullRequestWorkspace } from "./github.ts";
 import type { PullRequestContext } from "./types.ts";
 import { runBridgeCommand } from "./bridge-command.ts";
+import { runLifecycleCommand } from "./install-lifecycle.ts";
 
 interface Options {
   repository: string;
@@ -39,6 +40,9 @@ Usage:
   code-review-tour bridge context|next|respond|ack|renew|refresh [options]
   code-review-tour pr URL|NUMBER [options]
   code-review-tour sessions [list|resume|rename|archive|unarchive|delete|prune]
+  code-review-tour update [--version VERSION] [--minimal]
+  code-review-tour rollback [--to VERSION]
+  code-review-tour uninstall [--dry-run|--yes] [--purge]
 
 Options:
   --repo PATH          Repository to review (default: current directory)
@@ -128,6 +132,10 @@ if (command === "sessions") {
     process.exit(0);
   }
   cliArguments = ["--resume", result.resumePath, ...(result.open ? ["--open"] : [])];
+}
+if (command === "update" || command === "rollback" || command === "uninstall") {
+  console.log(await runLifecycleCommand(command, cliArguments.slice(1)));
+  process.exit(0);
 }
 let pullRequestIdentifier: string | undefined;
 if (command === "pr") {

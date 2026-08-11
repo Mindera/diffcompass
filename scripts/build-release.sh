@@ -13,6 +13,8 @@ targets=(
   "darwin-x64:bun-darwin-x64"
   "linux-arm64:bun-linux-arm64"
   "linux-x64:bun-linux-x64"
+  "windows-arm64:bun-windows-arm64"
+  "windows-x64:bun-windows-x64"
 )
 
 for entry in "${targets[@]}"; do
@@ -20,15 +22,22 @@ for entry in "${targets[@]}"; do
   bun_target="${entry##*:}"
   package_root="$release_root/code-review-tour-v${version}-${platform}"
   mkdir -p "$package_root/bin" "$package_root/share/code-review-tour/skills"
-  bun build --compile --minify --target="$bun_target" src/cli.ts --outfile "$package_root/bin/code-review-tour"
+  executable="code-review-tour"
+  [[ "$platform" == windows-* ]] && executable="code-review-tour.exe"
+  bun build --compile --minify --target="$bun_target" src/cli.ts --outfile "$package_root/bin/$executable"
   cp -R skills/code-review-tour "$package_root/share/code-review-tour/skills/code-review-tour"
+  cp scripts/install.sh scripts/install.ps1 "$package_root/share/code-review-tour/"
   cp README.md "$package_root/README.md"
-  tar -C "$release_root" -czf "$release_root/code-review-tour-v${version}-${platform}.tar.gz" "$(basename "$package_root")"
+  if [[ "$platform" == windows-* ]]; then
+    (cd "$release_root" && zip -qr "code-review-tour-v${version}-${platform}.zip" "$(basename "$package_root")")
+  else
+    tar -C "$release_root" -czf "$release_root/code-review-tour-v${version}-${platform}.tar.gz" "$(basename "$package_root")"
+  fi
   rm -rf "$package_root"
 done
 
 (
   cd "$release_root"
-  shasum -a 256 ./*.tar.gz > checksums.txt
+  shasum -a 256 ./*.tar.gz ./*.zip > checksums.txt
 )
 echo "Release artifacts are in $release_root"

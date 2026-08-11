@@ -74,6 +74,11 @@ version_root="$install_root/$release_version"
 mkdir -p "$version_root/bin" "$version_root/share" "$bin_root"
 cp -R "$package_root/bin/." "$version_root/bin/"
 cp -R "$package_root/share/." "$version_root/share/"
+history_file="$install_root/history"
+if [[ -f "$history_file" ]]; then grep -Fvx "$release_version" "$history_file" > "$history_file.tmp" || true; else : > "$history_file.tmp"; fi
+printf '%s\n' "$release_version" >> "$history_file.tmp"
+mv "$history_file.tmp" "$history_file"
+if [[ "$minimal" == "1" || "$minimal" == "true" ]]; then printf 'minimal\n' > "$install_root/install-mode"; else printf 'full\n' > "$install_root/install-mode"; fi
 ln -sfn "$version_root" "$install_root/current"
 ln -sfn "$install_root/current/bin/code-review-tour" "$bin_root/code-review-tour"
 

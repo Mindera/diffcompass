@@ -85,8 +85,8 @@ fallbacks in the picker.
 
 ## Install
 
-Release archives contain self-contained macOS and Linux executables for Intel
-and Apple/ARM processors. Bun is not required after installation. While this
+Release archives contain self-contained macOS, Linux, and Windows executables
+for Intel and ARM processors. Bun is not required after installation. While this
 repository is private, collaborators should authenticate GitHub CLI, clone the
 repository, and run the installer:
 
@@ -95,6 +95,16 @@ gh auth login
 gh repo clone rcosteira79/code-review-tour
 cd code-review-tour
 ./scripts/install.sh
+code-review-tour doctor
+```
+
+On Windows, use PowerShell from the cloned repository:
+
+```powershell
+gh auth login
+gh repo clone rcosteira79/code-review-tour
+Set-Location code-review-tour
+.\scripts\install.ps1
 code-review-tour doctor
 ```
 
@@ -118,6 +128,29 @@ For a binary-only installation that leaves every agent skill untouched, pass
 ```sh
 ./scripts/install.sh --minimal
 ```
+
+The PowerShell installer accepts the equivalent `-Minimal` or `-BinaryOnly`
+switch. It installs a small version-selecting command under
+`%LOCALAPPDATA%\code-review-tour\bin`,
+adds that directory to the user `PATH`, and uses explicitly marked skill copies
+because Windows symlinks can require elevated privileges.
+
+Installed releases manage their own lifecycle:
+
+```sh
+code-review-tour update
+code-review-tour update --version v1.0.0
+code-review-tour rollback
+code-review-tour rollback --to 0.8.0
+code-review-tour uninstall --dry-run
+code-review-tour uninstall --yes
+code-review-tour uninstall --yes --purge
+```
+
+Rollback only selects versions already present in the managed install root.
+Updates preserve a minimal installation unless `--no-minimal` is explicit.
+Uninstall preserves review sessions unless `--purge` is explicit, and it never
+removes an unmarked skill directory or an unrelated command.
 
 Once the repository is public, a versioned installation needs only the checked
 out installer and `CODE_REVIEW_TOUR_VERSION=vX.Y.Z ./scripts/install.sh`; GitHub
@@ -331,7 +364,7 @@ bun run verify
 bun run build:release
 ```
 
-Pushing a `v*` tag runs the full verification suite, builds all four release
+Pushing a `v*` tag runs the full verification suite, builds all six release
 archives, publishes checksums, and creates a GitHub Release. The package version
 and tag must match.
 
