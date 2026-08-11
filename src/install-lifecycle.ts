@@ -216,21 +216,18 @@ async function uninstall(args: string[], environment: LifecycleEnvironment): Pro
   if (platform === "win32") {
     const marker = join(paths.binRoot, ".code-review-tour-managed");
     if (existsSync(marker)) {
-      await rm(binary, { force: true }).catch(() => { deferredTargets.push(binary); });
-      await rm(marker, { force: true }).catch(() => { deferredTargets.push(marker); });
+      deferredTargets.push(binary, marker);
     }
+    deferredTargets.push(paths.installRoot);
   } else if (await managedLink(binary, paths.installRoot)) {
     await rm(binary, { force: true });
   }
-  await rm(paths.installRoot, { recursive: true, force: true }).catch((error) => {
-    if (platform !== "win32") throw error;
-    deferredTargets.push(paths.installRoot);
-  });
+  if (platform !== "win32") await rm(paths.installRoot, { recursive: true, force: true });
   if (purge) await rm(paths.stateRoot, { recursive: true, force: true });
   if (deferredTargets.length > 0) {
     const quote = (value: string) => value.replaceAll("'", "''");
     const removals = [...new Set(deferredTargets)].map((target) => `Remove-Item -LiteralPath '${quote(target)}' -Recurse -Force -ErrorAction SilentlyContinue`).join("; ");
-    const script = `Wait-Process -Id ${process.pid} -ErrorAction SilentlyContinue; ${removals}`;
+    const script = `Wait-Process -Id ${process.pid} -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; ${removals}`;
     const encoded = Buffer.from(script, "utf16le").toString("base64");
     Bun.spawn(["powershell.exe", "-NoProfile", "-EncodedCommand", encoded], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
   }
