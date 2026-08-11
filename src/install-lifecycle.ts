@@ -229,7 +229,10 @@ async function uninstall(args: string[], environment: LifecycleEnvironment): Pro
     const removals = [...new Set(deferredTargets)].map((target) => `Remove-Item -LiteralPath '${quote(target)}' -Recurse -Force -ErrorAction SilentlyContinue`).join("; ");
     const script = `Wait-Process -Id ${process.pid} -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; ${removals}`;
     const encoded = Buffer.from(script, "utf16le").toString("base64");
-    Bun.spawn(["powershell.exe", "-NoProfile", "-EncodedCommand", encoded], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
+    const launcher = `Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-EncodedCommand','${encoded}')`;
+    const launcherEncoded = Buffer.from(launcher, "utf16le").toString("base64");
+    const cleanup = Bun.spawn(["powershell.exe", "-NoProfile", "-EncodedCommand", launcherEncoded], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+    if (await cleanup.exited !== 0) throw new Error("Could not schedule Windows uninstall cleanup.");
   }
   return `Uninstalled Code Review Tour.${purge ? " Review sessions were removed." : " Review sessions were preserved."}`;
 }
