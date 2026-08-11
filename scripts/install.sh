@@ -72,8 +72,8 @@ package_root="$(find "$temporary" -maxdepth 1 -type d -name 'code-review-tour-v*
 release_version="$(basename "$package_root" | sed -E "s/^code-review-tour-v(.+)-${os}-${arch}$/\1/")"
 version_root="$install_root/$release_version"
 mkdir -p "$version_root/bin" "$version_root/share" "$bin_root"
-cp -R "$package_root/bin/." "$version_root/bin/"
-cp -R "$package_root/share/." "$version_root/share/"
+if [[ ! -x "$version_root/bin/code-review-tour" ]]; then cp -R "$package_root/bin/." "$version_root/bin/"; fi
+if [[ ! -f "$version_root/share/code-review-tour/install.sh" ]]; then cp -R "$package_root/share/." "$version_root/share/"; fi
 history_file="$install_root/history"
 if [[ -f "$history_file" ]]; then grep -Fvx "$release_version" "$history_file" > "$history_file.tmp" || true; else : > "$history_file.tmp"; fi
 printf '%s\n' "$release_version" >> "$history_file.tmp"
