@@ -559,9 +559,9 @@ export class ReviewSession {
       this.ensureOpen();
       if (!this.outline || !this.agent) return;
       const steps = tourSteps(this.outline);
-      const index = this.currentStepIndex + 1;
+      const index = steps.findIndex((candidate, candidateIndex) => candidateIndex > this.currentStepIndex && !candidate.explanation);
       const step = steps[index];
-      if (!step || step.explanation) return;
+      if (!step) return;
       const comparisonGeneration = this.comparisonGeneration;
       this.agent.useComparison(this.comparison);
       const explanation = await this.agent.explainStep(step, index, steps.length);
@@ -573,6 +573,7 @@ export class ReviewSession {
       this.revision += 1;
       try {
         await this.persistAgentResult();
+        this.scheduleNextStepPrefetch();
       } catch (error) {
         if (step.explanation === explanation && this.revision === previousRevision + 1) {
           step.explanation = undefined;
@@ -581,6 +582,32 @@ export class ReviewSession {
         throw error;
       }
     }).catch(() => undefined);
+  }
+
+  private navigateToPreparedStep(direction: "previous" | "next", expectedCurrentStepIndex: number, targetIndex: number) {
+    return this.serializeMutation(async () => {
+      const before = this.captureMutableState();
+      const terminalEpoch = this.terminalEpoch;
+      let operationRevision = before.revision;
+      try {
+        this.ensureOpen();
+        if (!this.outline || !this.agent) throw new ReviewError("Start the tour first.");
+        if (this.currentStepIndex !== expectedCurrentStepIndex) return this.snapshot();
+        const steps = tourSteps(this.outline);
+        const expectedTarget = Math.max(0, Math.min(steps.length - 1, expectedCurrentStepIndex + (direction === "next" ? 1 : -1)));
+        const step = steps[targetIndex];
+        if (targetIndex !== expectedTarget || !step?.explanation) return this.snapshot();
+        this.currentStepIndex = targetIndex;
+        this.revision += 1;
+        operationRevision = this.revision;
+        await this.persist();
+        this.scheduleNextStepPrefetch();
+        return this.snapshot();
+      } catch (error) {
+        this.restoreMutableState(before, terminalEpoch, operationRevision);
+        throw error;
+      }
+    });
   }
 
   async startTour(selection?: Partial<AgentSelection>) {
@@ -646,6 +673,14 @@ export class ReviewSession {
   }
 
   async navigate(direction: "previous" | "next") {
+    if (this.outline && this.agent) {
+      const expectedCurrentStepIndex = this.currentStepIndex;
+      const steps = tourSteps(this.outline);
+      const targetIndex = Math.max(0, Math.min(steps.length - 1, expectedCurrentStepIndex + (direction === "next" ? 1 : -1)));
+      if (steps[targetIndex]?.explanation) {
+        return this.navigateToPreparedStep(direction, expectedCurrentStepIndex, targetIndex);
+      }
+    }
     return this.serialize(async () => {
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;

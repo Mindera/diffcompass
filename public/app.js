@@ -14,6 +14,7 @@ const state = {
   busy: false,
   activeTab: "diff",
   visibleFile: null,
+  collapsedFiles: new Set(),
   diffCache: new Map(),
   diffCacheRevision: null,
   fileRequestId: 0,
@@ -401,9 +402,11 @@ function renderSplitSide(file, row, side, findings) {
 function renderDiff(files) {
   const findings = state.proposalPreview ? [] : state.session.outline?.findings ?? [];
   elements.diff.innerHTML = files
-    .map((file) => `<section class="diff-file" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
+    .map((file) => {
+      const collapsed = !state.proposalPreview && state.collapsedFiles.has(file.path);
+      return `<section class="diff-file${collapsed ? " collapsed" : ""}" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       <header class="diff-file-header">
-        <span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span>
+        <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">⌄</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
         <span class="file-stats">${state.proposalPreview ? '<span class="proposal-label">pending proposal</span> · ' : `<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `}${file._page ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
       </header>
       <div class="diff-file-scroll">
@@ -414,7 +417,8 @@ function renderDiff(files) {
           : hunk.rows.map((row) => renderUnifiedRow(file, row, findings)).join("")}
       </div>`).join("")}
       </div>
-    </section>`)
+    </section>`;
+    })
     .join("");
   const actions = [...elements.diff.querySelectorAll(".line-action:not(:disabled)")];
   const selected = actions.find((action) => action.closest(".diff-row")?.classList.contains("selected")) ?? actions[0];
@@ -473,6 +477,7 @@ function visibleDiffFiles() {
 
 async function showChangedFile(path, line, side, requestedOffset, requestedContext) {
   const requestId = ++state.fileRequestId;
+  state.collapsedFiles.delete(path);
   state.activeTab = "diff";
   state.proposalPreview = false;
   state.visibleFile = path;
@@ -612,9 +617,11 @@ function renderAgentOptions() {
 }
 
 function renderComments() {
+  document.querySelectorAll(".inline-comment").forEach((comment) => comment.remove());
   document.querySelectorAll(".diff-row.has-comment").forEach((row) => {
     row.classList.remove("has-comment");
     row.querySelector(".review-dot")?.classList.add("hidden");
+    row.querySelector(".line-action")?.removeAttribute("data-inline-comment-id");
     row.removeAttribute("title");
   });
   for (const comment of state.session.comments) {
@@ -624,6 +631,15 @@ function renderComments() {
     row.classList.add("has-comment");
     row.title = comment.body;
     row.querySelector(".review-dot")?.classList.remove("hidden");
+    const action = row.querySelector(".line-action");
+    if (action) {
+      action.dataset.inlineCommentId = comment.id;
+      action.setAttribute("aria-label", `Edit comment at ${comment.path}, ${comment.side} line ${comment.line}`);
+    }
+    const inline = document.createElement("article");
+    inline.className = `inline-comment ${comment.status}`;
+    inline.innerHTML = `<button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><span class="inline-comment-label">Review comment</span><p>${renderInlineMarkdown(comment.body)}</p><span class="inline-comment-edit">Edit</span></button>`;
+    (row.closest(".split-row") ?? row).insertAdjacentElement("afterend", inline);
   }
   elements["comment-count"].textContent = String(state.session.comments.length);
   elements["comment-drawer"].classList.toggle("hidden", state.session.comments.length === 0);
@@ -1030,6 +1046,8 @@ async function setReviewed(path, reviewed) {
       method: "POST",
       body: JSON.stringify({ path, reviewed }),
     });
+    if (reviewed) state.collapsedFiles.add(path);
+    else state.collapsedFiles.delete(path);
     renderSession();
     toast(reviewed ? "File marked reviewed" : "File marked unreviewed");
   } catch (error) {
@@ -1550,6 +1568,21 @@ elements["activity-list"].addEventListener("click", (event) => {
 });
 
 elements.diff.addEventListener("click", (event) => {
+  const inlineComment = event.target.closest("[data-inline-comment-id]");
+  if (inlineComment) {
+    const comment = state.session.comments.find((candidate) => candidate.id === inlineComment.dataset.inlineCommentId);
+    if (comment && reviewIsOpen()) openCommentEditor(comment);
+    return;
+  }
+  const collapseButton = event.target.closest("[data-collapse-file]");
+  if (collapseButton) {
+    const path = collapseButton.dataset.collapseFile;
+    if (state.collapsedFiles.has(path)) state.collapsedFiles.delete(path);
+    else state.collapsedFiles.add(path);
+    renderDiff(visibleDiffFiles());
+    renderTourAnnotation();
+    return;
+  }
   const pageButton = event.target.closest("[data-diff-page]");
   if (pageButton) {
     void showChangedFile(pageButton.dataset.pageFile, undefined, undefined, Number(pageButton.dataset.diffPage), Number(pageButton.dataset.context));

@@ -214,3 +214,31 @@ test("agent prose and selected paths wrap without widening the pane", async () =
   expect(styles).toContain(".selection-pill { min-width: 0; max-width: 100%; overflow-wrap: anywhere;");
   expect(styles).toContain("white-space: normal;");
 });
+
+test("marking a file reviewed collapses its diff while keeping the header available", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(app).toContain("collapsedFiles: new Set()");
+  expect(app).toContain('if (reviewed) state.collapsedFiles.add(path)');
+  expect(app).toContain('data-collapse-file="${escapeHtml(file.path)}"');
+  expect(app).toContain('aria-expanded="${!collapsed}"');
+  expect(app).toContain("state.collapsedFiles.delete(path);");
+  expect(styles).toContain(".diff-file.collapsed .diff-file-scroll { display: none; }");
+  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: rotate(-90deg); }");
+});
+
+test("review comments render inline and their marker opens the existing editor", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(app).toContain('document.querySelectorAll(".inline-comment")');
+  expect(app).toContain('inline.className = `inline-comment ${comment.status}`');
+  expect(app).toContain('data-inline-comment-id="${escapeHtml(comment.id)}"');
+  expect(app).toContain("action.dataset.inlineCommentId = comment.id");
+  expect(app).toContain("if (comment && reviewIsOpen()) openCommentEditor(comment)");
+  expect(styles).toContain(".hunk.split-layout > .inline-comment { grid-column: 1 / -1; }");
+  expect(styles).toContain(".inline-comment-button { width: 100%;");
+});

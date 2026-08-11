@@ -155,6 +155,54 @@ test("a resumed open attached session retains its stop and drives the rehydrated
   expect(session.snapshot().outline?.phases[1]?.steps[0]?.explanation).toBe("The next stop was prepared before navigation.");
 });
 
+test("prefetch continuously prepares later stops without blocking navigation to a ready stop", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const persisted = persistedAttachedSession(repository);
+  persisted.currentStepIndex = 0;
+  persisted.outline!.phases[0]!.steps[0]!.explanation = "The current stop is already ready.";
+  persisted.outline!.phases[1]!.steps.push({
+    id: "fourth-step",
+    title: "Final verification",
+    objective: "Finish verifying the changed line.",
+    anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
+  });
+  await savePersistedSession(stateFile, persisted);
+
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  await session.startTour();
+  const bridge = session.bridge!;
+
+  const [secondPrompt] = await bridge.eventsAfter(7, 1_000);
+  if (!secondPrompt || secondPrompt.type !== "agent.prompt") throw new Error("Expected the second stop prefetch.");
+  expect(secondPrompt.prompt).toContain("Second step");
+  await bridge.respond(secondPrompt.id, "The second stop is ready.");
+  await bridge.ack(secondPrompt.id);
+
+  const [thirdPrompt] = await bridge.eventsAfter(secondPrompt.sequence, 1_000);
+  if (!thirdPrompt || thirdPrompt.type !== "agent.prompt") throw new Error("Expected continuous prefetch for the third stop.");
+  expect(thirdPrompt.prompt).toContain("Verification stop");
+
+  const navigation = await Promise.race([
+    session.navigate("next"),
+    Bun.sleep(250).then(() => { throw new Error("Prepared navigation waited behind a later prefetch."); }),
+  ]);
+  expect(navigation.currentStepIndex).toBe(1);
+  expect(navigation.outline?.phases[0]?.steps[1]?.explanation).toBe("The second stop is ready.");
+
+  await bridge.respond(thirdPrompt.id, "The third stop is ready.");
+  await bridge.ack(thirdPrompt.id);
+  const [fourthPrompt] = await bridge.eventsAfter(thirdPrompt.sequence, 1_000);
+  if (!fourthPrompt || fourthPrompt.type !== "agent.prompt") throw new Error("Expected continuous prefetch for the fourth stop.");
+  expect(fourthPrompt.prompt).toContain("Final verification");
+  await bridge.respond(fourthPrompt.id, "The fourth stop is ready.");
+  await bridge.ack(fourthPrompt.id);
+
+  for (let attempt = 0; attempt < 20 && !session.snapshot().outline?.phases[1]?.steps[1]?.explanation; attempt += 1) {
+    await Bun.sleep(5);
+  }
+  expect(session.snapshot().outline?.phases[1]?.steps[1]?.explanation).toBe("The fourth stop is ready.");
+});
+
 test("next traverses the flattened route across a phase boundary", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
