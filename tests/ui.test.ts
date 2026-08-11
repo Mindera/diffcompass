@@ -204,3 +204,13 @@ test("diff rows stay dense and the explanation owns a bounded scroll area", asyn
   expect(styles).toContain(".split-row { display: contents; }");
   expect(styles).not.toContain(".line-code::-webkit-scrollbar");
 });
+
+test("agent prose and selected paths wrap without widening the pane", async () => {
+  const styles = await readFile(join(root, "public/styles.css"), "utf8");
+  expect(styles).toContain(".tour-active { flex: 1 1 0; min-width: 0;");
+  expect(styles).toContain(".tour-scroll { min-width: 0;");
+  expect(styles).toContain(".explanation { min-width: 0; max-width: 100%; overflow-wrap: anywhere;");
+  expect(styles).toContain(".anchor { max-width: 100%; overflow-wrap: anywhere;");
+  expect(styles).toContain(".selection-pill { min-width: 0; max-width: 100%; overflow-wrap: anywhere;");
+  expect(styles).toContain("white-space: normal;");
+});
