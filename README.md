@@ -86,27 +86,25 @@ fallbacks in the picker.
 ## Install
 
 Release archives contain self-contained macOS, Linux, and Windows executables
-for Intel and ARM processors. Bun is not required after installation. While this
-repository is private, collaborators should authenticate GitHub CLI, clone the
-repository, and run the installer:
+for Intel and ARM processors. Bun is not required after installation. Because
+the repository is private, authenticate GitHub CLI once with `gh auth login`.
+After that, installation on macOS, Linux, or WSL is one command:
 
 ```sh
-gh auth login
-gh repo clone rcosteira79/code-review-tour
-cd code-review-tour
-./scripts/install.sh
-code-review-tour doctor
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | bash
 ```
 
-On Windows, use PowerShell from the cloned repository:
+On Windows, run the equivalent command in PowerShell:
 
 ```powershell
-gh auth login
-gh repo clone rcosteira79/code-review-tour
-Set-Location code-review-tour
-.\scripts\install.ps1
-code-review-tour doctor
+& ([scriptblock]::Create((gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.ps1 | Out-String)))
 ```
+
+Then verify the installation with `code-review-tour doctor`. Both commands use
+your existing GitHub CLI authentication; no token is printed or embedded in
+shell history. Cloning the repository and running `./scripts/install.sh` or
+`.\scripts\install.ps1` remains supported for contributors who want to inspect
+the installer first.
 
 The installer verifies the release checksum, installs the self-contained command under
 `${XDG_BIN_HOME:-~/.local/bin}`, and links the bundled skill into
@@ -126,7 +124,7 @@ For a binary-only installation that leaves every agent skill untouched, pass
 `--minimal` (or `--binary-only`):
 
 ```sh
-./scripts/install.sh --minimal
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | bash -s -- --minimal
 ```
 
 The PowerShell installer accepts the equivalent `-Minimal` or `-BinaryOnly`
@@ -152,9 +150,14 @@ Updates preserve a minimal installation unless `--no-minimal` is explicit.
 Uninstall preserves review sessions unless `--purge` is explicit, and it never
 removes an unmarked skill directory or an unrelated command.
 
-Once the repository is public, a versioned installation needs only the checked
-out installer and `CODE_REVIEW_TOUR_VERSION=vX.Y.Z ./scripts/install.sh`; GitHub
-CLI is not required in that case.
+Pin a particular release by setting the version for the installer process:
+
+```sh
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.0.0 bash
+```
+
+Once the repository is public, this bootstrap can switch from authenticated
+`gh api` to a conventional unauthenticated `curl` command.
 
 ## Run
 
