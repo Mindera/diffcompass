@@ -43,7 +43,7 @@ const state = {
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
-    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-active", "start-tour", "include-flows", "include-findings",
+    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
@@ -934,9 +934,22 @@ function renderTour() {
   const { outline, currentStepIndex } = state.session;
   renderReviewOverview();
   const active = Boolean(outline);
+  const planning = state.session.tourState === "planning";
   elements["tour-empty"].classList.toggle("hidden", active);
   elements["tour-active"].classList.toggle("hidden", !active);
-  if (!outline) return;
+  if (!outline) {
+    elements["tour-empty-title"].textContent = planning ? "Planning your tour" : "Walk through this change";
+    elements["tour-empty-description"].textContent = planning
+      ? "The triggering agent is inspecting the change and preparing the first stop."
+      : "The agent will plan a logical route through the diff and explain each stop as you progress.";
+    elements["agent-config"].classList.toggle("hidden", planning);
+    elements["start-tour"].classList.toggle("hidden", planning);
+    elements["planning-activity"].classList.toggle("hidden", !planning);
+    if (planning) {
+      elements["planning-activity-body"].innerHTML = `<p>Inspecting ${state.session.comparison.files.length.toLocaleString()} changed files and ${state.session.comparison.diffRowCount.toLocaleString()} diff rows.</p><p class="planning-live">Waiting for the agent to return a grounded route…</p>`;
+    }
+    return;
+  }
 
   const steps = outline.phases.flatMap((phase) => phase.steps);
   const step = steps[currentStepIndex];
@@ -1710,7 +1723,7 @@ window.setInterval(async () => {
     const latest = await api("/api/session");
     if (generation !== state.pollGeneration) return;
     elements["connection-banner"].classList.add("hidden");
-    if (!state.session || latest.revision > state.session.revision || (state.session.status === "open" && latest.status !== "open")) {
+    if (!state.session || latest.revision > state.session.revision || latest.tourState !== state.session.tourState || (state.session.status === "open" && latest.status !== "open")) {
       state.session = latest;
       renderSession();
       toast("Review connected and up to date.");

@@ -79,6 +79,7 @@ export class ReviewSession {
   private agent?: TourAgent;
   private selection?: AgentSelection;
   private agentContinuation?: PersistedReviewSession["agentContinuation"];
+  private tourPlanning = false;
   private commandQueue: Promise<void> = Promise.resolve();
   private mutationQueue: Promise<void> = Promise.resolve();
   private refreshQueue: Promise<void> = Promise.resolve();
@@ -404,6 +405,7 @@ export class ReviewSession {
       agentAdapters: this.agentAdapters,
       agentSelection: this.selection ?? (this.agentAdapters.length > 0 ? this.resolveSelection() : undefined),
       agentMode: this.selection ? `${this.selection.adapterId}-read-only` : undefined,
+      tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
     };
   }
 
@@ -602,6 +604,7 @@ export class ReviewSession {
         throw new ReviewError("The agent and model cannot be changed after the tour starts.");
       }
       this.agent.useComparison(this.comparison);
+      this.tourPlanning = true;
       try {
         if (!this.outline) {
           const outline = await this.agent.createOutline(
@@ -636,6 +639,8 @@ export class ReviewSession {
           this.selection = undefined;
         }
         throw error;
+      } finally {
+        this.tourPlanning = false;
       }
     });
   }

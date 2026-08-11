@@ -27,6 +27,7 @@ interface Options {
   port: number;
   attached: boolean;
   open: boolean;
+  startTour: boolean;
   resume?: string;
   pullRequest?: string;
 }
@@ -48,6 +49,7 @@ Options:
   --repo PATH          Repository to review (default: current directory)
   --base REF           Parent branch or Git reference to compare
   --attached           Use the launching agent as the conversation backend
+  --start-tour         Prepare stop one before opening the review page
   --open               Open the review automatically in the default browser
   --agent ID           Standalone agent: codex, claude, gemini, or copilot
   --model MODEL        Model identifier reported by the selected agent
@@ -62,7 +64,7 @@ Options:
 }
 
 function parseOptions(args: string[]): Options {
-  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false };
+  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
@@ -80,6 +82,8 @@ function parseOptions(args: string[]): Options {
       index += 1;
     } else if (arg === "--attached") {
       options.attached = true;
+    } else if (arg === "--start-tour") {
+      options.startTour = true;
     } else if (arg === "--open") {
       options.open = true;
     } else if (arg === "--resume" && value) {
@@ -286,15 +290,22 @@ if (session.bridge) {
   process.on("SIGTERM", () => shutdown(undefined, true));
 }
 
+const automaticTour = options.startTour ? session.startTour() : undefined;
+
 if (options.open) {
-  const command = process.platform === "darwin"
-    ? ["open", reviewUrl]
-    : process.platform === "win32"
-      ? ["cmd", "/c", "start", "", reviewUrl]
-      : ["xdg-open", reviewUrl];
   try {
+    await automaticTour;
+    const command = process.platform === "darwin"
+      ? ["open", reviewUrl]
+      : process.platform === "win32"
+        ? ["cmd", "/c", "start", "", reviewUrl]
+        : ["xdg-open", reviewUrl];
     Bun.spawn(command, { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
   } catch (error) {
-    console.error(`Could not open the browser automatically: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`${options.startTour ? "Could not prepare the tour or open the browser" : "Could not open the browser automatically"}: ${error instanceof Error ? error.message : String(error)}`);
   }
+} else if (automaticTour) {
+  void automaticTour.catch((error) => {
+    console.error(`Could not start the tour automatically: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }

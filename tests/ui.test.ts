@@ -168,6 +168,8 @@ test("tour startup defaults diagrams and findings on and sends both choices", as
   expect(app).toContain('elements["include-flows"].disabled = busy');
   expect(app).toContain('elements["include-findings"].disabled = busy');
   expect(styles).toContain(".tour-includes {");
+  expect(app).toContain('state.session.tourState === "planning"');
+  expect(app).toContain('latest.tourState !== state.session.tourState');
 });
 
 test("flow provenance uses clear reviewer-facing wording", async () => {

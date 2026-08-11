@@ -234,10 +234,12 @@ test("closing during an attached tour prompt cannot be undone by the rejected op
 
   const starting = session.startTour({ adapterId: "attached", modelId: "current-session" });
   await bridge.eventsAfter(7, 1_000);
+  expect(session.snapshot().tourState).toBe("planning");
   await session.close("cancelled");
   await expect(starting).rejects.toThrow("review closed before the attached agent answered");
 
   expect(session.snapshot().status).toBe("cancelled");
+  expect(session.snapshot().tourState).toBe("idle");
   expect((await loadPersistedSession(stateFile)).status).toBe("cancelled");
 });
 

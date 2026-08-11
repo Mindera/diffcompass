@@ -58,14 +58,14 @@ All standalone agent sessions are read-only. In attached mode, the triggering ag
 An agent can launch the page and remain its conversation backend:
 
 ```sh
-code-review-tour --attached --open --repo /path/to/repository
+code-review-tour --attached --start-tour --open --repo /path/to/repository
 ```
 
 Agents may optionally identify their current model and effort so the page starts
 with matching attached-session metadata:
 
 ```sh
-code-review-tour --attached --open --repo /path/to/repository \
+code-review-tour --attached --start-tour --open --repo /path/to/repository \
   --caller-model gpt-5.6-codex \
   --caller-reasoning high
 ```
@@ -74,7 +74,10 @@ Both caller flags are optional and independent. They label the triggering
 session; they do not start or switch to another model. If omitted, the picker
 continues to show `Current agent session` and the CLI default effort.
 
-In this mode, tour planning, step explanations, and reviewer questions are sent
+`--start-tour` completes the outline and first explanation before the single
+user-facing page opens, so an agent-triggered launch appears ready at stop one
+and never needs to drive a second browser or press the setup button. In this
+mode, tour planning, step explanations, and reviewer questions are sent
 to the triggering agent through an authenticated loopback event bridge. Browser
 and bridge capability tokens are separate, browser mutations require same-origin
 requests, and the bridge token is passed through an owner-only temporary file.
@@ -203,7 +206,7 @@ GitHub CLI and launch it from a matching repository checkout:
 ```sh
 gh auth login
 code-review-tour pr 106 --repo /path/to/repository --open
-code-review-tour pr https://github.com/OWNER/REPOSITORY/pull/106 --repo /path/to/repository --attached --open
+code-review-tour pr https://github.com/OWNER/REPOSITORY/pull/106 --repo /path/to/repository --attached --start-tour --open
 ```
 
 The source checkout stays on its current branch. Code Review Tour fetches the

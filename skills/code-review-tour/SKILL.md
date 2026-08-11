@@ -13,17 +13,17 @@ Run the local tour in attached mode so every explanation and reviewer question r
    - Prefer `code-review-tour` from `PATH`; bridge operations use its `bridge` subcommand.
    - If it is globally installed by Bun but absent from `PATH`, get the directory with `bun pm bin -g` and invoke it from that absolute directory.
    - From this repository checkout, use `bun run src/cli.ts` from the repository root.
-2. Start a persistent terminal process from the repository being reviewed:
+2. Start a persistent terminal process from the repository being reviewed. The server prints its bridge details immediately, prepares the outline and first explanation through this agent, and opens the browser only after the first stop is ready:
 
    ```text
-   code-review-tour --attached --open --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT]
+   code-review-tour --attached --start-tour --open --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT]
    ```
 
    When reliable runtime metadata is available, pass the triggering model and effort with `--caller-model` and `--caller-reasoning`. Both flags are optional and independent; omit any value that is unavailable rather than guessing it. They describe the attached session in the page and do not switch the conversation to another model.
 
    Use a short initial yield and retain the running terminal session. Do not wait synchronously for the server to exit.
-3. Read the printed `Attached bridge URL` and `Attached bridge token file`. Treat the token file as a local secret; never read or include its contents in a user-facing response.
-4. If automatic browser opening fails, give the review URL to the user.
+3. Read the printed `Attached bridge URL` and `Attached bridge token file`. Treat the token file as a local secret; never read or include its contents in a user-facing response. The CLI has already requested tour planning; do not open another browser, navigate the page, or call the browser API to press `Start tour`.
+4. If automatic browser opening fails after the tour is ready, give the review URL to the user.
 
 ## Serve prompts
 
