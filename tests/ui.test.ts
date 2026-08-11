@@ -201,7 +201,7 @@ test("diff rows stay dense and the explanation owns a bounded scroll area", asyn
   expect(styles).not.toContain(".diff-row.split-side.empty");
   expect(html).toContain('id="tour-scroll" class="tour-scroll"');
   expect(styles).toContain(".diff-file-scroll { max-width: 100%; overflow-x: auto;");
-  expect(styles).toContain(".split-row { display: contents; }");
+  expect(styles).toContain(".split-row { min-width: 0; display: grid;");
   expect(styles).not.toContain(".line-code::-webkit-scrollbar");
 });
 
@@ -239,6 +239,19 @@ test("review comments render inline and their marker opens the existing editor",
   expect(app).toContain('data-inline-comment-id="${escapeHtml(comment.id)}"');
   expect(app).toContain("action.dataset.inlineCommentId = comment.id");
   expect(app).toContain("if (comment && reviewIsOpen()) openCommentEditor(comment)");
-  expect(styles).toContain(".hunk.split-layout > .inline-comment { grid-column: 1 / -1; }");
+  expect(styles).toContain(".inline-comment { box-sizing: border-box; position: sticky;");
   expect(styles).toContain(".inline-comment-button { width: 100%;");
+});
+
+test("split diff panes remain equal width and synchronize horizontal scrolling per side", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(styles).toContain(".hunk.split-layout { width: 100%; min-width: 0; }");
+  expect(styles).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)");
+  expect(styles).toContain(".diff-row.split-side { grid-template-columns: 42px 22px auto max-content; width: 100%; min-width: 0; overflow-x: auto;");
+  expect(styles).not.toContain("grid-template-columns: minmax(50%, max-content) minmax(50%, max-content)");
+  expect(app).toContain('elements.diff.addEventListener("scroll"');
+  expect(app).toContain('row.scrollLeft = source.scrollLeft');
 });

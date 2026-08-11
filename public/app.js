@@ -1624,6 +1624,18 @@ elements.diff.addEventListener("click", (event) => {
     selectLine(row);
   }
 });
+let syncingSplitScroll = false;
+elements.diff.addEventListener("scroll", (event) => {
+  const source = event.target.closest?.(".diff-row.split-side");
+  if (!source || syncingSplitScroll) return;
+  const hunk = source.closest(".hunk.split-layout");
+  if (!hunk) return;
+  syncingSplitScroll = true;
+  hunk.querySelectorAll(`.diff-row.split-side[data-side="${source.dataset.side}"]`).forEach((row) => {
+    if (row !== source) row.scrollLeft = source.scrollLeft;
+  });
+  window.requestAnimationFrame(() => { syncingSplitScroll = false; });
+}, true);
 elements.diff.addEventListener("pointerover", (event) => {
   const pin = event.target.closest(".finding-pin");
   if (pin) showFindingTooltip(pin);
