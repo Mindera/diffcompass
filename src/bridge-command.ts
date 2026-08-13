@@ -1,5 +1,5 @@
 interface BridgeOptions {
-  command?: "context" | "next" | "respond" | "ack" | "renew" | "refresh";
+  command?: "context" | "next" | "respond" | "ack" | "renew" | "progress" | "refresh";
   url?: string;
   tokenFile?: string;
   after: number;
@@ -12,7 +12,7 @@ interface BridgeOptions {
 
 function parseBridgeOptions(args: string[]): BridgeOptions {
   const command = args.shift();
-  if (command && !["context", "next", "respond", "ack", "renew", "refresh"].includes(command)) {
+  if (command && !["context", "next", "respond", "ack", "renew", "progress", "refresh"].includes(command)) {
     throw new Error(`Unknown bridge command: ${command}`);
   }
   const options: BridgeOptions = { command: command as BridgeOptions["command"], after: 0, waitMs: 50_000 };
@@ -49,7 +49,7 @@ async function bridgeRequest(options: BridgeOptions, path: string, init?: Reques
 export async function runBridgeCommand(args: string[]): Promise<number> {
   const options = parseBridgeOptions([...args]);
   if (!options.command) {
-    console.log("Usage: code-review-tour bridge context|next|respond|ack|renew|refresh --url URL --token-file PATH [options]");
+    console.log("Usage: code-review-tour bridge context|next|respond|ack|renew|progress|refresh --url URL --token-file PATH [options]");
     return 0;
   }
   let result: unknown;
@@ -61,6 +61,9 @@ export async function runBridgeCommand(args: string[]): Promise<number> {
   } else if (options.command === "ack" || options.command === "renew") {
     if (!options.eventId || !options.leaseId) throw new Error(`${options.command} requires --event ID and --lease LEASE_ID.`);
     result = await bridgeRequest(options, `/api/bridge/${options.command}`, { method: "POST", body: JSON.stringify({ eventId: options.eventId, leaseId: options.leaseId }) });
+  } else if (options.command === "progress") {
+    if (!options.eventId || !options.leaseId || !options.file) throw new Error("progress requires --event ID, --lease LEASE_ID, and --file PATH.");
+    result = await bridgeRequest(options, "/api/bridge/progress", { method: "POST", body: JSON.stringify({ eventId: options.eventId, leaseId: options.leaseId, message: await Bun.file(options.file).text() }) });
   } else {
     if (!options.eventId || !options.leaseId) throw new Error("refresh requires --event ID and --lease LEASE_ID.");
     const verification = options.verificationFile ? await Bun.file(options.verificationFile).text() : undefined;

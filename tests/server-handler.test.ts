@@ -49,6 +49,36 @@ test("update endpoints expose availability and require an authenticated click to
   expect(installs).toBe(1);
 });
 
+test("runtime preferences persist a bounded prepare-ahead window", async () => {
+  const { session, fetch } = fixture();
+  const updated = await fetch(authorizedRequest(session, "/api/preferences", { prefetchSteps: 4 }));
+  expect(updated.status).toBe(200);
+  expect((await updated.json()).preferences).toMatchObject({ prefetchSteps: 4 });
+
+  const invalid = await fetch(authorizedRequest(session, "/api/preferences", { prefetchSteps: 5 }));
+  expect(invalid.status).toBe(422);
+});
+
+test("attached workers can report bounded progress for a leased prompt", async () => {
+  const { session, fetch } = fixture();
+  const updates: string[] = [];
+  const answer = session.bridge!.send("Explain", "tour.explanation", undefined, (update) => updates.push(update.message));
+  const eventsResponse = await fetch(new Request("http://127.0.0.1/api/bridge/events?after=0", {
+    headers: { "x-review-tour-token": session.bridge!.token },
+  }));
+  const { events } = await eventsResponse.json() as { events: Array<{ id: string; leaseId: string }> };
+  const event = events[0]!;
+  const progress = await fetch(new Request("http://127.0.0.1/api/bridge/progress", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-review-tour-token": session.bridge!.token },
+    body: JSON.stringify({ eventId: event.id, leaseId: event.leaseId, message: "Tracing the changed path." }),
+  }));
+  expect(progress.status).toBe(200);
+  expect(updates.at(-1)).toBe("Tracing the changed path.");
+  await session.bridge!.respond(event.id, "Done", event.leaseId);
+  await answer;
+});
+
 test("in-process handler serves bundled Mermaid with the hardened browser policy", async () => {
   const { fetch } = fixture();
   const response = await fetch(new Request("http://127.0.0.1/mermaid.min.js"));

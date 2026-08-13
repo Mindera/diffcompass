@@ -39,6 +39,34 @@ test("delivers an attached-agent prompt and resolves its response", async () => 
   expect(await response).toBe("It changes the state transition.");
 });
 
+test("reports whether an attached prompt is waiting, claimed, or making visible progress", async () => {
+  const bridge = new AttachedAgentBridge();
+  const updates: Array<{ status: string; message: string }> = [];
+  const answer = bridge.send("Explain the change", "tour.explanation", undefined, (update) => updates.push(update));
+  const [event] = await bridge.eventsAfter(0, 1_000, undefined, true);
+
+  expect(updates.map((update) => update.status)).toEqual(["waiting", "running"]);
+  expect(updates.at(-1)?.message).toContain("claimed");
+  bridge.reportProgress(event!.id, event!.leaseId!, "Checking the changed call path.");
+  expect(updates.at(-1)?.message).toBe("Checking the changed call path.");
+
+  await bridge.respond(event!.id, "The explanation.", event!.leaseId);
+  await expect(answer).resolves.toBe("The explanation.");
+  expect(updates.at(-1)?.message).toContain("returned a response");
+});
+
+test("rejects progress for an unowned or completed attached prompt", async () => {
+  const bridge = new AttachedAgentBridge();
+  const answer = bridge.send("Explain the change", "tour.explanation");
+  const [unclaimed] = await bridge.eventsAfter(0);
+  expect(() => bridge.reportProgress(unclaimed!.id, "made-up", "Working")).toThrow("Claim this bridge prompt");
+  const [event] = await bridge.eventsAfter(0, 1_000, undefined, true);
+  expect(() => bridge.reportProgress(event!.id, "wrong", "Working")).toThrow("leased");
+  await bridge.respond(event!.id, "Done", event!.leaseId);
+  await answer;
+  expect(() => bridge.reportProgress(event!.id, event!.leaseId!, "Too late")).toThrow("no longer active");
+});
+
 test("accepts an identical replayed response but rejects a conflicting replay", async () => {
   const bridge = new AttachedAgentBridge();
   const answer = bridge.send("Explain the change", "tour.explanation");

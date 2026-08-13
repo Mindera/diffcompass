@@ -108,7 +108,6 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
           title: "Apply the optional discount",
           objective: "Check the units used by the new percentage field.",
           anchor: { path: "src/cart.ts", side: "new", startLine: 14, endLine: 18 },
-          explanation: "The function returns the subtotal when there is no discount. The discounted branch currently treats the percentage as a fraction, which is why the finding on the return line matters.",
         }],
       }, {
         id: "presentation",
@@ -123,13 +122,11 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
           title: "Format the receipt",
           objective: "Follow the calculated amount into the user-visible string.",
           anchor: { path: "src/receipt.ts", side: "new", startLine: 3, endLine: 5 },
-          explanation: "The formatter delegates all arithmetic to total(), then limits the displayed result to two decimal places.",
         }, {
           id: "document-fixture",
           title: "Document the reusable fixture",
           objective: "Confirm the fixture advertises the UI surfaces it is meant to exercise.",
           anchor: { path: "README.md", side: "new", startLine: 1, endLine: 3 },
-          explanation: "This short README makes the repository recognizable when it appears in the file tree and diff header.",
         }],
       }],
       flows: [{
@@ -183,7 +180,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
         status: "open",
       }],
     },
-    currentStepIndex: 1,
+    currentStepIndex: 0,
     comments: [{
       id: "fixture-comment",
       path: "README.md",
@@ -231,6 +228,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
       diffLayout: "split",
       changedFilesOnly: true,
       contextLines: 3,
+      prefetchSteps: 2,
       requireAllFilesReviewed: false,
       closeOutcome: "accepted",
     },

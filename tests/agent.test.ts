@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { buildCopilotArgs, buildGeminiArgs, parseClaudeJson, parseCodexJsonLines, parseGeminiStreamJson, TourAgent } from "../src/agent.ts";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { DEFAULT_REVIEW_POLICY } from "../src/config.ts";
-import type { GitComparison } from "../src/types.ts";
+import type { AgentRunActivity, GitComparison } from "../src/types.ts";
 
 test("extracts the thread and final agent messages from Codex JSONL", () => {
   const parsed = parseCodexJsonLines([
@@ -143,7 +143,8 @@ test("normalizes context findings and derives all priority levels from the docum
 
 test("asks for short plain-language stop explanations", async () => {
   const bridge = new AttachedAgentBridge();
-  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const activities: AgentRunActivity[] = [];
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge, undefined, (activity) => activities.push(activity));
   const pending = agent.explainStep({
     id: "plain-step",
     title: "A direct behavior",
@@ -154,8 +155,16 @@ test("asks for short plain-language stop explanations", async () => {
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an explanation prompt.");
   expect(event.prompt).toContain("Keep it under 180 words");
   expect(event.prompt).toContain("Avoid jargon");
+  expect(activities.at(-1)).toMatchObject({
+    status: "waiting",
+    label: "Preparing a tour stop",
+    prompt: expect.stringContaining("A direct behavior"),
+    stepNumber: 1,
+    totalSteps: 2,
+  });
   await bridge.respond(event!.id, "The value now changes here. Check the result.");
   expect(await pending).toBe("The value now changes here. Check the result.");
+  expect(activities.at(-1)).toMatchObject({ status: "completed" });
 });
 
 test("repository policy is bounded context and findings are enforced after generation", async () => {

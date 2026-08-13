@@ -227,6 +227,12 @@ test("prefetch continuously prepares later stops without blocking navigation to 
   const [secondPrompt] = await bridge.eventsAfter(7, 1_000);
   if (!secondPrompt || secondPrompt.type !== "agent.prompt") throw new Error("Expected the second stop prefetch.");
   expect(secondPrompt.prompt).toContain("Second step");
+  expect(session.snapshot().agentActivity).toMatchObject({
+    kind: "tour.explanation",
+    label: "Preparing a tour stop",
+    status: "waiting",
+    prompt: expect.stringContaining("Second step"),
+  });
   await bridge.respond(secondPrompt.id, "The second stop is ready.");
   await bridge.ack(secondPrompt.id);
 
@@ -253,6 +259,64 @@ test("prefetch continuously prepares later stops without blocking navigation to 
     await Bun.sleep(5);
   }
   expect(session.snapshot().outline?.phases[1]?.steps[1]?.explanation).toBe("The fourth stop is ready.");
+});
+
+test("prefetch keeps a two-stop sliding window instead of preparing the whole tour", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const persisted = persistedAttachedSession(repository);
+  persisted.currentStepIndex = 0;
+  persisted.outline!.phases[0]!.steps[0]!.explanation = "The current stop is ready.";
+  persisted.outline!.phases[1]!.steps.push({
+    id: "fourth-step",
+    title: "Outside the initial window",
+    objective: "Prepare this only after navigation advances the window.",
+    anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
+  });
+  await savePersistedSession(stateFile, persisted);
+
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  await session.startTour();
+  const bridge = session.bridge!;
+  const [second] = await bridge.eventsAfter(7, 1_000);
+  if (!second || second.type !== "agent.prompt") throw new Error("Expected the first prefetched stop.");
+  await bridge.respond(second.id, "Second ready.");
+  await bridge.ack(second.id);
+
+  const [third] = await bridge.eventsAfter(second.sequence, 1_000);
+  if (!third || third.type !== "agent.prompt") throw new Error("Expected the second prefetched stop.");
+  await bridge.respond(third.id, "Third ready.");
+  await bridge.ack(third.id);
+  for (let attempt = 0; attempt < 20 && !session.snapshot().outline?.phases[1]?.steps[0]?.explanation; attempt += 1) await Bun.sleep(5);
+
+  expect(await bridge.eventsAfter(third.sequence, 40)).toEqual([]);
+  await session.navigate("next");
+  const [fourth] = await bridge.eventsAfter(third.sequence, 1_000);
+  if (!fourth || fourth.type !== "agent.prompt") throw new Error("Expected navigation to replenish the prefetch window.");
+  expect(fourth.prompt).toContain("Outside the initial window");
+  await bridge.respond(fourth.id, "Fourth ready.");
+  await bridge.ack(fourth.id);
+  await session.dispose();
+});
+
+test("prepare-ahead zero defers the next explanation until navigation", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const persisted = persistedAttachedSession(repository);
+  persisted.currentStepIndex = 0;
+  persisted.outline!.phases[0]!.steps[0]!.explanation = "The current stop is ready.";
+  await savePersistedSession(stateFile, persisted);
+
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  await session.setPrefetchSteps(0);
+  await session.startTour();
+  expect(session.snapshot().preferences.prefetchSteps).toBe(0);
+  expect(await session.bridge!.eventsAfter(7, 40)).toEqual([]);
+
+  const navigation = session.navigate("next");
+  const [prompt] = await session.bridge!.eventsAfter(7, 1_000);
+  if (!prompt || prompt.type !== "agent.prompt") throw new Error("Expected on-demand explanation after navigation.");
+  await session.bridge!.respond(prompt.id, "Prepared on demand.");
+  await expect(navigation).resolves.toMatchObject({ currentStepIndex: 1 });
+  await session.dispose();
 });
 
 test("next traverses the flattened route across a phase boundary", async () => {

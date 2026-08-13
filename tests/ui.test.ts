@@ -23,6 +23,7 @@ test("review navigation exposes expanded changed paths and a full repository mod
   expect(styles).toContain("grid-template-columns: var(--file-panel-width)");
   expect(styles).toContain("var(--agent-panel-width)");
   expect(app).not.toContain('id="changed-only"');
+  expect(styles).toContain(".count, .mode { flex: 0 0 auto; white-space: nowrap;");
 });
 
 test("tour rendering annotates code without continuously stealing navigation", async () => {
@@ -46,6 +47,26 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(app).not.toContain("Planning tour · 0s");
 });
 
+test("slow tour work exposes its prompt and safe progress while navigation remains busy", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="agent-activity"');
+  expect(html).toContain('id="agent-activity-body"');
+  expect(app).toContain("function renderAgentActivity()");
+  expect(app).toContain("Current prompt");
+  expect(app).toContain("elapsed");
+  expect(app).toContain('const prefetchSteps = state.session.preferences?.prefetchSteps ?? 2');
+  expect(app).toContain('`We prepare ${prefetchSteps} ${prefetchSteps === 1 ? "step" : "steps"} in advance.`');
+  expect(app).toContain('state.session.agentActivity = latest.agentActivity');
+  expect(app).not.toContain('toast("Review connected and up to date.")');
+  expect(app).not.toContain("if (state.busy || state.pollInFlight");
+  expect(styles).toContain(".agent-progress-list");
+  expect(styles).toContain(".agent-prompt pre");
+});
+
 test("tour mode scopes diffs to the current phase and can restore the baseline review", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
@@ -59,6 +80,9 @@ test("tour mode scopes diffs to the current phase and can restore the baseline r
   expect(app).toContain('elements["tour-mode-toggle"].textContent = state.tourMode ? "Exit tour" : "Resume tour"');
   expect(app).toContain('toast("Tour exited. All changed files are visible.")');
   expect(app).toContain('toast("Tour resumed. Diffs are scoped to this phase.")');
+  expect(app).toContain('{ duration: 9_000, tone: "warning" }');
+  expect(app).toContain("window.clearTimeout(state.toastTimer)");
+  expect(styles).toContain(".toast.warning { display: flex;");
   expect(app).toContain('elements["diff-search"].disabled = Boolean(state.tourMode)');
   expect(app).toContain("loading all ${filteredChangedFiles().length} files in this phase");
   expect(styles).toContain(".tour-overview-heading");
@@ -137,27 +161,33 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(app).toContain('elements["review-overview-title"].textContent = outline.title');
 });
 
-test("export formats live inside the export action instead of masquerading as a page display selector", async () => {
+test("settings consolidate runtime preferences, exports, and sessions", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain('<details id="export-menu" class="export-menu">');
-  expect(html).toContain('data-export-format="markdown">Markdown report');
-  expect(html).toContain('data-export-format="html">HTML report');
+  expect(html).toContain('<details id="settings-menu" class="settings-menu">');
+  expect(html).toContain('id="prefetch-steps"');
+  expect(html).toContain('id="theme-select"');
+  expect(html).toContain('id="diff-layout"');
+  expect(html).toContain('id="tree-mode"');
+  expect(html).toContain('data-export-format="markdown">Markdown');
+  expect(html).toContain('data-export-format="html">HTML');
   expect(html).not.toContain('id="export-format"');
   expect(app).toContain("async function downloadExport(format)");
-  expect(styles).toContain(".export-options { position: absolute;");
+  expect(app).toContain('api("/api/preferences", { method: "POST", body: JSON.stringify({ prefetchSteps }) })');
+  expect(styles).toContain(".settings-popover { position: absolute;");
 });
 
-test("topbar controls stay compact and name the theme selector", async () => {
+test("topbar controls stay compact around a labelled settings menu", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain('<label class="theme-control">\n          <span>Theme</span>');
+  expect(html).toContain('aria-label="Review settings"');
+  expect(html).toContain('<span>Theme</span><select id="theme-select"');
   expect(styles).toContain(".topbar .button { padding: 6px 9px;");
   expect(styles).toContain(".actions { justify-content: flex-end; gap: 5px;");
   expect(html).toContain('id="update-button" class="button update-button hidden"');

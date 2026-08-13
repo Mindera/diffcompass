@@ -12,7 +12,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
-test("materializes and resumes a complete deterministic tour fixture", async () => {
+test("materializes, resumes, and resets a complete deterministic tour fixture", async () => {
   const parent = await mkdtemp(join(tmpdir(), "review-tour-fixture-test-"));
   directories.push(parent);
   const root = join(parent, "fixture");
@@ -22,6 +22,7 @@ test("materializes and resumes a complete deterministic tour fixture", async () 
   expect(created.created).toBe(true);
   expect(persisted.outline?.phases).toHaveLength(2);
   expect(persisted.outline?.phases.flatMap((phase) => phase.steps)).toHaveLength(4);
+  expect(persisted.outline?.phases.flatMap((phase) => phase.steps).map((step) => Boolean(step.explanation))).toEqual([true, false, false, false]);
   expect(persisted.outline?.architecture?.dependencyChanges).toHaveLength(2);
   expect(persisted.outline?.flows).toHaveLength(1);
   expect(persisted.outline?.findings.map((finding) => finding.priority)).toEqual(["P1", "P3"]);
@@ -34,7 +35,7 @@ test("materializes and resumes a complete deterministic tour fixture", async () 
     agentAdapters: [],
   });
   expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "src/cart.ts", "src/receipt.ts"]);
-  expect(session.currentStepIndex).toBe(1);
+  expect(session.currentStepIndex).toBe(0);
   await session.dispose();
 
   persisted.revision = 9;

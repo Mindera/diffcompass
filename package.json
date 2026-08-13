@@ -1,6 +1,6 @@
 {
   "name": "code-review-tour",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": true,
   "description": "A local, agent-led walkthrough for Git changes.",
   "repository": {

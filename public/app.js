@@ -42,15 +42,16 @@ const state = {
   pollInFlight: false,
   pollGeneration: 0,
   updateInProgress: false,
+  toastTimer: null,
   prDescriptionMode: "rendered",
 };
 
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "flows-view", "architecture", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
-    "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
-    "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
+    "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
@@ -141,10 +142,15 @@ async function api(path, options = {}) {
   return value;
 }
 
-function toast(message) {
+function toast(message, { duration = 3_500, tone = "default" } = {}) {
+  window.clearTimeout(state.toastTimer);
   elements.toast.textContent = message;
+  elements.toast.classList.toggle("warning", tone === "warning");
   elements.toast.classList.remove("hidden");
-  window.setTimeout(() => elements.toast.classList.add("hidden"), 3500);
+  state.toastTimer = window.setTimeout(() => {
+    elements.toast.classList.add("hidden");
+    state.toastTimer = null;
+  }, duration);
 }
 
 async function checkForUpdate() {
@@ -211,6 +217,25 @@ function setBusy(busy, label = "Working…") {
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
     elements["step-explanation"].innerHTML = `<span class="loading">${escapeHtml(label)}</span>`;
   }
+  renderAgentActivity();
+}
+
+function renderAgentActivity() {
+  const activity = state.session?.agentActivity;
+  const visible = Boolean(activity && (state.busy || activity.status === "waiting" || activity.status === "running" || activity.status === "failed"));
+  elements["agent-activity"].classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const status = activity.status === "waiting" ? "Waiting for agent" : activity.status === "running" ? "Agent working" : activity.status === "failed" ? "Agent failed" : "Agent finished";
+  const prefetchSteps = state.session.preferences?.prefetchSteps ?? 2;
+  elements["agent-activity-title"].textContent = activity.kind === "tour.explanation" && activity.stepNumber && activity.totalSteps
+    ? `${activity.status === "failed" ? "Agent failed. " : ""}${prefetchSteps === 0 ? "Preparing on demand." : `We prepare ${prefetchSteps} ${prefetchSteps === 1 ? "step" : "steps"} in advance.`} Preparing step ${activity.stepNumber} of ${activity.totalSteps}`
+    : `${status} · ${activity.label}`;
+  const elapsed = Math.max(0, Math.round((Date.now() - Date.parse(activity.startedAt)) / 1000));
+  const updates = activity.updates.map((update) => `<li><time>${escapeHtml(new Date(update.createdAt).toLocaleTimeString())}</time>${escapeHtml(update.message)}</li>`).join("");
+  elements["agent-activity-body"].innerHTML = `<div class="agent-activity-meta"><span>${elapsed}s elapsed</span><span>${escapeHtml(activity.kind)}</span></div>
+    ${updates ? `<ol class="agent-progress-list">${updates}</ol>` : '<p class="planning-live">The prompt is queued; no progress update has arrived yet.</p>'}
+    ${activity.error ? `<p class="agent-activity-error">${escapeHtml(activity.error)}</p>` : ""}
+    <details class="agent-prompt"><summary>Current prompt</summary><pre>${escapeHtml(activity.prompt)}${activity.promptTruncated ? "\n\n[Prompt truncated in this view]" : ""}</pre></details>`;
 }
 
 async function loadSessions() {
@@ -569,7 +594,7 @@ async function ensureTourPhaseDiffs() {
 
 async function showChangedFile(path, line, side, requestedOffset, requestedContext) {
   if (state.tourMode && !filteredChangedFiles().some((file) => file.path === path)) {
-    toast("That file belongs to another phase. Exit the tour to browse every changed file.");
+    toast("That file belongs to another phase. Exit the tour to browse every changed file.", { duration: 9_000, tone: "warning" });
     return;
   }
   const requestId = ++state.fileRequestId;
@@ -1123,6 +1148,7 @@ function renderTour() {
   elements["step-title"].textContent = step.title;
   elements["step-objective"].textContent = step.objective;
   elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
+  renderAgentActivity();
   const planningNotes = outline.planningNotes ?? [];
   elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
   elements["planning-note-list"].innerHTML = planningNotes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
@@ -1208,6 +1234,7 @@ function renderSession() {
   elements["review-filter"].value = state.reviewFilter;
   elements["tree-mode"].value = state.treeMode;
   elements["diff-layout"].value = state.diffLayout;
+  elements["prefetch-steps"].value = String(state.session.preferences?.prefetchSteps ?? 2);
   elements["diff-search"].disabled = Boolean(state.tourMode);
   elements["status-filter"].disabled = Boolean(state.tourMode);
   elements["review-filter"].disabled = Boolean(state.tourMode);
@@ -1251,6 +1278,7 @@ function renderSession() {
   elements["close-button"].disabled = state.busy || closed;
   elements["close-button"].textContent = state.session.preferences?.closeOutcome === "cancelled" ? "Cancel review" : "Close";
   elements["feedback-button"].disabled = state.busy || closed;
+  elements["prefetch-steps"].disabled = closed;
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
   elements["chat-form"].querySelector("button").disabled = state.busy || closed;
@@ -1541,7 +1569,7 @@ elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
 elements["export-menu"].addEventListener("click", (event) => {
   const button = event.target.closest("[data-export-format]");
-  if (button) void downloadExport(button.dataset.exportFormat);
+  if (button) { elements["settings-menu"].open = false; void downloadExport(button.dataset.exportFormat); }
 });
 elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode);
 elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);
@@ -1550,6 +1578,20 @@ elements["flow-form"].addEventListener("submit", saveFlow);
 elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
 elements["theme-select"].value = window.reviewTourTheme.preference();
 elements["theme-select"].addEventListener("change", () => window.reviewTourTheme.set(elements["theme-select"].value));
+elements["prefetch-steps"].addEventListener("change", async () => {
+  const previous = state.session.preferences?.prefetchSteps ?? 2;
+  const prefetchSteps = Number(elements["prefetch-steps"].value);
+  elements["prefetch-steps"].disabled = true;
+  try {
+    state.session = await api("/api/preferences", { method: "POST", body: JSON.stringify({ prefetchSteps }) });
+    renderSession();
+  } catch (error) {
+    elements["prefetch-steps"].value = String(previous);
+    toast(error.message);
+  } finally {
+    elements["prefetch-steps"].disabled = false;
+  }
+});
 let fileResizeStart = null;
 elements["file-resizer"].addEventListener("pointerdown", (event) => {
   fileResizeStart = { pointerId: event.pointerId, x: event.clientX, width: state.filePanelWidth };
@@ -1610,7 +1652,7 @@ window.addEventListener("resize", () => {
 window.addEventListener("review-tour-theme-change", () => {
   if (state.session && state.activeTab === "flows") renderFlows();
 });
-elements["sessions-button"].addEventListener("click", () => { elements["sessions-dialog"].showModal(); void loadSessions(); });
+elements["sessions-button"].addEventListener("click", () => { elements["settings-menu"].open = false; elements["sessions-dialog"].showModal(); void loadSessions(); });
 elements["close-sessions"].addEventListener("click", () => elements["sessions-dialog"].close());
 elements["show-archived-sessions"].addEventListener("change", loadSessions);
 elements["sessions-list"].addEventListener("click", async (event) => {
@@ -1960,17 +2002,25 @@ try {
 }
 
 window.setInterval(async () => {
-  if (state.busy || state.pollInFlight || (state.session && !reviewIsOpen())) return;
+  if (state.pollInFlight || (state.session && !reviewIsOpen())) return;
   state.pollInFlight = true;
   const generation = ++state.pollGeneration;
   try {
     const latest = await api("/api/session");
     if (generation !== state.pollGeneration) return;
     elements["connection-banner"].classList.add("hidden");
+    if (state.busy && state.session) {
+      state.session.agentActivity = latest.agentActivity;
+      renderAgentActivity();
+      return;
+    }
+    if (state.session) {
+      state.session.agentActivity = latest.agentActivity;
+      renderAgentActivity();
+    }
     if (!state.session || latest.revision > state.session.revision || latest.tourState !== state.session.tourState || (state.session.status === "open" && latest.status !== "open")) {
       state.session = latest;
       renderSession();
-      toast("Review connected and up to date.");
     }
   } catch {
     if (!state.session || reviewIsOpen()) elements["connection-banner"].classList.remove("hidden");

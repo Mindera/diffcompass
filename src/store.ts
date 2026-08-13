@@ -177,6 +177,7 @@ function validPreferences(value: unknown): boolean {
   return record(value) && ["unified", "split"].includes(String(value.diffLayout)) &&
     typeof value.changedFilesOnly === "boolean" && Number.isInteger(value.contextLines) &&
     Number(value.contextLines) >= 3 && Number(value.contextLines) <= 200 &&
+    Number.isInteger(value.prefetchSteps) && Number(value.prefetchSteps) >= 0 && Number(value.prefetchSteps) <= 4 &&
     typeof value.requireAllFilesReviewed === "boolean" && ["accepted", "cancelled"].includes(String(value.closeOutcome));
 }
 
@@ -251,6 +252,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       }
     }
   }
+  if (value.schemaVersion === 2 && record(value.preferences)) value.preferences.prefetchSteps ??= 2;
   const session = value as Partial<PersistedReviewSession>;
   if (
     session.schemaVersion !== 2 ||

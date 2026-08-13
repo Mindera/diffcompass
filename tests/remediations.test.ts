@@ -213,6 +213,7 @@ test("required reviewed-file policy blocks successful closure but never blocks c
     diffLayout: "split",
     changedFilesOnly: true,
     contextLines: 25,
+    prefetchSteps: 2,
     requireAllFilesReviewed: true,
     closeOutcome: "accepted",
   };

@@ -41,7 +41,17 @@ For every `agent.prompt` event, retain both its `id` and `leaseId`, then follow 
 code-review-tour bridge respond --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID --file RESPONSE_FILE
 ```
 
+While inspecting a prompt, send concise, user-facing progress updates at meaningful milestones so the browser can explain a slow stop. These are short activity summaries, not private chain-of-thought. Write each update to a temporary UTF-8 file and report it with:
+
+```text
+code-review-tour bridge progress --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID --file PROGRESS_FILE
+```
+
+For an explanation, report when you begin checking the anchor and any important related path. For outline and finding work, report scope/phase milestones. Do not send raw secrets, full file contents, hidden reasoning, or a stream of token-by-token text. Delete each progress file after it is accepted.
+
 After the bridge accepts the response, acknowledge that prompt event with the `ack` command and the same lease, then delete the temporary response file. Advance the cursor to the greatest processed `sequence` and poll again. A lease lasts 30 minutes; for unusually long work, renew it before expiry with `code-review-tour bridge renew --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID`. If a response is rejected because the review closed meanwhile, discard it and poll for the terminal event. Empty event batches are normal; continue polling while the review is open. Keep the user informed during long waits without stopping the bridge loop.
+
+After every `tour.explanation` response, poll again immediately. The server normally queues the following stop before the reviewer presses Next, so preparing that new prompt is part of the current bridge loop. Do not end the task, yield the attached workflow, or stop polling merely because the first or current stop is visible in the browser.
 
 Prompt kinds:
 

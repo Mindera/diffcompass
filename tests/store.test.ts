@@ -284,6 +284,7 @@ test("persists complete review preferences and rejects partial or out-of-range v
     diffLayout: "split",
     changedFilesOnly: true,
     contextLines: 25,
+    prefetchSteps: 2,
     requireAllFilesReviewed: true,
     closeOutcome: "cancelled",
   };
@@ -292,6 +293,7 @@ test("persists complete review preferences and rejects partial or out-of-range v
 
   for (const preferences of [
     { ...valid.preferences, contextLines: 2 },
+    { ...valid.preferences, prefetchSteps: 5 },
     { ...valid.preferences, diffLayout: "columns" },
     { diffLayout: "split" },
   ]) {

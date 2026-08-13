@@ -122,6 +122,16 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           await session.bridge.renew(requiredString(input.eventId, "eventId", 128), requiredString(input.leaseId, "leaseId", 128));
           return json({ renewed: true });
         }
+        if (request.method === "POST" && url.pathname === "/api/bridge/progress") {
+          const input = await readJsonObject(request, 16 * 1024);
+          exactKeys(input, ["eventId", "leaseId", "message"]);
+          session.bridge.reportProgress(
+            requiredString(input.eventId, "eventId", 128),
+            requiredString(input.leaseId, "leaseId", 128),
+            requiredString(input.message, "message", 2_000),
+          );
+          return json({ accepted: true });
+        }
         if (request.method === "POST" && url.pathname === "/api/bridge/refresh") {
           const input = await readJsonObject(request);
           exactKeys(input, ["eventId", "leaseId", "verification"]);
@@ -141,6 +151,14 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "POST" && url.pathname === "/api/preferences") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["prefetchSteps"]);
+        if (!Number.isInteger(input.prefetchSteps) || Number(input.prefetchSteps) < 0 || Number(input.prefetchSteps) > 4) {
+          throw new HttpError(422, "Prepare ahead must be between 0 and 4 steps.");
+        }
+        return json(await session.setPrefetchSteps(Number(input.prefetchSteps)));
+      }
       if (request.method === "GET" && url.pathname === "/api/update") return json(await updateService.status());
       if (request.method === "POST" && url.pathname === "/api/update") {
         const input = await readJsonObject(request);

@@ -12,7 +12,14 @@ export async function runProcess(
   command: string[],
   cwd: string,
   acceptedExitCodes: number[] = [0],
-  options: { signal?: AbortSignal; timeoutMs?: number; input?: string; env?: Record<string, string | undefined> } = {},
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    input?: string;
+    env?: Record<string, string | undefined>;
+    onStdout?: (chunk: string) => void;
+    onStderr?: (chunk: string) => void;
+  } = {},
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   if (options.signal?.aborted) throw new Error("The command was cancelled.");
   const process = Bun.spawn(command, {
@@ -43,9 +50,25 @@ export async function runProcess(
   let stderr: string;
   let exitCode: number;
   try {
+    const read = async (stream: ReadableStream<Uint8Array>, onChunk?: (chunk: string) => void) => {
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let output = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        output += chunk;
+        if (chunk) onChunk?.(chunk);
+      }
+      const tail = decoder.decode();
+      output += tail;
+      if (tail) onChunk?.(tail);
+      return output;
+    };
     [stdout, stderr, exitCode] = await Promise.all([
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
+      read(process.stdout, options.onStdout),
+      read(process.stderr, options.onStderr),
       process.exited,
     ]);
   } finally {

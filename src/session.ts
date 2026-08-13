@@ -10,7 +10,7 @@ import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorks
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -81,6 +81,7 @@ export class ReviewSession {
   private selection?: AgentSelection;
   private agentContinuation?: PersistedReviewSession["agentContinuation"];
   private tourPlanning = false;
+  private agentActivity?: AgentRunActivity;
   private commandQueue: Promise<void> = Promise.resolve();
   private mutationQueue: Promise<void> = Promise.resolve();
   private refreshQueue: Promise<void> = Promise.resolve();
@@ -131,7 +132,7 @@ export class ReviewSession {
       : undefined;
     this.agentContinuation = structuredClone(persisted?.agentContinuation);
     if (this.status === "open" && this.selection) {
-      this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, this.agentContinuation);
+      this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, this.agentContinuation, (activity) => { this.agentActivity = activity; });
     }
     if (this.status !== "open") queueMicrotask(() => this.resolveClosed(this.status as ReviewOutcome));
   }
@@ -414,6 +415,7 @@ export class ReviewSession {
       agentAdapters: this.agentAdapters,
       agentSelection: this.selection ?? (this.agentAdapters.length > 0 ? this.resolveSelection() : undefined),
       agentMode: this.selection ? `${this.selection.adapterId}-read-only` : undefined,
+      agentActivity: structuredClone(this.agentActivity),
       tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
     };
   }
@@ -568,7 +570,10 @@ export class ReviewSession {
       this.ensureOpen();
       if (!this.outline || !this.agent) return;
       const steps = tourSteps(this.outline);
-      const index = steps.findIndex((candidate, candidateIndex) => candidateIndex > this.currentStepIndex && !candidate.explanation);
+      const windowEnd = Math.min(steps.length - 1, this.currentStepIndex + this.preferences.prefetchSteps);
+      const index = steps.findIndex((candidate, candidateIndex) => (
+        candidateIndex > this.currentStepIndex && candidateIndex <= windowEnd && !candidate.explanation
+      ));
       const step = steps[index];
       if (!step) return;
       const comparisonGeneration = this.comparisonGeneration;
@@ -619,6 +624,29 @@ export class ReviewSession {
     });
   }
 
+  async setPrefetchSteps(prefetchSteps: number) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!Number.isInteger(prefetchSteps) || prefetchSteps < 0 || prefetchSteps > 4) {
+        throw new ReviewError("Prepare ahead must be between 0 and 4 steps.");
+      }
+      if (this.preferences.prefetchSteps === prefetchSteps) return this.snapshot();
+      const previous = this.preferences.prefetchSteps;
+      const previousRevision = this.revision;
+      this.preferences.prefetchSteps = prefetchSteps;
+      this.revision += 1;
+      try {
+        await this.persist();
+      } catch (error) {
+        this.preferences.prefetchSteps = previous;
+        this.revision = previousRevision;
+        throw error;
+      }
+      this.scheduleNextStepPrefetch();
+      return this.snapshot();
+    });
+  }
+
   async startTour(selection?: Partial<AgentSelection>) {
     return this.serialize(async () => {
       const before = this.captureMutableState();
@@ -629,7 +657,7 @@ export class ReviewSession {
       const createdAgent = !this.agent;
       if (!this.agent) {
         this.selection = this.resolveSelection(selection);
-        this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge);
+        this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, undefined, (activity) => { this.agentActivity = activity; });
       } else if (selection && (
         (selection.adapterId !== undefined && selection.adapterId !== this.selection?.adapterId) ||
         (selection.modelId !== undefined && selection.modelId !== this.selection?.modelId) ||
@@ -796,7 +824,7 @@ export class ReviewSession {
       const createdAgent = !this.agent;
       if (!this.agent) {
         this.selection = this.resolveSelection();
-        this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge);
+        this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, undefined, (activity) => { this.agentActivity = activity; });
       }
       this.agent.useComparison(this.comparison);
       const step = tourSteps(this.outline)[this.currentStepIndex];
@@ -1187,7 +1215,7 @@ export class ReviewSession {
         this.status = "open";
         this.revision = previousRevision;
         this.agent = this.selection
-          ? new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, this.agentContinuation)
+          ? new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, this.agentContinuation, (activity) => { this.agentActivity = activity; })
           : undefined;
         this.closePromise = undefined;
         throw error;

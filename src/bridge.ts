@@ -31,6 +31,7 @@ interface PendingPrompt {
   resolve: (message: string) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  progress?: (update: { status: "waiting" | "running"; message: string }) => void;
 }
 
 type PersistedPrompt = NonNullable<PersistedReviewSession["bridgePrompts"]>[number];
@@ -110,13 +111,21 @@ export class AttachedAgentBridge implements AgentTransport {
     return [...this.leases].map(([eventId, lease]) => ({ eventId, leaseId: lease.id, expiresAt: lease.expiresAt }));
   }
 
-  async send(prompt: string, kind: BridgePromptKind): Promise<string> {
+  async send(
+    prompt: string,
+    kind: BridgePromptKind,
+    _attachment?: { name: string; content: string },
+    progress?: (update: { status: "waiting" | "running"; message: string }) => void,
+  ): Promise<string> {
     if (this.disposed) return Promise.reject(new ReviewError("The review is closed."));
     const restored = [...this.promptRecords.values()].find((record) => (
       !record.committed && record.event.kind === kind && record.event.prompt === prompt && !this.pending.has(record.event.id)
     ));
     if (restored?.response !== undefined) return restored.response;
-    if (restored) return this.waitForResponse(restored.event);
+    if (restored) {
+      progress?.({ status: this.leases.has(restored.event.id) ? "running" : "waiting", message: this.leases.has(restored.event.id) ? "The triggering agent already claimed this prompt." : "Waiting for the triggering agent to claim this prompt." });
+      return this.waitForResponse(restored.event, progress);
+    }
     const id = crypto.randomUUID();
     const event: BridgePromptEvent = {
       sequence: ++this.sequence,
@@ -138,10 +147,11 @@ export class AttachedAgentBridge implements AgentTransport {
     if (this.disposed) throw new ReviewError("The review is closed.");
     this.events.push(event);
     this.notify();
-    return this.waitForResponse(event);
+    progress?.({ status: "waiting", message: "Waiting for the triggering agent to claim this prompt." });
+    return this.waitForResponse(event, progress);
   }
 
-  private waitForResponse(event: BridgePromptEvent): Promise<string> {
+  private waitForResponse(event: BridgePromptEvent, progress?: PendingPrompt["progress"]): Promise<string> {
     const id = event.id;
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -152,7 +162,7 @@ export class AttachedAgentBridge implements AgentTransport {
         void this.persistCheckpoint?.().catch(() => undefined);
         reject(new Error("The attached agent did not answer within 30 minutes."));
       }, 30 * 60 * 1_000);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, progress });
     });
   }
 
@@ -176,6 +186,7 @@ export class AttachedAgentBridge implements AgentTransport {
     }
     const pending = this.pending.get(eventId);
     if (pending) {
+      pending.progress?.({ status: "running", message: "The triggering agent returned a response. Saving it to the tour…" });
       clearTimeout(pending.timer);
       this.pending.delete(eventId);
       pending.resolve(message);
@@ -298,6 +309,15 @@ export class AttachedAgentBridge implements AgentTransport {
     }
   }
 
+  reportProgress(eventId: string, leaseId: string, message: string): void {
+    if (!this.leases.has(eventId)) throw new ReviewError("Claim this bridge prompt before reporting progress.");
+    this.requireLease(eventId, leaseId);
+    if (!message.trim()) throw new ReviewError("Agent progress cannot be empty.");
+    const record = this.promptRecords.get(eventId);
+    if (!record || record.response !== undefined) throw new ReviewError("This bridge prompt is no longer active.");
+    this.pending.get(eventId)?.progress?.({ status: "running", message });
+  }
+
   private requireLease(eventId: string, leaseId?: string): void {
     const lease = this.leases.get(eventId);
     if (!lease) return;
@@ -331,7 +351,11 @@ export class AttachedAgentBridge implements AgentTransport {
       });
     };
     const current = available();
-    if (current.length > 0 || waitMs <= 0 || this.disposed || signal?.aborted) return this.persistClaimed(current, claim);
+    if (current.length > 0 || waitMs <= 0 || this.disposed || signal?.aborted) {
+      const persisted = await this.persistClaimed(current, claim);
+      this.reportClaims(persisted, claim);
+      return persisted;
+    }
 
     await new Promise<void>((resolve) => {
       const listener = () => {
@@ -350,7 +374,16 @@ export class AttachedAgentBridge implements AgentTransport {
       this.listeners.add(listener);
       signal?.addEventListener("abort", onAbort, { once: true });
     });
-    return this.persistClaimed(available(), claim);
+    const persisted = await this.persistClaimed(available(), claim);
+    this.reportClaims(persisted, claim);
+    return persisted;
+  }
+
+  private reportClaims(events: Array<BridgeEvent & { leaseId?: string }>, claimed: boolean): void {
+    if (!claimed) return;
+    for (const event of events) {
+      this.pending.get(event.id)?.progress?.({ status: "running", message: "The triggering agent claimed the prompt and is working on it." });
+    }
   }
 
   private async persistClaimed(events: Array<BridgeEvent & { leaseId?: string }>, claimed: boolean): Promise<Array<BridgeEvent & { leaseId?: string }>> {

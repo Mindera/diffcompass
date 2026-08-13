@@ -31,6 +31,7 @@ export const DEFAULT_REVIEW_PREFERENCES: ReviewPreferences = {
   diffLayout: "split",
   changedFilesOnly: false,
   contextLines: 3,
+  prefetchSteps: 2,
   requireAllFilesReviewed: false,
   closeOutcome: "accepted",
 };
@@ -127,6 +128,7 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
       diffLayout: layout as ReviewPreferences["diffLayout"],
       changedFilesOnly: diff.changedFilesOnly ?? DEFAULT_REVIEW_PREFERENCES.changedFilesOnly,
       contextLines: optionalInteger(diff.contextLines, `${path} diff.contextLines`, 3, 200) ?? DEFAULT_REVIEW_PREFERENCES.contextLines,
+      prefetchSteps: DEFAULT_REVIEW_PREFERENCES.prefetchSteps,
       requireAllFilesReviewed: review.requireAllFilesReviewed ?? DEFAULT_REVIEW_PREFERENCES.requireAllFilesReviewed,
       closeOutcome: closeOutcome as ReviewPreferences["closeOutcome"],
     },

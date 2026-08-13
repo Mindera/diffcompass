@@ -140,6 +140,7 @@ export interface ReviewPreferences {
   diffLayout: "unified" | "split";
   changedFilesOnly: boolean;
   contextLines: number;
+  prefetchSteps: number;
   requireAllFilesReviewed: boolean;
   closeOutcome: Extract<ReviewOutcome, "accepted" | "cancelled">;
 }
@@ -264,6 +265,22 @@ export interface AgentSelection {
   includeArchitecture?: boolean;
   includeFlows?: boolean;
   includeFindings?: boolean;
+}
+
+export interface AgentRunActivity {
+  id: string;
+  kind: "tour.outline" | "tour.explanation" | "review.question";
+  label: string;
+  status: "waiting" | "running" | "completed" | "failed";
+  prompt: string;
+  promptTruncated?: boolean;
+  stepNumber?: number;
+  totalSteps?: number;
+  updates: Array<{ message: string; createdAt: string }>;
+  startedAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  error?: string;
 }
 
 export interface PersistedReviewSession {

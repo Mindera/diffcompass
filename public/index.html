@@ -26,20 +26,35 @@
           <span class="update-icon" aria-hidden="true">↻</span>
           <span id="update-label">Update</span>
         </button>
-        <label class="theme-control">
-          <span>Theme</span>
-          <select id="theme-select" aria-label="Color theme">
-            <option value="system">System</option>
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
-        </label>
-        <button id="sessions-button" class="button secondary">Sessions</button>
-        <details id="export-menu" class="export-menu">
-          <summary class="button secondary">Export</summary>
-          <div class="export-options">
-            <button class="text-button" type="button" data-export-format="markdown">Markdown report</button>
-            <button class="text-button" type="button" data-export-format="html">HTML report</button>
+        <details id="settings-menu" class="settings-menu">
+          <summary class="button secondary" aria-label="Review settings"><span aria-hidden="true">⚙</span> Settings</summary>
+          <div class="settings-popover">
+            <section class="settings-section">
+              <strong>Tour</strong>
+              <label><span>Prepare ahead</span><select id="prefetch-steps" aria-label="Steps to prepare ahead">
+                <option value="0">0 steps</option><option value="1">1 step</option><option value="2">2 steps</option><option value="3">3 steps</option><option value="4">4 steps</option>
+              </select></label>
+              <p>Prepared explanations are kept if this is reduced.</p>
+            </section>
+            <section class="settings-section">
+              <strong>Appearance</strong>
+              <label><span>Theme</span><select id="theme-select" aria-label="Color theme">
+                <option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option>
+              </select></label>
+              <label><span>Diff view</span><select id="diff-layout"><option value="unified">Unified</option><option value="split">Split</option></select></label>
+              <label><span>File tree</span><select id="tree-mode" aria-label="File tree mode">
+                <option value="changes">Changed paths</option><option value="repository">Full repository</option>
+              </select></label>
+            </section>
+            <section class="settings-section settings-actions">
+              <strong>Data</strong>
+              <button id="sessions-button" class="text-button" type="button">Manage sessions</button>
+              <div id="export-menu" class="settings-export">
+                <span>Export</span>
+                <button class="text-button" type="button" data-export-format="markdown">Markdown</button>
+                <button class="text-button" type="button" data-export-format="html">HTML</button>
+              </div>
+            </section>
           </div>
         </details>
         <button id="refresh-button" class="button secondary">Refresh</button>
@@ -70,9 +85,6 @@
               <option value="">All files</option><option value="unreviewed">Unreviewed</option><option value="reviewed">Reviewed</option>
             </select></label>
           </div>
-          <label class="tree-mode-control"><span>Tree</span><select id="tree-mode" aria-label="File tree mode">
-            <option value="changes">Changed paths</option><option value="repository">Full repository</option>
-          </select></label>
         </div>
         <div id="file-tree" class="file-tree"></div>
         <div id="file-resizer" class="file-resizer" role="separator" aria-label="Resize file tree" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="480" aria-valuenow="240" tabindex="0"></div>
@@ -92,10 +104,7 @@
               <div id="pull-request-description-body" class="pull-request-description-body"></div>
             </details>
           </section>
-          <div class="diff-toolbar">
-            <span id="filter-summary" class="muted"></span>
-            <label>View <select id="diff-layout"><option value="unified">Unified</option><option value="split">Split</option></select></label>
-          </div>
+          <div class="diff-toolbar"><span id="filter-summary" class="muted"></span></div>
           <div id="large-diff-notice" class="view-notice hidden"></div>
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>
@@ -181,6 +190,10 @@
               <h3 id="step-title"></h3>
               <p id="step-objective" class="objective"></p>
               <div id="step-explanation" class="explanation"></div>
+              <details id="agent-activity" class="agent-activity hidden">
+                <summary><span class="planning-spinner" aria-hidden="true"></span><span id="agent-activity-title">Agent activity</span></summary>
+                <div id="agent-activity-body" class="agent-activity-body"></div>
+              </details>
             </article>
           <div id="chat-messages" class="chat-messages"></div>
           <section id="finding-drawer" class="finding-drawer" aria-labelledby="finding-drawer-title">

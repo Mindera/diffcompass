@@ -214,22 +214,22 @@ code-review-tour --resume "/path/printed/by/the/server.json" --open
 
 ## Reusable test fixture
 
-Development builds include a deterministic persisted tour, so loading and navigating the complete local-review UI does not spend tokens or wait for an agent to plan a review:
+Development builds include a deterministic persisted tour outline with its first stop ready:
 
 ```bash
 bun run fixture --open
 ```
 
-The first run creates an owned disposable Git repository and a fully populated session under the system temporary directory. Later runs resume the same review, including comments and reviewed-file progress. Restore the canonical fixture at any time with:
-
-```bash
-bun run fixture --reset --open
-```
+Every run recreates the owned disposable Git repository and canonical session
+under the system temporary directory. Stops after the first deliberately start
+without explanations, so the configured prepare-ahead window and agent progress
+UI can be tested without inheriting work from an earlier run. Preparing those
+later stops invokes the selected local agent and may use tokens.
 
 The fixture contains two phases, four stops, inline feedback, findings, a
 component diagram, a sequence diagram, chat history, and an agent activity
 entry. Sending a new chat message still invokes the installed Codex default
-model. Use `bun run fixture --prepare-only` when a test only needs the
+model. Use `bun run fixture --prepare-only` when a test only needs fresh
 repository and session files.
 
 To review a GitHub pull request without checking out its branch, authenticate
