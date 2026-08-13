@@ -74,6 +74,17 @@ Both caller flags are optional and independent. They label the triggering
 session; they do not start or switch to another model. If omitted, the picker
 continues to show `Current agent session` and the CLI default effort.
 
+Finding generation can be disabled for a session without adding configuration
+to the reviewed repository:
+
+```sh
+code-review-tour --attached --start-tour --open --no-findings \
+  --repo /path/to/repository
+```
+
+Without `--no-findings`, findings remain enabled by default. The flag is a
+session-only override and does not create or modify `.code-review-tour.json`.
+
 `--start-tour` completes the outline and first explanation before the single
 user-facing page opens, so an agent-triggered launch appears ready at stop one
 and never needs to drive a second browser or press the setup button. In this

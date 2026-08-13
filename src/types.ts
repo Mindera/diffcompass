@@ -296,6 +296,7 @@ export interface PersistedReviewSession {
   reviewedFiles?: string[];
   preferences?: ReviewPreferences;
   reviewPolicy?: ReviewPolicy;
+  findingGenerationEnabled?: boolean;
   pullRequest?: PullRequestContext;
   revision: number;
   status: ReviewStatus;

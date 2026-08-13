@@ -269,6 +269,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
     (session.preferences !== undefined && !validPreferences(session.preferences)) ||
     (session.reviewPolicy !== undefined && !validReviewPolicy(session.reviewPolicy)) ||
+    (session.findingGenerationEnabled !== undefined && typeof session.findingGenerationEnabled !== "boolean") ||
     (session.pullRequest !== undefined && !validPullRequest(session.pullRequest)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||

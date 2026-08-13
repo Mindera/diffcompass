@@ -28,6 +28,7 @@ interface Options {
   attached: boolean;
   open: boolean;
   startTour: boolean;
+  disableFindings: boolean;
   resume?: string;
   pullRequest?: string;
 }
@@ -50,6 +51,7 @@ Options:
   --base REF           Parent branch or Git reference to compare
   --attached           Use the launching agent as the conversation backend
   --start-tour         Prepare stop one before opening the review page
+  --no-findings        Skip finding generation for this review session
   --open               Open the review automatically in the default browser
   --agent ID           Standalone agent: codex, claude, gemini, or copilot
   --model MODEL        Model identifier reported by the selected agent
@@ -64,7 +66,7 @@ Options:
 }
 
 function parseOptions(args: string[]): Options {
-  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false };
+  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false, disableFindings: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
@@ -84,6 +86,8 @@ function parseOptions(args: string[]): Options {
       options.attached = true;
     } else if (arg === "--start-tour") {
       options.startTour = true;
+    } else if (arg === "--no-findings") {
+      options.disableFindings = true;
     } else if (arg === "--open") {
       options.open = true;
     } else if (arg === "--resume" && value) {
@@ -216,6 +220,7 @@ try {
     resume: Boolean(options.resume),
     preferences: repositoryConfig.preferences,
     reviewPolicy: repositoryConfig.reviewPolicy,
+    includeFindings: options.disableFindings ? false : undefined,
     pullRequest,
   });
   if (session.pullRequest?.workspaceRoot) {

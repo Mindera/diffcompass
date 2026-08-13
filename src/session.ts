@@ -23,6 +23,7 @@ interface AgentDefaults {
   resume?: boolean;
   preferences?: ReviewPreferences;
   reviewPolicy?: ReviewPolicy;
+  includeFindings?: boolean;
   pullRequest?: PullRequestContext;
   githubRunner?: GitHubRunner;
   agentAdapters?: AgentAdapterOption[];
@@ -125,7 +126,9 @@ export class ReviewSession {
     this.currentStepIndex = persisted?.currentStepIndex ?? -1;
     this.revision = persisted?.revision ?? 1;
     this.status = persisted?.status ?? "open";
-    this.selection = structuredClone(persisted?.selection);
+    this.selection = persisted?.selection
+      ? { ...structuredClone(persisted.selection), includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings }
+      : undefined;
     this.agentContinuation = structuredClone(persisted?.agentContinuation);
     if (this.status === "open" && this.selection) {
       this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, this.agentContinuation);
@@ -176,6 +179,7 @@ export class ReviewSession {
       reviewedFiles: [...this.reviewedFiles].sort(),
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
+      findingGenerationEnabled: this.defaults.includeFindings !== false,
       pullRequest: structuredClone(this.pullRequest),
       revision: this.revision,
       status: this.status,
@@ -298,6 +302,9 @@ export class ReviewSession {
     const persisted = defaults.resume && defaults.stateFile
       ? await loadPersistedSession(defaults.stateFile)
       : undefined;
+    const includeFindings = defaults.includeFindings === false
+      ? false
+      : persisted?.findingGenerationEnabled ?? defaults.includeFindings;
     const preferences = persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES;
     const comparison = await loadComparison(persisted?.repositoryRoot ?? cwd, persisted?.base ?? base, preferences.contextLines);
     if (persisted && (
@@ -333,7 +340,7 @@ export class ReviewSession {
           : `Questions and tour prompts return to the launching agent${callerModel === "current-session" ? "." : ` (${callerModel}).`}`,
       });
     }
-    const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences }, bridge, persisted);
+    const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted);
     bridge?.setPersistence(() => session.persist());
     if (bridge && persisted && persisted.status !== "open" && !persisted.bridgeTerminalEvent) {
       bridge.prepareClose(persisted.status, persisted.comments);
@@ -370,7 +377,7 @@ export class ReviewSession {
       modelId: model.id,
       reasoningEffort,
       includeFlows: input.includeFlows ?? true,
-      includeFindings: input.includeFindings ?? true,
+      includeFindings: this.defaults.includeFindings === false ? false : input.includeFindings ?? true,
     };
   }
 
@@ -399,6 +406,7 @@ export class ReviewSession {
       reviewedFiles: [...this.reviewedFiles].sort(),
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
+      findingGenerationEnabled: this.defaults.includeFindings !== false,
       pullRequest: structuredClone(this.pullRequest),
       revision: this.revision,
       status: this.status,

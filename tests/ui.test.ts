@@ -165,8 +165,10 @@ test("tour startup defaults diagrams and findings on and sends both choices", as
   expect(html).toContain('<input id="include-findings" type="checkbox" checked /> Findings');
   expect(app).toContain('includeFlows: elements["include-flows"].checked');
   expect(app).toContain('includeFindings: elements["include-findings"].checked');
+  expect(app).toContain('state.session.findingGenerationEnabled !== false');
+  expect(app).toContain('if (!findingGenerationEnabled) elements["include-findings"].checked = false');
   expect(app).toContain('elements["include-flows"].disabled = busy');
-  expect(app).toContain('elements["include-findings"].disabled = busy');
+  expect(app).toContain('elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false');
   expect(styles).toContain(".tour-includes {");
   expect(app).toContain('state.session.tourState === "planning"');
   expect(app).toContain('latest.tourState !== state.session.tourState');

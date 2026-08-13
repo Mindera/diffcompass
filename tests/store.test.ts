@@ -99,6 +99,13 @@ test("rejects unreadable JSON and unsupported persisted schemas", async () => {
   );
   expect((unsupported as Error).message).toContain("unsupported or invalid schema");
 
+  await writeFile(path, JSON.stringify({ ...persistedSession(), findingGenerationEnabled: "no" }));
+  const malformedSessionOption = await loadPersistedSession(path).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect((malformedSessionOption as Error).message).toContain("unsupported or invalid schema");
+
   await writeFile(path, JSON.stringify({ schemaVersion: 2, repositoryRoot: "/tmp" }));
   const incomplete = await loadPersistedSession(path).then(
     () => undefined,

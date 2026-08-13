@@ -152,7 +152,7 @@ function setBusy(busy, label = "Working…") {
   elements["model-select"].disabled = busy;
   elements["reasoning-select"].disabled = busy;
   elements["include-flows"].disabled = busy;
-  elements["include-findings"].disabled = busy;
+  elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false;
   elements["refresh-button"].disabled = busy;
   elements["close-button"].disabled = busy;
   elements["feedback-button"].disabled = busy;
@@ -604,6 +604,7 @@ function renderModelOptions() {
 
 function renderAgentOptions() {
   const adapters = state.session.agentAdapters ?? [];
+  const findingGenerationEnabled = state.session.findingGenerationEnabled !== false;
   const selected = state.session.agentSelection?.adapterId ?? adapters[0]?.id;
   elements["agent-select"].innerHTML = adapters
     .map((adapter) => `<option value="${escapeHtml(adapter.id)}">${escapeHtml(adapter.label)}</option>`)
@@ -611,6 +612,8 @@ function renderAgentOptions() {
   if (selected) elements["agent-select"].value = selected;
   elements["agent-select"].disabled = state.busy || !reviewIsOpen();
   elements["model-select"].disabled = state.busy || !reviewIsOpen();
+  if (!findingGenerationEnabled) elements["include-findings"].checked = false;
+  elements["include-findings"].disabled = state.busy || !reviewIsOpen() || !findingGenerationEnabled;
   elements["start-tour"].disabled = state.busy || !reviewIsOpen() || adapters.length === 0;
   if (adapters.length === 0) elements["agent-note"].textContent = "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.";
   renderModelOptions();

@@ -125,6 +125,57 @@ test("attached sessions optionally display the caller model and effort", async (
   });
 });
 
+test("session defaults can disable findings, reject a browser override, and survive resume", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, {
+    stateFile,
+    includeFindings: false,
+    agentAdapters: [{
+      id: "codex",
+      label: "Codex",
+      modelDiscovery: "default-only",
+      models: [{ id: "default", label: "Default", isDefault: true, reasoningEfforts: [] }],
+    }],
+  });
+
+  expect(session.snapshot()).toMatchObject({
+    findingGenerationEnabled: false,
+    agentSelection: { includeFindings: false },
+  });
+  expect((session as unknown as { resolveSelection(input: { includeFindings: boolean }): { includeFindings?: boolean } })
+    .resolveSelection({ includeFindings: true }).includeFindings).toBe(false);
+
+  const resumed = await ReviewSession.create(repository, undefined, {
+    stateFile,
+    resume: true,
+    agentAdapters: [{
+      id: "codex",
+      label: "Codex",
+      modelDiscovery: "default-only",
+      models: [{ id: "default", label: "Default", isDefault: true, reasoningEfforts: [] }],
+    }],
+  });
+  expect(resumed.snapshot().findingGenerationEnabled).toBe(false);
+
+  const enabledStateFile = join(repository, "..", "enabled-session.json");
+  await savePersistedSession(enabledStateFile, {
+    ...(await loadPersistedSession(stateFile)),
+    findingGenerationEnabled: true,
+  });
+  const explicitlyDisabledResume = await ReviewSession.create(repository, undefined, {
+    stateFile: enabledStateFile,
+    resume: true,
+    includeFindings: false,
+    agentAdapters: [{
+      id: "codex",
+      label: "Codex",
+      modelDiscovery: "default-only",
+      models: [{ id: "default", label: "Default", isDefault: true, reasoningEfforts: [] }],
+    }],
+  });
+  expect(explicitlyDisabledResume.snapshot().findingGenerationEnabled).toBe(false);
+});
+
 test("a resumed open attached session retains its stop and drives the rehydrated agent bridge", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
@@ -495,13 +546,13 @@ test("a later unrelated refresh invalidates an earlier event-authorized refresh"
   await expect(asking).rejects.toThrow("comparison changed");
 });
 
-test("CLI rejects a state path inside the reviewed repository before launching a server", async () => {
+test("CLI accepts --no-findings and rejects a state path inside the reviewed repository before launching a server", async () => {
   const { directory, repository } = await repositoryFixture();
   const stateFile = join(repository, "review-state.json");
   await savePersistedSession(stateFile, persistedAttachedSession(repository));
 
   const result = await runProcess(
-    [process.execPath, "run", "src/cli.ts", "--resume", stateFile],
+    [process.execPath, "run", "src/cli.ts", "--no-findings", "--resume", stateFile],
     join(import.meta.dir, ".."),
     [1],
   );
