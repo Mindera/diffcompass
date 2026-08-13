@@ -212,6 +212,26 @@ The server prints an owner-only session-state path. Resume it after a restart:
 code-review-tour --resume "/path/printed/by/the/server.json" --open
 ```
 
+## Reusable test fixture
+
+Development builds include a deterministic persisted tour, so loading and navigating the complete local-review UI does not spend tokens or wait for an agent to plan a review:
+
+```bash
+bun run fixture --open
+```
+
+The first run creates an owned disposable Git repository and a fully populated session under the system temporary directory. Later runs resume the same review, including comments and reviewed-file progress. Restore the canonical fixture at any time with:
+
+```bash
+bun run fixture --reset --open
+```
+
+The fixture contains two phases, four stops, inline feedback, findings, a
+component diagram, a sequence diagram, chat history, and an agent activity
+entry. Sending a new chat message still invokes the installed Codex default
+model. Use `bun run fixture --prepare-only` when a test only needs the
+repository and session files.
+
 To review a GitHub pull request without checking out its branch, authenticate
 GitHub CLI and launch it from a matching repository checkout:
 
@@ -333,15 +353,21 @@ output in addition to including it in the planning prompt. Repository
 instructions cannot override read-only execution, evidence requirements, or the
 tour response contract.
 
-The tour start panel includes Sequence diagrams and Findings by default. Turning
-either off skips that optional analysis instead of merely hiding its output.
+The tour start panel includes a Component diagram, Sequence diagrams, and
+Findings by default. Turning any of them off skips that optional analysis
+instead of merely hiding its output.
 When findings are enabled, broad tour planning produces candidates and a second,
 authoritative audit validates their causal chain, removes unsupported guesses,
 and searches high-impact boundaries for omissions. A malformed audit fails the
 tour rather than presenting unvalidated findings.
 
-The Flows tab renders the documented Mermaid sequence subset as SVG using the
-locally bundled Mermaid runtime in strict mode; it never loads a CDN. The
+The Flows tab starts with a left-to-right component diagram modeled after ACE's
+implementation-plan architecture view. It uses plain-language component names,
+labels every relationship, and distinguishes new, touched, removed, and
+external components. A Dependency changes list makes added, removed, or reversed
+relationships explicit. Below it, the tab renders the documented Mermaid
+sequence subset as SVG using the locally bundled Mermaid runtime in strict mode;
+it never loads a CDN. The
 validated source stays available in a collapsed disclosure and opens
 automatically if rendering fails. Supported syntax includes participants and
 actors, standard message and destruction arrows, notes, activation, autonumber,
@@ -354,8 +380,10 @@ coherent behavioral or architectural change and declares the changed files that
 participate in it. A stop is an exact old/new diff anchor with a short inline
 annotation and a deeper agent explanation. Previous and Next traverse the
 flattened stop route across phase boundaries, while the next explanation is
-prepared in advance; file-tree and free-form diff
-navigation remain under the reviewer's control. Findings shown below a stop are
+prepared in advance. While tour mode is active, the file tree and diff show all
+and only the changed files declared by the current phase; moving across a phase
+boundary swaps that scope. `Exit tour` restores the baseline all-changes review,
+and `Resume tour` returns to the current stop. Findings shown below a stop are
 limited to that exact anchor, phase findings sit with the phase overview, and
 the Findings tab contains the complete set. Sessions created before v0.9 are
 migrated into a legacy phase without guessing finding scope.

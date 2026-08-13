@@ -269,6 +269,8 @@ button { color: inherit; }
 #diff { padding: 14px; }
 .review-overview { margin: 12px 14px 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel); }
 .tour-overview h1 { margin: 4px 0 5px; font-size: 17px; line-height: 1.25; }
+.tour-overview-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tour-overview-heading .button { padding: 5px 8px; font-size: 10px; }
 .tour-overview p { margin: 0; color: var(--text-soft); font-size: 11px; line-height: 1.5; }
 .pull-request-description { margin-top: 11px; border-top: 1px solid var(--border-soft); padding-top: 9px; }
 .tour-overview.hidden + .pull-request-description { margin-top: 0; border-top: 0; padding-top: 0; }
@@ -325,6 +327,10 @@ button { color: inherit; }
 .has-comment { box-shadow: inset -2px 0 var(--warning); }
 .has-comment .row-prefix { display: none; }
 .inline-comment { box-sizing: border-box; position: sticky; left: 8px; width: min(680px, calc(100vw - 32px)); margin: 7px 8px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: 8px; background: var(--surface-item); box-shadow: 0 5px 16px var(--shadow); }
+.split-inline-comment { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.split-inline-comment .inline-comment { position: static; width: auto; min-width: 0; }
+.split-inline-comment.old-side .inline-comment { grid-column: 1; }
+.split-inline-comment.new-side .inline-comment { grid-column: 2; }
 .inline-comment.outdated { border-color: var(--priority-p3); opacity: .8; }
 .inline-comment-button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; border: 0; padding: 9px 11px; color: inherit; background: transparent; cursor: pointer; text-align: left; }
 .inline-comment-label { color: var(--warning); font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; }
@@ -497,6 +503,12 @@ button { color: inherit; }
 .flows-toolbar strong { font-size: 13px; }
 .flows-toolbar span { margin-top: 2px; font-size: 10px; line-height: 1.35; }
 .flow-card { margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--surface-card); }
+.architecture { max-width: 1002px; margin: 18px auto 0; padding: 0 24px; }
+.architecture-card { position: relative; border-color: var(--accent-border); }
+.architecture-label { display: block; margin-bottom: 5px; color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.dependency-changes { margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; color: var(--text-soft); font-size: 11px; line-height: 1.5; }
+.dependency-changes ul { margin: 6px 0 0; padding-left: 20px; }
+.architecture-impact { position: absolute; top: 16px; right: 16px; }
 .flow-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .flow-actions { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .flow-card h2 { display: inline; margin: 0 0 0 8px; font-size: 18px; }

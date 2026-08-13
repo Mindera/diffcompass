@@ -1,6 +1,6 @@
 {
   "name": "code-review-tour",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "A local, agent-led walkthrough for Git changes.",
   "repository": {
@@ -14,6 +14,7 @@
   "scripts": {
     "start": "bun run src/cli.ts",
     "bridge": "bun run src/cli.ts bridge",
+    "fixture": "bun run scripts/test-fixture.ts",
     "build:release": "bash scripts/build-release.sh",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",

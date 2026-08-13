@@ -46,6 +46,24 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(app).not.toContain("Planning tour · 0s");
 });
 
+test("tour mode scopes diffs to the current phase and can restore the baseline review", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="tour-mode-toggle"');
+  expect(app).toContain("if (phasePaths) return state.session.comparison.files.filter((file) => phasePaths.has(file.path))");
+  expect(app).toContain('const changedPathsOnly = state.tourMode || state.treeMode === "changes" || filtering');
+  expect(app).toContain("async function ensureTourPhaseDiffs()");
+  expect(app).toContain('elements["tour-mode-toggle"].textContent = state.tourMode ? "Exit tour" : "Resume tour"');
+  expect(app).toContain('toast("Tour exited. All changed files are visible.")');
+  expect(app).toContain('toast("Tour resumed. Diffs are scoped to this phase.")');
+  expect(app).toContain('elements["diff-search"].disabled = Boolean(state.tourMode)');
+  expect(app).toContain("loading all ${filteredChangedFiles().length} files in this phase");
+  expect(styles).toContain(".tour-overview-heading");
+});
+
 test("syntax highlighting is local and Mermaid diagrams render as strict SVG with source fallback", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
@@ -169,12 +187,15 @@ test("tour startup defaults diagrams and findings on and sends both choices", as
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
+  expect(html).toContain('<input id="include-architecture" type="checkbox" checked /> Component diagram');
   expect(html).toContain('<input id="include-flows" type="checkbox" checked /> Sequence diagrams');
   expect(html).toContain('<input id="include-findings" type="checkbox" checked /> Findings');
+  expect(app).toContain('includeArchitecture: elements["include-architecture"].checked');
   expect(app).toContain('includeFlows: elements["include-flows"].checked');
   expect(app).toContain('includeFindings: elements["include-findings"].checked');
   expect(app).toContain('state.session.findingGenerationEnabled !== false');
   expect(app).toContain('if (!findingGenerationEnabled) elements["include-findings"].checked = false');
+  expect(app).toContain('elements["include-architecture"].disabled = busy');
   expect(app).toContain('elements["include-flows"].disabled = busy');
   expect(app).toContain('elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false');
   expect(styles).toContain(".tour-includes {");
@@ -188,7 +209,7 @@ test("flow provenance uses clear reviewer-facing wording", async () => {
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain("Partly verified: some links are inferred");
+  expect(html).toContain("The component map shows structural change; sequence diagrams show runtime behavior.");
   expect(app).toContain('label: "Partly verified"');
   expect(app).toContain("Some links were traced; the remaining links are informed inferences.");
   expect(app).toContain('data-flow-file="${escapeHtml(path)}"');
@@ -247,10 +268,14 @@ test("review comments render inline and their marker opens the existing editor",
   expect(app).toContain('document.querySelectorAll(".inline-comment")');
   expect(app).toContain('inline.className = `inline-comment ${comment.status}`');
   expect(app).toContain('data-inline-comment-id="${escapeHtml(comment.id)}"');
+  expect(app).toContain('lane.className = `split-inline-comment ${comment.side}-side`');
+  expect(app).toContain('splitRow.insertAdjacentElement("afterend", lane)');
   expect(app).toContain("action.dataset.inlineCommentId = comment.id");
   expect(app).toContain("if (comment && reviewIsOpen()) openCommentEditor(comment)");
   expect(styles).toContain(".inline-comment { box-sizing: border-box; position: sticky;");
   expect(styles).toContain(".inline-comment-button { width: 100%;");
+  expect(styles).toContain(".split-inline-comment.new-side .inline-comment { grid-column: 2; }");
+  expect(styles).toContain(".split-inline-comment.old-side .inline-comment { grid-column: 1; }");
 });
 
 test("split diff panes remain equal width and synchronize horizontal scrolling per side", async () => {

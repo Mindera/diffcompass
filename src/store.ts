@@ -2,6 +2,7 @@ import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promise
 import { dirname } from "node:path";
 import type { PersistedReviewSession } from "./types.ts";
 import { normalizeSequenceDiagram } from "./flows.ts";
+import { validateReviewArchitecture } from "./architecture.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -55,6 +56,9 @@ function validOutline(value: unknown): boolean {
     stepsByPhase.set(phase.id, phaseSteps);
   }
   if (stepCount > 100) return false;
+  if (value.architecture !== undefined) {
+    try { validateReviewArchitecture(value.architecture); } catch { return false; }
+  }
   const flowIds = new Set<string>();
   const validFlows = value.flows.every((flow) => record(flow) && nonEmptyString(flow.id, 128) && !flowIds.has(flow.id) && Boolean(flowIds.add(flow.id)) && nonEmptyString(flow.title, 8_000) &&
       nonEmptyString(flow.summary, 50_000) && nonEmptyString(flow.mermaid, 12_000) &&
@@ -160,6 +164,7 @@ function validActivity(value: unknown): boolean {
 function validSelection(value: unknown): boolean {
   return record(value) && nonEmptyString(value.adapterId, 128) && nonEmptyString(value.modelId, 256) &&
     (value.reasoningEffort === undefined || ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(String(value.reasoningEffort))) &&
+    (value.includeArchitecture === undefined || typeof value.includeArchitecture === "boolean") &&
     (value.includeFlows === undefined || typeof value.includeFlows === "boolean") &&
     (value.includeFindings === undefined || typeof value.includeFindings === "boolean");
 }

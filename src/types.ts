@@ -72,9 +72,18 @@ export interface TourOutline {
   title: string;
   summary: string;
   planningNotes?: string[];
+  architecture?: ReviewArchitecture;
   phases: TourPhase[];
   flows: ReviewFlow[];
   findings: ReviewFinding[];
+}
+
+export interface ReviewArchitecture {
+  title: string;
+  summary: string;
+  mermaid: string;
+  dependencyChanges: string[];
+  affectedFiles: string[];
 }
 
 export interface ReviewFlow {
@@ -252,6 +261,7 @@ export interface AgentSelection {
   adapterId: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+  includeArchitecture?: boolean;
   includeFlows?: boolean;
   includeFindings?: boolean;
 }

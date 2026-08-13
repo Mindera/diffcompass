@@ -120,6 +120,7 @@ test("attached sessions optionally display the caller model and effort", async (
     adapterId: "attached",
     modelId: "gpt-5.6-codex",
     reasoningEffort: "high",
+    includeArchitecture: true,
     includeFlows: true,
     includeFindings: true,
   });

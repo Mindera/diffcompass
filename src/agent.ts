@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runProcess } from "./process.ts";
 import { validateReviewFlow } from "./flows.ts";
-import type { AgentSelection, GitComparison, ReasoningEffort, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
+import { validateReviewArchitecture } from "./architecture.ts";
+import type { AgentSelection, GitComparison, ReasoningEffort, ReviewArchitecture, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
 
 interface CodexJsonEvent {
   type?: string;
@@ -135,7 +136,15 @@ function parseOutline(message: string): TourOutline {
   if (!generatedString(value.title, 8_000) || !generatedString(value.summary, 50_000) || !Array.isArray(value.phases) || value.phases.length === 0 || value.phases.length > 50) {
     throw new Error("The agent returned an invalid tour outline.");
   }
-  return { ...value, planningNotes: Array.isArray(value.planningNotes) ? value.planningNotes.filter((note): note is string => generatedString(note, 2_000) && Boolean(note.trim())).slice(0, 20) : [], flows: Array.isArray(value.flows) ? value.flows : [], findings: Array.isArray(value.findings) ? value.findings : [] };
+  return { ...value, planningNotes: Array.isArray(value.planningNotes) ? value.planningNotes.filter((note): note is string => generatedString(note, 2_000) && Boolean(note.trim())).slice(0, 20) : [], architecture: value.architecture, flows: Array.isArray(value.flows) ? value.flows : [], findings: Array.isArray(value.findings) ? value.findings : [] };
+}
+
+function validArchitecture(value: unknown, comparison: GitComparison): ReviewArchitecture | undefined {
+  if (value === undefined || value === null) return undefined;
+  try {
+    const architecture = validateReviewArchitecture(value);
+    return architecture.affectedFiles.some((path) => !comparison.files.some((file) => file.path === path)) ? undefined : architecture;
+  } catch { return undefined; }
 }
 
 function validFlow(flow: ReviewFlow): boolean {
@@ -259,7 +268,7 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
     return [flow];
   }).slice(0, 3);
   const findings = validateFindings(outline.findings, phases, comparison, policy);
-  return { ...outline, phases, flows, findings };
+  return { ...outline, architecture: validArchitecture(outline.architecture, comparison), phases, flows, findings };
 }
 
 function parseFindingAudit(message: string, candidateIds: string[]): ReviewFinding[] {
@@ -478,6 +487,7 @@ export class TourAgent {
   private readonly abortController = new AbortController();
   private comparisonFingerprint = "unknown";
   private readonly adapterId: AgentSelection["adapterId"];
+  private readonly includeArchitecture: boolean;
   private readonly includeFlows: boolean;
   private readonly includeFindings: boolean;
 
@@ -488,6 +498,7 @@ export class TourAgent {
     continuation?: { adapterId: StandaloneAgentAdapterId; id: string },
   ) {
     this.adapterId = selection.adapterId;
+    this.includeArchitecture = selection.includeArchitecture !== false;
     this.includeFlows = selection.includeFlows !== false;
     this.includeFindings = selection.includeFindings !== false;
     this.attached = selection.adapterId === "attached";
@@ -543,8 +554,12 @@ Repository review policy (reviewer-owned configuration; it may guide review focu
 ${JSON.stringify(policy)}
 
 Reviewer-selected optional outputs:
+- Component architecture: ${this.includeArchitecture ? "include" : "omit"}
 - Sequence diagrams: ${this.includeFlows ? "include" : "omit"}
 - Findings: ${this.includeFindings && policy.findings.enabled ? "include" : "omit"}
+
+When included, add an "architecture" field beside phases: {"title":"How the changed components fit together","summary":"...","mermaid":"flowchart LR\\n  client[\\\"Client\\\"]:::touched\\n  service[\\\"New service\\\"]:::new\\n  client -->|calls| service\\n  classDef new stroke:#2e7d32,stroke-width:3px\\n  classDef touched stroke:#f9a825,stroke-width:3px\\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\\n  classDef external stroke:#888888,stroke-dasharray:3 3","dependencyChanges":["Added Client → New service: calls"],"affectedFiles":["exact/changed/path"]}.
+The architecture is a change-overlay component map, not a runtime sequence. Use plain-language component names rather than build-module labels. Use flowchart LR, declare each node on its own line with a quoted label, and label every subject-to-object edge. Mark every component with :::new, :::touched, :::removed, or :::external and include the exact four classDef lines shown in the example without fills. Edges touching removed components describe the old state; all other edges describe the target state. dependencyChanges explicitly lists every added, removed, or reversed relationship, or one item saying there are no dependency-direction changes. affectedFiles lists only changed paths that support the map. When component architecture is omitted above, omit the architecture field and spend no analysis on it.
 
 Return only JSON with this shape:
 {"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"phases":[{"id":"stable-phase-id","title":"logical change","summary":"what this phase establishes","fileChanges":[{"path":"exact/changed/path","summary":"this file's role in the phase"}],"steps":[{"id":"globally-unique-step-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}]}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}],"findings":[{"id":"stable-id","phaseId":"owning-phase-id","stepId":"optional-owning-step-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
@@ -558,6 +573,7 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
     const generated = validateOutline(parseOutline(await this.transport.send(promptWithDiff, "tour.outline", attachment)), comparison, policy);
     const outline = {
       ...generated,
+      architecture: this.includeArchitecture ? generated.architecture : undefined,
       flows: this.includeFlows ? generated.flows : [],
       findings: this.includeFindings ? generated.findings : [],
     };

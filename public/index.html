@@ -83,7 +83,7 @@
           <p id="diff-instructions" class="sr-only">Choose a changed line once to select it and again to add feedback. Keyboard users can press Enter or Space.</p>
           <section id="review-overview" class="review-overview hidden">
             <div id="tour-overview" class="tour-overview hidden">
-              <div class="eyebrow">Guided tour</div>
+              <div class="tour-overview-heading"><div class="eyebrow">Guided tour</div><button id="tour-mode-toggle" class="button secondary" type="button">Exit tour</button></div>
               <h1 id="review-overview-title"></h1>
               <p id="review-overview-summary"></p>
             </div>
@@ -101,7 +101,8 @@
           <div id="diff"></div>
         </div>
         <div id="flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="flows-tab">
-          <div class="flows-toolbar"><div><strong>Main flows</strong><span class="muted">Verified: fully traced · Partly verified: some links are inferred · Unverified: not traced end-to-end</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate all</button></div>
+          <div class="flows-toolbar"><div><strong>Architecture and main flows</strong><span class="muted">The component map shows structural change; sequence diagrams show runtime behavior.</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate flows</button></div>
+          <section id="architecture" class="architecture"></section>
           <div id="flows-empty" class="empty">Start the tour to generate grounded main-flow diagrams.</div>
           <div id="flows" class="flows"></div>
         </div>
@@ -139,6 +140,7 @@
             <label>Reasoning<select id="reasoning-select"></select></label>
             <fieldset class="tour-includes">
               <legend>Include</legend>
+              <label><input id="include-architecture" type="checkbox" checked /> Component diagram</label>
               <label><input id="include-flows" type="checkbox" checked /> Sequence diagrams</label>
               <label><input id="include-findings" type="checkbox" checked /> Findings</label>
             </fieldset>

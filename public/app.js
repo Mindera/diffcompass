@@ -18,6 +18,8 @@ const state = {
   diffCache: new Map(),
   diffCacheRevision: null,
   fileRequestId: 0,
+  phaseDiffLoadKey: null,
+  phaseDiffLoadPromise: null,
   highlightRequestId: 0,
   flowRenderGeneration: 0,
   proposalPreview: false,
@@ -33,6 +35,7 @@ const state = {
   filePanelWidth: 240,
   agentPanelWidth: 420,
   renderedPhaseId: null,
+  tourMode: null,
   focusedStepId: null,
   focusedFindingId: null,
   findingReturn: null,
@@ -44,8 +47,8 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
-    "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-flows", "include-findings",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "flows-view", "architecture", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
+    "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
@@ -195,7 +198,9 @@ function setBusy(busy, label = "Working…") {
   elements["model-select"].disabled = busy;
   elements["reasoning-select"].disabled = busy;
   elements["include-flows"].disabled = busy;
+  elements["include-architecture"].disabled = busy;
   elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false;
+  elements["tour-mode-toggle"].disabled = busy;
   elements["update-button"].disabled = busy || state.updateInProgress || elements["update-button"].classList.contains("updated");
   elements["refresh-button"].disabled = busy;
   elements["close-button"].disabled = busy;
@@ -360,6 +365,8 @@ function renderTreeNode(node, depth = 0, expandAll = false) {
 function filteredChangedFiles() {
   const reviewed = new Set(state.session.reviewedFiles ?? []);
   const searchMatches = state.searchQuery && state.searchMatches ? new Set(state.searchMatches) : null;
+  const phasePaths = state.tourMode ? new Set(currentPhase()?.fileChanges.map((change) => change.path) ?? []) : null;
+  if (phasePaths) return state.session.comparison.files.filter((file) => phasePaths.has(file.path));
   return state.session.comparison.files.filter((file) =>
     (!state.statusFilter || file.status === state.statusFilter) &&
     (!state.reviewFilter || (state.reviewFilter === "reviewed") === reviewed.has(file.path)) &&
@@ -370,8 +377,8 @@ function filteredChangedFiles() {
 function renderFileTree() {
   const comparison = state.session.comparison;
   const changedFiles = filteredChangedFiles();
-  const filtering = Boolean(state.searchQuery || state.statusFilter || state.reviewFilter);
-  const changedPathsOnly = state.treeMode === "changes" || filtering;
+  const filtering = !state.tourMode && Boolean(state.searchQuery || state.statusFilter || state.reviewFilter);
+  const changedPathsOnly = state.tourMode || state.treeMode === "changes" || filtering;
   const repositoryFiles = changedPathsOnly
     ? changedFiles.map((file) => file.path)
     : comparison.repositoryFiles ?? comparison.files.map((file) => file.path);
@@ -379,10 +386,13 @@ function renderFileTree() {
     ? renderChangedPathList(changedFiles)
     : renderTreeNode(treeFromFiles(repositoryFiles, changedFiles));
   const reviewedCount = (state.session.reviewedFiles ?? []).length;
+  const scopeTotal = state.tourMode ? currentPhase()?.fileChanges.length ?? changedFiles.length : comparison.files.length;
   elements["file-count"].textContent = filtering
-    ? `${changedFiles.length}/${comparison.files.length} match`
-    : `${comparison.files.length} changed · ${reviewedCount} reviewed`;
-  elements["filter-summary"].textContent = `${changedFiles.length} of ${comparison.files.length} changed files · ${reviewedCount} reviewed`;
+    ? `${changedFiles.length}/${scopeTotal} match`
+    : state.tourMode ? `${scopeTotal} in phase` : `${comparison.files.length} changed · ${reviewedCount} reviewed`;
+  elements["filter-summary"].textContent = state.tourMode
+    ? `${changedFiles.length} file${changedFiles.length === 1 ? "" : "s"} in this phase · ${reviewedCount} reviewed overall`
+    : `${changedFiles.length} of ${comparison.files.length} changed files · ${reviewedCount} reviewed`;
 }
 
 function rowLine(row) {
@@ -513,13 +523,55 @@ function visibleDiffFiles() {
   const comparison = state.session.comparison;
   const files = filteredChangedFiles();
   if (comparison.diffMode !== "file") return files;
+  if (state.tourMode) return files.map((file) => state.diffCache.get(file.path)).filter(Boolean);
   const path = currentStep()?.anchor.path ?? state.visibleFile ?? files[0]?.path;
   state.visibleFile = path;
   const cached = state.diffCache.get(path);
   return cached ? [cached] : [];
 }
 
+async function ensureTourPhaseDiffs() {
+  if (!state.tourMode || state.session.comparison.diffMode !== "file") return;
+  const phase = currentPhase();
+  if (!phase) return;
+  const key = `${state.session.revision}:${phase.id}`;
+  if (state.phaseDiffLoadKey === key && state.phaseDiffLoadPromise) return state.phaseDiffLoadPromise;
+  const missing = phase.fileChanges.map((change) => change.path).filter((path) => !state.diffCache.has(path));
+  if (missing.length === 0) return;
+  const requestId = ++state.fileRequestId;
+  const load = (async () => {
+    elements.diff.innerHTML = '<div class="empty">Loading this phase’s diffs…</div>';
+    const results = await Promise.allSettled(missing.map(async (path) => {
+      const result = await api(`/api/diff?${new URLSearchParams({ path })}`);
+      return [path, { ...result.file, _context: result.context, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } }];
+    }));
+    if (requestId !== state.fileRequestId || !state.tourMode || currentPhase()?.id !== phase.id) return;
+    let failures = 0;
+    for (const result of results) {
+      if (result.status === "fulfilled") state.diffCache.set(result.value[0], result.value[1]);
+      else failures += 1;
+    }
+    renderDiff(visibleDiffFiles());
+    renderComments();
+    renderFindings();
+    renderTourAnnotation();
+    if (failures > 0) toast(`Could not load ${failures} phase diff${failures === 1 ? "" : "s"}.`);
+  })();
+  state.phaseDiffLoadKey = key;
+  state.phaseDiffLoadPromise = load;
+  try { await load; } finally {
+    if (state.phaseDiffLoadPromise === load) {
+      state.phaseDiffLoadKey = null;
+      state.phaseDiffLoadPromise = null;
+    }
+  }
+}
+
 async function showChangedFile(path, line, side, requestedOffset, requestedContext) {
+  if (state.tourMode && !filteredChangedFiles().some((file) => file.path === path)) {
+    toast("That file belongs to another phase. Exit the tour to browse every changed file.");
+    return;
+  }
   const requestId = ++state.fileRequestId;
   state.collapsedFiles.delete(path);
   state.activeTab = "diff";
@@ -547,7 +599,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
         return;
       }
     }
-    files = [file];
+    files = state.tourMode ? visibleDiffFiles() : [file];
   } else if (!files.some((file) => file.path === path)) {
     const requested = state.session.comparison.files.find((file) => file.path === path);
     files = requested ? [requested] : files;
@@ -664,6 +716,7 @@ function renderAgentOptions() {
 }
 
 function renderComments() {
+  document.querySelectorAll(".split-inline-comment").forEach((comment) => comment.remove());
   document.querySelectorAll(".inline-comment").forEach((comment) => comment.remove());
   document.querySelectorAll(".diff-row.has-comment").forEach((row) => {
     row.classList.remove("has-comment");
@@ -686,7 +739,15 @@ function renderComments() {
     const inline = document.createElement("article");
     inline.className = `inline-comment ${comment.status}`;
     inline.innerHTML = `<button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><span class="inline-comment-label">Review comment</span><p>${renderInlineMarkdown(comment.body)}</p><span class="inline-comment-edit">Edit</span></button>`;
-    (row.closest(".split-row") ?? row).insertAdjacentElement("afterend", inline);
+    const splitRow = row.closest(".split-row");
+    if (splitRow) {
+      const lane = document.createElement("div");
+      lane.className = `split-inline-comment ${comment.side}-side`;
+      lane.append(inline);
+      splitRow.insertAdjacentElement("afterend", lane);
+    } else {
+      row.insertAdjacentElement("afterend", inline);
+    }
   }
   elements["comment-count"].textContent = String(state.session.comments.length);
   elements["comment-drawer"].classList.toggle("hidden", state.session.comments.length === 0);
@@ -733,6 +794,8 @@ function renderReviewOverview() {
   if (outline) {
     elements["review-overview-title"].textContent = outline.title;
     elements["review-overview-summary"].textContent = outline.summary;
+    elements["tour-mode-toggle"].textContent = state.tourMode ? "Exit tour" : "Resume tour";
+    elements["tour-mode-toggle"].setAttribute("aria-pressed", String(Boolean(state.tourMode)));
   }
   elements["pull-request-description"].classList.toggle("hidden", !pullRequest);
   if (pullRequest) {
@@ -848,8 +911,18 @@ function flowProvenanceCopy(provenance) {
 }
 
 function renderFlows() {
+  const architecture = state.session.outline?.architecture;
   const flows = state.session.outline?.flows ?? [];
   const generation = ++state.flowRenderGeneration;
+  elements.architecture.innerHTML = architecture ? `<article class="flow-card architecture-card">
+    <header><div><span class="architecture-label">Component map</span><h2>${escapeHtml(architecture.title)}</h2></div></header>
+    <p>${escapeHtml(architecture.summary)}</p>
+    <div class="sequence-diagram mermaid-render" data-architecture-diagram role="img" aria-label="Component diagram: ${escapeHtml(architecture.title)}"><span class="loading">Rendering diagram…</span></div>
+    <div class="flow-warning hidden" data-architecture-error>The component diagram source is invalid or unsupported.</div>
+    <div class="dependency-changes"><strong>Dependency changes</strong><ul>${architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul></div>
+    <details class="flow-impact architecture-impact"><summary class="blast">affects ${architecture.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${architecture.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details>
+    <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(architecture.mermaid)}</pre></details>
+  </article>` : "";
   elements["regenerate-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["flows-empty"].classList.toggle("hidden", flows.length > 0);
   elements["flows-empty"].textContent = state.session.outline
@@ -870,11 +943,11 @@ function renderFlows() {
       <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
     </article>`;
   }).join("");
-  void renderFlowDiagrams(flows, generation);
+  void renderFlowDiagrams(architecture, flows, generation);
 }
 
-async function renderFlowDiagrams(flows, generation) {
-  if (!window.mermaid || flows.length === 0) return;
+async function renderFlowDiagrams(architecture, flows, generation) {
+  if (!window.mermaid || (!architecture && flows.length === 0)) return;
   const theme = document.documentElement.dataset.theme === "light" ? "default" : "dark";
   window.mermaid.initialize({
     startOnLoad: false,
@@ -887,6 +960,18 @@ async function renderFlowDiagrams(flows, generation) {
     deterministicIDSeed: `review-tour-${state.session.revision}-${theme}`,
     sequence: { useMaxWidth: true, wrap: true },
   });
+  if (architecture) {
+    const target = elements.architecture.querySelector("[data-architecture-diagram]");
+    try {
+      const result = await window.mermaid.render(`review-tour-architecture-${generation}`, architecture.mermaid);
+      if (generation !== state.flowRenderGeneration || !target?.isConnected) return;
+      target.innerHTML = result.svg;
+      target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+    } catch {
+      if (target) target.innerHTML = '<span class="muted">Diagram unavailable</span>';
+      elements.architecture.querySelector("[data-architecture-error]")?.classList.remove("hidden");
+    }
+  }
   for (let index = 0; index < flows.length; index += 1) {
     if (generation !== state.flowRenderGeneration) return;
     const card = elements.flows.querySelector(`[data-flow-id="${CSS.escape(flows[index].id)}"]`);
@@ -947,6 +1032,7 @@ function renderActiveTab() {
 function renderTourAnnotation() {
   document.querySelectorAll(".tour-anchor, .tour-anchor-start, .tour-anchor-end").forEach((row) => row.classList.remove("tour-anchor", "tour-anchor-start", "tour-anchor-end"));
   document.querySelectorAll(".tour-code-note").forEach((note) => note.remove());
+  if (!state.tourMode) return;
   const activeStep = currentStep();
   const phase = currentPhase();
   if (!activeStep || !phase) return;
@@ -972,12 +1058,9 @@ function renderTourAnnotation() {
 
 async function focusCurrentStep() {
   const step = currentStep();
-  if (!step) return;
+  if (!step || !state.tourMode) return;
   state.focusedStepId = step.id;
-  if (state.session.comparison.diffMode === "file" && state.visibleFile !== step.anchor.path) {
-    await showChangedFile(step.anchor.path, step.anchor.startLine, step.anchor.side);
-    return;
-  }
+  if (state.session.comparison.diffMode === "file") await ensureTourPhaseDiffs();
   state.activeTab = "diff";
   renderActiveTab();
   renderTourAnnotation();
@@ -1043,8 +1126,8 @@ function renderTour() {
   const planningNotes = outline.planningNotes ?? [];
   elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
   elements["planning-note-list"].innerHTML = planningNotes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
-  elements["previous-step"].disabled = state.busy || !reviewIsOpen() || currentStepIndex === 0;
-  elements["next-step"].disabled = state.busy || !reviewIsOpen() || currentStepIndex === steps.length - 1;
+  elements["previous-step"].disabled = state.busy || !reviewIsOpen() || !state.tourMode || currentStepIndex === 0;
+  elements["next-step"].disabled = state.busy || !reviewIsOpen() || !state.tourMode || currentStepIndex === steps.length - 1;
   renderMessages();
   renderTourAnnotation();
 }
@@ -1057,6 +1140,13 @@ function renderFilteredDiff() {
     ? "No changed files match these filters."
     : "No changes found for this comparison.";
   const large = state.session.comparison.diffMode === "file";
+  if (state.tourMode && large) {
+    void ensureTourPhaseDiffs();
+    renderComments();
+    renderFindings();
+    renderTourAnnotation();
+    return;
+  }
   if (large && files.length === 0 && filteredChangedFiles().length > 0) {
     const target = filteredChangedFiles()[0].path;
     state.visibleFile = target;
@@ -1104,6 +1194,7 @@ async function setReviewed(path, reviewed) {
 
 function renderSession() {
   const { comparison, comments } = state.session;
+  if (state.tourMode === null && state.session.outline) state.tourMode = true;
   initializeUiPreferences();
   state.proposalPreview = false;
   const repositoryName = state.session.pullRequest?.repository ?? comparison.repositoryName;
@@ -1117,6 +1208,11 @@ function renderSession() {
   elements["review-filter"].value = state.reviewFilter;
   elements["tree-mode"].value = state.treeMode;
   elements["diff-layout"].value = state.diffLayout;
+  elements["diff-search"].disabled = Boolean(state.tourMode);
+  elements["status-filter"].disabled = Boolean(state.tourMode);
+  elements["review-filter"].disabled = Boolean(state.tourMode);
+  elements["tree-mode"].disabled = Boolean(state.tourMode);
+  elements["diff-search"].title = state.tourMode ? "Exit the tour to filter all changed files." : "";
   renderFileTree();
   const large = comparison.diffMode === "file";
   if (state.diffCacheRevision !== state.session.revision) {
@@ -1125,9 +1221,14 @@ function renderSession() {
     if (state.searchQuery) void refreshDiffSearch();
   }
   elements["large-diff-notice"].classList.toggle("hidden", !large);
-  elements["large-diff-notice"].textContent = large ? `Large diff (${comparison.diffRowCount.toLocaleString()} rows): loading one file at a time.` : "";
+  elements["large-diff-notice"].textContent = large
+    ? state.tourMode
+      ? `Large diff (${comparison.diffRowCount.toLocaleString()} rows): loading all ${filteredChangedFiles().length} files in this phase.`
+      : `Large diff (${comparison.diffRowCount.toLocaleString()} rows): loading one file at a time.`
+    : "";
   renderDiff(visibleDiffFiles());
-  if (large && visibleDiffFiles().length === 0 && filteredChangedFiles().length > 0) {
+  if (state.tourMode && large) void ensureTourPhaseDiffs();
+  if (!state.tourMode && large && visibleDiffFiles().length === 0 && filteredChangedFiles().length > 0) {
     const step = currentStep();
     const target = state.visibleFile && filteredChangedFiles().some((file) => file.path === state.visibleFile)
       ? state.visibleFile
@@ -1174,10 +1275,12 @@ async function startTour() {
         adapterId: elements["agent-select"].value,
         modelId: elements["model-select"].value,
         reasoningEffort: elements["reasoning-select"].value || undefined,
+        includeArchitecture: elements["include-architecture"].checked,
         includeFlows: elements["include-flows"].checked,
         includeFindings: elements["include-findings"].checked,
       }),
     });
+    state.tourMode = true;
     state.focusedStepId = currentStep()?.id ?? null;
     renderSession();
     elements["tour-scroll"].scrollTop = 0;
@@ -1193,18 +1296,38 @@ async function startTour() {
 }
 
 async function navigate(direction) {
-  if (!reviewIsOpen()) return;
+  if (!reviewIsOpen() || !state.tourMode) return;
   setBusy(true, direction === "next" ? "Preparing the next stop…" : "Returning to the previous stop…");
   try {
     state.session = await api("/api/tour/navigate", { method: "POST", body: JSON.stringify({ direction }) });
-    renderTour();
+    renderSession();
     elements["tour-scroll"].scrollTop = 0;
+    await ensureTourPhaseDiffs();
     await focusCurrentStep();
   } catch (error) {
     toast(error.message);
   } finally {
     setBusy(false);
     renderTour();
+  }
+}
+
+async function toggleTourMode() {
+  if (!state.session.outline || state.busy) return;
+  state.tourMode = !state.tourMode;
+  state.fileRequestId += 1;
+  state.phaseDiffLoadKey = null;
+  state.phaseDiffLoadPromise = null;
+  state.visibleFile = null;
+  state.activeTab = "diff";
+  renderSession();
+  elements["diff-panel"].scrollTop = 0;
+  if (state.tourMode) {
+    await ensureTourPhaseDiffs();
+    await focusCurrentStep();
+    toast("Tour resumed. Diffs are scoped to this phase.");
+  } else {
+    toast("Tour exited. All changed files are visible.");
   }
 }
 
@@ -1407,6 +1530,7 @@ async function refresh() {
 }
 
 elements["start-tour"].addEventListener("click", startTour);
+elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
 elements["next-step"].addEventListener("click", () => navigate("next"));
 elements["chat-form"].addEventListener("submit", askAgent);
@@ -1563,6 +1687,10 @@ elements.flows.addEventListener("click", (event) => {
   if (!flow) return;
   if (button.dataset.flowAction === "edit") openFlowEditor(flow);
   if (button.dataset.flowAction === "regenerate") void regenerateFlows(flow.id);
+});
+elements.architecture.addEventListener("click", (event) => {
+  const fileButton = event.target.closest("[data-flow-file]");
+  if (fileButton) void showChangedFile(fileButton.dataset.flowFile);
 });
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

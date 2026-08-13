@@ -376,6 +376,7 @@ export class ReviewSession {
       adapterId: adapter.id,
       modelId: model.id,
       reasoningEffort,
+      includeArchitecture: input.includeArchitecture ?? true,
       includeFlows: input.includeFlows ?? true,
       includeFindings: this.defaults.includeFindings === false ? false : input.includeFindings ?? true,
     };
@@ -633,6 +634,7 @@ export class ReviewSession {
         (selection.adapterId !== undefined && selection.adapterId !== this.selection?.adapterId) ||
         (selection.modelId !== undefined && selection.modelId !== this.selection?.modelId) ||
         (selection.reasoningEffort !== undefined && selection.reasoningEffort !== this.selection?.reasoningEffort) ||
+        (selection.includeArchitecture !== undefined && selection.includeArchitecture !== this.selection?.includeArchitecture) ||
         (selection.includeFlows !== undefined && selection.includeFlows !== this.selection?.includeFlows) ||
         (selection.includeFindings !== undefined && selection.includeFindings !== this.selection?.includeFindings)
       )) {
