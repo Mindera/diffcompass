@@ -58,13 +58,25 @@ test("slow tour work exposes its prompt and safe progress while navigation remai
   expect(app).toContain("function renderAgentActivity()");
   expect(app).toContain("Current prompt");
   expect(app).toContain("elapsed");
+  expect(app).toContain('const promptWasOpen = renderedActivityId === activity.id');
+  expect(app).toContain('promptWasOpen ? " open" : ""');
+  expect(app).toContain('dataset.contentKey !== contentKey');
+  expect(app).toContain('querySelector(".agent-activity-elapsed").textContent');
+  expect(app).toContain("the tour will switch to a local fallback agent automatically");
   expect(app).toContain('const prefetchSteps = state.session.preferences?.prefetchSteps ?? 2');
   expect(app).toContain('`We prepare ${prefetchSteps} ${prefetchSteps === 1 ? "step" : "steps"} in advance.`');
   expect(app).toContain('state.session.agentActivity = latest.agentActivity');
+  expect(app).toContain('state.expectedAgentActivity = { kind: "review.question", previousActivityId }');
+  expect(app).toContain("Your question is queued. The tour stop already in progress will finish first.");
+  expect(app).toContain("receivedExpectedActivity");
+  expect(app).toContain("!expectedActivity || receivedExpectedActivity");
+  expect(app).toContain("if (pendingLocalActivity) state.session.agentActivity = pendingLocalActivity");
   expect(app).not.toContain('toast("Review connected and up to date.")');
   expect(app).not.toContain("if (state.busy || state.pollInFlight");
+  expect(app).not.toContain("if (state.busy && state.session)");
   expect(styles).toContain(".agent-progress-list");
   expect(styles).toContain(".agent-prompt pre");
+  expect(styles).toContain(".agent-activity-warning");
 });
 
 test("tour mode scopes diffs to the current phase and can restore the baseline review", async () => {
@@ -306,6 +318,24 @@ test("review comments render inline and their marker opens the existing editor",
   expect(styles).toContain(".inline-comment-button { width: 100%;");
   expect(styles).toContain(".split-inline-comment.new-side .inline-comment { grid-column: 2; }");
   expect(styles).toContain(".split-inline-comment.old-side .inline-comment { grid-column: 1; }");
+});
+
+test("files expand and collapse in place while line actions expose comment and agent choices", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain("Choose a code line to reveal actions");
+  expect(app).toContain('data-file-expansion="${file._full ? "compact" : "full"}"');
+  expect(app).toContain('${file._full ? "Collapse file" : "Expand file"}');
+  expect(app).toContain('query.set("full", String(requestedFull))');
+  expect(app).toContain('data-line-tool="comment"');
+  expect(app).toContain('data-line-tool="ask"');
+  expect(app).toContain("function openLineComment(row)");
+  expect(app).toContain("function askAboutLine(row)");
+  expect(styles).toContain(".line-tools");
+  expect(styles).toContain(".diff-row:hover .line-tools");
 });
 
 test("split diff panes remain equal width and synchronize horizontal scrolling per side", async () => {

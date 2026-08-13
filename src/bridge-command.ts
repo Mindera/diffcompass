@@ -1,5 +1,5 @@
 interface BridgeOptions {
-  command?: "context" | "next" | "respond" | "ack" | "renew" | "progress" | "refresh";
+  command?: "context" | "next" | "watch" | "respond" | "ack" | "renew" | "progress" | "refresh";
   url?: string;
   tokenFile?: string;
   after: number;
@@ -12,7 +12,7 @@ interface BridgeOptions {
 
 function parseBridgeOptions(args: string[]): BridgeOptions {
   const command = args.shift();
-  if (command && !["context", "next", "respond", "ack", "renew", "progress", "refresh"].includes(command)) {
+  if (command && !["context", "next", "watch", "respond", "ack", "renew", "progress", "refresh"].includes(command)) {
     throw new Error(`Unknown bridge command: ${command}`);
   }
   const options: BridgeOptions = { command: command as BridgeOptions["command"], after: 0, waitMs: 50_000 };
@@ -46,15 +46,27 @@ async function bridgeRequest(options: BridgeOptions, path: string, init?: Reques
   return value;
 }
 
+function bridgeEvents(value: unknown): unknown[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("The bridge returned an invalid event response.");
+  const events = (value as { events?: unknown }).events;
+  if (!Array.isArray(events)) throw new Error("The bridge returned an invalid event response.");
+  return events;
+}
+
 export async function runBridgeCommand(args: string[]): Promise<number> {
   const options = parseBridgeOptions([...args]);
   if (!options.command) {
-    console.log("Usage: code-review-tour bridge context|next|respond|ack|renew|progress|refresh --url URL --token-file PATH [options]");
+    console.log("Usage: code-review-tour bridge context|next|watch|respond|ack|renew|progress|refresh --url URL --token-file PATH [options]");
     return 0;
   }
   let result: unknown;
   if (options.command === "context") result = await bridgeRequest(options, "/api/bridge/context");
   else if (options.command === "next") result = await bridgeRequest(options, `/api/bridge/events?after=${options.after}&waitMs=${options.waitMs}`);
+  else if (options.command === "watch") {
+    do {
+      result = await bridgeRequest(options, `/api/bridge/events?after=${options.after}&waitMs=${options.waitMs}`);
+    } while (bridgeEvents(result).length === 0);
+  }
   else if (options.command === "respond") {
     if (!options.eventId || !options.leaseId || !options.file) throw new Error("respond requires --event ID, --lease LEASE_ID, and --file PATH.");
     result = await bridgeRequest(options, "/api/bridge/respond", { method: "POST", body: JSON.stringify({ eventId: options.eventId, leaseId: options.leaseId, message: await Bun.file(options.file).text() }) });

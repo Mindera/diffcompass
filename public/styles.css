@@ -303,7 +303,7 @@ button { color: inherit; }
 .diff-file-title { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .status { margin-right: 8px; color: var(--accent); text-transform: uppercase; font-size: 10px; }
 .hunk-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; color: var(--text-hunk); background: var(--surface-hunk); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
-.diff-row { display: grid; grid-template-columns: 42px 42px 22px max-content minmax(max-content, 1fr); width: max-content; min-width: 100%; min-height: 22px; align-items: start; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 22px; border-left: 2px solid transparent; cursor: pointer; }
+.diff-row { position: relative; display: grid; grid-template-columns: 42px 42px 22px max-content minmax(max-content, 1fr); width: max-content; min-width: 100%; min-height: 22px; align-items: start; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 22px; border-left: 2px solid transparent; cursor: pointer; }
 .diff-row:hover { filter: brightness(var(--row-hover-brightness)); }
 .diff-row.addition { background: var(--addition); border-left-color: var(--addition-line); }
 .diff-row.deletion { background: var(--deletion); border-left-color: var(--deletion-line); }
@@ -321,6 +321,12 @@ button { color: inherit; }
 .line-number { color: var(--text-line); text-align: right; padding-right: 8px; user-select: none; border-right: 1px solid var(--line-separator); }
 .line-prefix { border: 0; padding: 0; text-align: center; color: var(--text-prefix); background: transparent; user-select: none; }
 .line-action:not(:disabled) { cursor: pointer; }
+.line-tools { position: sticky; left: 76px; z-index: 5; grid-column: 1 / -1; grid-row: 1; align-self: center; justify-self: start; display: flex; gap: 4px; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 100ms ease; }
+.split-side .line-tools { left: 50px; }
+.diff-row:hover .line-tools, .diff-row:focus-within .line-tools, .diff-row.selected .line-tools { visibility: visible; opacity: 1; pointer-events: auto; }
+.line-tools button { border: 1px solid var(--border-hover); border-radius: 5px; padding: 2px 7px; color: var(--text); background: var(--toast-background); box-shadow: 0 3px 10px var(--shadow); font: 600 9px/16px system-ui, sans-serif; cursor: pointer; }
+.line-tools button:hover:not(:disabled), .line-tools button:focus-visible { border-color: var(--accent-strong); color: var(--accent-strong); }
+.line-tools button:disabled { opacity: .55; cursor: default; }
 .review-dot { color: var(--warning); font-size: 9px; }
 .has-comment { box-shadow: inset -2px 0 var(--warning); }
 .has-comment .row-prefix { display: none; }
@@ -422,6 +428,7 @@ button { color: inherit; }
 .agent-prompt summary { color: var(--muted); font-weight: 600; }
 .agent-prompt pre { max-height: 260px; margin: 8px 0 0; padding: 9px; overflow: auto; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--surface-code); color: var(--text-soft); font: 10px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-activity-error { color: var(--danger); }
+.agent-activity-warning { border-left: 3px solid var(--warning); border-radius: 4px; padding: 8px 10px; background: color-mix(in srgb, var(--warning) 10%, transparent); color: var(--text); }
 .planning-live::after { content: ""; display: inline-block; width: 18px; height: 4px; margin-left: 5px; background: radial-gradient(circle closest-side, currentColor 90%, transparent) 0 50%/4px 4px repeat-x; animation: planning-pulse 1.1s infinite linear; }
 .planning-spinner, .button-spinner { display: inline-block; width: 12px; height: 12px; margin-right: 7px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -2px; animation: planning-spin .8s linear infinite; }
 @keyframes planning-spin { to { transform: rotate(360deg); } }

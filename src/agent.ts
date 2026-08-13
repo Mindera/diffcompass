@@ -325,6 +325,7 @@ export interface AgentTransport {
     progress?: (update: { status: "waiting" | "running"; message: string }) => void,
   ): Promise<string>;
   continuationId?(): string | undefined;
+  setFallback?(transport: AgentTransport, inactivityMs?: number): void;
 }
 
 function progressFromJsonLines(report: ((update: { status: "waiting" | "running"; message: string }) => void) | undefined) {
@@ -511,6 +512,26 @@ class CopilotTransport implements AgentTransport {
   }
 }
 
+function createStandaloneTransport(
+  repositoryRoot: string,
+  selection: AgentSelection,
+  signal: AbortSignal,
+  continuation?: { adapterId: StandaloneAgentAdapterId; id: string },
+): AgentTransport {
+  switch (selection.adapterId) {
+    case "claude":
+      return new ClaudeTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, signal, continuation?.adapterId === "claude" ? continuation.id : undefined);
+    case "gemini":
+      return new GeminiTransport(repositoryRoot, selection.modelId, signal, continuation?.adapterId === "gemini" ? continuation.id : undefined);
+    case "copilot":
+      return new CopilotTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, signal, continuation?.adapterId === "copilot" ? continuation.id : undefined);
+    case "codex":
+      return new CodexTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, signal, continuation?.adapterId === "codex" ? continuation.id : undefined);
+    default:
+      throw new Error(`Unsupported standalone agent adapter: ${selection.adapterId}`);
+  }
+}
+
 export class TourAgent {
   private readonly transport: AgentTransport;
   private readonly attached: boolean;
@@ -528,6 +549,7 @@ export class TourAgent {
     attachedTransport?: AgentTransport,
     continuation?: { adapterId: StandaloneAgentAdapterId; id: string },
     activity?: (activity: AgentRunActivity) => void,
+    fallbackSelection?: AgentSelection,
   ) {
     this.adapterId = selection.adapterId;
     this.includeArchitecture = selection.includeArchitecture !== false;
@@ -538,23 +560,11 @@ export class TourAgent {
     if (selection.adapterId === "attached") {
       if (!attachedTransport) throw new Error("The attached-agent bridge is not available.");
       this.transport = attachedTransport;
-    } else {
-      switch (selection.adapterId) {
-        case "claude":
-          this.transport = new ClaudeTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "claude" ? continuation.id : undefined);
-          break;
-        case "gemini":
-          this.transport = new GeminiTransport(repositoryRoot, selection.modelId, this.abortController.signal, continuation?.adapterId === "gemini" ? continuation.id : undefined);
-          break;
-        case "copilot":
-          this.transport = new CopilotTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "copilot" ? continuation.id : undefined);
-          break;
-        case "codex":
-          this.transport = new CodexTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, this.abortController.signal, continuation?.adapterId === "codex" ? continuation.id : undefined);
-          break;
-        default:
-          throw new Error(`Unsupported agent adapter: ${selection.adapterId}`);
+      if (fallbackSelection && fallbackSelection.adapterId !== "attached") {
+        attachedTransport.setFallback?.(createStandaloneTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
       }
+    } else {
+      this.transport = createStandaloneTransport(repositoryRoot, selection, this.abortController.signal, continuation);
     }
   }
 

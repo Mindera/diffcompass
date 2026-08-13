@@ -177,10 +177,10 @@ export async function loadComparison(cwd: string, explicitBase?: string, context
   };
 }
 
-export async function loadDiffFileWithContext(comparison: GitComparison, path: string, context: number): Promise<DiffFile> {
+export async function loadDiffFileWithContext(comparison: GitComparison, path: string, context: number, fullFile = false): Promise<DiffFile> {
   const existing = comparison.files.find((candidate) => candidate.path === path);
   if (!existing) throw new ReviewError("Changed file does not exist in this comparison.");
-  const boundedContext = Math.max(3, Math.min(200, Math.trunc(context)));
+  const boundedContext = fullFile ? 1_000_000 : Math.max(3, Math.min(200, Math.trunc(context)));
   const paths = [...new Set([existing.oldPath, existing.newPath].filter((candidate): candidate is string => Boolean(candidate)))];
   let patch = await git(comparison.repositoryRoot, [
     "diff", "--no-ext-diff", "--no-color", "--find-renames", `--unified=${boundedContext}`,

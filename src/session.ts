@@ -132,7 +132,7 @@ export class ReviewSession {
       : undefined;
     this.agentContinuation = structuredClone(persisted?.agentContinuation);
     if (this.status === "open" && this.selection) {
-      this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, this.agentContinuation, (activity) => { this.agentActivity = activity; });
+      this.agent = this.createAgent(this.agentContinuation);
     }
     if (this.status !== "open") queueMicrotask(() => this.resolveClosed(this.status as ReviewOutcome));
   }
@@ -383,6 +383,44 @@ export class ReviewSession {
     };
   }
 
+  private resolveFallbackSelection(): AgentSelection | undefined {
+    if (this.selection?.adapterId !== "attached") return undefined;
+    const standalone = this.agentAdapters.filter((adapter) => adapter.id !== "attached");
+    if (standalone.length === 0) return undefined;
+    const callerModel = this.selection.modelId.toLowerCase();
+    const exactAdapter = standalone.find((adapter) => adapter.models.some((model) => model.id.toLowerCase() === callerModel));
+    const namedAdapter = standalone.find((adapter) => callerModel.includes(adapter.id));
+    const adapter = exactAdapter ?? namedAdapter ?? standalone.find((candidate) => candidate.id === "codex") ?? standalone[0]!;
+    const model = adapter.models.find((candidate) => candidate.id.toLowerCase() === callerModel)
+      ?? adapter.models.find((candidate) => candidate.isDefault)
+      ?? adapter.models[0];
+    if (!model) return undefined;
+    const requestedReasoning = this.selection.reasoningEffort;
+    const reasoningEffort = requestedReasoning && model.reasoningEfforts.includes(requestedReasoning)
+      ? requestedReasoning
+      : model.defaultReasoningEffort;
+    return {
+      adapterId: adapter.id,
+      modelId: model.id,
+      reasoningEffort,
+      includeArchitecture: this.selection.includeArchitecture,
+      includeFlows: this.selection.includeFlows,
+      includeFindings: this.selection.includeFindings,
+    };
+  }
+
+  private createAgent(continuation?: PersistedReviewSession["agentContinuation"]): TourAgent {
+    if (!this.selection) throw new ReviewError("Select a tour agent before starting the tour.");
+    return new TourAgent(
+      this.comparison.repositoryRoot,
+      this.selection,
+      this.bridge,
+      continuation,
+      (activity) => { this.agentActivity = activity; },
+      this.resolveFallbackSelection(),
+    );
+  }
+
   snapshot() {
     const { patch: _patch, ...rawComparison } = this.comparison;
     const diffRowCount = rawComparison.files.reduce(
@@ -451,8 +489,8 @@ export class ReviewSession {
     return { file: structuredClone({ ...file, hunks }), offset, limit, totalRows };
   }
 
-  async expandedDiffFile(path: string, context: number, requestedOffset = 0, requestedLimit = 1_000) {
-    const file = await loadDiffFileWithContext(this.comparison, path, context);
+  async expandedDiffFile(path: string, context: number, requestedOffset = 0, requestedLimit = 1_000, fullFile = false) {
+    const file = await loadDiffFileWithContext(this.comparison, path, context, fullFile);
     return this.pageDiffFile(file, requestedOffset, requestedLimit);
   }
 
@@ -657,7 +695,7 @@ export class ReviewSession {
       const createdAgent = !this.agent;
       if (!this.agent) {
         this.selection = this.resolveSelection(selection);
-        this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, undefined, (activity) => { this.agentActivity = activity; });
+        this.agent = this.createAgent();
       } else if (selection && (
         (selection.adapterId !== undefined && selection.adapterId !== this.selection?.adapterId) ||
         (selection.modelId !== undefined && selection.modelId !== this.selection?.modelId) ||
@@ -824,7 +862,7 @@ export class ReviewSession {
       const createdAgent = !this.agent;
       if (!this.agent) {
         this.selection = this.resolveSelection();
-        this.agent = new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, undefined, (activity) => { this.agentActivity = activity; });
+        this.agent = this.createAgent();
       }
       this.agent.useComparison(this.comparison);
       const step = tourSteps(this.outline)[this.currentStepIndex];
@@ -1215,7 +1253,7 @@ export class ReviewSession {
         this.status = "open";
         this.revision = previousRevision;
         this.agent = this.selection
-          ? new TourAgent(this.comparison.repositoryRoot, this.selection, this.bridge, this.agentContinuation, (activity) => { this.agentActivity = activity; })
+          ? this.createAgent(this.agentContinuation)
           : undefined;
         this.closePromise = undefined;
         throw error;

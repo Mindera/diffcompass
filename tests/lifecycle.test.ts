@@ -261,6 +261,34 @@ test("prefetch continuously prepares later stops without blocking navigation to 
   expect(session.snapshot().outline?.phases[1]?.steps[1]?.explanation).toBe("The fourth stop is ready.");
 });
 
+test("a reviewer question runs before the prefetch window advances again", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const persisted = persistedAttachedSession(repository);
+  persisted.currentStepIndex = 0;
+  persisted.outline!.phases[0]!.steps[0]!.explanation = "The current stop is ready.";
+  await savePersistedSession(stateFile, persisted);
+
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  await session.startTour();
+  const bridge = session.bridge!;
+  const [prefetch] = await bridge.eventsAfter(7, 1_000);
+  if (!prefetch || prefetch.type !== "agent.prompt") throw new Error("Expected an in-flight prefetch.");
+
+  const asking = session.ask("Explain this line.");
+  await bridge.respond(prefetch.id, "The next stop is ready.");
+  await bridge.ack(prefetch.id);
+  const [question] = await bridge.eventsAfter(prefetch.sequence, 1_000);
+  if (!question || question.type !== "agent.prompt") throw new Error("Expected the reviewer question next.");
+  expect(question.kind).toBe("review.question");
+  expect(question.prompt).toContain("Explain this line.");
+  await bridge.respond(question.id, "This line keeps the behavior explicit.");
+  await bridge.ack(question.id);
+  await expect(asking).resolves.toMatchObject({
+    messages: expect.arrayContaining([expect.objectContaining({ role: "agent", body: "This line keeps the behavior explicit." })]),
+  });
+  await session.dispose();
+});
+
 test("prefetch keeps a two-stop sliding window instead of preparing the whole tour", async () => {
   const { repository, stateFile } = await repositoryFixture();
   const persisted = persistedAttachedSession(repository);

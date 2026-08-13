@@ -31,6 +31,9 @@ interface PendingPrompt {
   resolve: (message: string) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  fallbackTimer?: ReturnType<typeof setTimeout>;
+  fallbackActive?: boolean;
+  attachment?: { name: string; content: string };
   progress?: (update: { status: "waiting" | "running"; message: string }) => void;
 }
 
@@ -56,6 +59,8 @@ export class AttachedAgentBridge implements AgentTransport {
   private terminalEvent?: BridgeClosedEvent;
   private terminalPublished = false;
   private persistCheckpoint?: () => Promise<void>;
+  private fallback?: AgentTransport;
+  private fallbackInactivityMs = 90_000;
   private resolveTerminalAcknowledged!: () => void;
   readonly terminalAcknowledged = new Promise<void>((resolve) => {
     this.resolveTerminalAcknowledged = resolve;
@@ -94,6 +99,12 @@ export class AttachedAgentBridge implements AgentTransport {
     this.persistCheckpoint = callback;
   }
 
+  setFallback(transport: AgentTransport, inactivityMs = 90_000): void {
+    this.fallback = transport;
+    this.fallbackInactivityMs = inactivityMs;
+    for (const eventId of this.pending.keys()) this.armFallback(eventId);
+  }
+
   get currentSequence(): number {
     return this.sequence;
   }
@@ -114,7 +125,7 @@ export class AttachedAgentBridge implements AgentTransport {
   async send(
     prompt: string,
     kind: BridgePromptKind,
-    _attachment?: { name: string; content: string },
+    attachment?: { name: string; content: string },
     progress?: (update: { status: "waiting" | "running"; message: string }) => void,
   ): Promise<string> {
     if (this.disposed) return Promise.reject(new ReviewError("The review is closed."));
@@ -124,7 +135,7 @@ export class AttachedAgentBridge implements AgentTransport {
     if (restored?.response !== undefined) return restored.response;
     if (restored) {
       progress?.({ status: this.leases.has(restored.event.id) ? "running" : "waiting", message: this.leases.has(restored.event.id) ? "The triggering agent already claimed this prompt." : "Waiting for the triggering agent to claim this prompt." });
-      return this.waitForResponse(restored.event, progress);
+      return this.waitForResponse(restored.event, progress, attachment);
     }
     const id = crypto.randomUUID();
     const event: BridgePromptEvent = {
@@ -148,13 +159,15 @@ export class AttachedAgentBridge implements AgentTransport {
     this.events.push(event);
     this.notify();
     progress?.({ status: "waiting", message: "Waiting for the triggering agent to claim this prompt." });
-    return this.waitForResponse(event, progress);
+    return this.waitForResponse(event, progress, attachment);
   }
 
-  private waitForResponse(event: BridgePromptEvent, progress?: PendingPrompt["progress"]): Promise<string> {
+  private waitForResponse(event: BridgePromptEvent, progress?: PendingPrompt["progress"], attachment?: PendingPrompt["attachment"]): Promise<string> {
     const id = event.id;
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
+        const pending = this.pending.get(id);
+        if (pending?.fallbackTimer) clearTimeout(pending.fallbackTimer);
         this.pending.delete(id);
         const index = this.events.findIndex((candidate) => candidate.id === id);
         if (index >= 0) this.events.splice(index, 1);
@@ -162,11 +175,55 @@ export class AttachedAgentBridge implements AgentTransport {
         void this.persistCheckpoint?.().catch(() => undefined);
         reject(new Error("The attached agent did not answer within 30 minutes."));
       }, 30 * 60 * 1_000);
-      this.pending.set(id, { resolve, reject, timer, progress });
+      this.pending.set(id, { resolve, reject, timer, progress, attachment });
+      this.armFallback(id);
     });
   }
 
+  private armFallback(eventId: string): void {
+    const pending = this.pending.get(eventId);
+    if (!pending || pending.fallbackActive || !this.fallback) return;
+    if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
+    pending.fallbackTimer = setTimeout(() => void this.continueWithFallback(eventId), this.fallbackInactivityMs);
+  }
+
+  private async continueWithFallback(eventId: string): Promise<void> {
+    const pending = this.pending.get(eventId);
+    const record = this.promptRecords.get(eventId);
+    const fallback = this.fallback;
+    if (!pending || pending.fallbackActive || !record || record.response !== undefined || !fallback || this.disposed) return;
+    pending.fallbackActive = true;
+    if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
+    pending.fallbackTimer = undefined;
+    const index = this.events.findIndex((event) => event.id === eventId);
+    if (index >= 0) this.events.splice(index, 1);
+    this.leases.delete(eventId);
+    pending.progress?.({ status: "running", message: "The triggering agent stopped reporting progress. Continuing automatically with a local fallback agent…" });
+    await this.persistCheckpoint?.().catch(() => undefined);
+    try {
+      const message = await fallback.send(record.event.prompt, record.event.kind, pending.attachment, pending.progress);
+      if (!message.trim()) throw new Error("The fallback agent returned an empty response.");
+      if (this.disposed) throw new Error("The review closed before the fallback agent answered.");
+      record.response = message;
+      record.acknowledged = true;
+      this.acknowledged.add(eventId);
+      await this.persistCheckpoint?.();
+      clearTimeout(pending.timer);
+      this.pending.delete(eventId);
+      pending.resolve(message);
+      this.lastRespondedEventId = eventId;
+    } catch (error) {
+      this.pending.delete(eventId);
+      this.promptRecords.delete(eventId);
+      this.acknowledged.delete(eventId);
+      clearTimeout(pending.timer);
+      await this.persistCheckpoint?.().catch(() => undefined);
+      pending.reject(new Error(`The attached agent stopped responding and the local fallback failed: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  }
+
   async respond(eventId: string, message: string, leaseId?: string): Promise<void> {
+    if (this.pending.get(eventId)?.fallbackActive) throw new ReviewError("This prompt was abandoned by the attached agent and continued with a local fallback.");
     this.requireLease(eventId, leaseId);
     const record = this.promptRecords.get(eventId);
     const prior = record?.response;
@@ -188,6 +245,7 @@ export class AttachedAgentBridge implements AgentTransport {
     if (pending) {
       pending.progress?.({ status: "running", message: "The triggering agent returned a response. Saving it to the tour…" });
       clearTimeout(pending.timer);
+      if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
       this.pending.delete(eventId);
       pending.resolve(message);
     }
@@ -264,6 +322,7 @@ export class AttachedAgentBridge implements AgentTransport {
     this.terminalPublished = true;
     for (const [id, pending] of this.pending) {
       clearTimeout(pending.timer);
+      if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
       pending.reject(new Error("The review closed before the attached agent answered."));
       this.pending.delete(id);
     }
@@ -315,7 +374,9 @@ export class AttachedAgentBridge implements AgentTransport {
     if (!message.trim()) throw new ReviewError("Agent progress cannot be empty.");
     const record = this.promptRecords.get(eventId);
     if (!record || record.response !== undefined) throw new ReviewError("This bridge prompt is no longer active.");
+    if (this.pending.get(eventId)?.fallbackActive) throw new ReviewError("This prompt already continued with a local fallback.");
     this.pending.get(eventId)?.progress?.({ status: "running", message });
+    this.armFallback(eventId);
   }
 
   private requireLease(eventId: string, leaseId?: string): void {
@@ -330,6 +391,7 @@ export class AttachedAgentBridge implements AgentTransport {
     this.disposed = true;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
+      if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
       pending.reject(new Error(reason));
     }
     this.pending.clear();
@@ -383,6 +445,7 @@ export class AttachedAgentBridge implements AgentTransport {
     if (!claimed) return;
     for (const event of events) {
       this.pending.get(event.id)?.progress?.({ status: "running", message: "The triggering agent claimed the prompt and is working on it." });
+      this.armFallback(event.id);
     }
   }
 

@@ -55,6 +55,47 @@ test("reports whether an attached prompt is waiting, claimed, or making visible 
   expect(updates.at(-1)?.message).toContain("returned a response");
 });
 
+test("automatically continues an abandoned attached prompt with a local fallback", async () => {
+  const bridge = new AttachedAgentBridge();
+  const updates: string[] = [];
+  bridge.setFallback({
+    async send(prompt, kind) {
+      expect(prompt).toBe("Explain the abandoned change");
+      expect(kind).toBe("tour.explanation");
+      return "Recovered explanation";
+    },
+  }, 15);
+  const answer = bridge.send("Explain the abandoned change", "tour.explanation", undefined, (update) => updates.push(update.message));
+  const [claimed] = await bridge.eventsAfter(0, 0, undefined, true);
+
+  await expect(answer).resolves.toBe("Recovered explanation");
+  expect(updates.some((message) => message.includes("fallback agent"))).toBe(true);
+  await expect(bridge.respond(claimed!.id, "Late attached answer", claimed!.leaseId)).rejects.toThrow(/fallback|different response/);
+  expect(await bridge.eventsAfter(0)).toEqual([]);
+});
+
+test("attached progress heartbeats postpone automatic fallback", async () => {
+  const bridge = new AttachedAgentBridge();
+  let fallbackCalls = 0;
+  bridge.setFallback({
+    async send() {
+      fallbackCalls += 1;
+      return "Fallback";
+    },
+  }, 25);
+  const answer = bridge.send("Long inspection", "tour.explanation");
+  const [claimed] = await bridge.eventsAfter(0, 0, undefined, true);
+
+  await Bun.sleep(15);
+  bridge.reportProgress(claimed!.id, claimed!.leaseId!, "Still checking the call path.");
+  await Bun.sleep(15);
+  expect(fallbackCalls).toBe(0);
+  await bridge.respond(claimed!.id, "Attached answer", claimed!.leaseId);
+
+  await expect(answer).resolves.toBe("Attached answer");
+  expect(fallbackCalls).toBe(0);
+});
+
 test("rejects progress for an unowned or completed attached prompt", async () => {
   const bridge = new AttachedAgentBridge();
   const answer = bridge.send("Explain the change", "tour.explanation");

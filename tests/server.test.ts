@@ -208,6 +208,9 @@ test("diff ergonomics API searches changes, expands context, and persists review
 
   const expanded = await (await jsonRequest(url, "/api/diff?path=app.ts&context=25", { headers })).json() as { context: number; file: { path: string } };
   expect(expanded).toMatchObject({ context: 25, file: { path: "app.ts" } });
+  const full = await (await jsonRequest(url, "/api/diff?path=app.ts&full=true", { headers })).json() as { full: boolean; file: { path: string } };
+  expect(full).toMatchObject({ full: true, file: { path: "app.ts" } });
+  expect((await jsonRequest(url, "/api/diff?path=app.ts&full=maybe", { headers })).status).toBe(422);
 
   const reviewed = await (await jsonRequest(url, "/api/files/reviewed", {
     method: "POST", headers, body: JSON.stringify({ path: "app.ts", reviewed: true }),

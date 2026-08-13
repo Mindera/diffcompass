@@ -254,11 +254,13 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         const side = sideValue === null ? undefined : enumValue(sideValue, "side", ["old", "new"]);
         const contextValue = url.searchParams.get("context");
         const context = contextValue === null ? session.preferences.contextLines : Math.min(200, finitePositiveInteger(Number(contextValue), "context"));
+        const fullValue = url.searchParams.get("full");
+        const full = fullValue === null ? false : enumValue(fullValue, "full", ["true", "false"]) === "true";
         if ((line === undefined) !== (side === undefined)) throw new HttpError(400, "line and side must be provided together.");
-        const diff = context > 3
-          ? await session.expandedDiffFile(path, context, offset, limit)
+        const diff = full || context > 3
+          ? await session.expandedDiffFile(path, context, offset, limit, full)
           : session.diffFile(path, offset, limit, line && side ? { line, side } : undefined);
-        return json({ ...diff, revision: session.revision, context });
+        return json({ ...diff, revision: session.revision, context, full });
       }
       const activityDiffMatch = /^\/api\/activities\/([^/]+)\/diff$/.exec(url.pathname);
       if (activityDiffMatch && request.method === "GET") {

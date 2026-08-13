@@ -67,5 +67,9 @@ describe("loadComparison", () => {
 
     expect(expanded.hunks.flatMap((hunk) => hunk.rows).length).toBeGreaterThan(compactRows);
     expect(expanded.hunks.flatMap((hunk) => hunk.rows)).toContainEqual(expect.objectContaining({ content: "line 20" }));
+
+    const full = await loadDiffFileWithContext(comparison, "app.txt", 3, true);
+    expect(full.hunks.flatMap((hunk) => hunk.rows)).toContainEqual(expect.objectContaining({ content: "line 1" }));
+    expect(full.hunks.flatMap((hunk) => hunk.rows)).toContainEqual(expect.objectContaining({ content: "line 80" }));
   });
 });

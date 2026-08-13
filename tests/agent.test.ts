@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildCopilotArgs, buildGeminiArgs, parseClaudeJson, parseCodexJsonLines, parseGeminiStreamJson, TourAgent } from "../src/agent.ts";
+import { buildCopilotArgs, buildGeminiArgs, parseClaudeJson, parseCodexJsonLines, parseGeminiStreamJson, TourAgent, type AgentTransport } from "../src/agent.ts";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { DEFAULT_REVIEW_POLICY } from "../src/config.ts";
 import type { AgentRunActivity, GitComparison } from "../src/types.ts";
@@ -85,6 +85,25 @@ test("creates and restores adapter-specific continuation identifiers without cro
     { adapterId: "gemini", id: "gemini-session-123" },
   );
   expect(gemini.continuation()).toEqual({ adapterId: "gemini", id: "gemini-session-123" });
+});
+
+test("configures a standalone safety fallback for an attached tour agent", () => {
+  let configuredFallback: AgentTransport | undefined;
+  const attached: AgentTransport = {
+    async send() { return "Attached"; },
+    setFallback(transport) { configuredFallback = transport; },
+  };
+
+  new TourAgent(
+    "/tmp/repository",
+    { adapterId: "attached", modelId: "current-session" },
+    attached,
+    undefined,
+    undefined,
+    { adapterId: "codex", modelId: "default", reasoningEffort: "high" },
+  );
+
+  expect(configuredFallback).toBeDefined();
 });
 
 test("normalizes context findings and derives all priority levels from the documented contract", async () => {
