@@ -134,13 +134,21 @@ test("export formats live inside the export action instead of masquerading as a 
 });
 
 test("topbar controls stay compact and name the theme selector", async () => {
-  const [html, styles] = await Promise.all([
+  const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).toContain('<label class="theme-control">\n          <span>Theme</span>');
   expect(styles).toContain(".topbar .button { padding: 6px 9px;");
   expect(styles).toContain(".actions { justify-content: flex-end; gap: 5px;");
+  expect(html).toContain('id="update-button" class="button update-button hidden"');
+  expect(app).toContain('void checkForUpdate()');
+  expect(app).toContain('elements["update-button"].addEventListener("click", installUpdate)');
+  expect(app).toContain('elements["update-button"].disabled = busy || state.updateInProgress');
+  expect(styles).toContain(".update-button.available { animation: update-arrival");
+  expect(styles).toContain(".update-button.updating .update-icon { animation: update-spin");
+  expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
 });
 
 test("topbar identifies the repository and reviewed branch", async () => {

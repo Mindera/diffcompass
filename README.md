@@ -45,6 +45,7 @@ reviewer to the ordered route without locking ordinary browsing.
 - persists review state atomically so the server can resume it after restart;
 - provides a session library to reopen, rename, archive, and delete saved tours;
 - follows the system light or dark appearance by default, with a persistent manual override;
+- checks for new releases without interrupting the review and shows an animated, one-click update control only when one is available;
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
 - starts with a dense split diff by default, also supports unified diffs, expands hunk context on demand, and persists per-file reviewed state;

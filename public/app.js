@@ -38,13 +38,14 @@ const state = {
   findingReturn: null,
   pollInFlight: false,
   pollGeneration: 0,
+  updateInProgress: false,
   prDescriptionMode: "rendered",
 };
 
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "flows-view", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
-    "theme-select", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-flows", "include-findings",
+    "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
@@ -143,6 +144,48 @@ function toast(message) {
   window.setTimeout(() => elements.toast.classList.add("hidden"), 3500);
 }
 
+async function checkForUpdate() {
+  if (state.updateInProgress) return;
+  try {
+    const status = await api("/api/update");
+    if (!status.updateAvailable) return;
+    elements["update-label"].textContent = `Update ${status.latestVersion}`;
+    elements["update-button"].title = `Install Code Review Tour ${status.latestVersion}`;
+    elements["update-button"].classList.remove("hidden", "updated");
+    elements["update-button"].classList.add("available");
+  } catch {
+    // Update discovery must never interrupt a review.
+  }
+}
+
+async function installUpdate() {
+  if (state.updateInProgress) return;
+  state.updateInProgress = true;
+  const button = elements["update-button"];
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.classList.remove("available", "updated");
+  button.classList.add("updating");
+  elements["update-label"].textContent = "Updating…";
+  try {
+    const status = await api("/api/update", { method: "POST", body: "{}" });
+    button.classList.remove("updating");
+    button.classList.add("updated");
+    elements["update-label"].textContent = `Updated ${status.latestVersion}`;
+    button.title = "Restart Code Review Tour to use the new version";
+    toast(`Code Review Tour ${status.latestVersion} is installed. Restart this review when convenient.`);
+  } catch (error) {
+    button.classList.remove("updating");
+    button.classList.add("available");
+    elements["update-label"].textContent = "Retry update";
+    button.disabled = false;
+    toast(error.message);
+  } finally {
+    state.updateInProgress = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
 function setBusy(busy, label = "Working…") {
   state.busy = busy;
   elements["start-tour"].disabled = busy;
@@ -153,6 +196,7 @@ function setBusy(busy, label = "Working…") {
   elements["reasoning-select"].disabled = busy;
   elements["include-flows"].disabled = busy;
   elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false;
+  elements["update-button"].disabled = busy || state.updateInProgress || elements["update-button"].classList.contains("updated");
   elements["refresh-button"].disabled = busy;
   elements["close-button"].disabled = busy;
   elements["feedback-button"].disabled = busy;
@@ -1757,9 +1801,12 @@ elements["comment-list"].addEventListener("change", async (event) => {
   }
 });
 
+elements["update-button"].addEventListener("click", installUpdate);
+
 try {
   state.session = await api("/api/session");
   renderSession();
+  void checkForUpdate();
 } catch (error) {
   elements["connection-banner"].textContent = `Could not load this review: ${error.message}. Check that the server is running and reopen the URL printed in its terminal.`;
   elements["connection-banner"].classList.remove("hidden");
@@ -1784,3 +1831,5 @@ window.setInterval(async () => {
     if (generation === state.pollGeneration) state.pollInFlight = false;
   }
 }, 2_000);
+
+window.setInterval(checkForUpdate, 6 * 60 * 60 * 1_000);

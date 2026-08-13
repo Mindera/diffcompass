@@ -154,6 +154,27 @@ html, body { height: 100%; margin: 0; overflow: hidden; }
 button, textarea, select { font: inherit; }
 button { color: inherit; }
 
+.update-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+.update-button.available { animation: update-arrival 420ms ease-out, update-pulse 2.6s ease-in-out 500ms 2; }
+.update-button.available .update-icon { animation: update-nudge 2.6s ease-in-out 500ms 2; }
+.update-button.updating .update-icon { animation: update-spin 750ms linear infinite; }
+.update-button.updated { animation: update-complete 520ms ease-out; }
+@keyframes update-arrival { from { opacity: 0; transform: translateY(-6px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes update-pulse { 0%, 70%, 100% { box-shadow: 0 0 0 0 transparent; } 82% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); } }
+@keyframes update-nudge { 0%, 70%, 100% { transform: rotate(0deg); } 82% { transform: rotate(35deg); } }
+@keyframes update-spin { to { transform: rotate(360deg); } }
+@keyframes update-complete { 45% { transform: scale(1.04); } }
+@media (prefers-reduced-motion: reduce) {
+  .update-button.available, .update-button.available .update-icon, .update-button.updating .update-icon, .update-button.updated { animation: none; }
+}
+
 .topbar {
   height: 58px;
   display: grid;

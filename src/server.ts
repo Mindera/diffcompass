@@ -16,6 +16,7 @@ import { loadRepositoryFile } from "./git.ts";
 import { highlightGroups, type HighlightGroup } from "./highlight.ts";
 import { ReviewSession } from "./session.ts";
 import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
+import { createUpdateService, type UpdateService } from "./update.ts";
 import {
   enumValue,
   exactKeys,
@@ -82,7 +83,7 @@ function requireBrowserAuthorization(request: Request, session: ReviewSession): 
   }
 }
 
-export function createRequestHandler(session: ReviewSession, sessionDirectory = reviewSessionDirectory()) {
+export function createRequestHandler(session: ReviewSession, sessionDirectory = reviewSessionDirectory(), updateService: UpdateService = createUpdateService()) {
   const fetch = async (request: Request) => {
     const url = new URL(request.url);
     try {
@@ -140,6 +141,12 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "GET" && url.pathname === "/api/update") return json(await updateService.status());
+      if (request.method === "POST" && url.pathname === "/api/update") {
+        const input = await readJsonObject(request);
+        exactKeys(input, []);
+        return json(await updateService.install());
+      }
       if (request.method === "GET" && url.pathname === "/api/export") {
         const format = enumValue(url.searchParams.get("format"), "format", ["markdown", "html"]) as ExportFormat;
         const artifact = exportReview(session, format);

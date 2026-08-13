@@ -33,6 +33,22 @@ function authorizedRequest(session: ReviewSession, path: string, body: unknown) 
   });
 }
 
+test("update endpoints expose availability and require an authenticated click to install", async () => {
+  const { session } = fixture();
+  let installs = 0;
+  const fetch = createRequestHandler(session, "/private/tmp/review-tour-handler-sessions", {
+    status: async () => ({ currentVersion: "1.0.6", latestVersion: "1.0.7", updateAvailable: true }),
+    install: async () => { installs += 1; return { currentVersion: "1.0.6", latestVersion: "1.0.7", updateAvailable: false, updated: true }; },
+  });
+  const unauthorized = await fetch(new Request("http://127.0.0.1/api/update"));
+  expect(unauthorized.status).toBe(401);
+  const status = await fetch(new Request("http://127.0.0.1/api/update", { headers: { "x-review-tour-token": session.browserToken } }));
+  expect(await status.json()).toMatchObject({ latestVersion: "1.0.7", updateAvailable: true });
+  const installed = await fetch(authorizedRequest(session, "/api/update", {}));
+  expect(await installed.json()).toMatchObject({ latestVersion: "1.0.7", updated: true });
+  expect(installs).toBe(1);
+});
+
 test("in-process handler serves bundled Mermaid with the hardened browser policy", async () => {
   const { fetch } = fixture();
   const response = await fetch(new Request("http://127.0.0.1/mermaid.min.js"));
