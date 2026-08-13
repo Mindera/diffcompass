@@ -259,9 +259,12 @@ test("split diff panes remain equal width and synchronize horizontal scrolling p
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(styles).toContain(".hunk.split-layout { width: 100%; min-width: 0; }");
+  expect(styles).toContain("grid-template-columns: 42px 42px 22px max-content minmax(max-content, 1fr)");
   expect(styles).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)");
-  expect(styles).toContain(".diff-row.split-side { grid-template-columns: 42px 22px auto max-content; width: 100%; min-width: 0; overflow-x: auto;");
+  expect(styles).toContain(".diff-row.split-side { grid-template-columns: 42px 22px max-content minmax(max-content, 1fr); width: 100%; min-width: 0; overflow-x: auto;");
   expect(styles).not.toContain("grid-template-columns: minmax(50%, max-content) minmax(50%, max-content)");
   expect(app).toContain('elements.diff.addEventListener("scroll"');
-  expect(app).toContain('row.scrollLeft = source.scrollLeft');
+  expect(app).toContain("function syncSplitScroll(hunk, side, scrollLeft)");
+  expect(app).toContain('elements.diff.addEventListener("wheel"');
+  expect(app).toContain("event.preventDefault()");
 });

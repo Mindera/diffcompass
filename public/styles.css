@@ -303,7 +303,7 @@ button { color: inherit; }
 .diff-file-title { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .status { margin-right: 8px; color: var(--accent); text-transform: uppercase; font-size: 10px; }
 .hunk-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; color: var(--text-hunk); background: var(--surface-hunk); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
-.diff-row { display: grid; grid-template-columns: 42px 42px 22px auto max-content; width: max-content; min-width: 100%; min-height: 22px; align-items: start; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 22px; border-left: 2px solid transparent; cursor: pointer; }
+.diff-row { display: grid; grid-template-columns: 42px 42px 22px max-content minmax(max-content, 1fr); width: max-content; min-width: 100%; min-height: 22px; align-items: start; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 22px; border-left: 2px solid transparent; cursor: pointer; }
 .diff-row:hover { filter: brightness(var(--row-hover-brightness)); }
 .diff-row.addition { background: var(--addition); border-left-color: var(--addition-line); }
 .diff-row.deletion { background: var(--deletion); border-left-color: var(--deletion-line); }
@@ -312,7 +312,7 @@ button { color: inherit; }
 .diff-row.tour-anchor-start { border-top: 2px solid var(--accent-strong); }
 .diff-row.tour-anchor-end { border-bottom: 2px solid var(--accent-strong); }
 .split-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.diff-row.split-side { grid-template-columns: 42px 22px auto max-content; width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; }
+.diff-row.split-side { grid-template-columns: 42px 22px max-content minmax(max-content, 1fr); width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; }
 .diff-row.split-side:first-child { border-right: 1px solid var(--border); }
 .diff-row.split-side.split-empty { background: var(--surface-code); cursor: default; }
 .split-row:not(:last-of-type) .diff-row.split-side { scrollbar-width: none; }

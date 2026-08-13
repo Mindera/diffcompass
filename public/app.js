@@ -1672,17 +1672,36 @@ elements.diff.addEventListener("click", (event) => {
   }
 });
 let syncingSplitScroll = false;
+function syncSplitScroll(hunk, side, scrollLeft) {
+  syncingSplitScroll = true;
+  hunk.querySelectorAll(`.diff-row.split-side[data-side="${side}"]`).forEach((row) => {
+    row.scrollLeft = scrollLeft;
+  });
+  window.requestAnimationFrame(() => { syncingSplitScroll = false; });
+}
+
 elements.diff.addEventListener("scroll", (event) => {
   const source = event.target.closest?.(".diff-row.split-side");
   if (!source || syncingSplitScroll) return;
   const hunk = source.closest(".hunk.split-layout");
   if (!hunk) return;
-  syncingSplitScroll = true;
-  hunk.querySelectorAll(`.diff-row.split-side[data-side="${source.dataset.side}"]`).forEach((row) => {
-    if (row !== source) row.scrollLeft = source.scrollLeft;
-  });
-  window.requestAnimationFrame(() => { syncingSplitScroll = false; });
+  syncSplitScroll(hunk, source.dataset.side, source.scrollLeft);
 }, true);
+elements.diff.addEventListener("wheel", (event) => {
+  const hunk = event.target.closest?.(".hunk.split-layout");
+  const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+  if (!hunk || !delta) return;
+  const hoveredSide = event.target.closest?.(".diff-row.split-side");
+  const side = hoveredSide?.dataset.side ?? (event.clientX < hunk.getBoundingClientRect().left + hunk.clientWidth / 2 ? "old" : "new");
+  const rows = [...hunk.querySelectorAll(`.diff-row.split-side[data-side="${side}"]`)];
+  const scrollableRow = rows.reduce((best, row) => row.scrollWidth - row.clientWidth > best.scrollWidth - best.clientWidth ? row : best, rows[0]);
+  if (!scrollableRow || scrollableRow.scrollWidth <= scrollableRow.clientWidth) return;
+  const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 22 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? scrollableRow.clientWidth : 1;
+  const next = Math.max(0, Math.min(scrollableRow.scrollWidth - scrollableRow.clientWidth, scrollableRow.scrollLeft + delta * scale));
+  if (next === scrollableRow.scrollLeft) return;
+  event.preventDefault();
+  syncSplitScroll(hunk, side, next);
+}, { passive: false });
 elements.diff.addEventListener("pointerover", (event) => {
   const pin = event.target.closest(".finding-pin");
   if (pin) showFindingTooltip(pin);
