@@ -261,7 +261,13 @@ test("flow provenance uses clear reviewer-facing wording", async () => {
   expect(app).toContain("Exact files were not captured for this saved tour. Regenerate this diagram to add them.");
   expect(app).toContain("The diagram source is invalid or unsupported.");
   expect(app).toContain("This entrypoint did not exist before the change.");
+  expect(app).toContain('aria-label="Call-flow legend"');
+  expect(app).toContain("A changed callable exists before and after this change");
   expect(app).toContain('toast("Tour paused so this evidence can be shown. Resume the tour when you are ready."');
+  expect(styles).toContain(".architecture-impact { margin-top: 12px; }");
+  expect(styles).toContain(".flow-impact-list { display: grid;");
+  expect(styles).not.toContain(".flow-impact-list { position: absolute;");
+  expect(styles).toContain('.flow-impact > summary::after { content: "›";');
   expect(styles).toContain('.compact-finding > summary::before { content: "›";');
 });
 
