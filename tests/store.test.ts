@@ -39,6 +39,7 @@ function persistedSession(): PersistedReviewSession {
           anchor: { path: "src/app.ts", side: "new", startLine: 2, endLine: 2 },
         }],
       }],
+      callFlows: [],
       flows: [],
       findings: [],
     },

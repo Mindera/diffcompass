@@ -84,7 +84,33 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
       planningNotes: [
         "Start with the calculation because the receipt depends on it.",
         "Finish with the user-visible output and supporting documentation.",
-      ],
+    ],
+      callFlows: [{
+        id: "receipt-calls",
+        title: "Receipt calculation call changes",
+        summary: "A new receipt entrypoint calls the discount-aware total, which now delegates the original arithmetic to subtotal.",
+        entrypointNodeId: "receipt",
+        provenance: "verified",
+        nodes: [{
+          id: "receipt", label: "receipt", kind: "function", change: "added",
+          newLocation: { path: "src/receipt.ts", side: "new", line: 3 },
+        }, {
+          id: "total", label: "total", kind: "function", change: "modified",
+          oldLocation: { path: "src/cart.ts", side: "old", line: 6 },
+          newLocation: { path: "src/cart.ts", side: "new", line: 14 },
+        }, {
+          id: "subtotal", label: "subtotal", kind: "function", change: "added",
+          newLocation: { path: "src/cart.ts", side: "new", line: 10 },
+        }],
+        edges: [{
+          id: "receipt-total", from: "receipt", to: "total", label: "calculates", change: "added",
+          newCallSite: { path: "src/receipt.ts", side: "new", line: 4 },
+        }, {
+          id: "total-subtotal", from: "total", to: "subtotal", label: "reuses", change: "added",
+          newCallSite: { path: "src/cart.ts", side: "new", line: 15 },
+        }],
+        affectedFiles: ["src/receipt.ts", "src/cart.ts"],
+      }],
       architecture: {
         title: "How checkout components fit together",
         summary: "The receipt formatter is new, while the cart calculation is extended and the caller remains outside this fixture.",
@@ -248,6 +274,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
       modelId: "default",
       reasoningEffort: "medium",
       includeArchitecture: true,
+      includeCallFlows: true,
       includeFlows: true,
       includeFindings: true,
     },

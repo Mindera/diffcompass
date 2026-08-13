@@ -124,11 +124,26 @@ clear.
 - Native CI execution on macOS and ARM runners, not only cross-compilation.
 - Windows x64/ARM64 packaging, PowerShell installation, and native Windows CI.
   *(shipped in v1.0.0)*
+
 - Signed and notarized macOS binaries.
 - A public installation path such as Homebrew once repository visibility and
   licensing are decided.
 - Versioned update, local rollback, and preview-first uninstall commands.
   *(shipped in v1.0.0)*
+
+## Post-v1.0 code understanding
+
+- Changed call flows are a first-class, validated tour artifact, generated from
+  concrete entrypoints and represented as bounded caller-to-callee nodes and
+  edges rather than inferred from Mermaid text.
+- Added and removed calls link to exact old or new changed-file evidence, with
+  Before, After, and Changes views plus honest verified, partly verified, and
+  unverified provenance.
+- Component architecture remains with structural call changes, while runtime
+  interactions have their own explicitly named Sequence diagrams tab.
+- Call-flow generation is optional and default-on at tour startup, supports
+  single or complete regeneration, persists across sessions, and is included in
+  Markdown and HTML review exports.
 
 ## Explicitly out of scope for now
 

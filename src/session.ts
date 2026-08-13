@@ -2,6 +2,7 @@ import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
 import { TourAgent } from "./agent.ts";
 import { validateReviewFlow } from "./flows.ts";
+import { validateCallFlows } from "./call-flows.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
@@ -122,7 +123,7 @@ export class ReviewSession {
     this.sessionName = persisted?.name;
     this.archived = persisted?.archived ?? false;
     this.outline = persisted?.outline
-      ? { ...structuredClone(persisted.outline), flows: persisted.outline.flows ?? [], findings: persisted.outline.findings ?? [] }
+      ? { ...structuredClone(persisted.outline), callFlows: validateCallFlows(persisted.outline.callFlows ?? [], this.comparison), flows: persisted.outline.flows ?? [], findings: persisted.outline.findings ?? [] }
       : undefined;
     this.currentStepIndex = persisted?.currentStepIndex ?? -1;
     this.revision = persisted?.revision ?? 1;
@@ -378,6 +379,7 @@ export class ReviewSession {
       modelId: model.id,
       reasoningEffort,
       includeArchitecture: input.includeArchitecture ?? true,
+      includeCallFlows: input.includeCallFlows ?? true,
       includeFlows: input.includeFlows ?? true,
       includeFindings: this.defaults.includeFindings === false ? false : input.includeFindings ?? true,
     };
@@ -404,6 +406,7 @@ export class ReviewSession {
       modelId: model.id,
       reasoningEffort,
       includeArchitecture: this.selection.includeArchitecture,
+      includeCallFlows: this.selection.includeCallFlows,
       includeFlows: this.selection.includeFlows,
       includeFindings: this.selection.includeFindings,
     };
@@ -701,6 +704,7 @@ export class ReviewSession {
         (selection.modelId !== undefined && selection.modelId !== this.selection?.modelId) ||
         (selection.reasoningEffort !== undefined && selection.reasoningEffort !== this.selection?.reasoningEffort) ||
         (selection.includeArchitecture !== undefined && selection.includeArchitecture !== this.selection?.includeArchitecture) ||
+        (selection.includeCallFlows !== undefined && selection.includeCallFlows !== this.selection?.includeCallFlows) ||
         (selection.includeFlows !== undefined && selection.includeFlows !== this.selection?.includeFlows) ||
         (selection.includeFindings !== undefined && selection.includeFindings !== this.selection?.includeFindings)
       )) {
@@ -838,6 +842,38 @@ export class ReviewSession {
           this.outline.flows[index] = generated[0]!;
         } else {
           this.outline.flows = generated;
+        }
+        this.ensureOpen();
+        this.revision += 1;
+        operationRevision = this.revision;
+        await this.persistAgentResult();
+        return this.snapshot();
+      } catch (error) {
+        this.restoreMutableState(before, terminalEpoch, operationRevision);
+        throw error;
+      }
+    });
+  }
+
+  async regenerateCallFlows(id?: string) {
+    return this.serialize(async () => {
+      const before = this.captureMutableState();
+      const terminalEpoch = this.terminalEpoch;
+      let operationRevision = before.revision;
+      const comparisonGeneration = this.comparisonGeneration;
+      try {
+        this.ensureOpen();
+        if (!this.outline || !this.agent) throw new ReviewError("Start the tour first.");
+        this.agent.useComparison(this.comparison);
+        const generated = await this.agent.regenerateCallFlows(this.comparison, this.outline.callFlows, id);
+        this.ensureComparisonCurrent(comparisonGeneration);
+        if (this.revision !== before.revision) throw new ReviewError("The review changed while call flows were being regenerated. Retry against the latest session.");
+        if (id) {
+          const index = this.outline.callFlows.findIndex((flow) => flow.id === id);
+          if (index < 0 || generated.length !== 1) throw new ReviewError("The regenerated call flow is invalid.");
+          this.outline.callFlows[index] = generated[0]!;
+        } else {
+          this.outline.callFlows = generated;
         }
         this.ensureOpen();
         this.revision += 1;

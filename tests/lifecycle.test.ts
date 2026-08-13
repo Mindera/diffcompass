@@ -77,6 +77,7 @@ function persistedAttachedSession(repositoryRoot: string, overrides: Partial<Per
           anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
         }],
       }],
+      callFlows: [],
       flows: [],
       findings: [],
     },
@@ -121,6 +122,7 @@ test("attached sessions optionally display the caller model and effort", async (
     modelId: "gpt-5.6-codex",
     reasoningEffort: "high",
     includeArchitecture: true,
+    includeCallFlows: true,
     includeFlows: true,
     includeFindings: true,
   });

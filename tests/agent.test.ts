@@ -351,7 +351,7 @@ test("fails closed instead of showing candidates when the finding audit is malfo
 test("skips optional findings and diagrams at generation time", async () => {
   const bridge = new AttachedAgentBridge();
   const agent = new TourAgent("/tmp/repository", {
-    adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeFlows: false, includeFindings: false,
+    adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeCallFlows: false, includeFlows: false, includeFindings: false,
   }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+changed", repositoryFiles: ["app.ts"],
@@ -363,11 +363,13 @@ test("skips optional findings and diagrams at generation time", async () => {
   const [event] = await bridge.eventsAfter(0, 1_000);
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
   expect(event.prompt).toContain("Component architecture: omit");
+  expect(event.prompt).toContain("Call-flow diffs: omit");
   expect(event.prompt).toContain("Sequence diagrams: omit");
   expect(event.prompt).toContain("Findings: omit");
   await bridge.respond(event.id, JSON.stringify({
     title: "Review", summary: "Summary",
     architecture: { title: "Ignored", summary: "Ignored", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },
+    callFlows: [{ id: "ignored-call", title: "Ignored", summary: "Ignored", entrypointNodeId: "entry", provenance: "verified", nodes: [{ id: "entry", label: "entry", kind: "function", change: "modified", newLocation: { path: "app.ts", side: "new", line: 1 } }, { id: "child", label: "child", kind: "function", change: "added", newLocation: { path: "app.ts", side: "new", line: 1 } }], edges: [{ id: "edge", from: "entry", to: "child", change: "added", newCallSite: { path: "app.ts", side: "new", line: 1 } }], affectedFiles: ["app.ts"] }],
     phases: [{ id: "behavior", title: "Behavior", summary: "Summary", fileChanges: [{ path: "app.ts", summary: "Changes behavior." }], steps: [{ id: "step", title: "Step", objective: "Inspect.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
     flows: [{ id: "ignored", title: "Ignored", summary: "Ignored", mermaid: "sequenceDiagram\n  A->>B: call", provenance: "verified", affectedFiles: ["app.ts"] }],
     findings: [{ id: "ignored", phaseId: "behavior", path: "app.ts", side: "new", line: 1, message: "Ignored", category: "correctness", severity: "high", confidence: "high", evidence: "Ignored", priority: "P2", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" }],
@@ -375,9 +377,26 @@ test("skips optional findings and diagrams at generation time", async () => {
   await bridge.ack(event.id);
   const outline = await pending;
   expect(outline.architecture).toBeUndefined();
+  expect(outline.callFlows).toEqual([]);
   expect(outline.flows).toEqual([]);
   expect(outline.findings).toEqual([]);
   expect(await bridge.eventsAfter(event.sequence, 20)).toEqual([]);
+});
+
+test("regenerates one validated call flow while preserving its identity", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+changed", repositoryFiles: ["src/request.ts"],
+    files: [{ path: "src/request.ts", oldPath: "src/request.ts", newPath: "src/request.ts", status: "modified", metadata: [], hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, rows: [{ kind: "addition", content: "service()", oldLine: null, newLine: 1 }] }], additions: 1, deletions: 0 }],
+  };
+  const current = [{ id: "request", title: "Request", summary: "Old", entrypointNodeId: "entry", provenance: "partial" as const,
+    nodes: [{ id: "entry", label: "entry", kind: "function" as const, change: "modified" as const, newLocation: { path: "src/request.ts", side: "new" as const, line: 1 } }, { id: "service", label: "service", kind: "method" as const, change: "added" as const, newLocation: { path: "src/request.ts", side: "new" as const, line: 1 } }],
+    edges: [{ id: "entry-service", from: "entry", to: "service", change: "added" as const, newCallSite: { path: "src/request.ts", side: "new" as const, line: 1 } }], affectedFiles: ["src/request.ts"] }];
+  const pending = agent.regenerateCallFlows(comparison, current, "request");
+  const [event] = await bridge.eventsAfter(0, 1_000);
+  await bridge.respond(event!.id, JSON.stringify({ callFlows: [{ ...current[0], summary: "New", provenance: "verified" }] }));
+  expect(await pending).toMatchObject([{ id: "request", summary: "New", provenance: "verified" }]);
 });
 
 test("regenerates one validated flow while preserving its identity", async () => {

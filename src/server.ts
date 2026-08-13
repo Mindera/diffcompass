@@ -311,6 +311,11 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         exactKeys(input, ["id"]);
         return json(await session.regenerateFlows(optionalString(input.id, "id", 128)));
       }
+      if (request.method === "POST" && url.pathname === "/api/call-flows/regenerate") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["id"]);
+        return json(await session.regenerateCallFlows(optionalString(input.id, "id", 128)));
+      }
       if (request.method === "POST" && url.pathname === "/api/agent/message") {
         const input = await readJsonObject(request, 32 * 1024);
         exactKeys(input, ["body", "selectedContext"]);

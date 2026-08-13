@@ -96,6 +96,7 @@ function outline(reviewFinding: ReviewFinding): TourOutline {
       fileChanges: [{ path: "app.ts", summary: "Contains the changed value." }],
       steps: [{ id: "changed-line", title: "Changed line", objective: "Inspect the value.", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
     }],
+    callFlows: [],
     flows: [],
     findings: [reviewFinding],
   };

@@ -176,6 +176,7 @@ test("flow edits are validated and exports are authenticated downloadable artifa
     summary: "Summary",
     phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
     findings: [],
+    callFlows: [],
     flows: [{ id: "flow", title: "Old", summary: "Old", mermaid: "sequenceDiagram\n  A->>B: old", provenance: "partial", blastRadiusSize: 1, affectedFiles: ["app.ts"] }],
   };
 

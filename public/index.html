@@ -16,7 +16,8 @@
       </div>
       <div class="tabs" role="tablist">
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
-        <button id="flows-tab" class="tab" data-tab="flows" role="tab" aria-selected="false" aria-controls="flows-view" tabindex="-1">Flows</button>
+        <button id="call-flows-tab" class="tab" data-tab="call-flows" role="tab" aria-selected="false" aria-controls="call-flows-view" tabindex="-1">Call flows</button>
+        <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
         <button id="findings-tab" class="tab" data-tab="findings" role="tab" aria-selected="false" aria-controls="findings-view" tabindex="-1">Findings <span id="findings-tab-count" class="tab-count hidden">0</span></button>
         <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
         <button id="pull-request-tab" class="tab hidden" data-tab="pull-request" role="tab" aria-selected="false" aria-controls="pull-request-view" tabindex="-1">Pull request</button>
@@ -109,10 +110,15 @@
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>
         </div>
-        <div id="flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="flows-tab">
-          <div class="flows-toolbar"><div><strong>Architecture and main flows</strong><span class="muted">The component map shows structural change; sequence diagrams show runtime behavior.</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate flows</button></div>
+        <div id="call-flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="call-flows-tab">
+          <div class="flows-toolbar"><div><strong>Components and call changes</strong><span class="muted">See how changed entrypoints call through the code before and after this change.</span></div><button id="regenerate-call-flows" class="button secondary" type="button">Regenerate call flows</button></div>
           <section id="architecture" class="architecture"></section>
-          <div id="flows-empty" class="empty">Start the tour to generate grounded main-flow diagrams.</div>
+          <div id="call-flows-empty" class="empty">Start the tour to trace changed calls from their entrypoints.</div>
+          <div id="call-flows" class="call-flows"></div>
+        </div>
+        <div id="sequence-view" class="review-view hidden" role="tabpanel" aria-labelledby="sequence-tab">
+          <div class="flows-toolbar"><div><strong>Sequence diagrams</strong><span class="muted">Runtime interactions across components, in execution order.</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate diagrams</button></div>
+          <div id="flows-empty" class="empty">Start the tour to generate grounded sequence diagrams.</div>
           <div id="flows" class="flows"></div>
         </div>
         <div id="findings-view" class="review-view hidden" role="tabpanel" aria-labelledby="findings-tab">
@@ -150,6 +156,7 @@
             <fieldset class="tour-includes">
               <legend>Include</legend>
               <label><input id="include-architecture" type="checkbox" checked /> Component diagram</label>
+              <label><input id="include-call-flows" type="checkbox" checked /> Call flows</label>
               <label><input id="include-flows" type="checkbox" checked /> Sequence diagrams</label>
               <label><input id="include-findings" type="checkbox" checked /> Findings</label>
             </fieldset>

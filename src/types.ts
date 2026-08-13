@@ -74,8 +74,45 @@ export interface TourOutline {
   planningNotes?: string[];
   architecture?: ReviewArchitecture;
   phases: TourPhase[];
+  callFlows: CallFlow[];
   flows: ReviewFlow[];
   findings: ReviewFinding[];
+}
+
+export interface CallFlowLocation {
+  path: string;
+  side: "old" | "new";
+  line: number;
+}
+
+export interface CallFlowNode {
+  id: string;
+  label: string;
+  kind: "function" | "method" | "constructor" | "component" | "branch" | "external";
+  change: "added" | "removed" | "unchanged" | "modified";
+  oldLocation?: CallFlowLocation;
+  newLocation?: CallFlowLocation;
+}
+
+export interface CallFlowEdge {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+  change: "added" | "removed" | "unchanged";
+  oldCallSite?: CallFlowLocation;
+  newCallSite?: CallFlowLocation;
+}
+
+export interface CallFlow {
+  id: string;
+  title: string;
+  summary: string;
+  entrypointNodeId: string;
+  provenance: "verified" | "partial" | "unverified";
+  nodes: CallFlowNode[];
+  edges: CallFlowEdge[];
+  affectedFiles: string[];
 }
 
 export interface ReviewArchitecture {
@@ -263,6 +300,7 @@ export interface AgentSelection {
   modelId: string;
   reasoningEffort?: ReasoningEffort;
   includeArchitecture?: boolean;
+  includeCallFlows?: boolean;
   includeFlows?: boolean;
   includeFindings?: boolean;
 }

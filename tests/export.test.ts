@@ -19,6 +19,7 @@ function fixture(): ReviewSession {
       summary: "Summary <img src=x onerror=bad()>",
       architecture: { title: "Components", summary: "Changed structure", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },
       phases: [{ id: "behavior", title: "Behavior", summary: "Review behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "one", title: "Step", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 }, explanation: "Explanation" }] }],
+      callFlows: [],
       flows: [{ id: "flow", title: "Flow", summary: "Summary", mermaid: "sequenceDiagram\n  A->>B: call", provenance: "verified", blastRadiusSize: 1, affectedFiles: ["app.ts"] }],
       findings: [],
     },
@@ -33,7 +34,7 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   expect(artifact).toMatchObject({ contentType: "text/markdown; charset=utf-8", extension: "md" });
   expect(artifact.content).toContain("## Tour");
   expect(artifact.content).toContain("## Component architecture");
-  expect(artifact.content).toContain("## Flows");
+  expect(artifact.content).toContain("## Sequence diagrams");
   expect(artifact.content).toContain("## Reviewer feedback");
   expect(artifact.content).toContain("diff --git a/app.ts b/app.ts");
   expect(artifact.content).toContain("````diff");

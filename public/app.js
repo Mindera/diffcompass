@@ -22,6 +22,7 @@ const state = {
   phaseDiffLoadPromise: null,
   highlightRequestId: 0,
   flowRenderGeneration: 0,
+  callFlowModes: new Map(),
   proposalPreview: false,
   searchQuery: "",
   searchMatches: null,
@@ -49,8 +50,8 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "flows-view", "architecture", "flows", "flows-empty", "diff-tab", "flows-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
-    "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-flows", "include-findings",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
+    "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
@@ -206,6 +207,7 @@ function setBusy(busy, label = "Working…") {
   elements["reasoning-select"].disabled = busy;
   elements["include-flows"].disabled = busy;
   elements["include-architecture"].disabled = busy;
+  elements["include-call-flows"].disabled = busy;
   elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false;
   elements["tour-mode-toggle"].disabled = busy;
   elements["update-button"].disabled = busy || state.updateInProgress || elements["update-button"].classList.contains("updated");
@@ -957,9 +959,39 @@ function flowProvenanceCopy(provenance) {
   return { label: "Unverified", detail: "The flow is plausible, but it was not traced end-to-end in the changed code." };
 }
 
-function renderFlows() {
+function renderCallTree(flow, mode) {
+  const nodes = new Map(flow.nodes.map((node) => [node.id, node]));
+  const visibleNode = (node) => Boolean(node) && (mode === "before" ? node.change !== "added" : mode === "after" ? node.change !== "removed" : true);
+  const edges = flow.edges.filter((edge) => (mode === "before" ? edge.change !== "added" : mode === "after" ? edge.change !== "removed" : true) && visibleNode(nodes.get(edge.from)) && visibleNode(nodes.get(edge.to)));
+  const children = new Map();
+  for (const edge of edges) children.set(edge.from, [...(children.get(edge.from) ?? []), edge]);
+  let renderBudget = 240;
+  const renderBranch = (nodeId, ancestry = new Set(), depth = 0) => {
+    if (renderBudget <= 0) return '<span class="call-tree-limit">More branches omitted</span>';
+    renderBudget -= 1;
+    const node = nodes.get(nodeId);
+    if (!node || !visibleNode(node)) return "";
+    const location = mode === "before" ? node.oldLocation : mode === "after" ? node.newLocation : node.newLocation ?? node.oldLocation;
+    const recursive = ancestry.has(nodeId);
+    const nextAncestry = new Set(ancestry).add(nodeId);
+    const branches = recursive || depth >= 12 ? "" : (children.get(nodeId) ?? []).map((edge) => {
+      const child = nodes.get(edge.to);
+      const evidence = mode === "before" ? edge.oldCallSite : mode === "after" ? edge.newCallSite : edge.change === "removed" ? edge.oldCallSite : edge.newCallSite ?? edge.oldCallSite;
+      return `<li class="call-edge ${edge.change}"><div class="call-edge-row"><span class="call-edge-mark" aria-label="${escapeHtml(edge.change)}">${edge.change === "added" ? "+" : edge.change === "removed" ? "−" : "→"}</span>${evidence ? `<button class="call-edge-link" type="button" data-call-path="${escapeHtml(evidence.path)}" data-call-side="${evidence.side}" data-call-line="${evidence.line}" title="Open call site ${escapeHtml(`${evidence.path}:${evidence.line}`)}">${escapeHtml(edge.label || "calls")}</button>` : `<span>${escapeHtml(edge.label || "calls")}</span>`}<span class="call-arrow">→</span><span class="call-child-label">${escapeHtml(child?.label ?? edge.to)}</span></div>${renderBranch(edge.to, nextAncestry, depth + 1)}</li>`;
+    }).join("");
+    return `<div class="call-node ${node.change}${nodeId === flow.entrypointNodeId ? " entrypoint" : ""}"><div class="call-node-row"><span class="call-kind">${escapeHtml(node.kind)}</span>${location ? `<button type="button" class="call-node-link" data-call-path="${escapeHtml(location.path)}" data-call-side="${location.side}" data-call-line="${location.line}">${escapeHtml(node.label)}</button>` : `<strong>${escapeHtml(node.label)}</strong>`}${recursive ? '<span class="call-cycle">recursive</span>' : ""}</div>${branches ? `<ul>${branches}</ul>` : ""}</div>`;
+  };
+  const tree = renderBranch(flow.entrypointNodeId);
+  if (tree) return tree;
+  const entrypoint = nodes.get(flow.entrypointNodeId);
+  if (mode === "before" && entrypoint?.change === "added") return '<p class="call-tree-empty">This entrypoint did not exist before the change.</p>';
+  if (mode === "after" && entrypoint?.change === "removed") return '<p class="call-tree-empty">This entrypoint no longer exists after the change.</p>';
+  return '<p class="call-tree-empty">No calls are available in this view.</p>';
+}
+
+function renderCallFlows() {
   const architecture = state.session.outline?.architecture;
-  const flows = state.session.outline?.flows ?? [];
+  const callFlows = state.session.outline?.callFlows ?? [];
   const generation = ++state.flowRenderGeneration;
   elements.architecture.innerHTML = architecture ? `<article class="flow-card architecture-card">
     <header><div><span class="architecture-label">Component map</span><h2>${escapeHtml(architecture.title)}</h2></div></header>
@@ -970,11 +1002,26 @@ function renderFlows() {
     <details class="flow-impact architecture-impact"><summary class="blast">affects ${architecture.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${architecture.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details>
     <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(architecture.mermaid)}</pre></details>
   </article>` : "";
+  elements["regenerate-call-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
+  elements["call-flows-empty"].classList.toggle("hidden", callFlows.length > 0);
+  elements["call-flows-empty"].textContent = state.session.outline ? "No changed call graph was identified for this comparison." : "Start the tour to trace changed calls from their entrypoints.";
+  elements["call-flows"].innerHTML = callFlows.map((flow) => {
+    const provenance = flowProvenanceCopy(flow.provenance);
+    const mode = state.callFlowModes.get(flow.id) ?? "changes";
+    const counts = flow.edges.reduce((result, edge) => ({ ...result, [edge.change]: result[edge.change] + 1 }), { added: 0, removed: 0, unchanged: 0 });
+    return `<article class="flow-card call-flow-card" data-call-flow-id="${escapeHtml(flow.id)}"><header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><button class="text-button" data-call-flow-regenerate type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></header><p>${escapeHtml(flow.summary)}</p><div class="call-flow-summary"><span class="plus">+${counts.added} calls</span><span class="minus">−${counts.removed} calls</span><details class="flow-impact"><summary>affects ${flow.affectedFiles.length}</summary><div class="flow-impact-list">${flow.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details></div><div class="call-flow-modes" role="group" aria-label="Call-flow version">${["changes", "before", "after"].map((candidate) => `<button type="button" data-call-flow-mode="${candidate}" class="${mode === candidate ? "active" : ""}">${candidate[0].toUpperCase()}${candidate.slice(1)}</button>`).join("")}</div><div class="call-tree">${renderCallTree(flow, mode)}</div></article>`;
+  }).join("");
+  void renderFlowDiagrams(architecture, [], generation);
+}
+
+function renderSequenceDiagrams() {
+  const flows = state.session.outline?.flows ?? [];
+  const generation = ++state.flowRenderGeneration;
   elements["regenerate-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["flows-empty"].classList.toggle("hidden", flows.length > 0);
   elements["flows-empty"].textContent = state.session.outline
     ? "No goal-critical, high-blast runtime flow was identified for this change."
-    : "Start the tour to generate grounded main-flow diagrams.";
+    : "Start the tour to generate grounded sequence diagrams.";
   elements.flows.innerHTML = flows.map((flow, index) => {
     const provenance = flowProvenanceCopy(flow.provenance);
     const affectedFiles = flow.affectedFiles ?? [];
@@ -990,7 +1037,7 @@ function renderFlows() {
       <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
     </article>`;
   }).join("");
-  void renderFlowDiagrams(architecture, flows, generation);
+  void renderFlowDiagrams(undefined, flows, generation);
 }
 
 async function renderFlowDiagrams(architecture, flows, generation) {
@@ -1063,11 +1110,11 @@ function renderActivities() {
 }
 
 function availableTabs() {
-  return ["diff", "flows", "findings", "activity", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "call-flows", "sequence", "findings", "activity", ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "flows", "findings", "activity", "pull-request"]) {
+  for (const tabName of ["diff", "call-flows", "sequence", "findings", "activity", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -1287,7 +1334,8 @@ function renderSession() {
   }
   renderComments();
   renderFindings();
-  renderFlows();
+  if (state.activeTab === "call-flows") renderCallFlows();
+  if (state.activeTab === "sequence") renderSequenceDiagrams();
   renderActivities();
   renderPullRequest();
   renderReviewOverview();
@@ -1326,6 +1374,7 @@ async function startTour() {
         modelId: elements["model-select"].value,
         reasoningEffort: elements["reasoning-select"].value || undefined,
         includeArchitecture: elements["include-architecture"].checked,
+        includeCallFlows: elements["include-call-flows"].checked,
         includeFlows: elements["include-flows"].checked,
         includeFindings: elements["include-findings"].checked,
       }),
@@ -1381,6 +1430,20 @@ async function toggleTourMode() {
   }
 }
 
+async function showAnalysisFile(path, line, side) {
+  const outsidePhase = state.tourMode && !filteredChangedFiles().some((file) => file.path === path);
+  if (outsidePhase) {
+    state.tourMode = false;
+    state.fileRequestId += 1;
+    state.phaseDiffLoadKey = null;
+    state.phaseDiffLoadPromise = null;
+    state.visibleFile = null;
+    renderSession();
+  }
+  await showChangedFile(path, line, side);
+  if (outsidePhase) toast("Tour paused so this evidence can be shown. Resume the tour when you are ready.", { duration: 7_000 });
+}
+
 function openFlowEditor(flow) {
   if (!reviewIsOpen()) return;
   elements["flow-id"].value = flow.id;
@@ -1428,6 +1491,21 @@ async function regenerateFlows(id) {
     state.session = await api("/api/flows/regenerate", { method: "POST", body: JSON.stringify(id ? { id } : {}) });
     renderSession();
     toast(id ? "Flow regenerated" : "Flows regenerated");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+async function regenerateCallFlows(id) {
+  if (!reviewIsOpen() || state.busy || !state.session.outline) return;
+  setBusy(true, id ? "Regenerating call flow…" : "Regenerating call flows…");
+  try {
+    state.session = await api("/api/call-flows/regenerate", { method: "POST", body: JSON.stringify(id ? { id } : {}) });
+    renderSession();
+    toast(id ? "Call flow regenerated" : "Call flows regenerated");
   } catch (error) {
     toast(error.message);
   } finally {
@@ -1646,6 +1724,7 @@ elements["export-menu"].addEventListener("click", (event) => {
 elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode);
 elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);
 elements["regenerate-flows"].addEventListener("click", () => regenerateFlows());
+elements["regenerate-call-flows"].addEventListener("click", () => regenerateCallFlows());
 elements["flow-form"].addEventListener("submit", saveFlow);
 elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
 elements["theme-select"].value = window.reviewTourTheme.preference();
@@ -1722,7 +1801,8 @@ window.addEventListener("resize", () => {
   setFilePanelWidth(state.filePanelWidth);
 });
 window.addEventListener("review-tour-theme-change", () => {
-  if (state.session && state.activeTab === "flows") renderFlows();
+  if (state.session && state.activeTab === "call-flows") renderCallFlows();
+  if (state.session && state.activeTab === "sequence") renderSequenceDiagrams();
 });
 elements["sessions-button"].addEventListener("click", () => { elements["settings-menu"].open = false; elements["sessions-dialog"].showModal(); void loadSessions(); });
 elements["close-sessions"].addEventListener("click", () => elements["sessions-dialog"].close());
@@ -1783,7 +1863,8 @@ elements["diff-layout"].addEventListener("change", () => {
   renderFilteredDiff();
 });
 elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });
-elements["flows-tab"].addEventListener("click", () => { state.activeTab = "flows"; renderFlows(); renderActiveTab(); });
+elements["call-flows-tab"].addEventListener("click", () => { state.activeTab = "call-flows"; renderCallFlows(); renderActiveTab(); });
+elements["sequence-tab"].addEventListener("click", () => { state.activeTab = "sequence"; renderSequenceDiagrams(); renderActiveTab(); });
 elements["findings-tab"].addEventListener("click", () => { state.activeTab = "findings"; renderFindings(); renderActiveTab(); });
 elements["findings-back"].addEventListener("click", returnToFindingCode);
 elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
@@ -1791,7 +1872,7 @@ elements["pull-request-tab"].addEventListener("click", () => { state.activeTab =
 elements.flows.addEventListener("click", (event) => {
   const fileButton = event.target.closest("[data-flow-file]");
   if (fileButton) {
-    void showChangedFile(fileButton.dataset.flowFile);
+    void showAnalysisFile(fileButton.dataset.flowFile);
     return;
   }
   const button = event.target.closest("[data-flow-action]");
@@ -1802,9 +1883,33 @@ elements.flows.addEventListener("click", (event) => {
   if (button.dataset.flowAction === "edit") openFlowEditor(flow);
   if (button.dataset.flowAction === "regenerate") void regenerateFlows(flow.id);
 });
+elements["call-flows"].addEventListener("click", (event) => {
+  const location = event.target.closest("[data-call-path]");
+  if (location) {
+    state.activeTab = "diff";
+    renderActiveTab();
+    void showAnalysisFile(location.dataset.callPath, Number(location.dataset.callLine), location.dataset.callSide);
+    return;
+  }
+  const affected = event.target.closest("[data-flow-file]");
+  if (affected) {
+    state.activeTab = "diff";
+    renderActiveTab();
+    void showAnalysisFile(affected.dataset.flowFile);
+    return;
+  }
+  const card = event.target.closest("[data-call-flow-id]");
+  const mode = event.target.closest("[data-call-flow-mode]");
+  if (card && mode) {
+    state.callFlowModes.set(card.dataset.callFlowId, mode.dataset.callFlowMode);
+    renderCallFlows();
+    return;
+  }
+  if (card && event.target.closest("[data-call-flow-regenerate]")) void regenerateCallFlows(card.dataset.callFlowId);
+});
 elements.architecture.addEventListener("click", (event) => {
   const fileButton = event.target.closest("[data-flow-file]");
-  if (fileButton) void showChangedFile(fileButton.dataset.flowFile);
+  if (fileButton) void showAnalysisFile(fileButton.dataset.flowFile);
 });
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -1814,7 +1919,8 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
   const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
     (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
   state.activeTab = tabs[nextIndex];
-  if (state.activeTab === "flows") renderFlows();
+  if (state.activeTab === "call-flows") renderCallFlows();
+  if (state.activeTab === "sequence") renderSequenceDiagrams();
   if (state.activeTab === "activity") renderActivities();
   renderActiveTab();
   elements[`${state.activeTab}-tab`].focus();

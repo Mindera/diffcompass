@@ -57,9 +57,10 @@ export function enumValue<const T extends string>(value: unknown, name: string, 
 }
 
 export function parseAgentSelection(value: JsonObject): Partial<AgentSelection> {
-  exactKeys(value, ["adapterId", "modelId", "reasoningEffort", "includeArchitecture", "includeFlows", "includeFindings"]);
+  exactKeys(value, ["adapterId", "modelId", "reasoningEffort", "includeArchitecture", "includeCallFlows", "includeFlows", "includeFindings"]);
   const efforts: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
   if (value.includeArchitecture !== undefined && typeof value.includeArchitecture !== "boolean") throw new HttpError(422, "includeArchitecture must be a boolean.");
+  if (value.includeCallFlows !== undefined && typeof value.includeCallFlows !== "boolean") throw new HttpError(422, "includeCallFlows must be a boolean.");
   if (value.includeFlows !== undefined && typeof value.includeFlows !== "boolean") throw new HttpError(422, "includeFlows must be a boolean.");
   if (value.includeFindings !== undefined && typeof value.includeFindings !== "boolean") throw new HttpError(422, "includeFindings must be a boolean.");
   return {
@@ -69,6 +70,7 @@ export function parseAgentSelection(value: JsonObject): Partial<AgentSelection> 
       ? undefined
       : enumValue(value.reasoningEffort, "reasoningEffort", efforts),
     includeArchitecture: value.includeArchitecture as boolean | undefined,
+    includeCallFlows: value.includeCallFlows as boolean | undefined,
     includeFlows: value.includeFlows as boolean | undefined,
     includeFindings: value.includeFindings as boolean | undefined,
   };

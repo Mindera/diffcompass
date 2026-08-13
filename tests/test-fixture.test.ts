@@ -24,6 +24,8 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   expect(persisted.outline?.phases.flatMap((phase) => phase.steps)).toHaveLength(4);
   expect(persisted.outline?.phases.flatMap((phase) => phase.steps).map((step) => Boolean(step.explanation))).toEqual([true, false, false, false]);
   expect(persisted.outline?.architecture?.dependencyChanges).toHaveLength(2);
+  expect(persisted.outline?.callFlows).toHaveLength(1);
+  expect(persisted.outline?.callFlows[0]?.edges).toHaveLength(2);
   expect(persisted.outline?.flows).toHaveLength(1);
   expect(persisted.outline?.findings.map((finding) => finding.priority)).toEqual(["P1", "P3"]);
   expect(persisted.comments).toHaveLength(1);

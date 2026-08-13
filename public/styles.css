@@ -525,6 +525,32 @@ button { color: inherit; }
 .dependency-changes { margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; color: var(--text-soft); font-size: 11px; line-height: 1.5; }
 .dependency-changes ul { margin: 6px 0 0; padding-left: 20px; }
 .architecture-impact { position: absolute; top: 16px; right: 16px; }
+.call-flows { max-width: 1002px; margin: 18px auto 48px; padding: 0 24px; }
+.call-flow-card { overflow: hidden; }
+.call-flow-summary { display: flex; align-items: center; gap: 12px; margin: 12px 0; color: var(--muted); font-size: 11px; }
+.call-flow-summary .flow-impact { margin-left: auto; }
+.call-flow-modes { display: inline-flex; gap: 2px; margin: 4px 0 14px; padding: 3px; border: 1px solid var(--border-soft); border-radius: 7px; background: var(--surface-code); }
+.call-flow-modes button { border: 0; border-radius: 5px; padding: 5px 10px; color: var(--muted); background: transparent; font: 600 10px/1 system-ui, sans-serif; cursor: pointer; text-transform: capitalize; }
+.call-flow-modes button.active { color: var(--text); background: var(--surface-elevated); box-shadow: 0 1px 4px var(--shadow); }
+.call-tree { overflow: auto; padding: 14px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-code); }
+.call-tree-empty { margin: 0; padding: 18px; color: var(--muted); text-align: center; }
+.call-tree-limit { color: var(--muted); font-style: italic; }
+.call-tree ul { margin: 4px 0 0 17px; padding: 0 0 0 17px; border-left: 1px solid var(--border-soft); list-style: none; }
+.call-edge { position: relative; margin: 4px 0; }
+.call-edge::before { content: ""; position: absolute; top: 12px; left: -17px; width: 13px; border-top: 1px solid var(--border-soft); }
+.call-edge-row, .call-node-row { display: flex; align-items: center; gap: 7px; min-height: 25px; width: max-content; max-width: 100%; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.call-node-row { padding: 2px 7px; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--surface); }
+.call-node.entrypoint > .call-node-row { border-color: var(--accent-border); box-shadow: inset 3px 0 var(--accent); }
+.call-node.added > .call-node-row, .call-edge.added > .call-edge-row { color: var(--addition-line); }
+.call-node.removed > .call-node-row, .call-edge.removed > .call-edge-row { color: var(--deletion-line); }
+.call-node.modified > .call-node-row { border-color: var(--warning); }
+.call-edge.unchanged > .call-edge-row { opacity: .56; }
+.call-edge-mark { width: 12px; font-weight: 800; text-align: center; }
+.call-arrow { color: var(--muted); }
+.call-kind, .call-cycle { border: 1px solid var(--border-soft); border-radius: 999px; padding: 1px 5px; color: var(--muted); font: 700 8px/1.4 system-ui, sans-serif; text-transform: uppercase; }
+.call-cycle { color: var(--warning); }
+.call-node-link, .call-edge-link { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.call-node-link:hover, .call-edge-link:hover { color: var(--accent-strong); text-decoration: underline; }
 .flow-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .flow-actions { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .flow-card h2 { display: inline; margin: 0 0 0 8px; font-size: 18px; }

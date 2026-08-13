@@ -230,14 +230,17 @@ test("tour startup defaults diagrams and findings on and sends both choices", as
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).toContain('<input id="include-architecture" type="checkbox" checked /> Component diagram');
+  expect(html).toContain('<input id="include-call-flows" type="checkbox" checked /> Call flows');
   expect(html).toContain('<input id="include-flows" type="checkbox" checked /> Sequence diagrams');
   expect(html).toContain('<input id="include-findings" type="checkbox" checked /> Findings');
   expect(app).toContain('includeArchitecture: elements["include-architecture"].checked');
+  expect(app).toContain('includeCallFlows: elements["include-call-flows"].checked');
   expect(app).toContain('includeFlows: elements["include-flows"].checked');
   expect(app).toContain('includeFindings: elements["include-findings"].checked');
   expect(app).toContain('state.session.findingGenerationEnabled !== false');
   expect(app).toContain('if (!findingGenerationEnabled) elements["include-findings"].checked = false');
   expect(app).toContain('elements["include-architecture"].disabled = busy');
+  expect(app).toContain('elements["include-call-flows"].disabled = busy');
   expect(app).toContain('elements["include-flows"].disabled = busy');
   expect(app).toContain('elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false');
   expect(styles).toContain(".tour-includes {");
@@ -251,12 +254,14 @@ test("flow provenance uses clear reviewer-facing wording", async () => {
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain("The component map shows structural change; sequence diagrams show runtime behavior.");
+  expect(html).toContain("See how changed entrypoints call through the code before and after this change.");
   expect(app).toContain('label: "Partly verified"');
   expect(app).toContain("Some links were traced; the remaining links are informed inferences.");
   expect(app).toContain('data-flow-file="${escapeHtml(path)}"');
   expect(app).toContain("Exact files were not captured for this saved tour. Regenerate this diagram to add them.");
   expect(app).toContain("The diagram source is invalid or unsupported.");
+  expect(app).toContain("This entrypoint did not exist before the change.");
+  expect(app).toContain('toast("Tour paused so this evidence can be shown. Resume the tour when you are ready."');
   expect(styles).toContain('.compact-finding > summary::before { content: "›";');
 });
 

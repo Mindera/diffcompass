@@ -26,8 +26,8 @@ function validAnchor(value: unknown): boolean {
 function validOutline(value: unknown): boolean {
   if (!record(value) || !nonEmptyString(value.title, 8_000) || !nonEmptyString(value.summary, 50_000)) return false;
   if (value.planningNotes !== undefined && (!Array.isArray(value.planningNotes) || value.planningNotes.length > 20 || !value.planningNotes.every((note) => nonEmptyString(note, 2_000)))) return false;
-  if (!Array.isArray(value.phases) || !Array.isArray(value.flows) || !Array.isArray(value.findings)) return false;
-  if (value.phases.length === 0 || value.phases.length > 50 || value.flows.length > 50 || value.findings.length > 2_000) return false;
+  if (!Array.isArray(value.phases) || !Array.isArray(value.callFlows) || !Array.isArray(value.flows) || !Array.isArray(value.findings)) return false;
+  if (value.phases.length === 0 || value.phases.length > 50 || value.callFlows.length > 8 || value.flows.length > 50 || value.findings.length > 2_000) return false;
   const phases = value.phases;
   const phaseIds = new Set<string>();
   const stepIds = new Set<string>();
@@ -59,6 +59,26 @@ function validOutline(value: unknown): boolean {
   if (value.architecture !== undefined) {
     try { validateReviewArchitecture(value.architecture); } catch { return false; }
   }
+  const callFlowIds = new Set<string>();
+  const validCallFlows = value.callFlows.every((flow) => {
+    if (!record(flow) || !nonEmptyString(flow.id, 128) || callFlowIds.has(flow.id) ||
+      !nonEmptyString(flow.title, 8_000) || !nonEmptyString(flow.summary, 50_000) || !nonEmptyString(flow.entrypointNodeId, 128) ||
+      !["verified", "partial", "unverified"].includes(String(flow.provenance)) || !Array.isArray(flow.nodes) || flow.nodes.length < 2 || flow.nodes.length > 80 ||
+      !Array.isArray(flow.edges) || flow.edges.length < 1 || flow.edges.length > 160 || !Array.isArray(flow.affectedFiles) || flow.affectedFiles.length > 100) return false;
+    callFlowIds.add(flow.id);
+    const nodeIds = new Set<string>();
+    if (!flow.nodes.every((node) => record(node) && nonEmptyString(node.id, 128) && !nodeIds.has(node.id) && Boolean(nodeIds.add(node.id)) &&
+      nonEmptyString(node.label, 1_000) && ["function", "method", "constructor", "component", "branch", "external"].includes(String(node.kind)) &&
+      ["added", "removed", "unchanged", "modified"].includes(String(node.change)) &&
+      (node.oldLocation === undefined || validCallLocation(node.oldLocation, "old")) && (node.newLocation === undefined || validCallLocation(node.newLocation, "new")))) return false;
+    const edgeIds = new Set<string>();
+    return nodeIds.has(flow.entrypointNodeId) && flow.edges.every((edge) => record(edge) && nonEmptyString(edge.id, 128) && !edgeIds.has(edge.id) && Boolean(edgeIds.add(edge.id)) &&
+      nonEmptyString(edge.from, 128) && nodeIds.has(edge.from) && nonEmptyString(edge.to, 128) && nodeIds.has(edge.to) &&
+      (edge.label === undefined || nonEmptyString(edge.label, 1_000)) && ["added", "removed", "unchanged"].includes(String(edge.change)) &&
+      (edge.oldCallSite === undefined || validCallLocation(edge.oldCallSite, "old")) && (edge.newCallSite === undefined || validCallLocation(edge.newCallSite, "new"))) &&
+      flow.affectedFiles.every((path) => nonEmptyString(path, 4_096)) && new Set(flow.affectedFiles).size === flow.affectedFiles.length;
+  });
+  if (!validCallFlows) return false;
   const flowIds = new Set<string>();
   const validFlows = value.flows.every((flow) => record(flow) && nonEmptyString(flow.id, 128) && !flowIds.has(flow.id) && Boolean(flowIds.add(flow.id)) && nonEmptyString(flow.title, 8_000) &&
       nonEmptyString(flow.summary, 50_000) && nonEmptyString(flow.mermaid, 12_000) &&
@@ -88,6 +108,10 @@ function validOutline(value: unknown): boolean {
       ["open", "dismissed", "converted-to-feedback"].includes(String(finding.status)) &&
       (finding.commentId === undefined || nonEmptyString(finding.commentId, 128)) &&
       (finding.outdated === undefined || typeof finding.outdated === "boolean"));
+}
+
+function validCallLocation(value: unknown, side: "old" | "new"): boolean {
+  return record(value) && nonEmptyString(value.path, 4_096) && value.side === side && Number.isInteger(value.line) && Number(value.line) > 0;
 }
 
 function validComment(value: unknown): boolean {
@@ -165,6 +189,7 @@ function validSelection(value: unknown): boolean {
   return record(value) && nonEmptyString(value.adapterId, 128) && nonEmptyString(value.modelId, 256) &&
     (value.reasoningEffort === undefined || ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(String(value.reasoningEffort))) &&
     (value.includeArchitecture === undefined || typeof value.includeArchitecture === "boolean") &&
+    (value.includeCallFlows === undefined || typeof value.includeCallFlows === "boolean") &&
     (value.includeFlows === undefined || typeof value.includeFlows === "boolean") &&
     (value.includeFindings === undefined || typeof value.includeFindings === "boolean");
 }
@@ -234,6 +259,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     value.schemaVersion = 2;
   }
   if (value.schemaVersion === 2 && record(value.outline)) {
+    value.outline.callFlows ??= [];
     value.outline.flows ??= [];
     value.outline.findings ??= [];
     if (Array.isArray(value.outline.flows)) {
