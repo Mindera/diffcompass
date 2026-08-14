@@ -72,6 +72,8 @@ export interface TourOutline {
   title: string;
   summary: string;
   planningNotes?: string[];
+  behaviorArchitecture?: ReviewArchitecture;
+  behaviorArchitectureStatus?: "implemented" | "proposed";
   architecture?: ReviewArchitecture;
   phases: TourPhase[];
   callFlows: CallFlow[];

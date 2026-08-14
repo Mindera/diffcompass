@@ -362,12 +362,16 @@ test("skips optional findings and diagrams at generation time", async () => {
   const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
   const [event] = await bridge.eventsAfter(0, 1_000);
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
-  expect(event.prompt).toContain("Component architecture: omit");
+  expect(event.prompt).toContain("Architecture: omit");
+  expect(event.prompt).toContain('"behaviorArchitectureStatus":"implemented|proposed"');
+  expect(event.prompt).toContain("implementation journey");
   expect(event.prompt).toContain("Call-flow diffs: omit");
   expect(event.prompt).toContain("Sequence diagrams: omit");
   expect(event.prompt).toContain("Findings: omit");
   await bridge.respond(event.id, JSON.stringify({
     title: "Review", summary: "Summary",
+    behaviorArchitectureStatus: "implemented",
+    behaviorArchitecture: { title: "Ignored behavior", summary: "Ignored", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },
     architecture: { title: "Ignored", summary: "Ignored", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },
     callFlows: [{ id: "ignored-call", title: "Ignored", summary: "Ignored", entrypointNodeId: "entry", provenance: "verified", nodes: [{ id: "entry", label: "entry", kind: "function", change: "modified", newLocation: { path: "app.ts", side: "new", line: 1 } }, { id: "child", label: "child", kind: "function", change: "added", newLocation: { path: "app.ts", side: "new", line: 1 } }], edges: [{ id: "edge", from: "entry", to: "child", change: "added", newCallSite: { path: "app.ts", side: "new", line: 1 } }], affectedFiles: ["app.ts"] }],
     phases: [{ id: "behavior", title: "Behavior", summary: "Summary", fileChanges: [{ path: "app.ts", summary: "Changes behavior." }], steps: [{ id: "step", title: "Step", objective: "Inspect.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
@@ -376,6 +380,8 @@ test("skips optional findings and diagrams at generation time", async () => {
   }));
   await bridge.ack(event.id);
   const outline = await pending;
+  expect(outline.behaviorArchitecture).toBeUndefined();
+  expect(outline.behaviorArchitectureStatus).toBeUndefined();
   expect(outline.architecture).toBeUndefined();
   expect(outline.callFlows).toEqual([]);
   expect(outline.flows).toEqual([]);

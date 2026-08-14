@@ -238,6 +238,12 @@ button { color: inherit; }
 .file-controls { display: grid; gap: 7px; padding: 9px 10px; border-bottom: 1px solid var(--border-soft); }
 .search-control input, .filter-row select, .tree-mode-control select, .diff-toolbar select { width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; color: var(--text); background: var(--surface-control); font-size: 11px; }
 .filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.file-filter-toggle { display: flex; align-items: center; justify-content: flex-start; gap: 7px; width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; color: var(--muted); background: var(--surface-control); font-size: 11px; cursor: pointer; }
+.file-filter-toggle:hover:not(:disabled) { color: var(--text); border-color: var(--accent-border); }
+.file-filter-toggle.active { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
+.file-filter-toggle:disabled { cursor: not-allowed; opacity: .55; }
+.file-filter-check { display: grid; place-items: center; width: 14px; height: 14px; border: 1px solid var(--border-hover); border-radius: 4px; color: transparent; font-size: 10px; line-height: 1; }
+.file-filter-toggle.active .file-filter-check { color: var(--on-accent); border-color: var(--accent-strong); background: var(--accent-strong); }
 .tree-mode-control { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
 .file-tree { flex: 1; min-height: 0; padding: 8px; overflow: auto; }
 .tree-directory { margin: 4px 0; }
@@ -519,9 +525,24 @@ button { color: inherit; }
 .flows-toolbar strong { font-size: 13px; }
 .flows-toolbar span { margin-top: 2px; font-size: 10px; line-height: 1.35; }
 .flow-card { margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--surface-card); }
-.architecture { max-width: 1002px; margin: 18px auto 0; padding: 0 24px; }
+.architecture { margin-top: 11px; border-top: 1px solid var(--border-soft); padding-top: 9px; }
+.architecture > summary { color: var(--text-soft); cursor: pointer; font-size: 11px; font-weight: 700; }
+.architecture-content { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; margin-top: 10px; }
+.architecture-content .flow-card { min-width: 0; margin-bottom: 0; }
 .architecture-card { border-color: var(--accent-border); }
 .architecture-label { display: block; margin-bottom: 5px; color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.architecture-diagram-shell { margin-top: 16px; }
+.diagram-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
+.diagram-control-label { margin: 0 3px 0 7px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.diagram-control-label:first-child { margin-left: 0; }
+.diagram-controls button { min-width: 27px; height: 27px; border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; color: var(--text-soft); background: var(--surface-control); font: 700 12px/1 system-ui, sans-serif; cursor: pointer; }
+.diagram-controls button:hover, .diagram-controls button:focus-visible { color: var(--text); border-color: var(--accent-border); background: var(--surface-hover); }
+.diagram-controls .diagram-zoom-label { min-width: 46px; font-size: 9px; }
+.architecture-diagram.sequence-diagram { margin-top: 7px; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
+.architecture-diagram.dragging { cursor: grabbing; }
+.architecture-diagram svg { transform-origin: center center; transition: transform .12s ease; will-change: transform; }
+.architecture-diagram.dragging svg { transition: none; }
+.diagram-help { margin: 6px 0 0; color: var(--muted); font-size: 9px; text-align: right; }
 .dependency-changes { margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; color: var(--text-soft); font-size: 11px; line-height: 1.5; }
 .dependency-changes ul { margin: 6px 0 0; padding-left: 20px; }
 .architecture-impact { margin-top: 12px; }

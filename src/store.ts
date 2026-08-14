@@ -59,6 +59,10 @@ function validOutline(value: unknown): boolean {
   if (value.architecture !== undefined) {
     try { validateReviewArchitecture(value.architecture); } catch { return false; }
   }
+  if (value.behaviorArchitecture !== undefined) {
+    if (!["implemented", "proposed"].includes(String(value.behaviorArchitectureStatus))) return false;
+    try { validateReviewArchitecture(value.behaviorArchitecture); } catch { return false; }
+  } else if (value.behaviorArchitectureStatus !== undefined) return false;
   const callFlowIds = new Set<string>();
   const validCallFlows = value.callFlows.every((flow) => {
     if (!record(flow) || !nonEmptyString(flow.id, 128) || callFlowIds.has(flow.id) ||

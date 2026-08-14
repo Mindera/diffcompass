@@ -18,6 +18,7 @@ const child = Bun.spawn([
   join(import.meta.dir, "..", "src", "cli.ts"),
   "--resume",
   fixture.stateFile,
+  "--start-tour",
   ...forwarded,
 ], { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
 process.exit(await child.exited);

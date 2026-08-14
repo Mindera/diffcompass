@@ -86,6 +86,10 @@
               <option value="">All files</option><option value="unreviewed">Unreviewed</option><option value="reviewed">Reviewed</option>
             </select></label>
           </div>
+          <button id="test-files-filter" class="file-filter-toggle" type="button" aria-pressed="false">
+            <span class="file-filter-check" aria-hidden="true">✓</span>
+            Test files only
+          </button>
         </div>
         <div id="file-tree" class="file-tree"></div>
         <div id="file-resizer" class="file-resizer" role="separator" aria-label="Resize file tree" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="480" aria-valuenow="240" tabindex="0"></div>
@@ -104,6 +108,10 @@
               <summary>Pull request description</summary>
               <div id="pull-request-description-body" class="pull-request-description-body"></div>
             </details>
+            <details id="architecture" class="architecture hidden">
+              <summary>Architecture</summary>
+              <div id="architecture-content" class="architecture-content"></div>
+            </details>
           </section>
           <div class="diff-toolbar"><span id="filter-summary" class="muted"></span></div>
           <div id="large-diff-notice" class="view-notice hidden"></div>
@@ -111,8 +119,7 @@
           <div id="diff"></div>
         </div>
         <div id="call-flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="call-flows-tab">
-          <div class="flows-toolbar"><div><strong>Components and call changes</strong><span class="muted">See how changed entrypoints call through the code before and after this change.</span></div><button id="regenerate-call-flows" class="button secondary" type="button">Regenerate call flows</button></div>
-          <section id="architecture" class="architecture"></section>
+          <div class="flows-toolbar"><div><strong>Call changes</strong><span class="muted">See how changed entrypoints call through the code before and after this change.</span></div><button id="regenerate-call-flows" class="button secondary" type="button">Regenerate call flows</button></div>
           <div id="call-flows-empty" class="empty">Start the tour to trace changed calls from their entrypoints.</div>
           <div id="call-flows" class="call-flows"></div>
         </div>
@@ -155,7 +162,7 @@
             <label>Reasoning<select id="reasoning-select"></select></label>
             <fieldset class="tour-includes">
               <legend>Include</legend>
-              <label><input id="include-architecture" type="checkbox" checked /> Component diagram</label>
+              <label><input id="include-architecture" type="checkbox" checked /> Architecture</label>
               <label><input id="include-call-flows" type="checkbox" checked /> Call flows</label>
               <label><input id="include-flows" type="checkbox" checked /> Sequence diagrams</label>
               <label><input id="include-findings" type="checkbox" checked /> Findings</label>

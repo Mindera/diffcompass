@@ -22,6 +22,8 @@ const state = {
   phaseDiffLoadPromise: null,
   highlightRequestId: 0,
   flowRenderGeneration: 0,
+  architectureDiagramViews: new Map(),
+  architectureDiagramDrag: null,
   callFlowModes: new Map(),
   proposalPreview: false,
   searchQuery: "",
@@ -30,6 +32,7 @@ const state = {
   searchTimer: null,
   statusFilter: "",
   reviewFilter: "",
+  testFilesOnly: false,
   preferenceRepository: null,
   treeMode: null,
   diffLayout: null,
@@ -50,7 +53,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "tree-mode", "diff-layout", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
@@ -387,6 +390,17 @@ function renderChangedPathList(files) {
     .join("");
 }
 
+function isTestFile(path) {
+  const normalized = String(path).replaceAll("\\", "/");
+  const parts = normalized.split("/");
+  const filename = parts.at(-1) ?? "";
+  const testDirectory = parts.slice(0, -1).some((part) => /^(?:__tests__|tests?|specs?|testfixtures|commontest|androidtest|jvmtest|iostest|jstest|wasmtest|wasmjstest|desktoptest)$/i.test(part));
+  const testFilename = /(?:^|[._-])(?:test|tests|spec|specs)(?:[._-]|$)/i.test(filename)
+    || /(?:Test|Tests|Spec)\.[^.]+$/.test(filename)
+    || /^Test[A-Z0-9_].*\.[^.]+$/.test(filename);
+  return testDirectory || testFilename;
+}
+
 function renderTreeNode(node, depth = 0, expandAll = false) {
   return Object.entries(node)
     .sort(([a, av], [b, bv]) => Number(Boolean(av.__file)) - Number(Boolean(bv.__file)) || a.localeCompare(b))
@@ -409,6 +423,7 @@ function filteredChangedFiles() {
   return state.session.comparison.files.filter((file) =>
     (!state.statusFilter || file.status === state.statusFilter) &&
     (!state.reviewFilter || (state.reviewFilter === "reviewed") === reviewed.has(file.path)) &&
+    (!state.testFilesOnly || isTestFile(file.path)) &&
     (!searchMatches || searchMatches.has(file.path))
   );
 }
@@ -416,7 +431,7 @@ function filteredChangedFiles() {
 function renderFileTree() {
   const comparison = state.session.comparison;
   const changedFiles = filteredChangedFiles();
-  const filtering = !state.tourMode && Boolean(state.searchQuery || state.statusFilter || state.reviewFilter);
+  const filtering = !state.tourMode && Boolean(state.searchQuery || state.statusFilter || state.reviewFilter || state.testFilesOnly);
   const changedPathsOnly = state.tourMode || state.treeMode === "changes" || filtering;
   const repositoryFiles = changedPathsOnly
     ? changedFiles.map((file) => file.path)
@@ -572,7 +587,8 @@ function visibleDiffFiles() {
   const files = filteredChangedFiles();
   if (comparison.diffMode !== "file") return files.map((file) => state.diffCache.get(file.path) ?? file);
   if (state.tourMode) return files.map((file) => state.diffCache.get(file.path)).filter(Boolean);
-  const path = currentStep()?.anchor.path ?? state.visibleFile ?? files[0]?.path;
+  const candidates = [state.visibleFile, currentStep()?.anchor.path];
+  const path = candidates.find((candidate) => files.some((file) => file.path === candidate)) ?? files[0]?.path;
   state.visibleFile = path;
   const cached = state.diffCache.get(path);
   return cached ? [cached] : [];
@@ -989,19 +1005,81 @@ function renderCallTree(flow, mode) {
   return '<p class="call-tree-empty">No calls are available in this view.</p>';
 }
 
-function renderCallFlows() {
-  const architecture = state.session.outline?.architecture;
-  const callFlows = state.session.outline?.callFlows ?? [];
-  const generation = ++state.flowRenderGeneration;
-  elements.architecture.innerHTML = architecture ? `<article class="flow-card architecture-card">
-    <header><div><span class="architecture-label">Component map</span><h2>${escapeHtml(architecture.title)}</h2></div></header>
+const ARCHITECTURE_ZOOM_MIN = 0.5;
+const ARCHITECTURE_ZOOM_MAX = 3;
+const ARCHITECTURE_ZOOM_STEP = 0.25;
+const ARCHITECTURE_PAN_STEP = 40;
+
+function architectureDiagramView(key) {
+  if (!state.architectureDiagramViews.has(key)) state.architectureDiagramViews.set(key, { scale: 1, x: 0, y: 0 });
+  return state.architectureDiagramViews.get(key);
+}
+
+function applyArchitectureDiagramView(key) {
+  const shell = elements.architecture.querySelector(`[data-architecture-key="${CSS.escape(key)}"]`);
+  const svg = shell?.querySelector(".architecture-diagram svg");
+  const label = shell?.querySelector("[data-diagram-zoom-label]");
+  const view = architectureDiagramView(key);
+  if (svg) svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  if (label) label.textContent = `${Math.round(view.scale * 100)}%`;
+}
+
+function changeArchitectureDiagramView(key, action) {
+  const view = architectureDiagramView(key);
+  if (action === "zoom-in") view.scale = Math.min(ARCHITECTURE_ZOOM_MAX, view.scale + ARCHITECTURE_ZOOM_STEP);
+  if (action === "zoom-out") view.scale = Math.max(ARCHITECTURE_ZOOM_MIN, view.scale - ARCHITECTURE_ZOOM_STEP);
+  if (action === "move-left") view.x -= ARCHITECTURE_PAN_STEP;
+  if (action === "move-right") view.x += ARCHITECTURE_PAN_STEP;
+  if (action === "move-up") view.y -= ARCHITECTURE_PAN_STEP;
+  if (action === "move-down") view.y += ARCHITECTURE_PAN_STEP;
+  if (action === "reset") Object.assign(view, { scale: 1, x: 0, y: 0 });
+  applyArchitectureDiagramView(key);
+}
+
+function architectureCard(architecture, label, key) {
+  return `<article class="flow-card architecture-card">
+    <header><div><span class="architecture-label">${escapeHtml(label)}</span><h2>${escapeHtml(architecture.title)}</h2></div></header>
     <p>${escapeHtml(architecture.summary)}</p>
-    <div class="sequence-diagram mermaid-render" data-architecture-diagram role="img" aria-label="Component diagram: ${escapeHtml(architecture.title)}"><span class="loading">Rendering diagram…</span></div>
-    <div class="flow-warning hidden" data-architecture-error>The component diagram source is invalid or unsupported.</div>
-    <div class="dependency-changes"><strong>Dependency changes</strong><ul>${architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul></div>
+    <div class="architecture-diagram-shell" data-architecture-key="${key}">
+      <div class="diagram-controls" role="group" aria-label="${escapeHtml(`${label} diagram controls`)}">
+        <span class="diagram-control-label">Move</span>
+        <button type="button" data-diagram-action="move-left" aria-label="Move diagram left" title="Move left">←</button>
+        <button type="button" data-diagram-action="move-up" aria-label="Move diagram up" title="Move up">↑</button>
+        <button type="button" data-diagram-action="move-down" aria-label="Move diagram down" title="Move down">↓</button>
+        <button type="button" data-diagram-action="move-right" aria-label="Move diagram right" title="Move right">→</button>
+        <span class="diagram-control-label">Zoom</span>
+        <button type="button" data-diagram-action="zoom-out" aria-label="Zoom diagram out" title="Zoom out">−</button>
+        <button class="diagram-zoom-label" type="button" data-diagram-action="reset" data-diagram-zoom-label aria-label="Reset diagram view" title="Reset view">100%</button>
+        <button type="button" data-diagram-action="zoom-in" aria-label="Zoom diagram in" title="Zoom in">+</button>
+      </div>
+      <div class="sequence-diagram architecture-diagram mermaid-render" data-architecture-diagram="${key}" role="img" tabindex="0" aria-label="${escapeHtml(`${label}: ${architecture.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`)}"><span class="loading">Rendering diagram…</span></div>
+      <p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
+    </div>
+    <div class="flow-warning hidden" data-architecture-error="${key}">The architecture diagram source is invalid or unsupported.</div>
+    <div class="dependency-changes"><strong>Relationship changes</strong><ul>${architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul></div>
     <details class="flow-impact architecture-impact"><summary class="blast">affects ${architecture.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${architecture.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details>
     <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(architecture.mermaid)}</pre></details>
-  </article>` : "";
+  </article>`;
+}
+
+function architectureEntries() {
+  const outline = state.session.outline;
+  return [
+    outline?.behaviorArchitecture ? { key: "behavior", label: `${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`, value: outline.behaviorArchitecture } : null,
+    outline?.architecture ? { key: "journey", label: "Implementation journey", value: outline.architecture } : null,
+  ].filter(Boolean);
+}
+
+function renderArchitecture() {
+  const architectures = architectureEntries();
+  elements.architecture.classList.toggle("hidden", architectures.length === 0);
+  elements["architecture-content"].innerHTML = architectures.map(({ key, label, value }) => architectureCard(value, label, key)).join("");
+  const generation = ++state.flowRenderGeneration;
+  void renderFlowDiagrams(architectures, [], generation);
+}
+
+function renderCallFlows() {
+  const callFlows = state.session.outline?.callFlows ?? [];
   elements["regenerate-call-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["call-flows-empty"].classList.toggle("hidden", callFlows.length > 0);
   elements["call-flows-empty"].textContent = state.session.outline ? "No changed call graph was identified for this comparison." : "Start the tour to trace changed calls from their entrypoints.";
@@ -1011,7 +1089,6 @@ function renderCallFlows() {
     const counts = flow.edges.reduce((result, edge) => ({ ...result, [edge.change]: result[edge.change] + 1 }), { added: 0, removed: 0, unchanged: 0 });
     return `<article class="flow-card call-flow-card" data-call-flow-id="${escapeHtml(flow.id)}"><header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><button class="text-button" data-call-flow-regenerate type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></header><p>${escapeHtml(flow.summary)}</p><div class="call-flow-summary"><span class="plus">+${counts.added} calls</span><span class="minus">−${counts.removed} calls</span></div><details class="flow-impact call-flow-impact"><summary>affects ${flow.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${flow.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details><div class="call-flow-modes" role="group" aria-label="Call-flow version">${["changes", "before", "after"].map((candidate) => `<button type="button" data-call-flow-mode="${candidate}" class="${mode === candidate ? "active" : ""}">${candidate[0].toUpperCase()}${candidate.slice(1)}</button>`).join("")}</div><div class="call-tree-legend" role="list" aria-label="Call-flow legend"><span role="listitem"><i class="entrypoint" aria-hidden="true"></i>Entry point</span><span role="listitem"><i class="added" aria-hidden="true"></i>Added</span><span role="listitem"><i class="modified" aria-hidden="true"></i>Changed callable</span><span role="listitem"><i class="removed" aria-hidden="true"></i>Removed</span><span role="listitem"><i class="unchanged" aria-hidden="true"></i>Unchanged</span></div><p class="call-tree-caption">A changed callable exists before and after this change, but its implementation or outgoing calls changed.</p><div class="call-tree">${renderCallTree(flow, mode)}</div></article>`;
   }).join("");
-  void renderFlowDiagrams(architecture, [], generation);
 }
 
 function renderSequenceDiagrams() {
@@ -1037,11 +1114,11 @@ function renderSequenceDiagrams() {
       <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
     </article>`;
   }).join("");
-  void renderFlowDiagrams(undefined, flows, generation);
+  void renderFlowDiagrams(architectureEntries(), flows, generation);
 }
 
-async function renderFlowDiagrams(architecture, flows, generation) {
-  if (!window.mermaid || (!architecture && flows.length === 0)) return;
+async function renderFlowDiagrams(architectures, flows, generation) {
+  if (!window.mermaid || (architectures.length === 0 && flows.length === 0)) return;
   const theme = document.documentElement.dataset.theme === "light" ? "default" : "dark";
   window.mermaid.initialize({
     startOnLoad: false,
@@ -1054,16 +1131,17 @@ async function renderFlowDiagrams(architecture, flows, generation) {
     deterministicIDSeed: `review-tour-${state.session.revision}-${theme}`,
     sequence: { useMaxWidth: true, wrap: true },
   });
-  if (architecture) {
-    const target = elements.architecture.querySelector("[data-architecture-diagram]");
+  for (const architecture of architectures) {
+    const target = elements.architecture.querySelector(`[data-architecture-diagram="${architecture.key}"]`);
     try {
-      const result = await window.mermaid.render(`review-tour-architecture-${generation}`, architecture.mermaid);
+      const result = await window.mermaid.render(`review-tour-architecture-${architecture.key}-${generation}`, architecture.value.mermaid);
       if (generation !== state.flowRenderGeneration || !target?.isConnected) return;
       target.innerHTML = result.svg;
       target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      applyArchitectureDiagramView(architecture.key);
     } catch {
       if (target) target.innerHTML = '<span class="muted">Diagram unavailable</span>';
-      elements.architecture.querySelector("[data-architecture-error]")?.classList.remove("hidden");
+      elements.architecture.querySelector(`[data-architecture-error="${architecture.key}"]`)?.classList.remove("hidden");
     }
   }
   for (let index = 0; index < flows.length; index += 1) {
@@ -1301,14 +1379,18 @@ function renderSession() {
   elements["diff-search"].value = state.searchQuery;
   elements["status-filter"].value = state.statusFilter;
   elements["review-filter"].value = state.reviewFilter;
+  elements["test-files-filter"].setAttribute("aria-pressed", String(state.testFilesOnly));
+  elements["test-files-filter"].classList.toggle("active", state.testFilesOnly);
   elements["tree-mode"].value = state.treeMode;
   elements["diff-layout"].value = state.diffLayout;
   elements["prefetch-steps"].value = String(state.session.preferences?.prefetchSteps ?? 2);
   elements["diff-search"].disabled = Boolean(state.tourMode);
   elements["status-filter"].disabled = Boolean(state.tourMode);
   elements["review-filter"].disabled = Boolean(state.tourMode);
+  elements["test-files-filter"].disabled = Boolean(state.tourMode);
   elements["tree-mode"].disabled = Boolean(state.tourMode);
   elements["diff-search"].title = state.tourMode ? "Exit the tour to filter all changed files." : "";
+  elements["test-files-filter"].title = state.tourMode ? "Exit the tour to filter test files." : "Show only changed test files";
   renderFileTree();
   const large = comparison.diffMode === "file";
   if (state.diffCacheRevision !== state.session.revision) {
@@ -1334,11 +1416,12 @@ function renderSession() {
   }
   renderComments();
   renderFindings();
+  renderReviewOverview();
+  renderArchitecture();
   if (state.activeTab === "call-flows") renderCallFlows();
   if (state.activeTab === "sequence") renderSequenceDiagrams();
   renderActivities();
   renderPullRequest();
-  renderReviewOverview();
   renderActiveTab();
   elements["feedback-button"].classList.toggle("hidden", comments.length === 0);
   const closed = !reviewIsOpen();
@@ -1801,6 +1884,7 @@ window.addEventListener("resize", () => {
   setFilePanelWidth(state.filePanelWidth);
 });
 window.addEventListener("review-tour-theme-change", () => {
+  if (state.session) renderArchitecture();
   if (state.session && state.activeTab === "call-flows") renderCallFlows();
   if (state.session && state.activeTab === "sequence") renderSequenceDiagrams();
 });
@@ -1851,6 +1935,13 @@ elements["status-filter"].addEventListener("change", () => {
 elements["review-filter"].addEventListener("change", () => {
   state.reviewFilter = elements["review-filter"].value;
   renderFilteredDiff();
+});
+elements["test-files-filter"].addEventListener("click", () => {
+  state.testFilesOnly = !state.testFilesOnly;
+  state.visibleFile = null;
+  renderFilteredDiff();
+  elements["test-files-filter"].setAttribute("aria-pressed", String(state.testFilesOnly));
+  elements["test-files-filter"].classList.toggle("active", state.testFilesOnly);
 });
 elements["tree-mode"].addEventListener("change", () => {
   state.treeMode = elements["tree-mode"].value;
@@ -1908,8 +1999,56 @@ elements["call-flows"].addEventListener("click", (event) => {
   if (card && event.target.closest("[data-call-flow-regenerate]")) void regenerateCallFlows(card.dataset.callFlowId);
 });
 elements.architecture.addEventListener("click", (event) => {
+  const diagramAction = event.target.closest("[data-diagram-action]");
+  if (diagramAction) {
+    const shell = diagramAction.closest("[data-architecture-key]");
+    if (shell) changeArchitectureDiagramView(shell.dataset.architectureKey, diagramAction.dataset.diagramAction);
+    return;
+  }
   const fileButton = event.target.closest("[data-flow-file]");
   if (fileButton) void showAnalysisFile(fileButton.dataset.flowFile);
+});
+elements.architecture.addEventListener("pointerdown", (event) => {
+  const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
+  if (!diagram || event.button !== 0) return;
+  const view = architectureDiagramView(diagram.dataset.architectureDiagram);
+  state.architectureDiagramDrag = {
+    key: diagram.dataset.architectureDiagram,
+    pointerId: event.pointerId,
+    diagram,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: view.x,
+    originY: view.y,
+  };
+  diagram.classList.add("dragging");
+  diagram.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+elements.architecture.addEventListener("pointermove", (event) => {
+  const drag = state.architectureDiagramDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  const view = architectureDiagramView(drag.key);
+  view.x = drag.originX + event.clientX - drag.startX;
+  view.y = drag.originY + event.clientY - drag.startY;
+  applyArchitectureDiagramView(drag.key);
+});
+function finishArchitectureDiagramDrag(event) {
+  const drag = state.architectureDiagramDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  drag.diagram.classList.remove("dragging");
+  if (drag.diagram.hasPointerCapture(event.pointerId)) drag.diagram.releasePointerCapture(event.pointerId);
+  state.architectureDiagramDrag = null;
+}
+elements.architecture.addEventListener("pointerup", finishArchitectureDiagramDrag);
+elements.architecture.addEventListener("pointercancel", finishArchitectureDiagramDrag);
+elements.architecture.addEventListener("keydown", (event) => {
+  const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
+  if (!diagram) return;
+  const action = ({ ArrowLeft: "move-left", ArrowRight: "move-right", ArrowUp: "move-up", ArrowDown: "move-down", "+": "zoom-in", "=": "zoom-in", "-": "zoom-out", "0": "reset" })[event.key];
+  if (!action) return;
+  event.preventDefault();
+  changeArchitectureDiagramView(diagram.dataset.architectureDiagram, action);
 });
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

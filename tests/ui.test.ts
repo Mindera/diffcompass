@@ -26,6 +26,34 @@ test("review navigation exposes expanded changed paths and a full repository mod
   expect(styles).toContain(".count, .mode { flex: 0 0 auto; white-space: nowrap;");
 });
 
+test("the file pane can filter changed test files without changing the default", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="test-files-filter"');
+  expect(html).toContain('aria-pressed="false"');
+  expect(html).toContain("Test files only");
+  expect(app).toContain('testFilesOnly: false');
+  expect(app).toContain("function isTestFile(path)");
+  expect(app).toContain("(!state.testFilesOnly || isTestFile(file.path))");
+  expect(app).toContain('state.testFilesOnly = !state.testFilesOnly');
+  expect(app).toContain('elements["test-files-filter"].disabled = Boolean(state.tourMode)');
+  expect(app).toContain('const candidates = [state.visibleFile, currentStep()?.anchor.path]');
+  expect(styles).toContain(".file-filter-toggle.active");
+
+  const helperSource = app.slice(app.indexOf("function isTestFile(path)"), app.indexOf("function renderTreeNode("));
+  const isTestFile = new Function(`${helperSource}; return isTestFile;`)() as (path: string) => boolean;
+  expect(isTestFile("src/commonTest/kotlin/CartTest.kt")).toBe(true);
+  expect(isTestFile("src/__tests__/cart.ts")).toBe(true);
+  expect(isTestFile("src/cart.test.ts")).toBe(true);
+  expect(isTestFile("src/cart_test.py")).toBe(true);
+  expect(isTestFile("iosApp/CheckoutTests.swift")).toBe(true);
+  expect(isTestFile("src/cart.ts")).toBe(false);
+  expect(isTestFile("docs/testing-guide.md")).toBe(false);
+});
+
 test("tour rendering annotates code without continuously stealing navigation", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public/app.js"), "utf8"),
@@ -164,6 +192,11 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(overview).toBeLessThan(toolbar);
   expect(html).toContain('id="pull-request-description-body"');
   expect(html).not.toContain('<details id="pull-request-description" class="pull-request-description hidden" open>');
+  const architecture = html.indexOf('<details id="architecture" class="architecture hidden">');
+  expect(architecture).toBeGreaterThan(overview);
+  expect(architecture).toBeLessThan(toolbar);
+  expect(html).toContain("<summary>Architecture</summary>");
+  expect(html).not.toContain('<details id="architecture" class="architecture hidden" open>');
   expect(html.slice(agent)).not.toContain('id="review-overview-title"');
   expect(app).toContain("pullRequestDescription(pullRequest.body)");
   expect(app).toContain('data-pr-description-mode="rendered"');
@@ -171,6 +204,28 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(app).toContain('output.push(`<h${level}>');
   expect(app).toContain('const nextListType = /^\\d/.test(item[1]) ? "ol" : "ul"');
   expect(app).toContain('elements["review-overview-title"].textContent = outline.title');
+  expect(app).toContain('label: `${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`');
+  expect(app).toContain('label: "Implementation journey"');
+});
+
+test("each architecture chart has independent movement and zoom controls", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(app).toContain("architectureDiagramViews: new Map()");
+  expect(app).toContain('data-architecture-key="${key}"');
+  expect(app).toContain('data-diagram-action="move-left"');
+  expect(app).toContain('data-diagram-action="move-right"');
+  expect(app).toContain('data-diagram-action="zoom-out"');
+  expect(app).toContain('data-diagram-action="zoom-in"');
+  expect(app).toContain('data-diagram-action="reset"');
+  expect(app).toContain("function changeArchitectureDiagramView(key, action)");
+  expect(app).toContain('svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`');
+  expect(app).toContain('elements.architecture.addEventListener("pointerdown"');
+  expect(app).toContain('elements.architecture.addEventListener("keydown"');
+  expect(styles).toContain(".architecture-diagram.dragging");
+  expect(styles).toContain("touch-action: none");
 });
 
 test("settings consolidate runtime preferences, exports, and sessions", async () => {
@@ -229,7 +284,7 @@ test("tour startup defaults diagrams and findings on and sends both choices", as
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain('<input id="include-architecture" type="checkbox" checked /> Component diagram');
+  expect(html).toContain('<input id="include-architecture" type="checkbox" checked /> Architecture');
   expect(html).toContain('<input id="include-call-flows" type="checkbox" checked /> Call flows');
   expect(html).toContain('<input id="include-flows" type="checkbox" checked /> Sequence diagrams');
   expect(html).toContain('<input id="include-findings" type="checkbox" checked /> Findings');

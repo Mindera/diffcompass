@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ReviewSession } from "../src/session.ts";
@@ -24,6 +24,8 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   expect(persisted.outline?.phases.flatMap((phase) => phase.steps)).toHaveLength(4);
   expect(persisted.outline?.phases.flatMap((phase) => phase.steps).map((step) => Boolean(step.explanation))).toEqual([true, false, false, false]);
   expect(persisted.outline?.architecture?.dependencyChanges).toHaveLength(2);
+  expect(persisted.outline?.behaviorArchitectureStatus).toBe("implemented");
+  expect(persisted.outline?.behaviorArchitecture?.dependencyChanges).toHaveLength(2);
   expect(persisted.outline?.callFlows).toHaveLength(1);
   expect(persisted.outline?.callFlows[0]?.edges).toHaveLength(2);
   expect(persisted.outline?.flows).toHaveLength(1);
@@ -49,4 +51,9 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   const reset = await prepareTestFixture({ root, reset: true });
   expect(reset.created).toBe(true);
   expect((await loadPersistedSession(reset.stateFile)).revision).toBe(4);
+});
+
+test("fixture launcher starts the persisted tour so prepare-ahead begins immediately", async () => {
+  const launcher = await readFile(join(import.meta.dir, "..", "scripts", "test-fixture.ts"), "utf8");
+  expect(launcher).toContain('fixture.stateFile,\n  "--start-tour",\n  ...forwarded');
 });

@@ -84,7 +84,15 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
       planningNotes: [
         "Start with the calculation because the receipt depends on it.",
         "Finish with the user-visible output and supporting documentation.",
-    ],
+      ],
+      behaviorArchitectureStatus: "implemented",
+      behaviorArchitecture: {
+        title: "How checkout produces a receipt",
+        summary: "Checkout asks the new receipt formatter to calculate and present totals from the existing cart model.",
+        mermaid: "flowchart LR\n  checkout[\"Checkout\"]:::touched\n  receipt[\"Receipt formatter\"]:::new\n  cart[\"Cart totals\"]:::touched\n  checkout -->|requests receipt from| receipt\n  receipt -->|calculates amount with| cart\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3",
+        dependencyChanges: ["Added Checkout → Receipt formatter: requests receipt from", "Added Receipt formatter → Cart totals: calculates amount with"],
+        affectedFiles: ["src/cart.ts", "src/receipt.ts"],
+      },
       callFlows: [{
         id: "receipt-calls",
         title: "Receipt calculation call changes",

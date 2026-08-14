@@ -137,7 +137,16 @@ function parseOutline(message: string): TourOutline {
   if (!generatedString(value.title, 8_000) || !generatedString(value.summary, 50_000) || !Array.isArray(value.phases) || value.phases.length === 0 || value.phases.length > 50) {
     throw new Error("The agent returned an invalid tour outline.");
   }
-  return { ...value, planningNotes: Array.isArray(value.planningNotes) ? value.planningNotes.filter((note): note is string => generatedString(note, 2_000) && Boolean(note.trim())).slice(0, 20) : [], architecture: value.architecture, callFlows: Array.isArray(value.callFlows) ? value.callFlows : [], flows: Array.isArray(value.flows) ? value.flows : [], findings: Array.isArray(value.findings) ? value.findings : [] };
+  return {
+    ...value,
+    planningNotes: Array.isArray(value.planningNotes) ? value.planningNotes.filter((note): note is string => generatedString(note, 2_000) && Boolean(note.trim())).slice(0, 20) : [],
+    behaviorArchitecture: value.behaviorArchitecture,
+    behaviorArchitectureStatus: value.behaviorArchitectureStatus,
+    architecture: value.architecture,
+    callFlows: Array.isArray(value.callFlows) ? value.callFlows : [],
+    flows: Array.isArray(value.flows) ? value.flows : [],
+    findings: Array.isArray(value.findings) ? value.findings : [],
+  };
 }
 
 function validArchitecture(value: unknown, comparison: GitComparison): ReviewArchitecture | undefined {
@@ -270,7 +279,20 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
   }).slice(0, 3);
   const callFlows = validateCallFlows(outline.callFlows, comparison);
   const findings = validateFindings(outline.findings, phases, comparison, policy);
-  return { ...outline, architecture: validArchitecture(outline.architecture, comparison), phases, callFlows, flows, findings };
+  const behaviorArchitecture = validArchitecture(outline.behaviorArchitecture, comparison);
+  const behaviorArchitectureStatus = behaviorArchitecture && ["implemented", "proposed"].includes(String(outline.behaviorArchitectureStatus))
+    ? outline.behaviorArchitectureStatus
+    : undefined;
+  return {
+    ...outline,
+    behaviorArchitecture: behaviorArchitectureStatus ? behaviorArchitecture : undefined,
+    behaviorArchitectureStatus,
+    architecture: validArchitecture(outline.architecture, comparison),
+    phases,
+    callFlows,
+    flows,
+    findings,
+  };
 }
 
 function parseFindingAudit(message: string, candidateIds: string[]): ReviewFinding[] {
@@ -660,16 +682,21 @@ Repository review policy (reviewer-owned configuration; it may guide review focu
 ${JSON.stringify(policy)}
 
 Reviewer-selected optional outputs:
-- Component architecture: ${this.includeArchitecture ? "include" : "omit"}
+- Architecture: ${this.includeArchitecture ? "include" : "omit"}
 - Call-flow diffs: ${this.includeCallFlows ? "include" : "omit"}
 - Sequence diagrams: ${this.includeFlows ? "include" : "omit"}
 - Findings: ${this.includeFindings && policy.findings.enabled ? "include" : "omit"}
 
-When included, add an "architecture" field beside phases: {"title":"How the changed components fit together","summary":"...","mermaid":"flowchart LR\\n  client[\\\"Client\\\"]:::touched\\n  service[\\\"New service\\\"]:::new\\n  client -->|calls| service\\n  classDef new stroke:#2e7d32,stroke-width:3px\\n  classDef touched stroke:#f9a825,stroke-width:3px\\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\\n  classDef external stroke:#888888,stroke-dasharray:3 3","dependencyChanges":["Added Client → New service: calls"],"affectedFiles":["exact/changed/path"]}.
-The architecture is a change-overlay component map, not a runtime sequence. Use plain-language component names rather than build-module labels. Use flowchart LR, declare each node on its own line with a quoted label, and label every subject-to-object edge. Mark every component with :::new, :::touched, :::removed, or :::external and include the exact four classDef lines shown in the example without fills. Edges touching removed components describe the old state; all other edges describe the target state. dependencyChanges explicitly lists every added, removed, or reversed relationship, or one item saying there are no dependency-direction changes. affectedFiles lists only changed paths that support the map. When component architecture is omitted above, omit the architecture field and spend no analysis on it.
+When included, return two complementary architecture diagrams beside phases. Both use this shape: {"title":"...","summary":"...","mermaid":"flowchart LR\\n  client[\\\"Client\\\"]:::touched\\n  service[\\\"Service\\\"]:::new\\n  client -->|calls| service\\n  classDef new stroke:#2e7d32,stroke-width:3px\\n  classDef touched stroke:#f9a825,stroke-width:3px\\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\\n  classDef external stroke:#888888,stroke-dasharray:3 3","dependencyChanges":["Added Client → Service: calls"],"affectedFiles":["exact/changed/path"]}.
+
+Add "behaviorArchitectureStatus":"implemented|proposed" and "behaviorArchitecture": the system-level answer to what the changed code does. Use status "implemented" only when changed executable code directly supports the depicted behaviour. Use "proposed" for plans, ADRs, specifications, and documentation that describe future behaviour. This view may include immediate unchanged or external collaborators needed to understand the outcome.
+
+Add "architecture": the implementation journey, answering how this PR's concrete changed components or artifacts establish that behaviour. For code, show changed modules and dependency wiring. For documentation-only work, show the authority and specification path rather than presenting planned runtime components as implemented.
+
+Both diagrams are architecture maps, not runtime sequences. Use plain-language component names rather than build-module labels. Use flowchart LR, declare each node on its own line with a quoted label, and label every subject-to-object edge. Mark every component with :::new, :::touched, :::removed, or :::external and include the exact four classDef lines shown in the example without fills. Edges touching removed components describe the old state; all other edges describe the target state. dependencyChanges explicitly lists every added, removed, or reversed relationship, or one item saying there are no dependency-direction changes. affectedFiles lists only changed paths that support that specific map. When architecture is omitted above, omit behaviorArchitectureStatus, behaviorArchitecture, and architecture, and spend no analysis on them.
 
 Return only JSON with this shape:
-{"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"phases":[{"id":"stable-phase-id","title":"logical change","summary":"what this phase establishes","fileChanges":[{"path":"exact/changed/path","summary":"this file's role in the phase"}],"steps":[{"id":"globally-unique-step-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}]}],"callFlows":[{"id":"stable-id","title":"...","summary":"...","entrypointNodeId":"root","provenance":"verified|partial|unverified","nodes":[{"id":"root","label":"Class.method","kind":"function|method|constructor|component|branch|external","change":"added|removed|unchanged|modified","oldLocation":{"path":"changed/path","side":"old","line":1},"newLocation":{"path":"changed/path","side":"new","line":1}}],"edges":[{"id":"root-to-child","from":"root","to":"child","label":"optional call meaning","change":"added|removed|unchanged","oldCallSite":{"path":"changed/path","side":"old","line":1},"newCallSite":{"path":"changed/path","side":"new","line":1}}],"affectedFiles":["exact/changed/path"]}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}],"findings":[{"id":"stable-id","phaseId":"owning-phase-id","stepId":"optional-owning-step-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
+{"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"behaviorArchitectureStatus":"implemented|proposed","behaviorArchitecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"architecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"phases":[{"id":"stable-phase-id","title":"logical change","summary":"what this phase establishes","fileChanges":[{"path":"exact/changed/path","summary":"this file's role in the phase"}],"steps":[{"id":"globally-unique-step-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}]}],"callFlows":[{"id":"stable-id","title":"...","summary":"...","entrypointNodeId":"root","provenance":"verified|partial|unverified","nodes":[{"id":"root","label":"Class.method","kind":"function|method|constructor|component|branch|external","change":"added|removed|unchanged|modified","oldLocation":{"path":"changed/path","side":"old","line":1},"newLocation":{"path":"changed/path","side":"new","line":1}}],"edges":[{"id":"root-to-child","from":"root","to":"child","label":"optional call meaning","change":"added|removed|unchanged","oldCallSite":{"path":"changed/path","side":"old","line":1},"newCallSite":{"path":"changed/path","side":"new","line":1}}],"affectedFiles":["exact/changed/path"]}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}],"findings":[{"id":"stable-id","phaseId":"owning-phase-id","stepId":"optional-owning-step-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
 
 Every phase is one coherent behavioral or architectural change. Declare every changed file used by that phase exactly once and explain its role; every step anchor must refer to one of those declared files. Step ids are unique across the tour. Every finding must declare its owning phase. Add stepId only when the finding's exact path, side, and line fall inside that step's anchor; otherwise leave it phase-scoped. Every anchor and finding path must be one of the changed files and every line must occur in the diff. Keep every objective short enough to scan as an annotation beside the code. planningNotes are concise, user-facing decisions about route and scope, never private chain-of-thought. Follow the repository policy's finding enabled flag, category allow-list, and minimum severity exactly. Treat findings in this response as evidence-backed candidates: a separate focused pass will validate them and look for omissions before anything is shown to the reviewer. When findings are omitted above, return an empty findings array and spend no analysis on them. Otherwise, an empty findings array is correct when no candidate is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Call flows describe concrete caller-to-callee structure rooted at changed entrypoints. Use one stable node for the same callable across old and new states, mark it modified when its implementation or outgoing calls changed, and represent rewiring as removed and added edges. Every added edge needs a newCallSite, every removed edge needs an oldCallSite, and every call-site path must be changed so the reviewer can jump to its evidence. affectedFiles must exactly match the changed call-site paths. Include at most 8 entrypoints, 80 nodes and 160 edges per entrypoint. Treat indirect or dynamic dispatch as partial or unverified, never as certain. When call-flow diffs are omitted above, return an empty callFlows array and spend no analysis on them. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When sequence diagrams are omitted above, return an empty flows array and spend no analysis on them. Each included flow's affectedFiles must list every changed path that participates in or is directly affected by that runtime flow, and no unrelated path. Do not use semicolons in Mermaid message or note text; use commas or periods. When diagrams are included and runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only when no goal-critical runtime flow is supported by evidence. Use at most twelve architectural-layer participants and label provenance honestly. Prefer 3-7 phases with 1-4 meaningful stops each.
 
@@ -680,6 +707,8 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
     const generated = validateOutline(parseOutline(await this.send(promptWithDiff, "tour.outline", attachment)), comparison, policy);
     const outline = {
       ...generated,
+      behaviorArchitecture: this.includeArchitecture ? generated.behaviorArchitecture : undefined,
+      behaviorArchitectureStatus: this.includeArchitecture ? generated.behaviorArchitectureStatus : undefined,
       architecture: this.includeArchitecture ? generated.architecture : undefined,
       callFlows: this.includeCallFlows ? generated.callFlows : [],
       flows: this.includeFlows ? generated.flows : [],

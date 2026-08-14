@@ -1,4 +1,5 @@
 import type { ReviewSession } from "./session.ts";
+import type { ReviewArchitecture } from "./types.ts";
 
 export type ExportFormat = "markdown" | "html";
 
@@ -10,6 +11,10 @@ function markdownFence(language: string, content: string): string {
 
 function markdownText(value: unknown): string {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function markdownArchitecture(label: string, architecture: ReviewArchitecture): string[] {
+  return [`### ${label}: ${markdownText(architecture.title)}`, "", markdownText(architecture.summary), "", "Relationship changes:", "", ...architecture.dependencyChanges.map((change) => `- ${markdownText(change)}`), "", "Affected changed files:", "", ...architecture.affectedFiles.map((path) => `- ${markdownText(path)}`), "", markdownFence("mermaid", architecture.mermaid), ""];
 }
 
 function markdown(session: ReviewSession): string {
@@ -42,8 +47,10 @@ function markdown(session: ReviewSession): string {
       }
     });
   }
-  if (outline?.architecture) {
-    lines.push("## Component architecture", "", `### ${markdownText(outline.architecture.title)}`, "", markdownText(outline.architecture.summary), "", "Dependency changes:", "", ...outline.architecture.dependencyChanges.map((change) => `- ${markdownText(change)}`), "", "Affected changed files:", "", ...outline.architecture.affectedFiles.map((path) => `- ${markdownText(path)}`), "", markdownFence("mermaid", outline.architecture.mermaid), "");
+  if (outline?.behaviorArchitecture || outline?.architecture) {
+    lines.push("## Architecture", "");
+    if (outline.behaviorArchitecture) lines.push(...markdownArchitecture(`${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`, outline.behaviorArchitecture));
+    if (outline.architecture) lines.push(...markdownArchitecture("Implementation journey", outline.architecture));
   }
   if (outline?.callFlows?.length) {
     lines.push("## Call flows", "");
@@ -88,7 +95,11 @@ function escapeHtml(value: unknown): string {
 function html(session: ReviewSession): string {
   const outline = session.outline;
   let stopNumber = 0;
-  const architecture = outline?.architecture ? `<section><h3>${escapeHtml(outline.architecture.title)}</h3><p>${escapeHtml(outline.architecture.summary)}</p><h4>Dependency changes</h4><ul>${outline.architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul><h4>Affected changed files</h4><ul>${outline.architecture.affectedFiles.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}</ul><pre><code>${escapeHtml(outline.architecture.mermaid)}</code></pre></section>` : "";
+  const architectureSection = (label: string, architecture: ReviewArchitecture) => `<section><h3>${escapeHtml(label)}: ${escapeHtml(architecture.title)}</h3><p>${escapeHtml(architecture.summary)}</p><h4>Relationship changes</h4><ul>${architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul><h4>Affected changed files</h4><ul>${architecture.affectedFiles.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}</ul><pre><code>${escapeHtml(architecture.mermaid)}</code></pre></section>`;
+  const architecture = [
+    outline?.behaviorArchitecture ? architectureSection(`${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`, outline.behaviorArchitecture) : "",
+    outline?.architecture ? architectureSection("Implementation journey", outline.architecture) : "",
+  ].join("");
   const steps = outline?.phases.map((phase, phaseIndex) => `<section><h3>Phase ${phaseIndex + 1}: ${escapeHtml(phase.title)}</h3><p>${escapeHtml(phase.summary)}</p><ul>${phase.fileChanges.map((file) => `<li><code>${escapeHtml(file.path)}</code> — ${escapeHtml(file.summary)}</li>`).join("")}</ul>${phase.steps.map((step) => { stopNumber += 1; return `<section><h4>Stop ${stopNumber}: ${escapeHtml(step.title)}</h4><code>${escapeHtml(step.anchor.path)}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side})</code><p>${escapeHtml(step.objective)}</p>${step.explanation ? `<div class="prose">${escapeHtml(step.explanation)}</div>` : ""}</section>`; }).join("")}</section>`).join("") ?? "";
   const flows = outline?.flows.map((flow) => `<section><h3>${escapeHtml(flow.title)}</h3><p class="meta">${flow.provenance}; affects ${flow.affectedFiles?.length || flow.blastRadiusSize} changed files</p><p>${escapeHtml(flow.summary)}</p><h4>Affected changed files</h4>${flow.affectedFiles?.length ? `<ul>${flow.affectedFiles.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}</ul>` : "<p>Exact affected files were not captured for this saved tour.</p>"}<pre><code>${escapeHtml(flow.mermaid)}</code></pre></section>`).join("") ?? "";
   const callFlows = outline?.callFlows?.map((flow) => { const nodes = new Map(flow.nodes.map((node) => [node.id, node])); return `<section><h3>${escapeHtml(flow.title)}</h3><p class="meta">${flow.provenance}; ${flow.edges.filter((edge) => edge.change === "added").length} added and ${flow.edges.filter((edge) => edge.change === "removed").length} removed calls</p><p>${escapeHtml(flow.summary)}</p><p><strong>Entrypoint:</strong> <code>${escapeHtml(nodes.get(flow.entrypointNodeId)?.label ?? flow.entrypointNodeId)}</code></p><ul>${flow.edges.map((edge) => `<li>${edge.change === "added" ? "+" : edge.change === "removed" ? "−" : "→"} <code>${escapeHtml(nodes.get(edge.from)?.label ?? edge.from)}</code> → <code>${escapeHtml(nodes.get(edge.to)?.label ?? edge.to)}</code>${edge.label ? ` — ${escapeHtml(edge.label)}` : ""}</li>`).join("")}</ul></section>`; }).join("") ?? "";
@@ -99,7 +110,7 @@ function html(session: ReviewSession): string {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(outline?.title ?? "Code review tour")}</title>
 <style>:root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}body{max-width:980px;margin:0 auto;padding:40px 24px;line-height:1.55}h1{font-size:2rem}h2{margin-top:2.5rem;border-bottom:1px solid #8885;padding-bottom:.35rem}h3{margin-bottom:.35rem}section{margin:1.4rem 0}code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}pre{overflow:auto;padding:16px;border:1px solid #8885;border-radius:8px;background:#8881;white-space:pre}.meta{color:#777;font-size:.9rem}.prose{white-space:pre-wrap}.finding{border-left:4px solid #d97706;padding-left:14px}.comment{border-left:4px solid #6366f1;padding-left:14px}</style></head>
 <body><header><h1>${escapeHtml(outline?.title ?? `Code review: ${session.comparison.repositoryName}`)}</h1><p>${escapeHtml(outline?.summary ?? "No guided tour was generated.")}</p><p class="meta">Repository: ${escapeHtml(session.comparison.repositoryName)} · Base: ${escapeHtml(session.comparison.base)} · Merge base: ${escapeHtml(session.comparison.mergeBase)} · Head: ${escapeHtml(session.comparison.head)} · Status: ${session.status}</p></header>
-${steps ? `<h2>Tour</h2>${steps}` : ""}${architecture ? `<h2>Component architecture</h2>${architecture}` : ""}${callFlows ? `<h2>Call flows</h2>${callFlows}` : ""}${flows ? `<h2>Sequence diagrams</h2>${flows}` : ""}${findings ? `<h2>Findings</h2>${findings}` : ""}${comments ? `<h2>Reviewer feedback</h2>${comments}` : ""}
+${steps ? `<h2>Tour</h2>${steps}` : ""}${architecture ? `<h2>Architecture</h2>${architecture}` : ""}${callFlows ? `<h2>Call flows</h2>${callFlows}` : ""}${flows ? `<h2>Sequence diagrams</h2>${flows}` : ""}${findings ? `<h2>Findings</h2>${findings}` : ""}${comments ? `<h2>Reviewer feedback</h2>${comments}` : ""}
 <h2>Changed files</h2><ul>${files}</ul><h2>Diff</h2><pre><code>${escapeHtml(session.comparison.patch)}</code></pre></body></html>`;
 }
 
