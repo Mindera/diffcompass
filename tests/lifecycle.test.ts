@@ -298,6 +298,34 @@ test("a reviewer question is issued and answered while stop prefetch remains in 
   await session.dispose();
 });
 
+test("previous supersedes a next navigation that is still preparing", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const persisted = persistedAttachedSession(repository);
+  persisted.currentStepIndex = 1;
+  persisted.outline!.phases[0]!.steps[0]!.explanation = "The first stop is ready.";
+  persisted.outline!.phases[0]!.steps[1]!.explanation = "The current stop is ready.";
+  await savePersistedSession(stateFile, persisted);
+
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  await session.startTour();
+  const bridge = session.bridge!;
+  const [prefetch] = await bridge.eventsAfter(7, 1_000);
+  if (!prefetch || prefetch.type !== "agent.prompt") throw new Error("Expected the next stop prefetch.");
+
+  const next = session.navigate("next");
+  const previous = await Promise.race([
+    session.navigate("previous"),
+    Bun.sleep(250).then(() => { throw new Error("Previous waited for the unprepared next stop."); }),
+  ]);
+  expect(previous.currentStepIndex).toBe(0);
+
+  await bridge.respond(prefetch.id, "The future stop is now ready.");
+  await bridge.ack(prefetch.id);
+  await expect(next).resolves.toMatchObject({ currentStepIndex: 0 });
+  expect(session.snapshot().currentStepIndex).toBe(0);
+  await session.dispose();
+});
+
 test("prefetch keeps a two-stop sliding window instead of preparing the whole tour", async () => {
   const { repository, stateFile } = await repositoryFixture();
   const persisted = persistedAttachedSession(repository);

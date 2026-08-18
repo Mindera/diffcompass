@@ -96,6 +96,10 @@ test("slow tour work exposes its prompt and safe progress while navigation remai
   expect(app).toContain('state.session.agentActivity = latest.agentActivity');
   expect(app).toContain('state.expectedAgentActivity = { kind: "review.question", previousActivityId }');
   expect(app).toContain("Your question is being sent now while tour preparation continues.");
+  expect(app).toContain('elements["previous-step"].disabled = busy && state.navigationDirection !== "next"');
+  expect(app).toContain('if (state.busy && !(direction === "previous" && state.navigationDirection === "next")) return');
+  expect(app).toContain("const generation = ++state.navigationGeneration");
+  expect(app).toContain("if (generation !== state.navigationGeneration) return");
   expect(app).toContain("receivedExpectedActivity");
   expect(app).toContain("!expectedActivity || receivedExpectedActivity");
   expect(app).toContain("if (pendingLocalActivity) state.session.agentActivity = pendingLocalActivity");

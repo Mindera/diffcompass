@@ -819,15 +819,24 @@ export class ReviewSession {
       this.ensureOpen();
       if (!this.outline || !this.agent) throw new ReviewError("Start the tour first.");
       this.agent.useComparison(this.comparison);
+      const expectedCurrentStepIndex = this.currentStepIndex;
       const delta = direction === "next" ? 1 : -1;
       const steps = tourSteps(this.outline);
       const index = Math.max(0, Math.min(steps.length - 1, this.currentStepIndex + delta));
       const step = steps[index]!;
       let receipts: string[] = [];
       if (!step.explanation) {
+        await this.prefetchTasks.get(step.id)?.catch(() => undefined);
+      }
+      if (this.currentStepIndex !== expectedCurrentStepIndex) return this.snapshot();
+      if (!step.explanation) {
         const explanation = await this.agent.explainStep(step, index, steps.length);
         receipts = explanation.receipts;
         this.ensureComparisonCurrent(comparisonGeneration);
+        if (this.currentStepIndex !== expectedCurrentStepIndex) {
+          await this.persistAgentResult(receipts);
+          return this.snapshot();
+        }
         step.explanation = explanation.value;
       }
       this.ensureOpen();

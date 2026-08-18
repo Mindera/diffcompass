@@ -12,6 +12,8 @@ const state = {
   commentTarget: null,
   editingCommentId: null,
   busy: false,
+  navigationDirection: null,
+  navigationGeneration: 0,
   activeTab: "diff",
   tabScrollPositions: new Map(),
   visibleFile: null,
@@ -204,7 +206,7 @@ async function installUpdate() {
 function setBusy(busy, label = "Working…") {
   state.busy = busy;
   elements["start-tour"].disabled = busy;
-  elements["previous-step"].disabled = busy;
+  elements["previous-step"].disabled = busy && state.navigationDirection !== "next";
   elements["next-step"].disabled = busy;
   elements["agent-select"].disabled = busy;
   elements["model-select"].disabled = busy;
@@ -1351,7 +1353,7 @@ function renderTour() {
   const planningNotes = outline.planningNotes ?? [];
   elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
   elements["planning-note-list"].innerHTML = planningNotes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
-  elements["previous-step"].disabled = state.busy || !reviewIsOpen() || !state.tourMode || currentStepIndex === 0;
+  elements["previous-step"].disabled = (state.busy && state.navigationDirection !== "next") || !reviewIsOpen() || !state.tourMode || currentStepIndex === 0;
   elements["next-step"].disabled = state.busy || !reviewIsOpen() || !state.tourMode || currentStepIndex === steps.length - 1;
   renderMessages();
   renderTourAnnotation();
@@ -1531,16 +1533,23 @@ async function startTour() {
 
 async function navigate(direction) {
   if (!reviewIsOpen() || !state.tourMode) return;
+  if (state.busy && !(direction === "previous" && state.navigationDirection === "next")) return;
+  const generation = ++state.navigationGeneration;
+  state.navigationDirection = direction;
   setBusy(true, direction === "next" ? "Preparing the next stop…" : "Returning to the previous stop…");
   try {
-    state.session = await api("/api/tour/navigate", { method: "POST", body: JSON.stringify({ direction }) });
+    const session = await api("/api/tour/navigate", { method: "POST", body: JSON.stringify({ direction }) });
+    if (generation !== state.navigationGeneration) return;
+    state.session = session;
     renderSession();
     elements["tour-scroll"].scrollTop = 0;
     await ensureTourPhaseDiffs();
     await focusCurrentStep();
   } catch (error) {
-    toast(error.message);
+    if (generation === state.navigationGeneration) toast(error.message);
   } finally {
+    if (generation !== state.navigationGeneration) return;
+    state.navigationDirection = null;
     setBusy(false);
     renderTour();
   }
