@@ -91,8 +91,12 @@ session-only override and does not create or modify `.code-review-tour.json`.
 user-facing page opens, so an agent-triggered launch appears ready at stop one
 and never needs to drive a second browser or press the setup button. In this
 mode, tour planning, step explanations, and reviewer questions are sent
-to the triggering agent through an authenticated loopback event bridge. Browser
-and bridge capability tokens are separate, browser mutations require same-origin
+to the triggering agent through an authenticated loopback event bridge. Future
+stops are prepared concurrently within the configured prepare-ahead window, and
+a reviewer question is issued immediately without waiting for that background
+work. Attached-agent skills coordinate independent workers when the host supports
+them; every response is committed against its own bridge event. Browser and
+bridge capability tokens are separate, browser mutations require same-origin
 requests, and the bridge token is passed through an owner-only temporary file.
 Closing with feedback emits the collected line comments back to that same agent. The
 bundled skill at `skills/code-review-tour` contains the complete polling and

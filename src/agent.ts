@@ -364,16 +364,30 @@ function parseCallFlows(message: string, comparison: GitComparison) {
 
 export type BridgePromptKind = "tour.outline" | "tour.explanation" | "review.question";
 
+export interface AgentTransportReply {
+  message: string;
+  receipt?: string;
+}
+
+export interface AgentResult<T> {
+  value: T;
+  receipts: string[];
+}
+
 export interface AgentTransport {
   send(
     prompt: string,
     kind: BridgePromptKind,
     attachment?: { name: string; content: string },
     progress?: (update: { status: "waiting" | "running"; message: string }) => void,
-  ): Promise<string>;
+  ): Promise<string | AgentTransportReply>;
   continuationId?(): string | undefined;
   setFallback?(
     transport: AgentTransport,
+    inactivityMs?: number | Partial<Record<BridgePromptKind, number>>,
+  ): void;
+  setFallbackFactory?(
+    factory: () => AgentTransport,
     inactivityMs?: number | Partial<Record<BridgePromptKind, number>>,
   ): void;
 }
@@ -613,7 +627,11 @@ export class TourAgent {
       if (!attachedTransport) throw new Error("The attached-agent bridge is not available.");
       this.transport = attachedTransport;
       if (fallbackSelection && fallbackSelection.adapterId !== "attached") {
-        attachedTransport.setFallback?.(createStandaloneTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
+        if (attachedTransport.setFallbackFactory) {
+          attachedTransport.setFallbackFactory(() => createStandaloneTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
+        } else {
+          attachedTransport.setFallback?.(createStandaloneTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
+        }
       }
     } else {
       this.transport = createStandaloneTransport(repositoryRoot, selection, this.abortController.signal, continuation);
@@ -626,7 +644,7 @@ export class TourAgent {
     attachment?: { name: string; content: string },
     stepProgress?: { stepNumber: number; totalSteps: number },
     transform?: (message: string) => T,
-  ): Promise<T> {
+  ): Promise<AgentResult<T>> {
     const now = new Date().toISOString();
     const label = kind === "tour.explanation"
       ? "Preparing a tour stop"
@@ -658,12 +676,13 @@ export class TourAgent {
     };
     publish();
     try {
-      const result = await this.transport.send(prompt, kind, attachment, update);
-      const value = transform ? transform(result) : result as T;
+      const response = await this.transport.send(prompt, kind, attachment, update);
+      const message = typeof response === "string" ? response : response.message;
+      const value = transform ? transform(message) : message as T;
       activity.status = "completed";
       activity.updatedAt = activity.completedAt = new Date().toISOString();
       publish();
-      return value;
+      return { value, receipts: typeof response === "string" || !response.receipt ? [] : [response.receipt] };
     } catch (error) {
       activity.status = "failed";
       activity.error = error instanceof Error ? error.message : String(error);
@@ -687,7 +706,7 @@ export class TourAgent {
     return id ? { adapterId: this.adapterId as StandaloneAgentAdapterId, id } : undefined;
   }
 
-  async createOutline(comparison: GitComparison, policy: ReviewPolicy, beforeFindingAudit?: () => void): Promise<TourOutline> {
+  async createOutline(comparison: GitComparison, policy: ReviewPolicy, beforeFindingAudit?: () => void): Promise<AgentResult<TourOutline>> {
     this.useComparison(comparison);
     const changedFiles = comparison.files
       .map((file) => `- ${file.path} (+${file.additions}/-${file.deletions})`)
@@ -724,13 +743,14 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
     const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
     const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;
-    const generated = await this.send(
+    const generatedResult = await this.send(
       promptWithDiff,
       "tour.outline",
       attachment,
       undefined,
       (message) => validateOutline(parseOutline(message), comparison, policy),
     );
+    const generated = generatedResult.value;
     const outline = {
       ...generated,
       behaviorArchitecture: this.includeArchitecture ? generated.behaviorArchitecture : undefined,
@@ -740,13 +760,16 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       flows: this.includeFlows ? generated.flows : [],
       findings: this.includeFindings ? generated.findings : [],
     };
-    if (!this.includeFindings || !policy.findings.enabled) return outline;
+    if (!this.includeFindings || !policy.findings.enabled) return { value: outline, receipts: generatedResult.receipts };
     beforeFindingAudit?.();
     const findings = await this.auditFindings(comparison, outline, policy);
-    return { ...outline, findings };
+    return {
+      value: { ...outline, findings: findings.value },
+      receipts: [...generatedResult.receipts, ...findings.receipts],
+    };
   }
 
-  private async auditFindings(comparison: GitComparison, outline: TourOutline, policy: ReviewPolicy): Promise<ReviewFinding[]> {
+  private async auditFindings(comparison: GitComparison, outline: TourOutline, policy: ReviewPolicy): Promise<AgentResult<ReviewFinding[]>> {
     const phaseScope = outline.phases.map((phase) => ({
       id: phase.id,
       title: phase.title,
@@ -788,7 +811,7 @@ Evidence must name the decisive repository paths and symbols or line ranges and 
     );
   }
 
-  async regenerateFlows(comparison: GitComparison, currentFlows: ReviewFlow[], flowId?: string): Promise<ReviewFlow[]> {
+  async regenerateFlows(comparison: GitComparison, currentFlows: ReviewFlow[], flowId?: string): Promise<AgentResult<ReviewFlow[]>> {
     this.useComparison(comparison);
     const selected = flowId ? currentFlows.find((flow) => flow.id === flowId) : undefined;
     if (flowId && !selected) throw new Error("The flow to regenerate does not exist.");
@@ -813,7 +836,7 @@ Return only JSON shaped as {"flows":[{"id":"stable-id","title":"...","summary":"
     return flows;
   }
 
-  async regenerateCallFlows(comparison: GitComparison, currentCallFlows: TourOutline["callFlows"], callFlowId?: string): Promise<TourOutline["callFlows"]> {
+  async regenerateCallFlows(comparison: GitComparison, currentCallFlows: TourOutline["callFlows"], callFlowId?: string): Promise<AgentResult<TourOutline["callFlows"]>> {
     this.useComparison(comparison);
     const selected = callFlowId ? currentCallFlows.find((flow) => flow.id === callFlowId) : undefined;
     if (callFlowId && !selected) throw new Error("The call flow to regenerate does not exist.");
@@ -838,7 +861,7 @@ Return only {"callFlows":[...]} using bounded nodes and caller-to-callee edges. 
     return callFlows;
   }
 
-  async explainStep(step: TourStep, index: number, total: number): Promise<string> {
+  async explainStep(step: TourStep, index: number, total: number): Promise<AgentResult<string>> {
     return this.send(`Tour step ${index + 1} of ${total}: ${step.title}
 Anchor: ${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side} side)
 Objective: ${step.objective}
@@ -847,7 +870,7 @@ Comparison fingerprint: ${this.comparisonFingerprint}
 Explain this step in plain, everyday language. Keep it under 180 words in two to four short paragraphs. Start with the concrete behavior, then say why it matters and what the reviewer should check. Avoid jargon unless the code uses the term; explain any necessary term in a few words. Do not repeat the title, objective, or file path. End with one short transition toward the next step. Do not modify files.`, "tour.explanation", undefined, { stepNumber: index + 1, totalSteps: total });
   }
 
-  async answer(question: string, selectedContext?: string, step?: TourStep, proposalRoot?: string): Promise<string> {
+  async answer(question: string, selectedContext?: string, step?: TourStep, proposalRoot?: string): Promise<AgentResult<string>> {
     const context = [
       step ? `Current tour step: ${step.title} (${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine})` : "",
       selectedContext ? `Selected diff line:\n${selectedContext}` : "",

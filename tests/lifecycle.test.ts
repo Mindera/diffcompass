@@ -263,7 +263,7 @@ test("prefetch continuously prepares later stops without blocking navigation to 
   expect(session.snapshot().outline?.phases[1]?.steps[1]?.explanation).toBe("The fourth stop is ready.");
 });
 
-test("a reviewer question runs before the prefetch window advances again", async () => {
+test("a reviewer question is issued and answered while stop prefetch remains in flight", async () => {
   const { repository, stateFile } = await repositoryFixture();
   const persisted = persistedAttachedSession(repository);
   persisted.currentStepIndex = 0;
@@ -273,14 +273,18 @@ test("a reviewer question runs before the prefetch window advances again", async
   const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   await session.startTour();
   const bridge = session.bridge!;
-  const [prefetch] = await bridge.eventsAfter(7, 1_000);
+  const initial = await bridge.eventsAfter(7, 1_000);
+  const prefetch = initial.find((event) => event.type === "agent.prompt" && event.kind === "tour.explanation");
   if (!prefetch || prefetch.type !== "agent.prompt") throw new Error("Expected an in-flight prefetch.");
 
   const asking = session.ask("Explain this line.");
-  await bridge.respond(prefetch.id, "The next stop is ready.");
-  await bridge.ack(prefetch.id);
-  const [question] = await bridge.eventsAfter(prefetch.sequence, 1_000);
-  if (!question || question.type !== "agent.prompt") throw new Error("Expected the reviewer question next.");
+  let question;
+  for (let attempt = 0; attempt < 20 && !question; attempt += 1) {
+    const events = await bridge.eventsAfter(prefetch.sequence, 100);
+    question = events.find((event) => event.type === "agent.prompt" && event.kind === "review.question");
+    if (!question) await Bun.sleep(25);
+  }
+  if (!question || question.type !== "agent.prompt") throw new Error("Expected the reviewer question while prefetch remained in flight.");
   expect(question.kind).toBe("review.question");
   expect(question.prompt).toContain("Explain this line.");
   await bridge.respond(question.id, "This line keeps the behavior explicit.");
@@ -288,6 +292,9 @@ test("a reviewer question runs before the prefetch window advances again", async
   await expect(asking).resolves.toMatchObject({
     messages: expect.arrayContaining([expect.objectContaining({ role: "agent", body: "This line keeps the behavior explicit." })]),
   });
+  expect(session.snapshot().outline?.phases[0]?.steps[1]?.explanation).toBeUndefined();
+  await bridge.respond(prefetch.id, "The next stop is ready.");
+  await bridge.ack(prefetch.id);
   await session.dispose();
 });
 
@@ -307,13 +314,20 @@ test("prefetch keeps a two-stop sliding window instead of preparing the whole to
   const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   await session.startTour();
   const bridge = session.bridge!;
-  const [second] = await bridge.eventsAfter(7, 1_000);
+  const prompts = new Map<string, Awaited<ReturnType<typeof bridge.eventsAfter>>[number]>();
+  for (let attempt = 0; attempt < 20 && prompts.size < 2; attempt += 1) {
+    for (const event of await bridge.eventsAfter(7, 100)) {
+      if (event.type === "agent.prompt" && event.kind === "tour.explanation") prompts.set(event.id, event);
+    }
+    if (prompts.size < 2) await Bun.sleep(25);
+  }
+  const [second, third] = [...prompts.values()].sort((left, right) => left.sequence - right.sequence);
   if (!second || second.type !== "agent.prompt") throw new Error("Expected the first prefetched stop.");
+  if (!third || third.type !== "agent.prompt") throw new Error("Expected the second prefetched stop in parallel.");
+  expect(second.prompt).toContain("Second step");
+  expect(third.prompt).toContain("Verification stop");
   await bridge.respond(second.id, "Second ready.");
   await bridge.ack(second.id);
-
-  const [third] = await bridge.eventsAfter(second.sequence, 1_000);
-  if (!third || third.type !== "agent.prompt") throw new Error("Expected the second prefetched stop.");
   await bridge.respond(third.id, "Third ready.");
   await bridge.ack(third.id);
   for (let attempt = 0; attempt < 20 && !session.snapshot().outline?.phases[1]?.steps[0]?.explanation; attempt += 1) await Bun.sleep(5);

@@ -632,12 +632,43 @@ async function ensureTourPhaseDiffs() {
   }
 }
 
+function captureFileViewport(path) {
+  const panel = elements["diff-panel"];
+  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(path)}"] > .diff-file-header`);
+  if (!header) return null;
+  return {
+    path,
+    scrollTop: panel.scrollTop,
+    headerOffset: header.getBoundingClientRect().top - panel.getBoundingClientRect().top,
+  };
+}
+
+function restoreFileViewport(anchor) {
+  if (!anchor) return;
+  const panel = elements["diff-panel"];
+  panel.scrollTop = anchor.scrollTop;
+  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(anchor.path)}"] > .diff-file-header`);
+  if (!header) return;
+  const currentOffset = header.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+  panel.scrollTop += currentOffset - anchor.headerOffset;
+}
+
 async function showChangedFile(path, line, side, requestedOffset, requestedContext, requestedFull) {
   if (state.tourMode && !filteredChangedFiles().some((file) => file.path === path)) {
     toast("That file belongs to another phase. Exit the tour to browse every changed file.", { duration: 9_000, tone: "warning" });
     return;
   }
   const requestId = ++state.fileRequestId;
+  const viewportAnchor = requestedFull !== undefined ? captureFileViewport(path) : null;
+  const expansionButton = viewportAnchor
+    ? elements.diff.querySelector(`[data-expand-file="${CSS.escape(path)}"]`)
+    : null;
+  const expansionLabel = expansionButton?.textContent;
+  if (expansionButton) {
+    expansionButton.disabled = true;
+    expansionButton.setAttribute("aria-busy", "true");
+    expansionButton.textContent = requestedFull ? "Expanding…" : "Collapsing…";
+  }
   state.collapsedFiles.delete(path);
   state.activeTab = "diff";
   state.proposalPreview = false;
@@ -648,8 +679,10 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
     let file = state.diffCache.get(path);
     const containsAnchor = !line || !side || file?.hunks.some((hunk) => hunk.rows.some((row) => (side === "old" ? row.oldLine : row.newLine) === line));
     if (!file || requestedOffset !== undefined || requestedContext !== undefined || requestedFull !== undefined || !containsAnchor) {
-      elements.diff.innerHTML = '<div class="empty">Loading file diff…</div>';
-      elements["empty-diff"].classList.add("hidden");
+      if (!viewportAnchor) {
+        elements.diff.innerHTML = '<div class="empty">Loading file diff…</div>';
+        elements["empty-diff"].classList.add("hidden");
+      }
       try {
         const query = new URLSearchParams({ path });
         if (requestedOffset !== undefined) query.set("offset", String(requestedOffset));
@@ -661,6 +694,11 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
         file = { ...result.file, _context: result.context, _full: result.full, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } };
         state.diffCache.set(path, file);
       } catch (error) {
+        if (expansionButton?.isConnected) {
+          expansionButton.disabled = false;
+          expansionButton.removeAttribute("aria-busy");
+          expansionButton.textContent = expansionLabel;
+        }
         if (requestId === state.fileRequestId) toast(error.message);
         return;
       }
@@ -673,13 +711,14 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   renderDiff(files);
   renderComments();
   renderFindings();
-  document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!viewportAnchor) document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   if (line && side) {
     const row = document.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"][data-line="${line}"]`);
     row?.scrollIntoView({ behavior: "smooth", block: "center" });
     row?.classList.add("selected");
   }
   renderTourAnnotation();
+  if (viewportAnchor) restoreFileViewport(viewportAnchor);
 }
 
 async function showRepositoryFile(path) {
@@ -1737,7 +1776,7 @@ async function askAgent(event) {
     prompt: body,
     updates: [{
       message: state.session.agentActivity?.kind === "tour.explanation" && ["waiting", "running"].includes(state.session.agentActivity.status)
-        ? "Your question is queued. The tour stop already in progress will finish first."
+        ? "Your question is being sent now while tour preparation continues."
         : "Sending your question to the agent.",
       createdAt: queuedAt,
     }],

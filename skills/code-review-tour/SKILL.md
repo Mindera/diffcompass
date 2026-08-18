@@ -43,6 +43,33 @@ For every `agent.prompt` event, retain both its `id` and `leaseId`, then follow 
 code-review-tour bridge respond --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID --file RESPONSE_FILE
 ```
 
+### Coordinate concurrent prompts
+
+The bridge may return several independently leased prompts in one batch. Act as
+the coordinator rather than processing that batch serially:
+
+1. Immediately send an initial progress heartbeat for every claimed event.
+2. When the host supports workers or subagents, delegate each event to a separate
+   worker, including its exact prompt, event id, lease id, bridge URL, and token
+   file path. Each worker owns progress, response, acknowledgement, and temporary
+   file cleanup for only that event. Do not give two workers the same event.
+3. Keep the coordinator's watcher running while workers inspect the repository.
+   A reviewer question must start immediately even while one or more future tour
+   stops are being prepared. The server normally requests up to the configured
+   prepare-ahead window in parallel; do not wait for stop N before starting N+1.
+4. Bound the worker pool to five concurrent prompts. This covers the maximum
+   four-stop preparation window plus one reviewer question without creating an
+   unbounded model fan-out. If delegation is unavailable, handle
+   `review.question` first and keep heartbeating every already-claimed prompt
+   until it can be processed.
+5. Advance the watcher cursor to the greatest sequence handed to a worker. Worker
+   completion order is deliberately irrelevant; responses are committed by event
+   id, so a later stop or a question may finish first.
+
+Do not delegate the watcher itself and do not wait for all workers to finish
+before polling again. When the host's worker mechanism reports completion, verify
+that the worker either acknowledged the event or reported a terminal-event race.
+
 While inspecting a prompt, send concise, user-facing progress updates at meaningful milestones so the browser can explain a slow stop. These are short activity summaries, not private chain-of-thought. Write each update to a temporary UTF-8 file and report it with:
 
 ```text

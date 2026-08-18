@@ -172,7 +172,7 @@ test("normalizes context findings and derives all priority levels from the docum
     findings: candidateFindings,
   }));
 
-  const outline = await pending;
+  const { value: outline } = await pending;
   expect(outline.planningNotes).toEqual(["Start at the behavior boundary."]);
   expect(outline.callFlows.map((flow) => flow.id)).toEqual(["valid-optional-flow"]);
   expect(outline.findings.map(({ id, priority }) => [id, priority])).toEqual([["p0", "P0"], ["p1", "P1"], ["p2", "P2"], ["p3", "P3"]]);
@@ -201,7 +201,7 @@ test("asks for short plain-language stop explanations", async () => {
     totalSteps: 2,
   });
   await bridge.respond(event!.id, "The value now changes here. Check the result.");
-  expect(await pending).toBe("The value now changes here. Check the result.");
+  expect((await pending).value).toBe("The value now changes here. Check the result.");
   expect(activities.at(-1)).toMatchObject({ status: "completed" });
 });
 
@@ -242,7 +242,7 @@ test("repository policy is bounded context and findings are enforced after gener
     candidateDecisions: [{ id: "allowed", disposition: "kept", reason: "The finding matches the enforced policy." }],
     findings: [allowedFinding, finding("wrong-category", "correctness", "high"), finding("too-low", "security", "low")],
   }));
-  expect((await pending).findings.map((finding) => finding.id)).toEqual(["allowed"]);
+  expect((await pending).value.findings.map((finding) => finding.id)).toEqual(["allowed"]);
 });
 
 test("drops undeclared stops and findings whose declared scope does not match the normalized anchor", async () => {
@@ -290,7 +290,7 @@ test("drops undeclared stops and findings whose declared scope does not match th
     findings: [phaseOnly],
   }));
 
-  const outline = await pending;
+  const { value: outline } = await pending;
   expect(outline.phases[0]?.steps.map((step) => step.id)).toEqual(["changed"]);
   expect(outline.findings.map((candidate) => candidate.id)).toEqual(["phase-only"]);
 });
@@ -336,7 +336,7 @@ test("audits release-path candidates to a concrete causal finding before returni
     blastRadiusSize: 5,
   }] }));
 
-  expect((await pending).findings).toEqual([expect.objectContaining({
+  expect((await pending).value.findings).toEqual([expect.objectContaining({
     id: "sandbox-push",
     severity: "high",
     confidence: "high",
@@ -398,7 +398,7 @@ test("skips optional findings and diagrams at generation time", async () => {
     findings: [{ id: "ignored", phaseId: "behavior", path: "app.ts", side: "new", line: 1, message: "Ignored", category: "correctness", severity: "high", confidence: "high", evidence: "Ignored", priority: "P2", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" }],
   }));
   await bridge.ack(event.id);
-  const outline = await pending;
+  const { value: outline } = await pending;
   expect(outline.behaviorArchitecture).toBeUndefined();
   expect(outline.behaviorArchitectureStatus).toBeUndefined();
   expect(outline.architecture).toBeUndefined();
@@ -421,7 +421,7 @@ test("regenerates one validated call flow while preserving its identity", async 
   const pending = agent.regenerateCallFlows(comparison, current, "request");
   const [event] = await bridge.eventsAfter(0, 1_000);
   await bridge.respond(event!.id, JSON.stringify({ callFlows: [{ ...current[0], summary: "New", provenance: "verified" }] }));
-  expect(await pending).toMatchObject([{ id: "request", summary: "New", provenance: "verified" }]);
+  expect((await pending).value).toMatchObject([{ id: "request", summary: "New", provenance: "verified" }]);
 });
 
 test("regenerates one validated flow while preserving its identity", async () => {
@@ -437,5 +437,5 @@ test("regenerates one validated flow while preserving its identity", async () =>
   await bridge.respond(event!.id, JSON.stringify({ flows: [{
     ...current[0], summary: "New", mermaid: "sequenceDiagram\n  autonumber\n  A->>B: call\n  Note right of B: checked",
   }] }));
-  expect(await pending).toEqual([{ ...current[0], summary: "New", mermaid: "sequenceDiagram\n  autonumber\n  A->>B: call\n  Note right of B: checked" }]);
+  expect((await pending).value).toEqual([{ ...current[0], summary: "New", mermaid: "sequenceDiagram\n  autonumber\n  A->>B: call\n  Note right of B: checked" }]);
 });

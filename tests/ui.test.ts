@@ -95,7 +95,7 @@ test("slow tour work exposes its prompt and safe progress while navigation remai
   expect(app).toContain('`We prepare ${prefetchSteps} ${prefetchSteps === 1 ? "step" : "steps"} in advance.`');
   expect(app).toContain('state.session.agentActivity = latest.agentActivity');
   expect(app).toContain('state.expectedAgentActivity = { kind: "review.question", previousActivityId }');
-  expect(app).toContain("Your question is queued. The tour stop already in progress will finish first.");
+  expect(app).toContain("Your question is being sent now while tour preparation continues.");
   expect(app).toContain("receivedExpectedActivity");
   expect(app).toContain("!expectedActivity || receivedExpectedActivity");
   expect(app).toContain("if (pendingLocalActivity) state.session.agentActivity = pendingLocalActivity");
@@ -414,6 +414,11 @@ test("files expand and collapse in place while line actions expose comment and a
   expect(app).toContain('data-file-expansion="${file._full ? "compact" : "full"}"');
   expect(app).toContain('${file._full ? "Collapse file" : "Expand file"}');
   expect(app).toContain('query.set("full", String(requestedFull))');
+  expect(app).toContain("function captureFileViewport(path)");
+  expect(app).toContain("function restoreFileViewport(anchor)");
+  expect(app).toContain("const viewportAnchor = requestedFull !== undefined ? captureFileViewport(path) : null");
+  expect(app).toContain("if (!viewportAnchor) {");
+  expect(app).toContain("if (viewportAnchor) restoreFileViewport(viewportAnchor)");
   expect(app).toContain('data-line-tool="comment"');
   expect(app).toContain('data-line-tool="ask"');
   expect(app).toContain("function openLineComment(row)");

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { ReviewError } from "./errors.ts";
-import type { AgentTransport, BridgePromptKind } from "./agent.ts";
+import type { AgentTransport, AgentTransportReply, BridgePromptKind } from "./agent.ts";
 import type { PersistedReviewSession, ReviewComment } from "./types.ts";
 
 export interface BridgePromptEvent {
@@ -34,7 +34,7 @@ export interface PersistedBridgeTerminalEvent extends BridgeClosedEvent {
 }
 
 interface PendingPrompt {
-  resolve: (message: string) => void;
+  resolve: (reply: AgentTransportReply) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
   fallbackTimer?: ReturnType<typeof setTimeout>;
@@ -59,13 +59,13 @@ export class AttachedAgentBridge implements AgentTransport {
   private readonly acknowledged = new Set<string>();
   private readonly leases = new Map<string, EventLease>();
   private readonly refreshAuthorized = new Map<string, number>();
-  private lastRespondedEventId?: string;
   private readonly listeners = new Set<() => void>();
   private disposed = false;
   private terminalEvent?: BridgeClosedEvent;
   private terminalPublished = false;
   private persistCheckpoint?: () => Promise<void>;
   private fallback?: AgentTransport;
+  private fallbackFactory?: () => AgentTransport;
   private fallbackInactivityMs = { ...DEFAULT_FALLBACK_INACTIVITY_MS };
   private resolveTerminalAcknowledged!: () => void;
   readonly terminalAcknowledged = new Promise<void>((resolve) => {
@@ -110,10 +110,27 @@ export class AttachedAgentBridge implements AgentTransport {
     inactivityMs?: number | Partial<Record<BridgePromptEvent["kind"], number>>,
   ): void {
     this.fallback = transport;
+    this.fallbackFactory = undefined;
+    this.configureFallbackInactivity(inactivityMs);
+    for (const eventId of this.pending.keys()) this.armFallback(eventId);
+  }
+
+  setFallbackFactory(
+    factory: () => AgentTransport,
+    inactivityMs?: number | Partial<Record<BridgePromptEvent["kind"], number>>,
+  ): void {
+    this.fallbackFactory = factory;
+    this.fallback = undefined;
+    this.configureFallbackInactivity(inactivityMs);
+    for (const eventId of this.pending.keys()) this.armFallback(eventId);
+  }
+
+  private configureFallbackInactivity(
+    inactivityMs?: number | Partial<Record<BridgePromptEvent["kind"], number>>,
+  ): void {
     this.fallbackInactivityMs = typeof inactivityMs === "number"
       ? Object.fromEntries(Object.keys(DEFAULT_FALLBACK_INACTIVITY_MS).map((kind) => [kind, inactivityMs])) as Record<BridgePromptEvent["kind"], number>
       : { ...DEFAULT_FALLBACK_INACTIVITY_MS, ...inactivityMs };
-    for (const eventId of this.pending.keys()) this.armFallback(eventId);
   }
 
   get currentSequence(): number {
@@ -138,12 +155,12 @@ export class AttachedAgentBridge implements AgentTransport {
     kind: BridgePromptKind,
     attachment?: { name: string; content: string },
     progress?: (update: { status: "waiting" | "running"; message: string }) => void,
-  ): Promise<string> {
+  ): Promise<AgentTransportReply> {
     if (this.disposed) return Promise.reject(new ReviewError("The review is closed."));
     const restored = [...this.promptRecords.values()].find((record) => (
       !record.committed && record.event.kind === kind && record.event.prompt === prompt && !this.pending.has(record.event.id)
     ));
-    if (restored?.response !== undefined) return restored.response;
+    if (restored?.response !== undefined) return { message: restored.response, receipt: restored.event.id };
     if (restored) {
       progress?.({ status: this.leases.has(restored.event.id) ? "running" : "waiting", message: this.leases.has(restored.event.id) ? "The triggering agent already claimed this prompt." : "Waiting for the triggering agent to claim this prompt." });
       return this.waitForResponse(restored.event, progress, attachment);
@@ -173,9 +190,9 @@ export class AttachedAgentBridge implements AgentTransport {
     return this.waitForResponse(event, progress, attachment);
   }
 
-  private waitForResponse(event: BridgePromptEvent, progress?: PendingPrompt["progress"], attachment?: PendingPrompt["attachment"]): Promise<string> {
+  private waitForResponse(event: BridgePromptEvent, progress?: PendingPrompt["progress"], attachment?: PendingPrompt["attachment"]): Promise<AgentTransportReply> {
     const id = event.id;
-    return new Promise<string>((resolve, reject) => {
+    return new Promise<AgentTransportReply>((resolve, reject) => {
       const timer = setTimeout(() => {
         const pending = this.pending.get(id);
         if (pending?.fallbackTimer) clearTimeout(pending.fallbackTimer);
@@ -194,7 +211,7 @@ export class AttachedAgentBridge implements AgentTransport {
   private armFallback(eventId: string): void {
     const pending = this.pending.get(eventId);
     const record = this.promptRecords.get(eventId);
-    if (!pending || !record || pending.fallbackActive || !this.fallback) return;
+    if (!pending || !record || pending.fallbackActive || (!this.fallback && !this.fallbackFactory)) return;
     if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
     pending.fallbackTimer = setTimeout(() => void this.continueWithFallback(eventId), this.fallbackInactivityMs[record.event.kind]);
   }
@@ -202,7 +219,7 @@ export class AttachedAgentBridge implements AgentTransport {
   private async continueWithFallback(eventId: string): Promise<void> {
     const pending = this.pending.get(eventId);
     const record = this.promptRecords.get(eventId);
-    const fallback = this.fallback;
+    const fallback = this.fallbackFactory?.() ?? this.fallback;
     if (!pending || pending.fallbackActive || !record || record.response !== undefined || !fallback || this.disposed) return;
     pending.fallbackActive = true;
     if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
@@ -213,7 +230,8 @@ export class AttachedAgentBridge implements AgentTransport {
     pending.progress?.({ status: "running", message: "The triggering agent stopped reporting progress. Continuing automatically with a local fallback agent…" });
     await this.persistCheckpoint?.().catch(() => undefined);
     try {
-      const message = await fallback.send(record.event.prompt, record.event.kind, pending.attachment, pending.progress);
+      const response = await fallback.send(record.event.prompt, record.event.kind, pending.attachment, pending.progress);
+      const message = typeof response === "string" ? response : response.message;
       if (!message.trim()) throw new Error("The fallback agent returned an empty response.");
       if (this.disposed) throw new Error("The review closed before the fallback agent answered.");
       record.response = message;
@@ -222,8 +240,7 @@ export class AttachedAgentBridge implements AgentTransport {
       await this.persistCheckpoint?.();
       clearTimeout(pending.timer);
       this.pending.delete(eventId);
-      pending.resolve(message);
-      this.lastRespondedEventId = eventId;
+      pending.resolve({ message, receipt: eventId });
     } catch (error) {
       this.pending.delete(eventId);
       this.promptRecords.delete(eventId);
@@ -259,9 +276,8 @@ export class AttachedAgentBridge implements AgentTransport {
       clearTimeout(pending.timer);
       if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
       this.pending.delete(eventId);
-      pending.resolve(message);
+      pending.resolve({ message, receipt: eventId });
     }
-    this.lastRespondedEventId = eventId;
   }
 
   validateRefresh(eventId: string, leaseId: string): void {
@@ -275,18 +291,20 @@ export class AttachedAgentBridge implements AgentTransport {
     this.refreshAuthorized.set(eventId, comparisonGeneration);
   }
 
-  consumeResponseRefreshAuthorization(): number | undefined {
-    const eventId = this.lastRespondedEventId;
-    this.lastRespondedEventId = undefined;
-    if (!eventId) return undefined;
-    const generation = this.refreshAuthorized.get(eventId);
-    this.refreshAuthorized.delete(eventId);
-    return generation;
+  consumeResponseRefreshAuthorization(receipts: string[]): number | undefined {
+    for (const eventId of receipts) {
+      const generation = this.refreshAuthorized.get(eventId);
+      this.refreshAuthorized.delete(eventId);
+      if (generation !== undefined) return generation;
+    }
+    return undefined;
   }
 
-  prepareCommitResponses(): PersistedPrompt[] {
+  prepareCommitResponses(receipts: string[]): PersistedPrompt[] {
     const changed: PersistedPrompt[] = [];
-    for (const [id, record] of this.promptRecords) {
+    for (const id of new Set(receipts)) {
+      const record = this.promptRecords.get(id);
+      if (!record) continue;
       if (record.response === undefined || record.committed) continue;
       changed.push(structuredClone(record));
       record.committed = true;

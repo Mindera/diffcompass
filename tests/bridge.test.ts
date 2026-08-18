@@ -22,6 +22,10 @@ async function rejectionOf(promise: Promise<unknown>): Promise<Error> {
   throw new Error("Expected promise to reject with an Error");
 }
 
+async function replyMessage(promise: ReturnType<AttachedAgentBridge["send"]>): Promise<string> {
+  return (await promise).message;
+}
+
 test("delivers an attached-agent prompt and resolves its response", async () => {
   const bridge = new AttachedAgentBridge();
   const response = bridge.send("Explain the change", "tour.explanation");
@@ -36,7 +40,7 @@ test("delivers an attached-agent prompt and resolves its response", async () => 
   });
 
   await bridge.respond(events[0]!.id, "It changes the state transition.");
-  expect(await response).toBe("It changes the state transition.");
+  expect(await replyMessage(response)).toBe("It changes the state transition.");
 });
 
 test("reports whether an attached prompt is waiting, claimed, or making visible progress", async () => {
@@ -51,7 +55,7 @@ test("reports whether an attached prompt is waiting, claimed, or making visible 
   expect(updates.at(-1)?.message).toBe("Checking the changed call path.");
 
   await bridge.respond(event!.id, "The explanation.", event!.leaseId);
-  await expect(answer).resolves.toBe("The explanation.");
+  expect(await replyMessage(answer)).toBe("The explanation.");
   expect(updates.at(-1)?.message).toContain("returned a response");
 });
 
@@ -68,7 +72,7 @@ test("automatically continues an abandoned attached prompt with a local fallback
   const answer = bridge.send("Explain the abandoned change", "tour.explanation", undefined, (update) => updates.push(update.message));
   const [claimed] = await bridge.eventsAfter(0, 0, undefined, true);
 
-  await expect(answer).resolves.toBe("Recovered explanation");
+  expect(await replyMessage(answer)).toBe("Recovered explanation");
   expect(updates.some((message) => message.includes("fallback agent"))).toBe(true);
   await expect(bridge.respond(claimed!.id, "Late attached answer", claimed!.leaseId)).rejects.toThrow(/fallback|different response/);
   expect(await bridge.eventsAfter(0)).toEqual([]);
@@ -92,7 +96,7 @@ test("attached progress heartbeats postpone automatic fallback", async () => {
   expect(fallbackCalls).toBe(0);
   await bridge.respond(claimed!.id, "Attached answer", claimed!.leaseId);
 
-  await expect(answer).resolves.toBe("Attached answer");
+  expect(await replyMessage(answer)).toBe("Attached answer");
   expect(fallbackCalls).toBe(0);
 });
 
@@ -114,7 +118,7 @@ test("gives heavy outline prompts a longer fallback window without delaying expl
   await Bun.sleep(20);
   expect(fallbackCalls).toBe(0);
   await bridge.respond(claimed!.id, "Attached outline", claimed!.leaseId);
-  await expect(answer).resolves.toBe("Attached outline");
+  expect(await replyMessage(answer)).toBe("Attached outline");
 });
 
 test("rejects progress for an unowned or completed attached prompt", async () => {
@@ -136,7 +140,7 @@ test("accepts an identical replayed response but rejects a conflicting replay", 
 
   await bridge.respond(event!.id, "The explanation.");
   await bridge.respond(event!.id, "The explanation.");
-  await expect(answer).resolves.toBe("The explanation.");
+  expect(await replyMessage(answer)).toBe("The explanation.");
   await expect(bridge.respond(event!.id, "A different explanation.")).rejects.toThrow("different response");
 });
 
@@ -195,7 +199,7 @@ test("events must be answered before acknowledgement and are removed once acknow
 
   await expect(bridge.ack(event!.id)).rejects.toThrow("Answer the prompt before acknowledging it");
   await bridge.respond(event!.id, "The change is intentional.");
-  await expect(answer).resolves.toBe("The change is intentional.");
+  expect(await replyMessage(answer)).toBe("The change is intentional.");
 
   await bridge.ack(event!.id);
   expect(await bridge.eventsAfter(0)).toEqual([]);
@@ -243,7 +247,7 @@ test("persists a prompt sequence before exposing the event", async () => {
   const [event] = await bridge.eventsAfter(0, 1_000);
   expect(event?.sequence).toBe(1);
   await bridge.respond(event!.id, "Done");
-  await expect(answer).resolves.toBe("Done");
+  expect(await replyMessage(answer)).toBe("Done");
 });
 
 test("rehydrates an unanswered prompt beyond the saved cursor and reuses its durable response", async () => {
@@ -255,7 +259,7 @@ test("rehydrates an unanswered prompt beyond the saved cursor and reuses its dur
   expect(replayed).toMatchObject(originalEvent!);
 
   await restored.respond(replayed!.id, "Durable answer");
-  await expect(restored.send("Durable prompt", "tour.explanation")).resolves.toBe("Durable answer");
+  expect(await replyMessage(restored.send("Durable prompt", "tour.explanation"))).toBe("Durable answer");
   original.dispose();
   await expect(waiting).rejects.toThrow("server stopped");
 });
@@ -281,7 +285,7 @@ test("leases each event to only one concurrent polling worker", async () => {
   expect(batches.filter((batch) => batch.length === 0)).toHaveLength(1);
   const event = batches.flat()[0]!;
   await bridge.respond(event.id, "Only once", event.leaseId);
-  await expect(answer).resolves.toBe("Only once");
+  expect(await replyMessage(answer)).toBe("Only once");
 });
 
 test("restores lease ownership so a second worker cannot claim or answer after restart", async () => {
@@ -293,7 +297,7 @@ test("restores lease ownership so a second worker cannot claim or answer after r
   expect(await restored.eventsAfter(0, 0, undefined, true)).toEqual([]);
   await expect(restored.respond(claimed!.id, "wrong", "wrong-lease")).rejects.toThrow("leased");
   await restored.respond(claimed!.id, "owned", claimed!.leaseId);
-  await expect(restored.send("Owned prompt", "review.question")).resolves.toBe("owned");
+  expect(await replyMessage(restored.send("Owned prompt", "review.question"))).toBe("owned");
   original.dispose();
   await expect(waiting).rejects.toThrow("server stopped");
 });
@@ -307,11 +311,52 @@ test("acknowledging a committed prompt checkpoints neither its record nor a dang
   const answer = bridge.send("Commit", "tour.explanation");
   const [event] = await bridge.eventsAfter(0, 1_000, undefined, true);
   await bridge.respond(event!.id, "Committed", event!.leaseId);
-  bridge.prepareCommitResponses();
+  bridge.prepareCommitResponses([event!.id]);
   await bridge.ack(event!.id, event!.leaseId);
 
-  expect(await answer).toBe("Committed");
+  expect(await replyMessage(answer)).toBe("Committed");
   expect(checkpoint).toEqual({ prompts: [], leases: [] });
+});
+
+test("concurrent replies are committed only by their own receipt", async () => {
+  const bridge = new AttachedAgentBridge();
+  const firstAnswer = bridge.send("First", "tour.explanation");
+  const secondAnswer = bridge.send("Second", "review.question");
+  const events = await bridge.eventsAfter(0, 1_000);
+  const first = events.find((event) => event.type === "agent.prompt" && event.prompt === "First")!;
+  const second = events.find((event) => event.type === "agent.prompt" && event.prompt === "Second")!;
+
+  await bridge.respond(second.id, "Second answer");
+  await bridge.respond(first.id, "First answer");
+  const secondReply = await secondAnswer;
+  const firstReply = await firstAnswer;
+  await bridge.ack(first.id);
+  await bridge.ack(second.id);
+
+  bridge.prepareCommitResponses([secondReply.receipt!]);
+  expect(bridge.persistedPrompts).toEqual([
+    expect.objectContaining({ event: expect.objectContaining({ id: first.id }), committed: false }),
+  ]);
+  bridge.prepareCommitResponses([firstReply.receipt!]);
+  expect(bridge.persistedPrompts).toEqual([]);
+});
+
+test("concurrent abandoned prompts receive independent fallback transports", async () => {
+  const bridge = new AttachedAgentBridge();
+  let factories = 0;
+  bridge.setFallbackFactory(() => {
+    factories += 1;
+    return { send: async (prompt) => `Fallback for ${prompt}` };
+  }, 5);
+
+  const [first, second] = await Promise.all([
+    bridge.send("one", "tour.explanation"),
+    bridge.send("two", "review.question"),
+  ]);
+
+  expect(first.message).toBe("Fallback for one");
+  expect(second.message).toBe("Fallback for two");
+  expect(factories).toBe(2);
 });
 
 test("an expired restored lease rejects its old worker until the event is reclaimed", async () => {
@@ -325,7 +370,7 @@ test("an expired restored lease rejects its old worker until the event is reclai
   const [newClaim] = await restored.eventsAfter(0, 0, undefined, true);
   expect(newClaim!.leaseId).not.toBe(oldClaim!.leaseId);
   await restored.respond(newClaim!.id, "new", newClaim!.leaseId);
-  await expect(restored.send("Expired owner", "review.question")).resolves.toBe("new");
+  expect(await replyMessage(restored.send("Expired owner", "review.question"))).toBe("new");
   original.dispose();
   await expect(waiting).rejects.toThrow("server stopped");
 });

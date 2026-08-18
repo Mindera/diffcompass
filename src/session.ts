@@ -83,10 +83,14 @@ export class ReviewSession {
   private agentContinuation?: PersistedReviewSession["agentContinuation"];
   private tourPlanning = false;
   private agentActivity?: AgentRunActivity;
+  private readonly agentActivities = new Map<string, AgentRunActivity>();
+  private readonly prefetchTasks = new Map<string, Promise<void>>();
+  private readonly workerAgents = new Set<TourAgent>();
   private commandQueue: Promise<void> = Promise.resolve();
   private mutationQueue: Promise<void> = Promise.resolve();
   private refreshQueue: Promise<void> = Promise.resolve();
   private persistenceQueue: Promise<void> = Promise.resolve();
+  private agentResultQueue: Promise<void> = Promise.resolve();
   private terminalEpoch = 0;
   private closePromise?: Promise<{ outcome: ReviewOutcome; comments: ReviewComment[]; status: ReviewStatus }>;
   private comparisonGeneration = 0;
@@ -202,14 +206,18 @@ export class ReviewSession {
     return this.persistenceQueue;
   }
 
-  private async persistAgentResult(): Promise<void> {
-    const committed = this.bridge?.prepareCommitResponses() ?? [];
-    try {
-      await this.persist();
-    } catch (error) {
-      this.bridge?.rollbackCommitResponses(committed);
-      throw error;
-    }
+  private persistAgentResult(receipts: string[] = []): Promise<void> {
+    const operation = this.agentResultQueue.then(async () => {
+      const committed = this.bridge?.prepareCommitResponses(receipts) ?? [];
+      try {
+        await this.persist();
+      } catch (error) {
+        this.bridge?.rollbackCommitResponses(committed);
+        throw error;
+      }
+    });
+    this.agentResultQueue = operation.then(() => undefined, () => undefined);
+    return operation;
   }
 
   private ensureComparisonCurrent(generation: number): void {
@@ -412,16 +420,41 @@ export class ReviewSession {
     };
   }
 
-  private createAgent(continuation?: PersistedReviewSession["agentContinuation"]): TourAgent {
+  private createAgent(
+    continuation?: PersistedReviewSession["agentContinuation"],
+    configureFallback = true,
+  ): TourAgent {
     if (!this.selection) throw new ReviewError("Select a tour agent before starting the tour.");
     return new TourAgent(
       this.comparison.repositoryRoot,
       this.selection,
       this.bridge,
       continuation,
-      (activity) => { this.agentActivity = activity; },
-      this.resolveFallbackSelection(),
+      (activity) => this.recordAgentRunActivity(activity),
+      configureFallback ? this.resolveFallbackSelection() : undefined,
     );
+  }
+
+  private createWorkerAgent(): TourAgent {
+    // The primary attached agent owns the bridge fallback factory. Workers share
+    // that bridge, but must not replace its factory with their shorter lifetime.
+    const worker = this.createAgent(undefined, false);
+    this.workerAgents.add(worker);
+    return worker;
+  }
+
+  private recordAgentRunActivity(activity: AgentRunActivity): void {
+    this.agentActivities.set(activity.id, structuredClone(activity));
+    if (activity.status === "completed") this.agentActivities.delete(activity.id);
+    const candidates = [...this.agentActivities.values()];
+    const active = candidates.filter((candidate) => candidate.status === "waiting" || candidate.status === "running");
+    const interactive = active
+      .filter((candidate) => candidate.kind === "review.question")
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const background = active.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const latestTerminal = [...candidates.filter((candidate) => candidate.status === "failed"), activity]
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    this.agentActivity = structuredClone(interactive ?? background ?? latestTerminal ?? activity);
   }
 
   snapshot() {
@@ -607,36 +640,49 @@ export class ReviewSession {
   }
 
   private scheduleNextStepPrefetch(): void {
-    void this.serialize(async () => {
-      this.ensureOpen();
-      if (!this.outline || !this.agent) return;
-      const steps = tourSteps(this.outline);
-      const windowEnd = Math.min(steps.length - 1, this.currentStepIndex + this.preferences.prefetchSteps);
-      const index = steps.findIndex((candidate, candidateIndex) => (
-        candidateIndex > this.currentStepIndex && candidateIndex <= windowEnd && !candidate.explanation
-      ));
+    if (this.status !== "open") return;
+    if (!this.outline || !this.agent || this.preferences.prefetchSteps === 0) return;
+    const steps = tourSteps(this.outline);
+    const windowEnd = Math.min(steps.length - 1, this.currentStepIndex + this.preferences.prefetchSteps);
+    for (let index = this.currentStepIndex + 1; index <= windowEnd; index += 1) {
       const step = steps[index];
-      if (!step) return;
-      const comparisonGeneration = this.comparisonGeneration;
-      this.agent.useComparison(this.comparison);
-      const explanation = await this.agent.explainStep(step, index, steps.length);
-      this.ensureOpen();
-      this.ensureComparisonCurrent(comparisonGeneration);
-      if (step.explanation) return;
-      const previousRevision = this.revision;
-      step.explanation = explanation;
-      this.revision += 1;
-      try {
-        await this.persistAgentResult();
-        this.scheduleNextStepPrefetch();
-      } catch (error) {
-        if (step.explanation === explanation && this.revision === previousRevision + 1) {
-          step.explanation = undefined;
-          this.revision = previousRevision;
+      if (!step || step.explanation || this.prefetchTasks.has(step.id)) continue;
+      const task = this.prefetchStep(step.id, index, steps.length);
+      this.prefetchTasks.set(step.id, task);
+      void task.finally(() => this.prefetchTasks.delete(step.id)).catch(() => undefined);
+    }
+  }
+
+  private async prefetchStep(stepId: string, index: number, totalSteps: number): Promise<void> {
+    const step = tourSteps(this.outline).find((candidate) => candidate.id === stepId);
+    if (!step || step.explanation) return;
+    const comparisonGeneration = this.comparisonGeneration;
+    const worker = this.createWorkerAgent();
+    worker.useComparison(this.comparison);
+    try {
+      const generated = await worker.explainStep(step, index, totalSteps);
+      await this.serializeMutation(async () => {
+        this.ensureOpen();
+        this.ensureComparisonCurrent(comparisonGeneration);
+        const current = tourSteps(this.outline).find((candidate) => candidate.id === stepId);
+        if (!current || current.explanation) return;
+        const previousRevision = this.revision;
+        current.explanation = generated.value;
+        this.revision += 1;
+        try {
+          await this.persistAgentResult(generated.receipts);
+        } catch (error) {
+          if (current.explanation === generated.value && this.revision === previousRevision + 1) {
+            current.explanation = undefined;
+            this.revision = previousRevision;
+          }
+          throw error;
         }
-        throw error;
-      }
-    }).catch(() => undefined);
+      });
+    } finally {
+      this.workerAgents.delete(worker);
+      worker.cancel();
+    }
   }
 
   private navigateToPreparedStep(direction: "previous" | "next", expectedCurrentStepIndex: number, targetIndex: number) {
@@ -712,15 +758,17 @@ export class ReviewSession {
       }
       this.agent.useComparison(this.comparison);
       this.tourPlanning = true;
+      const receipts: string[] = [];
       try {
         if (!this.outline) {
-          const outline = await this.agent.createOutline(
+          const generated = await this.agent.createOutline(
             this.comparison,
             this.reviewPolicy,
             () => this.ensureComparisonCurrent(comparisonGeneration),
           );
+          receipts.push(...generated.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);
-          this.outline = outline;
+          this.outline = generated.value;
           this.currentStepIndex = 0;
         } else if (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length) {
           this.currentStepIndex = 0;
@@ -730,13 +778,14 @@ export class ReviewSession {
         const step = steps[this.currentStepIndex]!;
         if (!step.explanation) {
           const explanation = await this.agent.explainStep(step, this.currentStepIndex, steps.length);
+          receipts.push(...explanation.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);
-          step.explanation = explanation;
+          step.explanation = explanation.value;
         }
         this.ensureOpen();
         this.revision += 1;
         operationRevision = this.revision;
-        await this.persistAgentResult();
+        await this.persistAgentResult(receipts);
         this.scheduleNextStepPrefetch();
         return this.snapshot();
       } catch (error) {
@@ -774,16 +823,18 @@ export class ReviewSession {
       const steps = tourSteps(this.outline);
       const index = Math.max(0, Math.min(steps.length - 1, this.currentStepIndex + delta));
       const step = steps[index]!;
+      let receipts: string[] = [];
       if (!step.explanation) {
         const explanation = await this.agent.explainStep(step, index, steps.length);
+        receipts = explanation.receipts;
         this.ensureComparisonCurrent(comparisonGeneration);
-        step.explanation = explanation;
+        step.explanation = explanation.value;
       }
       this.ensureOpen();
       this.currentStepIndex = index;
       this.revision += 1;
       operationRevision = this.revision;
-      await this.persistAgentResult();
+      await this.persistAgentResult(receipts);
       this.scheduleNextStepPrefetch();
       return this.snapshot();
       } catch (error) {
@@ -838,15 +889,15 @@ export class ReviewSession {
         if (this.revision !== before.revision) throw new ReviewError("The review changed while flows were being regenerated. Retry against the latest session.");
         if (id) {
           const index = this.outline.flows.findIndex((flow) => flow.id === id);
-          if (index < 0 || generated.length !== 1) throw new ReviewError("The regenerated flow is invalid.");
-          this.outline.flows[index] = generated[0]!;
+          if (index < 0 || generated.value.length !== 1) throw new ReviewError("The regenerated flow is invalid.");
+          this.outline.flows[index] = generated.value[0]!;
         } else {
-          this.outline.flows = generated;
+          this.outline.flows = generated.value;
         }
         this.ensureOpen();
         this.revision += 1;
         operationRevision = this.revision;
-        await this.persistAgentResult();
+        await this.persistAgentResult(generated.receipts);
         return this.snapshot();
       } catch (error) {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
@@ -870,15 +921,15 @@ export class ReviewSession {
         if (this.revision !== before.revision) throw new ReviewError("The review changed while call flows were being regenerated. Retry against the latest session.");
         if (id) {
           const index = this.outline.callFlows.findIndex((flow) => flow.id === id);
-          if (index < 0 || generated.length !== 1) throw new ReviewError("The regenerated call flow is invalid.");
-          this.outline.callFlows[index] = generated[0]!;
+          if (index < 0 || generated.value.length !== 1) throw new ReviewError("The regenerated call flow is invalid.");
+          this.outline.callFlows[index] = generated.value[0]!;
         } else {
-          this.outline.callFlows = generated;
+          this.outline.callFlows = generated.value;
         }
         this.ensureOpen();
         this.revision += 1;
         operationRevision = this.revision;
-        await this.persistAgentResult();
+        await this.persistAgentResult(generated.receipts);
         return this.snapshot();
       } catch (error) {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
@@ -923,19 +974,21 @@ export class ReviewSession {
           };
         }
         const answer = await this.agent.answer(body, selectedContext, step, proposalWorkspace?.path);
-        const authorizedGeneration = this.bridge?.consumeResponseRefreshAuthorization();
-        if (this.comparisonGeneration !== comparisonGeneration && !(
-          this.selection?.adapterId === "attached" && authorizedGeneration === this.comparisonGeneration
-        )) {
-          this.ensureComparisonCurrent(comparisonGeneration);
-        }
-        this.ensureOpen();
-        this.messages.push(userMessage);
-        this.messages.push({ id: crypto.randomUUID(), role: "agent", body: answer, stepId, createdAt: new Date().toISOString() });
-        this.revision += 1;
-        operationRevision = this.revision;
-        await this.persistAgentResult();
-        return this.snapshot();
+        return await this.serializeMutation(async () => {
+          const authorizedGeneration = this.bridge?.consumeResponseRefreshAuthorization(answer.receipts);
+          if (this.comparisonGeneration !== comparisonGeneration && !(
+            this.selection?.adapterId === "attached" && authorizedGeneration === this.comparisonGeneration
+          )) {
+            this.ensureComparisonCurrent(comparisonGeneration);
+          }
+          this.ensureOpen();
+          this.messages.push(userMessage);
+          this.messages.push({ id: crypto.randomUUID(), role: "agent", body: answer.value, stepId, createdAt: new Date().toISOString() });
+          this.revision += 1;
+          operationRevision = this.revision;
+          await this.persistAgentResult(answer.receipts);
+          return this.snapshot();
+        });
       } catch (error) {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
         if (createdAgent) this.agent = undefined;
@@ -1281,6 +1334,8 @@ export class ReviewSession {
       this.status = outcome;
       this.revision += 1;
       this.agent?.cancel();
+      for (const worker of this.workerAgents) worker.cancel();
+      this.workerAgents.clear();
       const terminal = this.bridge?.prepareClose(outcome, this.comments);
       try {
         await this.persist();
@@ -1303,6 +1358,8 @@ export class ReviewSession {
 
   async dispose(): Promise<void> {
     this.agent?.cancel();
+    for (const worker of this.workerAgents) worker.cancel();
+    this.workerAgents.clear();
     this.bridge?.dispose();
     await this.persistenceQueue.catch(() => undefined);
   }

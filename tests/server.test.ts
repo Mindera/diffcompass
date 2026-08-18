@@ -242,7 +242,7 @@ test("bridge responses require the active event lease", async () => {
   expect((await jsonRequest(url, "/api/bridge/respond", {
     method: "POST", headers, body: JSON.stringify({ eventId: event.id, leaseId: event.leaseId, message: "Yes" }),
   })).status).toBe(200);
-  await expect(answer).resolves.toBe("Yes");
+  expect((await answer).message).toBe("Yes");
 });
 
 test("a same-code-unit Unicode token mismatch is rejected as unauthorized rather than crashing", async () => {
