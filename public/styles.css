@@ -296,7 +296,7 @@ button { color: inherit; }
 .diff-toolbar label { display: flex; align-items: center; gap: 7px; color: var(--muted); }
 .diff-toolbar select { width: auto; min-width: 92px; padding: 5px 7px; }
 .view-notice { position: sticky; top: 0; z-index: 5; margin: 10px 14px 0; border: 1px solid var(--notice-border); border-radius: 7px; padding: 8px 10px; background: var(--notice-background); color: var(--notice-text); font-size: 11px; }
-.diff-file { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; background: var(--surface-code); }
+.diff-file { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: clip; background: var(--surface-code); }
 .diff-file.collapsed .diff-file-scroll { display: none; }
 .diff-file.collapsed .diff-file-header { border-bottom: 0; }
 .diff-file-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }

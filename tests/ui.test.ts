@@ -368,6 +368,24 @@ test("marking a file reviewed collapses its diff while keeping the header availa
   expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: rotate(-90deg); }");
 });
 
+test("file headers stick to the diff viewport while their file is visible", async () => {
+  const styles = await readFile(join(root, "public/styles.css"), "utf8");
+  expect(styles).toContain(".diff-file { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: clip;");
+  expect(styles).toContain(".diff-file-header { position: sticky; top: 0; z-index: 3;");
+  expect(styles).not.toContain(".diff-file { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden;");
+});
+
+test("top-level panes preserve independent scroll positions", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  expect(app).toContain("tabScrollPositions: new Map()");
+  expect(app).toContain("function activateReviewTab(tabName, render = null)");
+  expect(app).toContain('state.tabScrollPositions.set(state.activeTab, elements["diff-panel"].scrollTop)');
+  expect(app).toContain("const scrollTop = state.tabScrollPositions.get(tabName) ?? 0");
+  expect(app).toContain('if (state.activeTab === tabName) elements["diff-panel"].scrollTop = scrollTop');
+  expect(app).toContain('elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"))');
+  expect(app).toContain("activateReviewTab(nextTab, render)");
+});
+
 test("review comments render inline and their marker opens the existing editor", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public/app.js"), "utf8"),

@@ -13,6 +13,7 @@ const state = {
   editingCommentId: null,
   busy: false,
   activeTab: "diff",
+  tabScrollPositions: new Map(),
   visibleFile: null,
   collapsedFiles: new Set(),
   diffCache: new Map(),
@@ -1201,6 +1202,18 @@ function renderActiveTab() {
   }
 }
 
+function activateReviewTab(tabName, render = null) {
+  if (tabName === state.activeTab) return;
+  state.tabScrollPositions.set(state.activeTab, elements["diff-panel"].scrollTop);
+  state.activeTab = tabName;
+  render?.();
+  renderActiveTab();
+  const scrollTop = state.tabScrollPositions.get(tabName) ?? 0;
+  window.requestAnimationFrame(() => {
+    if (state.activeTab === tabName) elements["diff-panel"].scrollTop = scrollTop;
+  });
+}
+
 function renderTourAnnotation() {
   document.querySelectorAll(".tour-anchor, .tour-anchor-start, .tour-anchor-end").forEach((row) => row.classList.remove("tour-anchor", "tour-anchor-start", "tour-anchor-end"));
   document.querySelectorAll(".tour-code-note").forEach((note) => note.remove());
@@ -1953,13 +1966,13 @@ elements["diff-layout"].addEventListener("change", () => {
   window.localStorage.setItem(preferenceKey("diff-layout"), state.diffLayout);
   renderFilteredDiff();
 });
-elements["diff-tab"].addEventListener("click", () => { state.activeTab = "diff"; renderActiveTab(); });
-elements["call-flows-tab"].addEventListener("click", () => { state.activeTab = "call-flows"; renderCallFlows(); renderActiveTab(); });
-elements["sequence-tab"].addEventListener("click", () => { state.activeTab = "sequence"; renderSequenceDiagrams(); renderActiveTab(); });
-elements["findings-tab"].addEventListener("click", () => { state.activeTab = "findings"; renderFindings(); renderActiveTab(); });
+elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
+elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
+elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequence", renderSequenceDiagrams));
+elements["findings-tab"].addEventListener("click", () => activateReviewTab("findings", renderFindings));
 elements["findings-back"].addEventListener("click", returnToFindingCode);
-elements["activity-tab"].addEventListener("click", () => { state.activeTab = "activity"; renderActivities(); renderActiveTab(); });
-elements["pull-request-tab"].addEventListener("click", () => { state.activeTab = "pull-request"; renderPullRequest(); renderActiveTab(); });
+elements["activity-tab"].addEventListener("click", () => activateReviewTab("activity", renderActivities));
+elements["pull-request-tab"].addEventListener("click", () => activateReviewTab("pull-request", renderPullRequest));
 elements.flows.addEventListener("click", (event) => {
   const fileButton = event.target.closest("[data-flow-file]");
   if (fileButton) {
@@ -2057,12 +2070,15 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
   const currentIndex = tabs.indexOf(state.activeTab);
   const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
     (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
-  state.activeTab = tabs[nextIndex];
-  if (state.activeTab === "call-flows") renderCallFlows();
-  if (state.activeTab === "sequence") renderSequenceDiagrams();
-  if (state.activeTab === "activity") renderActivities();
-  renderActiveTab();
-  elements[`${state.activeTab}-tab`].focus();
+  const nextTab = tabs[nextIndex];
+  const render = nextTab === "call-flows" ? renderCallFlows
+    : nextTab === "sequence" ? renderSequenceDiagrams
+      : nextTab === "findings" ? renderFindings
+        : nextTab === "activity" ? renderActivities
+          : nextTab === "pull-request" ? renderPullRequest
+            : null;
+  activateReviewTab(nextTab, render);
+  elements[`${nextTab}-tab`].focus();
 });
 
 elements["activity-list"].addEventListener("click", (event) => {
