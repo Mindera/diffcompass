@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AttachedAgentBridge } from "../src/bridge.ts";
+import { AttachedAgentBridge, DEFAULT_FALLBACK_INACTIVITY_MS } from "../src/bridge.ts";
 
 const comment = {
   id: "comment-1",
@@ -94,6 +94,27 @@ test("attached progress heartbeats postpone automatic fallback", async () => {
 
   await expect(answer).resolves.toBe("Attached answer");
   expect(fallbackCalls).toBe(0);
+});
+
+test("gives heavy outline prompts a longer fallback window without delaying explanations", async () => {
+  expect(DEFAULT_FALLBACK_INACTIVITY_MS["tour.outline"]).toBe(5 * 60 * 1_000);
+  expect(DEFAULT_FALLBACK_INACTIVITY_MS["tour.explanation"]).toBe(90_000);
+
+  const bridge = new AttachedAgentBridge();
+  let fallbackCalls = 0;
+  bridge.setFallback({
+    async send() {
+      fallbackCalls += 1;
+      return "Fallback";
+    },
+  }, { "tour.outline": 50, "tour.explanation": 10 });
+  const answer = bridge.send("Plan the route", "tour.outline");
+  const [claimed] = await bridge.eventsAfter(0, 0, undefined, true);
+
+  await Bun.sleep(20);
+  expect(fallbackCalls).toBe(0);
+  await bridge.respond(claimed!.id, "Attached outline", claimed!.leaseId);
+  await expect(answer).resolves.toBe("Attached outline");
 });
 
 test("rejects progress for an unowned or completed attached prompt", async () => {

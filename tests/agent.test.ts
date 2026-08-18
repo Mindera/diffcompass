@@ -142,6 +142,24 @@ test("normalizes context findings and derives all priority levels from the docum
   ];
   await bridge.respond(event!.id, JSON.stringify({
     title: "Review", summary: "Review changes", planningNotes: ["Start at the behavior boundary."], flows: [],
+    callFlows: [
+      {
+        id: "valid-optional-flow", title: "Valid optional flow", summary: "Grounded in the changed call site.", entrypointNodeId: "caller", provenance: "verified",
+        nodes: [
+          { id: "caller", label: "caller", kind: "function", change: "added", newLocation: { path: "app.ts", side: "new", line: 2 } },
+          { id: "callee", label: "callee", kind: "external", change: "unchanged" },
+        ],
+        edges: [{ id: "call", from: "caller", to: "callee", label: "calls", change: "added", newCallSite: { path: "app.ts", side: "new", line: 2 } }],
+      },
+      {
+        id: "invalid-optional-flow", title: "Invalid optional flow", summary: "Missing source evidence.", entrypointNodeId: "caller", provenance: "partial",
+        nodes: [
+          { id: "caller", label: "caller", kind: "function", change: "modified" },
+          { id: "callee", label: "callee", kind: "external", change: "unchanged" },
+        ],
+        edges: [{ id: "call", from: "caller", to: "callee", label: "calls", change: "added", newCallSite: { path: "app.ts", side: "new", line: 2 } }],
+      },
+    ],
     phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
     findings: candidateFindings,
   }));
@@ -156,6 +174,7 @@ test("normalizes context findings and derives all priority levels from the docum
 
   const outline = await pending;
   expect(outline.planningNotes).toEqual(["Start at the behavior boundary."]);
+  expect(outline.callFlows.map((flow) => flow.id)).toEqual(["valid-optional-flow"]);
   expect(outline.findings.map(({ id, priority }) => [id, priority])).toEqual([["p0", "P0"], ["p1", "P1"], ["p2", "P2"], ["p3", "P3"]]);
   expect(outline.findings[3]).toMatchObject({ side: "new", line: 1 });
 });

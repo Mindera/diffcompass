@@ -12,6 +12,12 @@ export interface BridgePromptEvent {
   createdAt: string;
 }
 
+export const DEFAULT_FALLBACK_INACTIVITY_MS: Record<BridgePromptEvent["kind"], number> = {
+  "tour.outline": 5 * 60 * 1_000,
+  "tour.explanation": 90_000,
+  "review.question": 90_000,
+};
+
 export interface BridgeClosedEvent {
   sequence: number;
   id: string;
@@ -60,7 +66,7 @@ export class AttachedAgentBridge implements AgentTransport {
   private terminalPublished = false;
   private persistCheckpoint?: () => Promise<void>;
   private fallback?: AgentTransport;
-  private fallbackInactivityMs = 90_000;
+  private fallbackInactivityMs = { ...DEFAULT_FALLBACK_INACTIVITY_MS };
   private resolveTerminalAcknowledged!: () => void;
   readonly terminalAcknowledged = new Promise<void>((resolve) => {
     this.resolveTerminalAcknowledged = resolve;
@@ -99,9 +105,14 @@ export class AttachedAgentBridge implements AgentTransport {
     this.persistCheckpoint = callback;
   }
 
-  setFallback(transport: AgentTransport, inactivityMs = 90_000): void {
+  setFallback(
+    transport: AgentTransport,
+    inactivityMs?: number | Partial<Record<BridgePromptEvent["kind"], number>>,
+  ): void {
     this.fallback = transport;
-    this.fallbackInactivityMs = inactivityMs;
+    this.fallbackInactivityMs = typeof inactivityMs === "number"
+      ? Object.fromEntries(Object.keys(DEFAULT_FALLBACK_INACTIVITY_MS).map((kind) => [kind, inactivityMs])) as Record<BridgePromptEvent["kind"], number>
+      : { ...DEFAULT_FALLBACK_INACTIVITY_MS, ...inactivityMs };
     for (const eventId of this.pending.keys()) this.armFallback(eventId);
   }
 
@@ -182,9 +193,10 @@ export class AttachedAgentBridge implements AgentTransport {
 
   private armFallback(eventId: string): void {
     const pending = this.pending.get(eventId);
-    if (!pending || pending.fallbackActive || !this.fallback) return;
+    const record = this.promptRecords.get(eventId);
+    if (!pending || !record || pending.fallbackActive || !this.fallback) return;
     if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
-    pending.fallbackTimer = setTimeout(() => void this.continueWithFallback(eventId), this.fallbackInactivityMs);
+    pending.fallbackTimer = setTimeout(() => void this.continueWithFallback(eventId), this.fallbackInactivityMs[record.event.kind]);
   }
 
   private async continueWithFallback(eventId: string): Promise<void> {

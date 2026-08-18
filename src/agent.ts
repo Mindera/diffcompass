@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { runProcess } from "./process.ts";
 import { validateReviewFlow } from "./flows.ts";
 import { validateReviewArchitecture } from "./architecture.ts";
-import { validateCallFlows } from "./call-flows.ts";
+import { validateCallFlow, validateCallFlows } from "./call-flows.ts";
 import type { AgentRunActivity, AgentSelection, GitComparison, ReasoningEffort, ReviewArchitecture, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
 
 interface CodexJsonEvent {
@@ -161,6 +161,21 @@ function validFlow(flow: ReviewFlow): boolean {
   try { validateReviewFlow(flow); return true; } catch { return false; }
 }
 
+function validOptionalCallFlows(value: unknown, comparison: GitComparison) {
+  if (!Array.isArray(value)) return [];
+  const ids = new Set<string>();
+  return value.slice(0, 8).flatMap((candidate) => {
+    try {
+      const flow = validateCallFlow(candidate, comparison);
+      if (ids.has(flow.id)) return [];
+      ids.add(flow.id);
+      return [flow];
+    } catch {
+      return [];
+    }
+  });
+}
+
 function validFinding(finding: ReviewFinding, comparison: GitComparison, policy: ReviewPolicy): boolean {
   if (!finding || typeof finding.id !== "string" || !finding.id || finding.id.length > 128 ||
     !generatedString(finding.path, 4_096) || !generatedString(finding.message, 50_000) ||
@@ -277,7 +292,7 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
     flowIds.add(flow.id);
     return [flow];
   }).slice(0, 3);
-  const callFlows = validateCallFlows(outline.callFlows, comparison);
+  const callFlows = validOptionalCallFlows(outline.callFlows, comparison);
   const findings = validateFindings(outline.findings, phases, comparison, policy);
   const behaviorArchitecture = validArchitecture(outline.behaviorArchitecture, comparison);
   const behaviorArchitectureStatus = behaviorArchitecture && ["implemented", "proposed"].includes(String(outline.behaviorArchitectureStatus))
@@ -357,7 +372,10 @@ export interface AgentTransport {
     progress?: (update: { status: "waiting" | "running"; message: string }) => void,
   ): Promise<string>;
   continuationId?(): string | undefined;
-  setFallback?(transport: AgentTransport, inactivityMs?: number): void;
+  setFallback?(
+    transport: AgentTransport,
+    inactivityMs?: number | Partial<Record<BridgePromptKind, number>>,
+  ): void;
 }
 
 function progressFromJsonLines(report: ((update: { status: "waiting" | "running"; message: string }) => void) | undefined) {
@@ -602,12 +620,13 @@ export class TourAgent {
     }
   }
 
-  private async send(
+  private async send<T = string>(
     prompt: string,
     kind: BridgePromptKind,
     attachment?: { name: string; content: string },
     stepProgress?: { stepNumber: number; totalSteps: number },
-  ): Promise<string> {
+    transform?: (message: string) => T,
+  ): Promise<T> {
     const now = new Date().toISOString();
     const label = kind === "tour.explanation"
       ? "Preparing a tour stop"
@@ -640,10 +659,11 @@ export class TourAgent {
     publish();
     try {
       const result = await this.transport.send(prompt, kind, attachment, update);
+      const value = transform ? transform(result) : result as T;
       activity.status = "completed";
       activity.updatedAt = activity.completedAt = new Date().toISOString();
       publish();
-      return result;
+      return value;
     } catch (error) {
       activity.status = "failed";
       activity.error = error instanceof Error ? error.message : String(error);
@@ -704,7 +724,13 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
     const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
     const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;
-    const generated = validateOutline(parseOutline(await this.send(promptWithDiff, "tour.outline", attachment)), comparison, policy);
+    const generated = await this.send(
+      promptWithDiff,
+      "tour.outline",
+      attachment,
+      undefined,
+      (message) => validateOutline(parseOutline(message), comparison, policy),
+    );
     const outline = {
       ...generated,
       behaviorArchitecture: this.includeArchitecture ? generated.behaviorArchitecture : undefined,
@@ -753,8 +779,13 @@ For each candidate, trace the changed source or configuration through its actual
 Perform a separate recall audit of high-impact boundaries even when the candidate list is empty. Start from changed configuration, contracts, platform integration, and externally visible behavior, then inspect the repository paths that consume or deliver them. Prefer a few demonstrated findings over speculative coverage.
 
 Evidence must name the decisive repository paths and symbols or line ranges and describe the complete causal chain. Severity reflects demonstrated impact, not uncertainty. Confidence is high only when the important links are directly established; use medium or low only when a relevant link remains unavailable after targeted inspection. Findings must obey the allowed categories and minimum severity, anchor to a changed diff line, and use one of the supplied phase ids. Add stepId only when the exact anchor lies within that step. Write the message in short, plain language.`;
-    const message = await this.send(prompt, "tour.outline");
-    return validateFindings(parseFindingAudit(message, outline.findings.map((finding) => finding.id)), outline.phases, comparison, policy);
+    return this.send(
+      prompt,
+      "tour.outline",
+      undefined,
+      undefined,
+      (message) => validateFindings(parseFindingAudit(message, outline.findings.map((finding) => finding.id)), outline.phases, comparison, policy),
+    );
   }
 
   async regenerateFlows(comparison: GitComparison, currentFlows: ReviewFlow[], flowId?: string): Promise<ReviewFlow[]> {
@@ -768,13 +799,17 @@ ${selected ? `Regenerate only this flow, preserving its id: ${JSON.stringify(sel
 
 Return only JSON shaped as {"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}]}. Return no more than three flows. affectedFiles must list every changed path that participates in or is directly affected by the flow, with no unrelated paths. Mermaid may use participants or actors, messages, notes, activation, autonumber, and alt/loop/opt/par/critical/break/rect/box blocks. Do not use semicolons in message or note text. Use at most twelve participants. Return an empty array only when no goal-critical runtime flow is supported by evidence.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
-    const message = await this.send(
+    const flows = await this.send(
       needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`,
       "tour.outline",
       needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined,
+      undefined,
+      (message) => {
+        const parsed = parseFlows(message, comparison).slice(0, 3);
+        if (selected && (parsed.length !== 1 || parsed[0]?.id !== selected.id)) throw new Error("The agent did not return the requested flow with its original id.");
+        return parsed;
+      },
     );
-    const flows = parseFlows(message, comparison).slice(0, 3);
-    if (selected && (flows.length !== 1 || flows[0]?.id !== selected.id)) throw new Error("The agent did not return the requested flow with its original id.");
     return flows;
   }
 
@@ -789,13 +824,17 @@ ${selected ? `Regenerate only this call flow and preserve its id: ${JSON.stringi
 
 Return only {"callFlows":[...]} using bounded nodes and caller-to-callee edges. Use explicit added, removed, unchanged, or modified node states and added, removed, or unchanged edge states. Every added edge needs a newCallSite, every removed edge needs an oldCallSite, and call-site anchors must point to changed diff lines. affectedFiles must exactly equal the changed call-site paths. Use honest verified, partial, or unverified provenance. Focus on changed entrypoints whose expanded call structure changed, and return an empty array when there is no meaningful call-graph change.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
-    const message = await this.send(
+    const callFlows = await this.send(
       needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`,
       "tour.outline",
       needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined,
+      undefined,
+      (message) => {
+        const parsed = parseCallFlows(message, comparison);
+        if (selected && (parsed.length !== 1 || parsed[0]?.id !== selected.id)) throw new Error("The agent did not preserve the requested call-flow id.");
+        return parsed;
+      },
     );
-    const callFlows = parseCallFlows(message, comparison);
-    if (selected && (callFlows.length !== 1 || callFlows[0]?.id !== selected.id)) throw new Error("The agent did not preserve the requested call-flow id.");
     return callFlows;
   }
 

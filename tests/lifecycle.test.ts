@@ -502,6 +502,35 @@ test("a refresh rejects an in-flight outline generated for the previous comparis
   await expect(retry).rejects.toThrow();
 });
 
+test("a failed automatic outline remains visible in the session so the browser can explain and retry it", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
+  const bridge = session.bridge!;
+  const starting = session.startTour({ adapterId: "attached", modelId: "current-session" });
+  const [prompt] = await bridge.eventsAfter(0, 1_000);
+
+  await bridge.respond(prompt!.id, JSON.stringify({
+    title: "Invalid outline",
+    summary: "No route can be anchored.",
+    phases: [],
+    callFlows: [],
+    flows: [],
+    findings: [],
+  }));
+
+  await expect(starting).rejects.toThrow("invalid tour outline");
+  expect(session.snapshot()).toMatchObject({
+    tourState: "idle",
+    outline: undefined,
+    agentActivity: {
+      kind: "tour.outline",
+      status: "failed",
+      error: expect.stringContaining("invalid tour outline"),
+    },
+  });
+  await session.close("cancelled");
+});
+
 test("an attached review question can refresh after requested edits and still return its answer", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));

@@ -15,6 +15,7 @@ import { createPullRequestWorkspace, loadPullRequestContext, removePullRequestWo
 import type { PullRequestContext } from "./types.ts";
 import { runBridgeCommand } from "./bridge-command.ts";
 import { runLifecycleCommand } from "./install-lifecycle.ts";
+import { prepareAndOpenReviewPage } from "./open-review.ts";
 
 interface Options {
   repository: string;
@@ -298,17 +299,7 @@ if (session.bridge) {
 const automaticTour = options.startTour ? session.startTour() : undefined;
 
 if (options.open) {
-  try {
-    await automaticTour;
-    const command = process.platform === "darwin"
-      ? ["open", reviewUrl]
-      : process.platform === "win32"
-        ? ["cmd", "/c", "start", "", reviewUrl]
-        : ["xdg-open", reviewUrl];
-    Bun.spawn(command, { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
-  } catch (error) {
-    console.error(`${options.startTour ? "Could not prepare the tour or open the browser" : "Could not open the browser automatically"}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  await prepareAndOpenReviewPage(automaticTour, reviewUrl);
 } else if (automaticTour) {
   void automaticTour.catch((error) => {
     console.error(`Could not start the tour automatically: ${error instanceof Error ? error.message : String(error)}`);
