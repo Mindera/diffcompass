@@ -41,6 +41,7 @@ const state = {
   diffLayout: null,
   filePanelWidth: 240,
   agentPanelWidth: 420,
+  splitOldWidth: 50,
   renderedPhaseId: null,
   tourMode: null,
   focusedStepId: null,
@@ -304,6 +305,8 @@ const FILE_PANEL_MIN = 180;
 const FILE_PANEL_MAX = 480;
 const AGENT_PANEL_MIN = 320;
 const AGENT_PANEL_MAX = 720;
+const SPLIT_PANE_MIN = 20;
+const SPLIT_PANE_MAX = 80;
 
 function diffPanelMinimum() {
   return window.innerWidth <= 1050 ? 360 : 420;
@@ -327,6 +330,17 @@ function setAgentPanelWidth(value, persist = false) {
   if (persist) window.localStorage.setItem(preferenceKey("agent-panel-width"), String(width));
 }
 
+function setSplitOldWidth(value, persist = false) {
+  const width = Math.round(Math.max(SPLIT_PANE_MIN, Math.min(SPLIT_PANE_MAX, value)));
+  state.splitOldWidth = width;
+  elements.diff.style.setProperty("--split-old-width", `${width}%`);
+  elements.diff.querySelectorAll("[data-split-resizer]").forEach((resizer) => {
+    resizer.setAttribute("aria-valuenow", String(width));
+    resizer.setAttribute("aria-valuetext", `Old side ${width}%, new side ${100 - width}%`);
+  });
+  if (persist) window.localStorage.setItem(preferenceKey("split-old-width"), String(width));
+}
+
 function initializeUiPreferences() {
   const repository = state.session.pullRequest?.sourceRepositoryRoot ?? state.session.comparison.repositoryRoot;
   if (state.preferenceRepository === repository) return;
@@ -335,6 +349,7 @@ function initializeUiPreferences() {
   const savedTreeMode = window.localStorage.getItem(preferenceKey("tree-mode"));
   const savedFilePanelWidth = Number(window.localStorage.getItem(preferenceKey("file-panel-width")));
   const savedAgentPanelWidth = Number(window.localStorage.getItem(preferenceKey("agent-panel-width")));
+  const savedSplitOldWidth = Number(window.localStorage.getItem(preferenceKey("split-old-width")));
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = ["unified", "split"].includes(savedLayout) ? savedLayout : state.session.preferences?.diffLayout ?? "split";
   state.treeMode = ["changes", "repository"].includes(savedTreeMode)
@@ -344,6 +359,7 @@ function initializeUiPreferences() {
       : state.session.preferences?.changedFilesOnly ? "changes" : "repository";
   setFilePanelWidth(Number.isFinite(savedFilePanelWidth) && savedFilePanelWidth > 0 ? savedFilePanelWidth : 240);
   setAgentPanelWidth(Number.isFinite(savedAgentPanelWidth) && savedAgentPanelWidth > 0 ? savedAgentPanelWidth : 420);
+  setSplitOldWidth(Number.isFinite(savedSplitOldWidth) && savedSplitOldWidth > 0 ? savedSplitOldWidth : 50);
   setFilePanelWidth(state.filePanelWidth);
 }
 
@@ -533,7 +549,7 @@ function renderDiff(files) {
       ${file.hunks.map((hunk) => `<div class="hunk ${state.diffLayout}-layout">
         <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && !file._full && fileContext(file) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${fileContext(file)}">Expand context</button>` : ""}</div>
         ${state.diffLayout === "split"
-          ? splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings)}${renderSplitSide(file, newRow, "new", findings)}</div>`).join("")
+          ? `<div class="split-resizer" data-split-resizer role="separator" aria-label="Resize old and new diff panes" aria-orientation="vertical" aria-valuemin="${SPLIT_PANE_MIN}" aria-valuemax="${SPLIT_PANE_MAX}" aria-valuenow="${state.splitOldWidth}" aria-valuetext="Old side ${state.splitOldWidth}%, new side ${100 - state.splitOldWidth}%" tabindex="0"></div>${splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings)}${renderSplitSide(file, newRow, "new", findings)}</div>`).join("")}`
           : hunk.rows.map((row) => renderUnifiedRow(file, row, findings)).join("")}
       </div>`).join("")}
       </div>
@@ -1944,6 +1960,41 @@ window.addEventListener("resize", () => {
   setAgentPanelWidth(state.agentPanelWidth);
   setFilePanelWidth(state.filePanelWidth);
 });
+let splitResizeStart = null;
+elements.diff.addEventListener("pointerdown", (event) => {
+  const resizer = event.target.closest?.("[data-split-resizer]");
+  if (!resizer) return;
+  splitResizeStart = { pointerId: event.pointerId, resizer, hunk: resizer.closest(".hunk.split-layout") };
+  resizer.classList.add("dragging");
+  resizer.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+elements.diff.addEventListener("pointermove", (event) => {
+  if (!splitResizeStart || event.pointerId !== splitResizeStart.pointerId || !splitResizeStart.hunk) return;
+  const bounds = splitResizeStart.hunk.getBoundingClientRect();
+  if (bounds.width > 0) setSplitOldWidth(((event.clientX - bounds.left) / bounds.width) * 100);
+});
+elements.diff.addEventListener("pointerup", (event) => {
+  if (!splitResizeStart || event.pointerId !== splitResizeStart.pointerId) return;
+  splitResizeStart.resizer.classList.remove("dragging");
+  splitResizeStart = null;
+  setSplitOldWidth(state.splitOldWidth, true);
+});
+elements.diff.addEventListener("pointercancel", () => {
+  splitResizeStart?.resizer.classList.remove("dragging");
+  splitResizeStart = null;
+});
+elements.diff.addEventListener("dblclick", (event) => {
+  if (!event.target.closest?.("[data-split-resizer]")) return;
+  setSplitOldWidth(50, true);
+});
+elements.diff.addEventListener("keydown", (event) => {
+  if (!event.target.closest?.("[data-split-resizer]") || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const amount = event.shiftKey ? 5 : 2;
+  const width = event.key === "Home" ? SPLIT_PANE_MIN : event.key === "End" ? SPLIT_PANE_MAX : state.splitOldWidth + (event.key === "ArrowRight" ? amount : -amount);
+  setSplitOldWidth(width, true);
+});
 window.addEventListener("review-tour-theme-change", () => {
   if (state.session) renderArchitecture();
   if (state.session && state.activeTab === "call-flows") renderCallFlows();
@@ -2256,7 +2307,7 @@ elements.diff.addEventListener("wheel", (event) => {
   const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
   if (!hunk || !delta) return;
   const hoveredSide = event.target.closest?.(".diff-row.split-side");
-  const side = hoveredSide?.dataset.side ?? (event.clientX < hunk.getBoundingClientRect().left + hunk.clientWidth / 2 ? "old" : "new");
+  const side = hoveredSide?.dataset.side ?? (event.clientX < hunk.getBoundingClientRect().left + hunk.clientWidth * state.splitOldWidth / 100 ? "old" : "new");
   const rows = [...hunk.querySelectorAll(`.diff-row.split-side[data-side="${side}"]`)];
   const scrollableRow = rows.reduce((best, row) => row.scrollWidth - row.clientWidth > best.scrollWidth - best.clientWidth ? row : best, rows[0]);
   if (!scrollableRow || scrollableRow.scrollWidth <= scrollableRow.clientWidth) return;

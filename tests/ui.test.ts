@@ -431,16 +431,22 @@ test("files expand and collapse in place while line actions expose comment and a
   expect(styles).toContain(".diff-row:hover .line-tools");
 });
 
-test("split diff panes remain equal width and synchronize horizontal scrolling per side", async () => {
+test("split diff panes are resizable and synchronize horizontal scrolling per side", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(styles).toContain(".hunk.split-layout { width: 100%; min-width: 0; }");
+  expect(styles).toContain(".hunk.split-layout { position: relative; width: 100%; min-width: 0; }");
   expect(styles).toContain("grid-template-columns: 42px 42px 22px max-content minmax(max-content, 1fr)");
-  expect(styles).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)");
+  expect(styles).toContain("grid-template-columns: minmax(0, var(--split-old-width, 50%)) minmax(0, 1fr)");
+  expect(styles).toContain(".split-resizer { position: absolute;");
   expect(styles).toContain(".diff-row.split-side { grid-template-columns: 42px 22px max-content minmax(max-content, 1fr); width: 100%; min-width: 0; overflow-x: auto;");
   expect(styles).not.toContain("grid-template-columns: minmax(50%, max-content) minmax(50%, max-content)");
+  expect(app).toContain('data-split-resizer role="separator"');
+  expect(app).toContain('setSplitOldWidth(((event.clientX - bounds.left) / bounds.width) * 100)');
+  expect(app).toContain('window.localStorage.setItem(preferenceKey("split-old-width"), String(width))');
+  expect(app).toContain('if (!event.target.closest?.("[data-split-resizer]") || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;');
+  expect(app).toContain("setSplitOldWidth(50, true)");
   expect(app).toContain('elements.diff.addEventListener("scroll"');
   expect(app).toContain("function syncSplitScroll(hunk, side, scrollLeft)");
   expect(app).toContain('elements.diff.addEventListener("wheel"');
