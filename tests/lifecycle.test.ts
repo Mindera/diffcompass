@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runProcess } from "../src/process.ts";
+import { loadComparison } from "../src/git.ts";
 import { ReviewSession } from "../src/session.ts";
 import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
 import type { PersistedReviewSession } from "../src/types.ts";
@@ -354,6 +355,7 @@ test("prefetch keeps a two-stop sliding window instead of preparing the whole to
   if (!third || third.type !== "agent.prompt") throw new Error("Expected the second prefetched stop in parallel.");
   expect(second.prompt).toContain("Second step");
   expect(third.prompt).toContain("Verification stop");
+  expect(session.snapshot().agentActivity).toMatchObject({ kind: "tour.explanation", stepNumber: 2, totalSteps: 4 });
   await bridge.respond(second.id, "Second ready.");
   await bridge.ack(second.id);
   await bridge.respond(third.id, "Third ready.");
@@ -429,6 +431,28 @@ test("a resumed closed attached session emits an immutable terminal event beyond
   (closed as { comments: typeof comments }).comments[0]!.body = "mutated response copy";
   const [replayed] = await bridge.eventsAfter(7);
   expect((replayed as { comments: typeof comments }).comments[0]!.body).toBe("Please explain this branch.");
+});
+
+test("closing with feedback hands the attached agent the exact reviewed working tree", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
+
+  await session.close("feedback");
+  const [closed] = await session.bridge!.eventsAfter(0);
+  if (!closed || closed.type !== "review.closed") throw new Error("Expected a feedback close event.");
+  if (!closed.reviewedTree) throw new Error("Expected the reviewed tree on feedback.");
+  expect(closed.reviewedTree).toMatch(/^[0-9a-f]{40,64}$/);
+
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changed = 2;\nconst feedbackFix = 3;\n");
+  const comparison = await loadComparison(repository, closed.reviewedTree);
+  expect(comparison.patch).toContain("+const feedbackFix = 3;");
+  expect(comparison.patch).not.toContain("+const changed = 2;");
+  await session.dispose();
+
+  const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  const [replayed] = await resumed.bridge!.eventsAfter(0);
+  expect(replayed).toMatchObject({ type: "review.closed", outcome: "feedback", reviewedTree: closed.reviewedTree });
+  await resumed.dispose();
 });
 
 test("terminal delivery and acknowledgement remain durable across resume", async () => {

@@ -32,6 +32,15 @@ async function refExists(cwd: string, ref: string): Promise<boolean> {
   }
 }
 
+async function treeExists(cwd: string, ref: string): Promise<boolean> {
+  try {
+    await git(cwd, ["rev-parse", "--verify", `${ref}^{tree}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveRepositoryRoot(cwd: string): Promise<string> {
   return git(cwd, ["rev-parse", "--show-toplevel"]);
 }
@@ -95,7 +104,7 @@ export async function applyChangePatch(repositoryRoot: string, patch: string, re
 
 export async function resolveBase(repositoryRoot: string, explicitBase?: string): Promise<string> {
   if (explicitBase) {
-    if (!(await refExists(repositoryRoot, explicitBase))) {
+    if (!(await refExists(repositoryRoot, explicitBase)) && !(await treeExists(repositoryRoot, explicitBase))) {
       throw new Error(`Base ref does not exist: ${explicitBase}`);
     }
     return explicitBase;
@@ -145,7 +154,9 @@ async function untrackedPatch(repositoryRoot: string, contextLines = 3): Promise
 export async function loadComparison(cwd: string, explicitBase?: string, contextLines = 3): Promise<GitComparison> {
   const repositoryRoot = await resolveRepositoryRoot(cwd);
   const base = await resolveBase(repositoryRoot, explicitBase);
-  const mergeBase = await git(repositoryRoot, ["merge-base", base, "HEAD"]);
+  const mergeBase = await refExists(repositoryRoot, base)
+    ? await git(repositoryRoot, ["merge-base", base, "HEAD"])
+    : await git(repositoryRoot, ["rev-parse", "--verify", `${base}^{tree}`]);
   const head = await git(repositoryRoot, ["rev-parse", "HEAD"]);
   const branch = await git(repositoryRoot, ["branch", "--show-current"]);
   const trackedPatch = await git(repositoryRoot, [

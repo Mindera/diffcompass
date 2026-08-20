@@ -867,7 +867,7 @@ Anchor: ${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine} (${s
 Objective: ${step.objective}
 Comparison fingerprint: ${this.comparisonFingerprint}
 
-Explain this step in plain, everyday language. Keep it under 180 words in two to four short paragraphs. Start with the concrete behavior, then say why it matters and what the reviewer should check. Avoid jargon unless the code uses the term; explain any necessary term in a few words. Do not repeat the title, objective, or file path. End with one short transition toward the next step. Do not modify files.`, "tour.explanation", undefined, { stepNumber: index + 1, totalSteps: total });
+Explain this step in plain, everyday language. Keep it under 180 words in two to four short paragraphs. Start with the concrete behavior, then say why it matters and what the reviewer should check. Avoid jargon unless the code uses the term; explain any necessary term in a few words. Do not repeat the title, objective, or file path. Do not predict, name, or summarize the next step; the route may change independently of this explanation. End with a short instruction to select Next when ready. Do not modify files.`, "tour.explanation", undefined, { stepNumber: index + 1, totalSteps: total });
   }
 
   async answer(question: string, selectedContext?: string, step?: TourStep, proposalRoot?: string): Promise<AgentResult<string>> {

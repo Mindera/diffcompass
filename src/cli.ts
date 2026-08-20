@@ -49,7 +49,7 @@ Usage:
 
 Options:
   --repo PATH          Repository to review (default: current directory)
-  --base REF           Parent branch or Git reference to compare
+  --base REF           Parent branch, commit, or captured Git tree to compare
   --attached           Use the launching agent as the conversation backend
   --start-tour         Prepare stop one before opening the review page
   --no-findings        Skip finding generation for this review session

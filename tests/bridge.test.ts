@@ -147,7 +147,8 @@ test("accepts an identical replayed response but rejects a conflicting replay", 
 test("terminal comment payloads are detached from input and returned event copies", async () => {
   const bridge = new AttachedAgentBridge();
   const source = [structuredClone(comment)];
-  const closed = bridge.close("feedback", source);
+  const reviewedTree = "a".repeat(40);
+  const closed = bridge.close("feedback", source, reviewedTree);
   source[0].body = "mutated caller input";
   closed.comments[0]!.body = "mutated returned event";
 
@@ -155,6 +156,7 @@ test("terminal comment payloads are detached from input and returned event copie
   (firstRead as { comments: typeof source }).comments[0]!.body = "mutated event read";
   const [secondRead] = await bridge.eventsAfter(0);
   expect((secondRead as { comments: typeof source }).comments[0]!.body).toBe("Handle the empty case.");
+  expect(secondRead).toMatchObject({ reviewedTree });
 });
 
 test("long polling wakes when the review closes with feedback", async () => {

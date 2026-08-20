@@ -226,6 +226,7 @@ function validTerminalEvent(value: unknown): boolean {
     nonEmptyString(value.id, 128) && value.type === "review.closed" &&
     ["accepted", "feedback", "cancelled"].includes(String(value.outcome)) &&
     Array.isArray(value.comments) && value.comments.length <= 10_000 && value.comments.every(validComment) &&
+    (value.reviewedTree === undefined || (value.outcome === "feedback" && /^[0-9a-f]{40,64}$/.test(String(value.reviewedTree)))) &&
     nonEmptyString(value.createdAt, 64) && typeof value.acknowledged === "boolean";
 }
 

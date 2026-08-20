@@ -99,7 +99,7 @@ When a `review.closed` event arrives:
 
 - `accepted`: acknowledge the terminal event, stop the local server, and report that the tour was accepted.
 - `cancelled`: acknowledge the terminal event and stop the local server without changing the repository.
-- `feedback`: treat active `comments` as requested code changes. Implement them in the reviewed repository, run proportionate verification, then acknowledge the terminal event, stop the server, and report the result. Report outdated comments separately instead of applying them blindly. The review is terminal at this point, so do not call refresh after close.
+- `feedback`: treat active `comments` as requested code changes. The event also carries `reviewedTree`, the exact working-tree snapshot the human reviewed. Implement the comments in the reviewed repository, run proportionate verification, then acknowledge the terminal event and stop the server. Report outdated comments separately instead of applying them blindly. The review is terminal at this point, so do not call refresh after close. If the calling workflow requires another tour after feedback, launch that next tour with `--base <reviewedTree>` so it contains only changes made in response to this feedback, not the already-reviewed diff. Never substitute the branch base or the original audit base for this fixed-point pass.
 
 Acknowledge the terminal event only after its outcome has been handled:
 

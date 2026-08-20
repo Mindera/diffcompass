@@ -193,6 +193,8 @@ test("asks for short plain-language stop explanations", async () => {
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an explanation prompt.");
   expect(event.prompt).toContain("Keep it under 180 words");
   expect(event.prompt).toContain("Avoid jargon");
+  expect(event.prompt).toContain("Do not predict, name, or summarize the next step");
+  expect(event.prompt).toContain("select Next when ready");
   expect(activities.at(-1)).toMatchObject({
     status: "waiting",
     label: "Preparing a tour stop",

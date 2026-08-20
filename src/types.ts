@@ -352,6 +352,7 @@ export interface PersistedReviewSession {
     type: "review.closed";
     outcome: ReviewOutcome;
     comments: ReviewComment[];
+    reviewedTree?: string;
     createdAt: string;
     acknowledged: boolean;
   };

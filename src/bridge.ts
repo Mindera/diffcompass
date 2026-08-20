@@ -24,6 +24,7 @@ export interface BridgeClosedEvent {
   type: "review.closed";
   outcome: "accepted" | "feedback" | "cancelled";
   comments: ReviewComment[];
+  reviewedTree?: string;
   createdAt: string;
 }
 
@@ -317,13 +318,13 @@ export class AttachedAgentBridge implements AgentTransport {
     for (const record of records) this.promptRecords.set(record.event.id, structuredClone(record));
   }
 
-  close(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[]): BridgeClosedEvent {
-    const event = this.prepareClose(outcome, comments);
+  close(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[], reviewedTree?: string): BridgeClosedEvent {
+    const event = this.prepareClose(outcome, comments, reviewedTree);
     this.publishClose();
     return event;
   }
 
-  prepareClose(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[]): BridgeClosedEvent {
+  prepareClose(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[], reviewedTree?: string): BridgeClosedEvent {
     if (this.terminalEvent) {
       if (this.terminalEvent.outcome !== outcome) throw new ReviewError(`The review already closed as ${this.terminalEvent.outcome}.`);
       return structuredClone(this.terminalEvent);
@@ -334,6 +335,7 @@ export class AttachedAgentBridge implements AgentTransport {
       type: "review.closed",
       outcome,
       comments: structuredClone(comments),
+      ...(reviewedTree ? { reviewedTree } : {}),
       createdAt: new Date().toISOString(),
     };
     this.disposed = true;

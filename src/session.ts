@@ -451,7 +451,10 @@ export class ReviewSession {
     const interactive = active
       .filter((candidate) => candidate.kind === "review.question")
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-    const background = active.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const explanations = active
+      .filter((candidate) => candidate.kind === "tour.explanation")
+      .sort((left, right) => (left.stepNumber ?? Number.MAX_SAFE_INTEGER) - (right.stepNumber ?? Number.MAX_SAFE_INTEGER));
+    const background = explanations[0] ?? active.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
     const latestTerminal = [...candidates.filter((candidate) => candidate.status === "failed"), activity]
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
     this.agentActivity = structuredClone(interactive ?? background ?? latestTerminal ?? activity);
@@ -1339,22 +1342,30 @@ export class ReviewSession {
     this.assertCloseAllowed(outcome);
     this.closePromise = (async () => {
       const previousRevision = this.revision;
-      this.terminalEpoch += 1;
-      this.status = outcome;
-      this.revision += 1;
-      this.agent?.cancel();
-      for (const worker of this.workerAgents) worker.cancel();
-      this.workerAgents.clear();
-      const terminal = this.bridge?.prepareClose(outcome, this.comments);
+      let transitioned = false;
+      let terminal: ReturnType<AttachedAgentBridge["prepareClose"]> | undefined;
       try {
+        const reviewedTree = outcome === "feedback" && this.bridge
+          ? (await captureWorkingTreeSnapshot(this.comparison.repositoryRoot)).tree
+          : undefined;
+        this.terminalEpoch += 1;
+        this.status = outcome;
+        this.revision += 1;
+        transitioned = true;
+        this.agent?.cancel();
+        for (const worker of this.workerAgents) worker.cancel();
+        this.workerAgents.clear();
+        terminal = this.bridge?.prepareClose(outcome, this.comments, reviewedTree);
         await this.persist();
       } catch (error) {
         if (terminal) this.bridge?.rollbackPreparedClose(terminal.id);
-        this.status = "open";
-        this.revision = previousRevision;
-        this.agent = this.selection
-          ? this.createAgent(this.agentContinuation)
-          : undefined;
+        if (transitioned) {
+          this.status = "open";
+          this.revision = previousRevision;
+          this.agent = this.selection
+            ? this.createAgent(this.agentContinuation)
+            : undefined;
+        }
         this.closePromise = undefined;
         throw error;
       }

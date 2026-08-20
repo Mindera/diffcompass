@@ -103,6 +103,12 @@ bundled skill at `skills/code-review-tour` contains the complete polling and
 response workflow; Codex, Claude, Gemini, and Copilot adapters remain available as standalone
 fallbacks in the picker.
 
+Feedback events also carry the exact Git tree that was reviewed. Workflows that
+apply the comments and immediately tour again pass that tree back through
+`--base`, which scopes the follow-up tour to the feedback-induced changes instead
+of showing the original diff a second time. `--base` therefore accepts a branch,
+commit, or captured Git tree without writing review metadata into the repository.
+
 ## Install
 
 Release archives contain self-contained macOS, Linux, and Windows executables

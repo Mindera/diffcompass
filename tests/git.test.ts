@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadComparison, loadDiffFileWithContext } from "../src/git.ts";
+import { captureWorkingTreeSnapshot, loadComparison, loadDiffFileWithContext } from "../src/git.ts";
 import { runProcess } from "../src/process.ts";
 
 const repositories: string[] = [];
@@ -71,5 +71,26 @@ describe("loadComparison", () => {
     const full = await loadDiffFileWithContext(comparison, "app.txt", 3, true);
     expect(full.hunks.flatMap((hunk) => hunk.rows)).toContainEqual(expect.objectContaining({ content: "line 1" }));
     expect(full.hunks.flatMap((hunk) => hunk.rows)).toContainEqual(expect.objectContaining({ content: "line 80" }));
+  });
+
+  test("uses a captured working tree as the baseline for a feedback-only comparison", async () => {
+    const repository = await mkdtemp(join(tmpdir(), "review-tour-feedback-base-"));
+    repositories.push(repository);
+    await git(repository, "init", "-b", "main");
+    await git(repository, "config", "user.name", "Review Tour Test");
+    await git(repository, "config", "user.email", "review-tour@example.test");
+    await writeFile(join(repository, "app.txt"), "base\n");
+    await git(repository, "add", "app.txt");
+    await git(repository, "commit", "-m", "base");
+    await writeFile(join(repository, "app.txt"), "base\noriginal review change\n");
+    const reviewedTree = (await captureWorkingTreeSnapshot(repository)).tree;
+
+    await writeFile(join(repository, "app.txt"), "base\noriginal review change\nfeedback fix\n");
+    const comparison = await loadComparison(repository, reviewedTree);
+
+    expect(comparison.base).toBe(reviewedTree);
+    expect(comparison.mergeBase).toBe(reviewedTree);
+    expect(comparison.patch).toContain("+feedback fix");
+    expect(comparison.patch).not.toContain("+original review change");
   });
 });
