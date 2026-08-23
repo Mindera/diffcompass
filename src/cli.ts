@@ -253,7 +253,7 @@ if (!session.pullRequest) {
 }
 const server = startServer(session, options.port);
 const baseUrl = `http://${server.hostname}:${server.port}`;
-const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}`;
+const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${options.startTour ? "&intro=1" : ""}`;
 console.log(`Code Review Tour: ${reviewUrl}`);
 console.log(`Repository: ${session.comparison.repositoryRoot}`);
 console.log(`Comparison: ${session.comparison.base} (${session.comparison.mergeBase.slice(0, 8)}) → working tree`);

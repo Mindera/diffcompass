@@ -1,5 +1,6 @@
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 const fragmentToken = fragment.get("token");
+const launchTourIntro = fragment.get("intro") === "1";
 if (fragmentToken) {
   window.sessionStorage.setItem("review-tour-token", fragmentToken);
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -45,6 +46,8 @@ const state = {
   renderedPhaseId: null,
   tourMode: null,
   focusedStepId: null,
+  tourIntroPending: launchTourIntro,
+  tourIntroShown: false,
   focusedFindingId: null,
   findingReturn: null,
   pollInFlight: false,
@@ -61,7 +64,7 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "selection-pill", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
+    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -1128,8 +1131,35 @@ function architectureEntries() {
   ].filter(Boolean);
 }
 
+function tourIntroArchitectureCard(architecture, label, key) {
+  return `<article class="tour-intro-chart">
+    <span class="architecture-label">${escapeHtml(label)}</span>
+    <h4>${escapeHtml(architecture.title)}</h4>
+    <p>${escapeHtml(architecture.summary)}</p>
+    <div class="sequence-diagram mermaid-render" data-tour-intro-architecture-diagram="${key}" role="img" aria-label="${escapeHtml(`${label}: ${architecture.title}`)}"><span class="loading">Rendering diagram…</span></div>
+    <div class="flow-warning hidden" data-tour-intro-architecture-error="${key}">The component diagram is unavailable.</div>
+  </article>`;
+}
+
+function renderTourIntro() {
+  if (!state.session.outline) return;
+  const architectures = architectureEntries();
+  elements["tour-intro-title"].textContent = state.session.pullRequest?.title ?? state.session.outline.title;
+  elements["tour-intro-summary"].textContent = state.session.outline.summary;
+  elements["tour-intro-architecture-section"].classList.toggle("hidden", architectures.length === 0);
+  elements["tour-intro-architecture"].innerHTML = architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("");
+}
+
+function maybeShowTourIntro() {
+  if (!state.tourIntroPending || state.tourIntroShown || !state.session.outline || elements["tour-intro-dialog"].open) return;
+  renderTourIntro();
+  state.tourIntroShown = true;
+  elements["tour-intro-dialog"].showModal();
+}
+
 function renderArchitecture() {
   const architectures = architectureEntries();
+  if (state.tourIntroPending && !state.tourIntroShown) renderTourIntro();
   elements.architecture.classList.toggle("hidden", architectures.length === 0);
   elements["architecture-content"].innerHTML = architectures.map(({ key, label, value }) => architectureCard(value, label, key)).join("");
   const generation = ++state.flowRenderGeneration;
@@ -1200,6 +1230,18 @@ async function renderFlowDiagrams(architectures, flows, generation) {
     } catch {
       if (target) target.innerHTML = '<span class="muted">Diagram unavailable</span>';
       elements.architecture.querySelector(`[data-architecture-error="${architecture.key}"]`)?.classList.remove("hidden");
+    }
+    const introTarget = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${architecture.key}"]`);
+    if (introTarget) {
+      try {
+        const introResult = await window.mermaid.render(`review-tour-intro-architecture-${architecture.key}-${generation}`, architecture.value.mermaid);
+        if (generation !== state.flowRenderGeneration || !introTarget.isConnected) return;
+        introTarget.innerHTML = introResult.svg;
+        introTarget.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      } catch {
+        introTarget.innerHTML = '<span class="muted">Diagram unavailable</span>';
+        elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-error="${architecture.key}"]`)?.classList.remove("hidden");
+      }
     }
   }
   for (let index = 0; index < flows.length; index += 1) {
@@ -1510,7 +1552,14 @@ function renderSession() {
   elements["agent-mode"].textContent = state.session.agentSelection?.adapterId === "attached" ? "edits on request" : "read-only";
   renderAgentOptions();
   renderTour();
-  if (state.session.outline && state.focusedStepId === null) void focusCurrentStep();
+  maybeShowTourIntro();
+  if (state.session.outline && state.focusedStepId === null && !state.tourIntroPending) void focusCurrentStep();
+}
+
+async function beginPreparedTour() {
+  state.tourIntroPending = false;
+  elements["tour-intro-dialog"].close();
+  await focusCurrentStep();
 }
 
 async function startTour() {
@@ -1533,10 +1582,10 @@ async function startTour() {
       }),
     });
     state.tourMode = true;
-    state.focusedStepId = currentStep()?.id ?? null;
+    state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null;
     renderSession();
     elements["tour-scroll"].scrollTop = 0;
-    await focusCurrentStep();
+    if (!state.tourIntroPending) await focusCurrentStep();
   } catch (error) {
     toast(error.message);
   } finally {
@@ -1868,6 +1917,8 @@ async function refresh() {
 }
 
 elements["start-tour"].addEventListener("click", startTour);
+elements["begin-tour"].addEventListener("click", () => void beginPreparedTour());
+elements["tour-intro-dialog"].addEventListener("cancel", (event) => event.preventDefault());
 elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
 elements["next-step"].addEventListener("click", () => navigate("next"));

@@ -212,6 +212,29 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(app).toContain('label: "Implementation journey"');
 });
 
+test("agent-launched tours introduce the change before navigating to the first stop", async () => {
+  const [html, app, cli, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "src/cli.ts"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(cli).toContain('options.startTour ? "&intro=1" : ""');
+  expect(html).toContain('id="tour-intro-dialog"');
+  expect(html).toContain('id="begin-tour"');
+  expect(html).toContain('id="tour-intro-architecture"');
+  expect(app).toContain('tourIntroPending: launchTourIntro');
+  expect(app).toContain('state.session.pullRequest?.title ?? state.session.outline.title');
+  expect(app).toContain('if (state.session.outline && state.focusedStepId === null && !state.tourIntroPending)');
+  expect(app).toContain('state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null');
+  expect(app).toContain('if (!state.tourIntroPending) await focusCurrentStep()');
+  expect(app).toContain('elements["tour-intro-dialog"].showModal()');
+  expect(app).toContain('state.tourIntroPending = false');
+  expect(app).toContain('await focusCurrentStep()');
+  expect(styles).toContain('.tour-intro-dialog');
+  expect(styles).toContain('.tour-intro-architecture');
+});
+
 test("each architecture chart has independent movement and zoom controls", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public/app.js"), "utf8"),
@@ -345,6 +368,10 @@ test("diff rows stay dense and the explanation owns a bounded scroll area", asyn
   expect(html).toContain('id="tour-scroll" class="tour-scroll"');
   expect(styles).toContain(".diff-file-scroll { max-width: 100%; overflow-x: auto;");
   expect(styles).toContain(".split-row { min-width: 0; display: grid;");
+  expect(styles).toContain("min-height: 18px");
+  expect(styles).toContain("line-height: 18px");
+  expect(styles).toContain(".diff-row.split-side > .line-code { grid-column: 4; grid-row: 1; }");
+  expect(styles).toContain(".diff-row:not(.split-side) > .line-code { grid-column: 5; grid-row: 1; }");
   expect(styles).not.toContain(".line-code::-webkit-scrollbar");
 });
 

@@ -246,6 +246,25 @@
       </aside>
     </main>
 
+    <dialog id="tour-intro-dialog" class="tour-intro-dialog" aria-labelledby="tour-intro-title" aria-describedby="tour-intro-summary">
+      <div class="tour-intro-scroll">
+        <div class="eyebrow">Before the tour</div>
+        <h2 id="tour-intro-title"></h2>
+        <p id="tour-intro-summary" class="tour-intro-summary"></p>
+        <section id="tour-intro-architecture-section" class="tour-intro-architecture-section hidden" aria-labelledby="tour-intro-architecture-title">
+          <div class="tour-intro-section-heading">
+            <div class="eyebrow">Components</div>
+            <h3 id="tour-intro-architecture-title">How the change fits together</h3>
+          </div>
+          <div id="tour-intro-architecture" class="tour-intro-architecture"></div>
+        </section>
+      </div>
+      <div class="tour-intro-actions">
+        <span>The first stop is ready.</span>
+        <button id="begin-tour" type="button" class="button primary">Start tour</button>
+      </div>
+    </dialog>
+
     <dialog id="comment-dialog">
       <form id="comment-form">
         <div class="eyebrow">Review comment</div>
