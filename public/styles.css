@@ -689,12 +689,24 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .tour-intro-section-heading h3 { margin: 4px 0 0; color: var(--text); font: 700 15px/1.3 system-ui, sans-serif; }
 .tour-intro-architecture { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; margin-top: 12px; }
 .tour-intro-chart { min-width: 0; border: 1px solid var(--accent-border); border-radius: 10px; padding: 14px; background: var(--surface-card); }
+.tour-intro-chart-heading, .architecture-viewer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.tour-intro-chart-heading > div { min-width: 0; }
 .tour-intro-chart h4 { margin: 4px 0 6px; font-size: 14px; line-height: 1.3; }
 .tour-intro-chart > p { margin: 0; color: var(--text-soft); font-size: 10px; line-height: 1.45; }
 .tour-intro-chart .sequence-diagram { min-height: 150px; max-height: 300px; margin-top: 12px; }
+.diagram-expand-button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; color: var(--text-soft); background: var(--surface-control); font: 700 10px/1 system-ui, sans-serif; cursor: pointer; }
+.diagram-expand-button:hover, .diagram-expand-button:focus-visible { color: var(--text); border-color: var(--accent-border); background: var(--surface-hover); }
+.diagram-expand-button span { font-size: 13px; }
 .tour-intro-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--border); padding: 12px 18px; background: var(--surface-control); }
 .tour-intro-actions span { color: var(--muted); font-size: 10px; }
 .tour-intro-actions .button { min-width: 120px; }
+.architecture-viewer-dialog { width: calc(100vw - 32px); max-width: none; height: calc(100vh - 32px); max-height: none; padding: 0; overflow: hidden; }
+.architecture-viewer-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.architecture-viewer-heading { align-items: center; border-bottom: 1px solid var(--border); padding: 14px 18px; background: var(--surface-control); }
+.architecture-viewer-heading h2 { margin-top: 3px; }
+.architecture-viewer-dialog .architecture-diagram-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; margin: 0; padding: 16px; }
+.architecture-viewer-dialog .sequence-diagram { width: 100%; height: 100%; min-height: 0; max-height: none; margin-top: 10px; }
+.architecture-viewer-dialog .sequence-diagram svg { max-width: none; }
 .sessions-dialog { width: min(760px, calc(100vw - 30px)); max-height: min(760px, calc(100vh - 40px)); overflow: hidden; }
 .dialog-heading, .session-summary, .session-detail, .session-actions { display: flex; align-items: center; }
 .dialog-heading, .session-summary { justify-content: space-between; gap: 12px; }

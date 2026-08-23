@@ -236,10 +236,14 @@ test("agent-launched tours introduce the change before navigating to the first s
 });
 
 test("each architecture chart has independent movement and zoom controls", async () => {
-  const [app, styles] = await Promise.all([
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
+  expect(html).toContain('id="architecture-viewer-dialog"');
+  expect(html).toContain('id="architecture-viewer-diagram"');
+  expect(html).toContain('id="close-architecture-viewer"');
   expect(app).toContain("architectureDiagramViews: new Map()");
   expect(app).toContain('data-architecture-key="${key}"');
   expect(app).toContain('data-diagram-action="move-left"');
@@ -247,11 +251,18 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain('data-diagram-action="zoom-out"');
   expect(app).toContain('data-diagram-action="zoom-in"');
   expect(app).toContain('data-diagram-action="reset"');
+  expect(app).toContain("function architectureDiagramControls(label)");
+  expect(app).toContain("function architectureDiagramExpandButton(label, key)");
+  expect(app).toContain("function openArchitectureDiagramViewer(key)");
+  expect(app).toContain('data-diagram-expand="${escapeHtml(key)}"');
+  expect(app).toContain("state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 })");
   expect(app).toContain("function changeArchitectureDiagramView(key, action)");
   expect(app).toContain('svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`');
-  expect(app).toContain('elements.architecture.addEventListener("pointerdown"');
-  expect(app).toContain('elements.architecture.addEventListener("keydown"');
+  expect(app).toContain("function registerArchitectureDiagramInteractions(container)");
+  expect(app).toContain("registerArchitectureDiagramInteractions(elements.architecture)");
+  expect(app).toContain('registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"])');
   expect(styles).toContain(".architecture-diagram.dragging");
+  expect(styles).toContain(".architecture-viewer-dialog[open]");
   expect(styles).toContain("touch-action: none");
 });
 

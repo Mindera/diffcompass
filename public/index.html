@@ -265,6 +265,21 @@
       </div>
     </dialog>
 
+    <dialog id="architecture-viewer-dialog" class="architecture-viewer-dialog" aria-labelledby="architecture-viewer-title">
+      <header class="architecture-viewer-heading">
+        <div>
+          <div class="eyebrow">Component diagram</div>
+          <h2 id="architecture-viewer-title"></h2>
+        </div>
+        <button id="close-architecture-viewer" type="button" class="button secondary">Close</button>
+      </header>
+      <div id="architecture-viewer-shell" class="architecture-diagram-shell">
+        <div id="architecture-viewer-controls"></div>
+        <div id="architecture-viewer-diagram" class="sequence-diagram architecture-diagram" role="img" tabindex="0"></div>
+        <p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
+      </div>
+    </dialog>
+
     <dialog id="comment-dialog">
       <form id="comment-form">
         <div class="eyebrow">Review comment</div>

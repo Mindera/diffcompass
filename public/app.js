@@ -64,7 +64,7 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
+    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -1077,12 +1077,30 @@ function architectureDiagramView(key) {
 }
 
 function applyArchitectureDiagramView(key) {
-  const shell = elements.architecture.querySelector(`[data-architecture-key="${CSS.escape(key)}"]`);
+  const shell = document.querySelector(`[data-architecture-key="${CSS.escape(key)}"]`);
   const svg = shell?.querySelector(".architecture-diagram svg");
   const label = shell?.querySelector("[data-diagram-zoom-label]");
   const view = architectureDiagramView(key);
   if (svg) svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   if (label) label.textContent = `${Math.round(view.scale * 100)}%`;
+}
+
+function architectureDiagramControls(label) {
+  return `<div class="diagram-controls" role="group" aria-label="${escapeHtml(`${label} diagram controls`)}">
+    <span class="diagram-control-label">Move</span>
+    <button type="button" data-diagram-action="move-left" aria-label="Move diagram left" title="Move left">←</button>
+    <button type="button" data-diagram-action="move-up" aria-label="Move diagram up" title="Move up">↑</button>
+    <button type="button" data-diagram-action="move-down" aria-label="Move diagram down" title="Move down">↓</button>
+    <button type="button" data-diagram-action="move-right" aria-label="Move diagram right" title="Move right">→</button>
+    <span class="diagram-control-label">Zoom</span>
+    <button type="button" data-diagram-action="zoom-out" aria-label="Zoom diagram out" title="Zoom out">−</button>
+    <button class="diagram-zoom-label" type="button" data-diagram-action="reset" data-diagram-zoom-label aria-label="Reset diagram view" title="Reset view">100%</button>
+    <button type="button" data-diagram-action="zoom-in" aria-label="Zoom diagram in" title="Zoom in">+</button>
+  </div>`;
+}
+
+function architectureDiagramExpandButton(label, key) {
+  return `<button class="diagram-expand-button" type="button" data-diagram-expand="${escapeHtml(key)}" aria-label="${escapeHtml(`Expand ${label} diagram`)}" title="Open diagram viewer"><span aria-hidden="true">⛶</span> Expand</button>`;
 }
 
 function changeArchitectureDiagramView(key, action) {
@@ -1102,17 +1120,7 @@ function architectureCard(architecture, label, key) {
     <header><div><span class="architecture-label">${escapeHtml(label)}</span><h2>${escapeHtml(architecture.title)}</h2></div></header>
     <p>${escapeHtml(architecture.summary)}</p>
     <div class="architecture-diagram-shell" data-architecture-key="${key}">
-      <div class="diagram-controls" role="group" aria-label="${escapeHtml(`${label} diagram controls`)}">
-        <span class="diagram-control-label">Move</span>
-        <button type="button" data-diagram-action="move-left" aria-label="Move diagram left" title="Move left">←</button>
-        <button type="button" data-diagram-action="move-up" aria-label="Move diagram up" title="Move up">↑</button>
-        <button type="button" data-diagram-action="move-down" aria-label="Move diagram down" title="Move down">↓</button>
-        <button type="button" data-diagram-action="move-right" aria-label="Move diagram right" title="Move right">→</button>
-        <span class="diagram-control-label">Zoom</span>
-        <button type="button" data-diagram-action="zoom-out" aria-label="Zoom diagram out" title="Zoom out">−</button>
-        <button class="diagram-zoom-label" type="button" data-diagram-action="reset" data-diagram-zoom-label aria-label="Reset diagram view" title="Reset view">100%</button>
-        <button type="button" data-diagram-action="zoom-in" aria-label="Zoom diagram in" title="Zoom in">+</button>
-      </div>
+      ${architectureDiagramControls(label)}
       <div class="sequence-diagram architecture-diagram mermaid-render" data-architecture-diagram="${key}" role="img" tabindex="0" aria-label="${escapeHtml(`${label}: ${architecture.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`)}"><span class="loading">Rendering diagram…</span></div>
       <p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
     </div>
@@ -1133,12 +1141,31 @@ function architectureEntries() {
 
 function tourIntroArchitectureCard(architecture, label, key) {
   return `<article class="tour-intro-chart">
-    <span class="architecture-label">${escapeHtml(label)}</span>
-    <h4>${escapeHtml(architecture.title)}</h4>
+    <div class="tour-intro-chart-heading"><div><span class="architecture-label">${escapeHtml(label)}</span><h4>${escapeHtml(architecture.title)}</h4></div>${architectureDiagramExpandButton(label, key)}</div>
     <p>${escapeHtml(architecture.summary)}</p>
     <div class="sequence-diagram mermaid-render" data-tour-intro-architecture-diagram="${key}" role="img" aria-label="${escapeHtml(`${label}: ${architecture.title}`)}"><span class="loading">Rendering diagram…</span></div>
     <div class="flow-warning hidden" data-tour-intro-architecture-error="${key}">The component diagram is unavailable.</div>
   </article>`;
+}
+
+function openArchitectureDiagramViewer(key) {
+  const architecture = architectureEntries().find((entry) => entry.key === key);
+  const source = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${CSS.escape(key)}"]`);
+  if (!architecture || !source?.querySelector("svg")) {
+    toast("The component diagram is not ready yet.");
+    return;
+  }
+  const viewerKey = `viewer-${key}`;
+  state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 });
+  elements["architecture-viewer-title"].textContent = architecture.value.title;
+  elements["architecture-viewer-controls"].innerHTML = architectureDiagramControls(architecture.label);
+  elements["architecture-viewer-shell"].dataset.architectureKey = viewerKey;
+  elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
+  elements["architecture-viewer-diagram"].setAttribute("aria-label", `${architecture.label}: ${architecture.value.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
+  elements["architecture-viewer-diagram"].innerHTML = source.innerHTML;
+  elements["architecture-viewer-dialog"].showModal();
+  applyArchitectureDiagramView(viewerKey);
+  elements["architecture-viewer-diagram"].focus();
 }
 
 function renderTourIntro() {
@@ -1919,6 +1946,11 @@ async function refresh() {
 elements["start-tour"].addEventListener("click", startTour);
 elements["begin-tour"].addEventListener("click", () => void beginPreparedTour());
 elements["tour-intro-dialog"].addEventListener("cancel", (event) => event.preventDefault());
+elements["tour-intro-architecture"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-diagram-expand]");
+  if (button) openArchitectureDiagramViewer(button.dataset.diagramExpand);
+});
+elements["close-architecture-viewer"].addEventListener("click", () => elements["architecture-viewer-dialog"].close());
 elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
 elements["next-step"].addEventListener("click", () => navigate("next"));
@@ -2161,41 +2193,6 @@ elements["call-flows"].addEventListener("click", (event) => {
   }
   if (card && event.target.closest("[data-call-flow-regenerate]")) void regenerateCallFlows(card.dataset.callFlowId);
 });
-elements.architecture.addEventListener("click", (event) => {
-  const diagramAction = event.target.closest("[data-diagram-action]");
-  if (diagramAction) {
-    const shell = diagramAction.closest("[data-architecture-key]");
-    if (shell) changeArchitectureDiagramView(shell.dataset.architectureKey, diagramAction.dataset.diagramAction);
-    return;
-  }
-  const fileButton = event.target.closest("[data-flow-file]");
-  if (fileButton) void showAnalysisFile(fileButton.dataset.flowFile);
-});
-elements.architecture.addEventListener("pointerdown", (event) => {
-  const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
-  if (!diagram || event.button !== 0) return;
-  const view = architectureDiagramView(diagram.dataset.architectureDiagram);
-  state.architectureDiagramDrag = {
-    key: diagram.dataset.architectureDiagram,
-    pointerId: event.pointerId,
-    diagram,
-    startX: event.clientX,
-    startY: event.clientY,
-    originX: view.x,
-    originY: view.y,
-  };
-  diagram.classList.add("dragging");
-  diagram.setPointerCapture(event.pointerId);
-  event.preventDefault();
-});
-elements.architecture.addEventListener("pointermove", (event) => {
-  const drag = state.architectureDiagramDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  const view = architectureDiagramView(drag.key);
-  view.x = drag.originX + event.clientX - drag.startX;
-  view.y = drag.originY + event.clientY - drag.startY;
-  applyArchitectureDiagramView(drag.key);
-});
 function finishArchitectureDiagramDrag(event) {
   const drag = state.architectureDiagramDrag;
   if (!drag || drag.pointerId !== event.pointerId) return;
@@ -2203,16 +2200,57 @@ function finishArchitectureDiagramDrag(event) {
   if (drag.diagram.hasPointerCapture(event.pointerId)) drag.diagram.releasePointerCapture(event.pointerId);
   state.architectureDiagramDrag = null;
 }
-elements.architecture.addEventListener("pointerup", finishArchitectureDiagramDrag);
-elements.architecture.addEventListener("pointercancel", finishArchitectureDiagramDrag);
-elements.architecture.addEventListener("keydown", (event) => {
-  const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
-  if (!diagram) return;
-  const action = ({ ArrowLeft: "move-left", ArrowRight: "move-right", ArrowUp: "move-up", ArrowDown: "move-down", "+": "zoom-in", "=": "zoom-in", "-": "zoom-out", "0": "reset" })[event.key];
-  if (!action) return;
-  event.preventDefault();
-  changeArchitectureDiagramView(diagram.dataset.architectureDiagram, action);
-});
+
+function registerArchitectureDiagramInteractions(container) {
+  container.addEventListener("click", (event) => {
+    const diagramAction = event.target.closest("[data-diagram-action]");
+    if (diagramAction) {
+      const shell = diagramAction.closest("[data-architecture-key]");
+      if (shell) changeArchitectureDiagramView(shell.dataset.architectureKey, diagramAction.dataset.diagramAction);
+      return;
+    }
+    const fileButton = event.target.closest("[data-flow-file]");
+    if (fileButton) void showAnalysisFile(fileButton.dataset.flowFile);
+  });
+  container.addEventListener("pointerdown", (event) => {
+    const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
+    if (!diagram || event.button !== 0) return;
+    const view = architectureDiagramView(diagram.dataset.architectureDiagram);
+    state.architectureDiagramDrag = {
+      key: diagram.dataset.architectureDiagram,
+      pointerId: event.pointerId,
+      diagram,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: view.x,
+      originY: view.y,
+    };
+    diagram.classList.add("dragging");
+    diagram.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  container.addEventListener("pointermove", (event) => {
+    const drag = state.architectureDiagramDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const view = architectureDiagramView(drag.key);
+    view.x = drag.originX + event.clientX - drag.startX;
+    view.y = drag.originY + event.clientY - drag.startY;
+    applyArchitectureDiagramView(drag.key);
+  });
+  container.addEventListener("pointerup", finishArchitectureDiagramDrag);
+  container.addEventListener("pointercancel", finishArchitectureDiagramDrag);
+  container.addEventListener("keydown", (event) => {
+    const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
+    if (!diagram) return;
+    const action = ({ ArrowLeft: "move-left", ArrowRight: "move-right", ArrowUp: "move-up", ArrowDown: "move-down", "+": "zoom-in", "=": "zoom-in", "-": "zoom-out", "0": "reset" })[event.key];
+    if (!action) return;
+    event.preventDefault();
+    changeArchitectureDiagramView(diagram.dataset.architectureDiagram, action);
+  });
+}
+
+registerArchitectureDiagramInteractions(elements.architecture);
+registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"]);
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
