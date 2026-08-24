@@ -73,6 +73,26 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(renderTour).not.toContain("scrollIntoView");
   expect(renderTour).not.toContain("showChangedFile");
   expect(app).not.toContain("Planning tour · 0s");
+  expect(app).toContain('`Phase ${phaseIndex + 1} of ${outline.phases.length}: Stop ${stopInPhase + 1} of ${phase.steps.length} (Step ${currentStepIndex + 1})`');
+});
+
+test("agent answers scroll into view without hiding the reviewer question", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  expect(app).toContain('data-message-id="${escapeHtml(message.id)}"');
+  expect(app).toContain("function revealAgentAnswer(questionId)");
+  expect(app).toContain("Math.max(scroll.scrollTop, Math.min(questionTop, revealBottom))");
+  expect(app).toContain('scroll.scrollTo({ top: target, behavior: "smooth" })');
+  expect(app).toContain("requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId))");
+});
+
+test("closing a review shows a five-second self-close countdown", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  expect(app).toContain("function beginCloseCountdown(message)");
+  expect(app).toContain("state.closeCountdownSeconds = 5");
+  expect(app).toContain('`You can close this window, or it will close in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`');
+  expect(app).toContain("window.close()");
+  expect(app).toContain("if (window.closed) return");
+  expect(app).toContain('beginCloseCountdown(outcome === "feedback"');
 });
 
 test("slow tour work exposes its prompt and safe progress while navigation remains busy", async () => {
@@ -279,10 +299,20 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(html).toContain('id="tree-mode"');
   expect(html).toContain('data-export-format="markdown">Markdown');
   expect(html).toContain('data-export-format="html">HTML');
+  expect(html).toContain('id="html-export-dialog"');
+  expect(html).toContain('id="export-prepare-steps"');
+  expect(html).toContain('id="export-findings"');
+  expect(html).toContain('id="export-call-flows"');
+  expect(html).toContain('id="export-diagrams"');
   expect(html).not.toContain('id="export-format"');
-  expect(app).toContain("async function downloadExport(format)");
+  expect(app).toContain("async function downloadExport(format, options = {})");
+  expect(app).toContain('elements["html-export-dialog"].showModal()');
+  expect(app).toContain('prepareMissingSteps: elements["export-prepare-steps"].checked');
+  expect(app).toContain('if (preparingSteps) setBusy(true, "Preparing missing tour stops for the static export…")');
+  expect(app).toContain('method: "POST"');
   expect(app).toContain('api("/api/preferences", { method: "POST", body: JSON.stringify({ prefetchSteps }) })');
   expect(styles).toContain(".settings-popover { position: absolute;");
+  expect(styles).toContain(".export-options {");
 });
 
 test("topbar controls stay compact around a labelled settings menu", async () => {

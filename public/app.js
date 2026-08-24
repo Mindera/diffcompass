@@ -55,6 +55,9 @@ const state = {
   expectedAgentActivity: null,
   updateInProgress: false,
   toastTimer: null,
+  closeCountdownTimer: null,
+  closeCountdownSeconds: null,
+  closeCountdownMessage: null,
   prDescriptionMode: "rendered",
 };
 
@@ -64,7 +67,7 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "finding-tooltip", "toast",
+    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -163,6 +166,41 @@ function toast(message, { duration = 3_500, tone = "default" } = {}) {
     elements.toast.classList.add("hidden");
     state.toastTimer = null;
   }, duration);
+}
+
+function renderClosedBanner() {
+  const closed = !reviewIsOpen();
+  elements["closed-banner"].classList.toggle("hidden", !closed);
+  if (!closed) return;
+  if (state.closeCountdownSeconds !== null) {
+    const seconds = state.closeCountdownSeconds;
+    const countdown = seconds > 0
+      ? `You can close this window, or it will close in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`
+      : "Closing this window…";
+    elements["closed-banner"].textContent = `${state.closeCountdownMessage} ${countdown}`;
+    return;
+  }
+  elements["closed-banner"].textContent = `This review is closed as ${state.session.status}. It is now read-only.`;
+}
+
+function beginCloseCountdown(message) {
+  if (state.closeCountdownTimer) window.clearInterval(state.closeCountdownTimer);
+  state.closeCountdownMessage = message;
+  state.closeCountdownSeconds = 5;
+  renderClosedBanner();
+  state.closeCountdownTimer = window.setInterval(() => {
+    state.closeCountdownSeconds -= 1;
+    renderClosedBanner();
+    if (state.closeCountdownSeconds > 0) return;
+    window.clearInterval(state.closeCountdownTimer);
+    state.closeCountdownTimer = null;
+    window.close();
+    window.setTimeout(() => {
+      if (window.closed) return;
+      state.closeCountdownSeconds = null;
+      elements["closed-banner"].textContent = `${state.closeCountdownMessage} You can close this window.`;
+    }, 250);
+  }, 1_000);
 }
 
 async function checkForUpdate() {
@@ -1385,8 +1423,21 @@ function renderMessages() {
   const step = currentStep();
   const messages = state.session.messages.filter((message) => !message.stepId || message.stepId === step?.id);
   elements["chat-messages"].innerHTML = messages
-    .map((message) => `<div class="chat-message ${message.role}">${renderMarkdown(message.body)}</div>`)
+    .map((message) => `<div class="chat-message ${message.role}" data-message-id="${escapeHtml(message.id)}">${renderMarkdown(message.body)}</div>`)
     .join("");
+}
+
+function revealAgentAnswer(questionId) {
+  const scroll = elements["tour-scroll"];
+  const question = elements["chat-messages"].querySelector(`[data-message-id="${CSS.escape(questionId)}"]`);
+  const answer = question?.nextElementSibling;
+  if (!question || !answer?.classList.contains("agent")) return;
+  const scrollRect = scroll.getBoundingClientRect();
+  const questionTop = scroll.scrollTop + question.getBoundingClientRect().top - scrollRect.top - 14;
+  const answerBottom = scroll.scrollTop + answer.getBoundingClientRect().bottom - scrollRect.top + 14;
+  const revealBottom = answerBottom - scroll.clientHeight;
+  const target = Math.max(scroll.scrollTop, Math.min(questionTop, revealBottom));
+  if (target > scroll.scrollTop) scroll.scrollTo({ top: target, behavior: "smooth" });
 }
 
 function renderTour() {
@@ -1415,7 +1466,7 @@ function renderTour() {
   const phase = outline.phases.find((candidate) => candidate.steps.some((item) => item.id === step.id));
   const phaseIndex = outline.phases.indexOf(phase);
   const stopInPhase = phase.steps.findIndex((candidate) => candidate.id === step.id);
-  elements["step-count"].textContent = `Phase ${phaseIndex + 1} of ${outline.phases.length} · Stop ${stopInPhase + 1} of ${phase.steps.length}`;
+  elements["step-count"].textContent = `Phase ${phaseIndex + 1} of ${outline.phases.length}: Stop ${stopInPhase + 1} of ${phase.steps.length} (Step ${currentStepIndex + 1})`;
   elements["progress-value"].value = ((currentStepIndex + 1) / steps.length) * 100;
   elements["phase-count"].textContent = `Phase ${phaseIndex + 1}`;
   elements["phase-title"].textContent = phase.title;
@@ -1564,8 +1615,7 @@ function renderSession() {
   renderActiveTab();
   elements["feedback-button"].classList.toggle("hidden", comments.length === 0);
   const closed = !reviewIsOpen();
-  elements["closed-banner"].classList.toggle("hidden", !closed);
-  elements["closed-banner"].textContent = closed ? `This review is closed as ${state.session.status}. It is now read-only.` : "";
+  renderClosedBanner();
   elements["refresh-button"].disabled = state.busy || closed;
   elements["close-button"].disabled = state.busy || closed;
   elements["close-button"].textContent = state.session.preferences?.closeOutcome === "cancelled" ? "Cancel review" : "Close";
@@ -1750,13 +1800,32 @@ async function regenerateCallFlows(id) {
   }
 }
 
-async function downloadExport(format) {
+function missingExportStepCount() {
+  return state.session?.outline?.phases.flatMap((phase) => phase.steps).filter((step) => !step.explanation).length ?? 0;
+}
+
+function openHtmlExportDialog() {
+  const missing = missingExportStepCount();
+  elements["export-prepare-steps"].checked = false;
+  elements["html-export-description"].textContent = missing === 0
+    ? "Every tour step is already prepared. Choose which supporting analysis to include."
+    : `${missing} ${missing === 1 ? "step explanation is" : "step explanations are"} not prepared yet. Export the current tour as-is, or prepare them before downloading.`;
+  elements["export-prepare-steps"].disabled = missing === 0;
+  elements["settings-menu"].open = false;
+  elements["html-export-dialog"].showModal();
+}
+
+async function downloadExport(format, options = {}) {
   if (!state.apiToken || state.busy) return;
   const buttons = elements["export-menu"].querySelectorAll("button");
   buttons.forEach((button) => { button.disabled = true; });
+  const preparingSteps = format === "html" && options.prepareMissingSteps && missingExportStepCount() > 0;
+  if (preparingSteps) setBusy(true, "Preparing missing tour stops for the static export…");
   try {
     const response = await fetch(`/api/export?format=${encodeURIComponent(format)}`, {
-      headers: { "X-Review-Tour-Token": state.apiToken },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Review-Tour-Token": state.apiToken },
+      body: JSON.stringify(options),
     });
     if (!response.ok) {
       const failure = await response.json().catch(() => ({}));
@@ -1774,6 +1843,13 @@ async function downloadExport(format) {
   } catch (error) {
     toast(error.message);
   } finally {
+    if (preparingSteps) {
+      setBusy(false);
+      try {
+        state.session = await api("/api/session");
+        renderSession();
+      } catch { /* The export already succeeded; normal polling will reconnect. */ }
+    }
     buttons.forEach((button) => { button.disabled = state.busy; });
     elements["export-menu"].open = false;
   }
@@ -1885,12 +1961,14 @@ async function askAgent(event) {
     updatedAt: queuedAt,
     localQueued: true,
   };
+  let answeredQuestionId = null;
   setBusy(true, "The agent is responding…");
   try {
     state.session = await api("/api/agent/message", {
       method: "POST",
       body: JSON.stringify({ body, selectedContext }),
     });
+    answeredQuestionId = [...state.session.messages].reverse().find((message) => message.role === "user" && message.body === body)?.id ?? null;
     state.expectedAgentActivity = null;
     renderSession();
   } catch (error) {
@@ -1899,6 +1977,7 @@ async function askAgent(event) {
   } finally {
     setBusy(false);
     renderTour();
+    if (answeredQuestionId) requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId));
   }
 }
 
@@ -1920,7 +1999,7 @@ async function close(outcome) {
     }
     state.session = { ...state.session, status: result.status };
     renderSession();
-    toast(outcome === "feedback" ? `${result.comments.length} feedback item(s) delivered` : "Review closed");
+    beginCloseCountdown(outcome === "feedback" ? `${result.comments.length} feedback item(s) delivered.` : "Review closed.");
   } catch (error) {
     toast(error.message);
   }
@@ -1962,7 +2041,21 @@ elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
 elements["export-menu"].addEventListener("click", (event) => {
   const button = event.target.closest("[data-export-format]");
-  if (button) { elements["settings-menu"].open = false; void downloadExport(button.dataset.exportFormat); }
+  if (!button) return;
+  if (button.dataset.exportFormat === "html") openHtmlExportDialog();
+  else { elements["settings-menu"].open = false; void downloadExport(button.dataset.exportFormat); }
+});
+elements["cancel-html-export"].addEventListener("click", () => elements["html-export-dialog"].close());
+elements["html-export-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  const options = {
+    prepareMissingSteps: elements["export-prepare-steps"].checked,
+    includeFindings: elements["export-findings"].checked,
+    includeCallFlows: elements["export-call-flows"].checked,
+    includeDiagrams: elements["export-diagrams"].checked,
+  };
+  elements["html-export-dialog"].close();
+  void downloadExport("html", options);
 });
 elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode);
 elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);

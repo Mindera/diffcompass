@@ -174,18 +174,20 @@ test("flow edits are validated and exports are authenticated downloadable artifa
   session.outline = {
     title: "<script>Review</script>",
     summary: "Summary",
-    phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
+    phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 }, explanation: "The complete stop." }] }],
     findings: [],
     callFlows: [],
     flows: [{ id: "flow", title: "Old", summary: "Old", mermaid: "sequenceDiagram\n  A->>B: old", provenance: "partial", blastRadiusSize: 1, affectedFiles: ["app.ts"] }],
   };
 
-  expect((await jsonRequest(url, "/api/export?format=html")).status).toBe(401);
-  const exported = await jsonRequest(url, "/api/export?format=html", { headers });
+  expect((await jsonRequest(url, "/api/export?format=html", { method: "POST" })).status).toBe(401);
+  const exported = await jsonRequest(url, "/api/export?format=html", { method: "POST", headers, body: JSON.stringify({ prepareMissingSteps: false, includeFindings: true, includeCallFlows: true, includeDiagrams: false }) });
   expect(exported.status).toBe(200);
   expect(exported.headers.get("content-type")).toContain("text/html");
   expect(exported.headers.get("content-disposition")).toMatch(/attachment; filename="[A-Za-z0-9._-]+-review\.html"/);
-  expect(await exported.text()).toContain("&lt;script&gt;Review&lt;/script&gt;");
+  const exportedContent = await exported.text();
+  expect(exportedContent).toContain("&lt;script&gt;Review&lt;/script&gt;");
+  expect(exportedContent).not.toContain("mermaid.initialize");
 
   const invalid = await jsonRequest(url, "/api/flows/flow", {
     method: "PATCH", headers, body: JSON.stringify({ title: "Flow", summary: "Summary", mermaid: "graph TD\nA-->B", provenance: "verified", blastRadiusSize: 1, affectedFiles: ["app.ts"] }),

@@ -210,6 +210,37 @@ test("a resumed open attached session retains its stop and drives the rehydrated
   expect(session.snapshot().outline?.phases[1]?.steps[0]?.explanation).toBe("The next stop was prepared before navigation.");
 });
 
+test("HTML export preparation fills every missing stop in parallel without moving the tour", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const persisted = persistedAttachedSession(repository);
+  persisted.currentStepIndex = 0;
+  persisted.outline!.phases[0]!.steps[0]!.explanation = "The first stop is already ready.";
+  await savePersistedSession(stateFile, persisted);
+
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  const bridge = session.bridge;
+  if (!bridge) throw new Error("Expected an attached bridge after resume.");
+  const preparing = session.prepareTourForExport();
+  let after = 7;
+  let answered = 0;
+  while (answered < 2) {
+    const events = await bridge.eventsAfter(after, 1_000);
+    for (const event of events) {
+      after = Math.max(after, event.sequence);
+      if (event.type !== "agent.prompt" || event.kind !== "tour.explanation") continue;
+      answered += 1;
+      await bridge.respond(event.id, `Prepared export stop ${answered}.`);
+      await bridge.ack(event.id);
+    }
+  }
+
+  const snapshot = await preparing;
+  expect(snapshot.currentStepIndex).toBe(0);
+  const explanations = snapshot.outline?.phases.flatMap((phase) => phase.steps).map((step) => step.explanation) ?? [];
+  expect(explanations[0]).toBe("The first stop is already ready.");
+  expect(new Set(explanations.slice(1))).toEqual(new Set(["Prepared export stop 1.", "Prepared export stop 2."]));
+});
+
 test("prefetch continuously prepares later stops without blocking navigation to a ready stop", async () => {
   const { repository, stateFile } = await repositoryFixture();
   const persisted = persistedAttachedSession(repository);

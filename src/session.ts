@@ -656,6 +656,30 @@ export class ReviewSession {
     }
   }
 
+  async prepareTourForExport() {
+    if (!this.outline) throw new ReviewError("Start the tour before exporting it.");
+    const steps = tourSteps(this.outline);
+    const missing = steps.map((step, index) => ({ step, index })).filter(({ step }) => !step.explanation);
+    if (missing.length === 0) return this.snapshot();
+    this.ensureOpen();
+    if (!this.agent) throw new ReviewError("The tour agent is unavailable, so the missing stops cannot be prepared.");
+
+    const tasks = missing.map(({ step, index }) => {
+      const existing = this.prefetchTasks.get(step.id);
+      if (existing) return existing;
+      const task = this.prefetchStep(step.id, index, steps.length);
+      this.prefetchTasks.set(step.id, task);
+      void task.finally(() => this.prefetchTasks.delete(step.id)).catch(() => undefined);
+      return task;
+    });
+    const results = await Promise.allSettled(tasks);
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failure) throw failure.reason;
+    const remaining = tourSteps(this.outline).filter((step) => !step.explanation);
+    if (remaining.length > 0) throw new ReviewError(`${remaining.length} tour stop(s) could not be prepared for export.`);
+    return this.snapshot();
+  }
+
   private async prefetchStep(stepId: string, index: number, totalSteps: number): Promise<void> {
     const step = tourSteps(this.outline).find((candidate) => candidate.id === stepId);
     if (!step || step.explanation) return;

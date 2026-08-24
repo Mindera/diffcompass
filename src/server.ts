@@ -165,9 +165,19 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         exactKeys(input, []);
         return json(await updateService.install());
       }
-      if (request.method === "GET" && url.pathname === "/api/export") {
+      if (request.method === "POST" && url.pathname === "/api/export") {
         const format = enumValue(url.searchParams.get("format"), "format", ["markdown", "html"]) as ExportFormat;
-        const artifact = exportReview(session, format);
+        const input = await readJsonObject(request);
+        exactKeys(input, ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams"]);
+        for (const key of ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams"] as const) {
+          if (input[key] !== undefined && typeof input[key] !== "boolean") throw new HttpError(422, `${key} must be a boolean.`);
+        }
+        if (format === "html" && input.prepareMissingSteps === true) await session.prepareTourForExport();
+        const artifact = exportReview(session, format, {
+          includeFindings: input.includeFindings !== false,
+          includeCallFlows: input.includeCallFlows !== false,
+          includeDiagrams: input.includeDiagrams !== false,
+        });
         const baseName = session.comparison.repositoryName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "code-review";
         const response = new Response(artifact.content, {
           headers: {

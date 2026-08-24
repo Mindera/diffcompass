@@ -293,6 +293,26 @@
       </form>
     </dialog>
 
+    <dialog id="html-export-dialog" aria-labelledby="html-export-title" aria-describedby="html-export-description">
+      <form id="html-export-form">
+        <div class="eyebrow">Static tour</div>
+        <h2 id="html-export-title">Export HTML</h2>
+        <p id="html-export-description" class="dialog-description"></p>
+        <fieldset class="export-options">
+          <legend>Include in the export</legend>
+          <label><input id="export-prepare-steps" type="checkbox" /> Prepare missing step explanations</label>
+          <label><input id="export-findings" type="checkbox" checked /> Findings</label>
+          <label><input id="export-call-flows" type="checkbox" checked /> Call flows</label>
+          <label><input id="export-diagrams" type="checkbox" checked /> Component and sequence diagrams</label>
+        </fieldset>
+        <p class="field-hint">The downloaded file is self-contained and can be opened without Code Review Tour.</p>
+        <div class="dialog-actions">
+          <button id="cancel-html-export" type="button" class="button secondary">Cancel</button>
+          <button type="submit" class="button primary">Export</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="sessions-dialog" class="sessions-dialog">
       <div class="dialog-heading">
         <div>

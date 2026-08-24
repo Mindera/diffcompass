@@ -12,7 +12,26 @@ function fixture(): ReviewSession {
       head: "def",
       patch: "diff --git a/app.ts b/app.ts\n+const fence = ```;\n+const payload = '</style><script>alert(1)</script>';",
       repositoryFiles: ["app.ts"],
-      files: [{ path: "app.ts", oldPath: "app.ts", newPath: "app.ts", status: "modified", metadata: [], hunks: [], additions: 2, deletions: 0 }],
+      files: [{
+        path: "app.ts",
+        oldPath: "app.ts",
+        newPath: "app.ts",
+        status: "modified",
+        metadata: [],
+        hunks: [{
+          header: "@@ -0,0 +1,2 @@",
+          oldStart: 0,
+          oldCount: 0,
+          newStart: 1,
+          newCount: 2,
+          rows: [
+            { kind: "addition", content: "const fence = ```;", oldLine: null, newLine: 1 },
+            { kind: "addition", content: "const payload = '</style><script>alert(1)</script>';", oldLine: null, newLine: 2 },
+          ],
+        }],
+        additions: 2,
+        deletions: 0,
+      }],
     },
     outline: {
       title: "</title><script>bad()</script>",
@@ -20,7 +39,7 @@ function fixture(): ReviewSession {
       behaviorArchitectureStatus: "proposed",
       behaviorArchitecture: { title: "Behavior", summary: "Proposed structure", mermaid: "flowchart LR\n  user[\"User\"]:::external\n  app[\"App\"]:::new\n  user -->|uses| app", dependencyChanges: ["Added User → App: uses"], affectedFiles: ["app.ts"] },
       architecture: { title: "Components", summary: "Changed structure", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },
-      phases: [{ id: "behavior", title: "Behavior", summary: "Review behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "one", title: "Step", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 }, explanation: "Explanation" }] }],
+      phases: [{ id: "behavior", title: "Behavior", summary: "Review behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "one", title: "Step", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 }, explanation: "**Explanation** with `code`." }] }],
       callFlows: [],
       flows: [{ id: "flow", title: "Flow", summary: "Summary", mermaid: "sequenceDiagram\n  A->>B: call", provenance: "verified", blastRadiusSize: 1, affectedFiles: ["app.ts"] }],
       findings: [],
@@ -46,14 +65,36 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   expect(artifact.content).toContain("# &lt;/title&gt;&lt;script&gt;bad()");
 });
 
-test("HTML export is self-contained and escapes every untrusted field", () => {
+test("HTML export is a self-contained static tour with rendered prose and phase diffs", () => {
   const artifact = exportReview(fixture(), "html");
   expect(artifact).toMatchObject({ contentType: "text/html; charset=utf-8", extension: "html" });
-  expect(artifact.content).not.toContain("<script");
-  expect(artifact.content).not.toContain("<img");
-  expect(artifact.content).not.toContain("http://");
-  expect(artifact.content).not.toContain("https://");
+  expect(artifact.content).not.toContain('<script src=');
+  expect(artifact.content).not.toContain('<link rel="stylesheet"');
+  expect(artifact.content).not.toContain("</title><script>bad()");
+  expect(artifact.content).not.toContain("<img src=x onerror=bad()>");
   expect(artifact.content).toContain("&lt;/title&gt;&lt;script&gt;bad()");
   expect(artifact.content).toContain("&lt;script&gt;comment()");
   expect(artifact.content).toContain("&lt;/style&gt;&lt;script&gt;alert(1)");
+  expect(artifact.content).toContain('<nav class="phase-nav"');
+  expect(artifact.content).toContain('<article class="stop" id="stop-1">');
+  expect(artifact.content).toContain("<strong>Explanation</strong> with <code>code</code>.");
+  expect(artifact.content).toContain('<div class="phase-diffs"><h3>Changes in this phase</h3>');
+  expect(artifact.content).toContain('<div class="diff-row">');
+  expect(artifact.content).toContain('<div class="mermaid">sequenceDiagram');
+  expect(artifact.content).toContain("mermaid.initialize");
+});
+
+test("HTML export can omit findings, call flows, and diagrams", () => {
+  const session = fixture();
+  session.outline!.findings = [{ id: "finding", phaseId: "behavior", stepId: "one", path: "app.ts", side: "new", line: 1, lineContent: "code", message: "Static finding", category: "correctness", severity: "high", confidence: "high", evidence: "Evidence", priority: "P1", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" }];
+  session.outline!.callFlows = [{ id: "calls", title: "Call graph", summary: "Calls", entrypointNodeId: "entry", provenance: "verified", nodes: [{ id: "entry", label: "entry", kind: "function", change: "modified", newLocation: { path: "app.ts", side: "new", line: 1 } }, { id: "child", label: "child", kind: "function", change: "added", newLocation: { path: "app.ts", side: "new", line: 1 } }], edges: [{ id: "edge", from: "entry", to: "child", change: "added", newCallSite: { path: "app.ts", side: "new", line: 1 } }], affectedFiles: ["app.ts"] }];
+
+  const artifact = exportReview(session, "html", { includeFindings: false, includeCallFlows: false, includeDiagrams: false });
+  expect(artifact.content).not.toContain("Static finding");
+  expect(artifact.content).not.toContain("Call graph");
+  expect(artifact.content).not.toContain("How the change fits together");
+  expect(artifact.content).not.toContain("Sequence diagrams");
+  expect(artifact.content).not.toContain("mermaid.initialize");
+  expect(artifact.content).toContain("Reviewer feedback");
+  expect(artifact.content).toContain("Stop 1");
 });
