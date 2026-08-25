@@ -415,6 +415,20 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
   return fetch;
 }
 
+// Local preview tools skip the OS ephemeral range (49152+) when scanning for servers,
+// so an OS-assigned port leaves the review undiscoverable.
+const DISCOVERABLE_PORT_START = 47550;
+const DISCOVERABLE_PORT_END = 47599;
+
 export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory(), previewRedirect = false) {
-  return Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 60, fetch: createRequestHandler(session, sessionDirectory, undefined, previewRedirect) });
+  const options = { hostname: "127.0.0.1", idleTimeout: 60, fetch: createRequestHandler(session, sessionDirectory, undefined, previewRedirect) };
+  if (port !== 0) return Bun.serve({ ...options, port });
+  for (let candidate = DISCOVERABLE_PORT_START; candidate <= DISCOVERABLE_PORT_END; candidate += 1) {
+    try {
+      return Bun.serve({ ...options, port: candidate });
+    } catch (error) {
+      if ((error as { code?: string }).code !== "EADDRINUSE") throw error;
+    }
+  }
+  return Bun.serve({ ...options, port: 0 });
 }

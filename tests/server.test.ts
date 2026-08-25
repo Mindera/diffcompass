@@ -413,3 +413,18 @@ test("session library API lists, renames, archives, and explicitly deletes sessi
   const empty = await (await jsonRequest(url, "/api/sessions?all=true", { headers })).json() as { sessions: unknown[] };
   expect(empty.sessions).toEqual([]);
 });
+
+test("the default port avoids the ephemeral range local discovery tools skip", async () => {
+  const { url } = await fixture();
+  expect(Number(new URL(url).port)).toBeLessThan(49152);
+});
+
+test("concurrent default servers each take a distinct discoverable port", async () => {
+  const first = await fixture();
+  const second = await fixture();
+  const firstPort = Number(new URL(first.url).port);
+  const secondPort = Number(new URL(second.url).port);
+  expect(firstPort).not.toBe(secondPort);
+  expect(firstPort).toBeLessThan(49152);
+  expect(secondPort).toBeLessThan(49152);
+});
