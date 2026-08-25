@@ -206,7 +206,7 @@ function validPreferences(value: unknown): boolean {
   return record(value) && ["unified", "split"].includes(String(value.diffLayout)) &&
     typeof value.changedFilesOnly === "boolean" && Number.isInteger(value.contextLines) &&
     Number(value.contextLines) >= 3 && Number(value.contextLines) <= 200 &&
-    Number.isInteger(value.prefetchSteps) && Number(value.prefetchSteps) >= 0 && Number(value.prefetchSteps) <= 4 &&
+    Number.isInteger(value.prefetchSteps) && Number(value.prefetchSteps) >= 0 && Number(value.prefetchSteps) <= 5 &&
     typeof value.requireAllFilesReviewed === "boolean" && ["accepted", "cancelled"].includes(String(value.closeOutcome));
 }
 

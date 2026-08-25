@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { runProcess } from "./process.ts";
 import { validateReviewFlow } from "./flows.ts";
 import { validateReviewArchitecture } from "./architecture.ts";
@@ -91,11 +91,11 @@ export function parseGeminiStreamJson(output: string): { sessionId?: string; mes
   return { sessionId, message: messages.join("") };
 }
 
-export function buildGeminiArgs(prompt: string, model?: string, sessionId?: string, attachmentPath?: string): string[] {
+export function buildGeminiArgs(prompt: string, model?: string, sessionId?: string, attachmentPath?: string, approvalMode = "plan"): string[] {
   return [
     "gemini",
     "--output-format", "stream-json",
-    "--approval-mode", "plan",
+    "--approval-mode", approvalMode,
     ...(model && model !== "default" ? ["--model", model] : []),
     ...(sessionId ? ["--resume", sessionId] : []),
     ...(attachmentPath ? ["--include-directories", dirname(attachmentPath)] : []),
@@ -103,20 +103,19 @@ export function buildGeminiArgs(prompt: string, model?: string, sessionId?: stri
   ];
 }
 
-export function buildCopilotArgs(prompt: string, sessionId: string, model?: string, reasoning?: ReasoningEffort, attachmentPath?: string): string[] {
+export function buildCopilotArgs(prompt: string, sessionId: string, model?: string, reasoning?: ReasoningEffort, attachmentPath?: string, writable = false): string[] {
   return [
     "copilot",
     "--prompt", prompt,
     "--silent",
     "--session-id", sessionId,
     ...(attachmentPath ? ["--attachment", attachmentPath] : []),
-    "--available-tools=view,glob,grep",
+    writable ? "--available-tools=view,glob,grep,edit,write,bash" : "--available-tools=view,glob,grep",
     "--allow-tool=read",
-    "--deny-tool=write",
-    "--deny-tool=shell",
+    ...(writable ? ["--allow-tool=write", "--allow-tool=shell"] : ["--deny-tool=write", "--deny-tool=shell"]),
     "--deny-tool=url",
     "--disable-builtin-mcps",
-    "--disallow-temp-dir",
+    ...(writable ? [] : ["--disallow-temp-dir"]),
     "--no-ask-user",
     "--no-auto-update",
     "--no-bash-env",
@@ -367,6 +366,7 @@ export type BridgePromptKind = "tour.outline" | "tour.explanation" | "review.que
 export interface AgentTransportReply {
   message: string;
   receipt?: string;
+  verification?: string;
 }
 
 export interface AgentResult<T> {
@@ -389,6 +389,9 @@ export interface AgentTransport {
   setFallbackFactory?(
     factory: () => AgentTransport,
     inactivityMs?: number | Partial<Record<BridgePromptKind, number>>,
+  ): void;
+  setFallbackResultHandler?(
+    handler: (eventId: string, kind: BridgePromptKind, reply: AgentTransportReply) => Promise<number | undefined>,
   ): void;
 }
 
@@ -435,6 +438,7 @@ class CodexTransport implements AgentTransport {
     private readonly reasoning?: ReasoningEffort,
     private readonly signal?: AbortSignal,
     threadId?: string,
+    private readonly writable = false,
   ) {
     this.threadId = threadId;
   }
@@ -460,7 +464,8 @@ class CodexTransport implements AgentTransport {
           "exec",
           "--json",
           "--sandbox",
-          "read-only",
+          this.writable ? "workspace-write" : "read-only",
+          ...(this.writable ? ["--ignore-rules"] : []),
           "--cd",
           this.repositoryRoot,
           ...reasoningArgs,
@@ -485,6 +490,7 @@ class ClaudeTransport implements AgentTransport {
     private readonly reasoning?: ReasoningEffort,
     private readonly signal?: AbortSignal,
     sessionId?: string,
+    private readonly writable = false,
   ) {
     this.sessionId = sessionId ?? crypto.randomUUID();
     this.started = Boolean(sessionId);
@@ -499,9 +505,10 @@ class ClaudeTransport implements AgentTransport {
       "--output-format",
       "json",
       "--permission-mode",
-      "plan",
+      this.writable ? "acceptEdits" : "plan",
       "--tools",
-      "Read,Glob,Grep",
+      this.writable ? "Read,Glob,Grep,Edit,Write,Bash" : "Read,Glob,Grep",
+      ...(this.writable ? ["--allowedTools", "Edit,Write,Bash", "--safe-mode"] : []),
       ...(this.model && this.model !== "default" ? ["--model", this.model] : []),
       ...(this.reasoning ? ["--effort", this.reasoning] : []),
       ...(this.started ? ["--resume", this.sessionId] : ["--session-id", this.sessionId]),
@@ -524,6 +531,7 @@ class GeminiTransport implements AgentTransport {
     private readonly model?: string,
     private readonly signal?: AbortSignal,
     sessionId?: string,
+    private readonly writable = false,
   ) {
     this.sessionId = sessionId;
   }
@@ -536,6 +544,7 @@ class GeminiTransport implements AgentTransport {
       this.model,
       this.sessionId,
       attachmentPath,
+      this.writable ? "auto_edit" : "plan",
     ), this.repositoryRoot, [0], { signal: this.signal, timeoutMs: 15 * 60 * 1_000, onStdout: progressFromJsonLines(progress) });
     const result = attachment ? await withTemporaryAttachment(attachment, invoke) : await invoke();
     const parsed = parseGeminiStreamJson(result.stdout);
@@ -554,6 +563,7 @@ class CopilotTransport implements AgentTransport {
     private readonly reasoning?: ReasoningEffort,
     private readonly signal?: AbortSignal,
     sessionId?: string,
+    private readonly writable = false,
   ) {
     this.sessionId = sessionId ?? crypto.randomUUID();
   }
@@ -567,6 +577,7 @@ class CopilotTransport implements AgentTransport {
       this.model,
       this.reasoning,
       attachmentPath,
+      this.writable,
     ), this.repositoryRoot, [0], { signal: this.signal, timeoutMs: 15 * 60 * 1_000 });
     progress?.({ status: "running", message: "Copilot finished its read-only inspection." });
     const result = attachment ? await withTemporaryAttachment(attachment, invoke) : await invoke();
@@ -593,6 +604,80 @@ function createStandaloneTransport(
       return new CodexTransport(repositoryRoot, selection.modelId, selection.reasoningEffort, signal, continuation?.adapterId === "codex" ? continuation.id : undefined);
     default:
       throw new Error(`Unsupported standalone agent adapter: ${selection.adapterId}`);
+  }
+}
+
+async function proposalWorkspaceFromPrompt(prompt: string): Promise<string | undefined> {
+  const marker = "isolated proposal workspace ";
+  const markerIndex = prompt.lastIndexOf(marker);
+  if (markerIndex < 0) return undefined;
+  const encoded = prompt.slice(markerIndex + marker.length).match(/^("(?:\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|[^"\\])*")/)?.[1];
+  if (!encoded) return undefined;
+  let requested: unknown;
+  try { requested = JSON.parse(encoded); } catch { return undefined; }
+  if (typeof requested !== "string") return undefined;
+  try {
+    const [workspace, temporary] = await Promise.all([realpath(requested), realpath(tmpdir())]);
+    const parts = relative(temporary, workspace).split(sep);
+    if (parts.length !== 2 || !parts[0]?.startsWith("code-review-tour-proposal-") || parts[1] !== "workspace") return undefined;
+    return workspace;
+  } catch {
+    return undefined;
+  }
+}
+
+function createProposalTransport(
+  workspace: string,
+  selection: AgentSelection,
+  signal: AbortSignal,
+): AgentTransport | undefined {
+  if (selection.adapterId === "claude") {
+    return new ClaudeTransport(workspace, selection.modelId, selection.reasoningEffort, signal, undefined, true);
+  }
+  if (selection.adapterId === "codex") {
+    return new CodexTransport(workspace, selection.modelId, selection.reasoningEffort, signal, undefined, true);
+  }
+  if (selection.adapterId === "gemini") {
+    return new GeminiTransport(workspace, selection.modelId, signal, undefined, true);
+  }
+  if (selection.adapterId === "copilot") {
+    return new CopilotTransport(workspace, selection.modelId, selection.reasoningEffort, signal, undefined, true);
+  }
+  return undefined;
+}
+
+class AttachedFallbackTransport implements AgentTransport {
+  private readonly readOnly: AgentTransport;
+
+  constructor(
+    repositoryRoot: string,
+    private readonly selection: AgentSelection,
+    private readonly signal: AbortSignal,
+  ) {
+    this.readOnly = createStandaloneTransport(repositoryRoot, selection, signal);
+  }
+
+  async send(
+    prompt: string,
+    kind: BridgePromptKind,
+    attachment?: { name: string; content: string },
+    progress?: Parameters<AgentTransport["send"]>[3],
+  ): Promise<string | AgentTransportReply> {
+    if (kind !== "review.question") return this.readOnly.send(prompt, kind, attachment, progress);
+    const workspace = await proposalWorkspaceFromPrompt(prompt);
+    const proposal = workspace ? createProposalTransport(workspace, this.selection, this.signal) : undefined;
+    if (!workspace || !proposal) return this.readOnly.send(prompt, kind, attachment, progress);
+
+    const verificationPath = join(workspace, `.code-review-tour-verification-${crypto.randomUUID()}.txt`);
+    try {
+      const fallbackPrompt = `${prompt}\n\nYou are the local fallback for the triggering agent. You have scoped write access only to the isolated proposal workspace, which is your current working directory. Make a concrete requested edit there rather than returning a plan. Do not use or mention plan-mode tools. Run proportionate verification, then write a short plain-text summary of the commands and outcomes to ${JSON.stringify(verificationPath)}. If no edit was requested or made, do not create that file.`;
+      const response = await proposal.send(fallbackPrompt, kind, attachment, progress);
+      const message = typeof response === "string" ? response : response.message;
+      const verification = await readFile(verificationPath, "utf8").catch(() => undefined);
+      return { message, verification: verification?.trim() || undefined };
+    } finally {
+      await rm(verificationPath, { force: true });
+    }
   }
 }
 
@@ -628,9 +713,9 @@ export class TourAgent {
       this.transport = attachedTransport;
       if (fallbackSelection && fallbackSelection.adapterId !== "attached") {
         if (attachedTransport.setFallbackFactory) {
-          attachedTransport.setFallbackFactory(() => createStandaloneTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
+          attachedTransport.setFallbackFactory(() => new AttachedFallbackTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
         } else {
-          attachedTransport.setFallback?.(createStandaloneTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
+          attachedTransport.setFallback?.(new AttachedFallbackTransport(repositoryRoot, fallbackSelection, this.abortController.signal));
         }
       }
     } else {

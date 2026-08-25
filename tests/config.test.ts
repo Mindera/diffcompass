@@ -51,7 +51,7 @@ test("loads every supported repository default", async () => {
       diffLayout: "split",
       changedFilesOnly: true,
       contextLines: 25,
-      prefetchSteps: 2,
+      prefetchSteps: 5,
       requireAllFilesReviewed: true,
       closeOutcome: "cancelled",
     },

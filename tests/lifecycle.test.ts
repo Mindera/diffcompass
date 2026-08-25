@@ -361,6 +361,14 @@ test("previous supersedes a next navigation that is still preparing", async () =
 test("prefetch keeps a two-stop sliding window instead of preparing the whole tour", async () => {
   const { repository, stateFile } = await repositoryFixture();
   const persisted = persistedAttachedSession(repository);
+  persisted.preferences = {
+    diffLayout: "split",
+    changedFilesOnly: false,
+    contextLines: 3,
+    prefetchSteps: 2,
+    requireAllFilesReviewed: false,
+    closeOutcome: "accepted",
+  };
   persisted.currentStepIndex = 0;
   persisted.outline!.phases[0]!.steps[0]!.explanation = "The current stop is ready.";
   persisted.outline!.phases[1]!.steps.push({
@@ -662,6 +670,34 @@ test("an attached review question can refresh after requested edits and still re
   const undone = await session.updateActivity(snapshot.activities[0]!.id, "undo");
   expect(undone.activities[0]).toMatchObject({ changeStatus: "undone" });
   expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
+});
+
+test("a local fallback captures requested edits as a pending proposal without touching the review tree", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  session.bridge!.setFallback({
+    async send(prompt, kind) {
+      expect(kind).toBe("review.question");
+      const match = /isolated proposal workspace ("(?:\\.|[^"])*")/.exec(prompt);
+      if (!match) throw new Error("Fallback prompt did not contain the isolated proposal workspace.");
+      const workspace = JSON.parse(match[1]!) as string;
+      await writeFile(join(workspace, "app.ts"), "const base = 1;\nconst fallbackEdit = 4;\n");
+      return { message: "The fallback prepared the requested edit.", verification: "bun test: passed" };
+    },
+  }, 5);
+
+  const snapshot = await session.ask("Please make this concrete change.");
+
+  expect(snapshot.messages.at(-1)).toMatchObject({ role: "agent", body: "The fallback prepared the requested edit." });
+  expect(snapshot.activities).toEqual([expect.objectContaining({
+    status: "verified",
+    changeStatus: "pending",
+    verification: "bun test: passed",
+    files: [expect.objectContaining({ path: "app.ts", change: "modified" })],
+  })]);
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
+  await session.dispose();
 });
 
 test("watcher refreshes do not expose edits while an isolated agent proposal is in flight", async () => {

@@ -51,11 +51,11 @@ test("update endpoints expose availability and require an authenticated click to
 
 test("runtime preferences persist a bounded prepare-ahead window", async () => {
   const { session, fetch } = fixture();
-  const updated = await fetch(authorizedRequest(session, "/api/preferences", { prefetchSteps: 4 }));
+  const updated = await fetch(authorizedRequest(session, "/api/preferences", { prefetchSteps: 5 }));
   expect(updated.status).toBe(200);
-  expect((await updated.json()).preferences).toMatchObject({ prefetchSteps: 4 });
+  expect((await updated.json()).preferences).toMatchObject({ prefetchSteps: 5 });
 
-  const invalid = await fetch(authorizedRequest(session, "/api/preferences", { prefetchSteps: 5 }));
+  const invalid = await fetch(authorizedRequest(session, "/api/preferences", { prefetchSteps: 6 }));
   expect(invalid.status).toBe(422);
 });
 
@@ -103,6 +103,18 @@ test("in-process handler authenticates, bounds, and returns dual-theme highlight
   const tokens = payload.groups[0]!.lines[0]!;
   expect(tokens.map((token) => token.content).join("")).toBe("const changed = 2;");
   expect(tokens.every((token) => /^[0-9a-f]{6}$/.test(token.light) && /^[0-9a-f]{6}$/.test(token.dark))).toBe(true);
+
+  const discontinuous = await fetch(authorizedRequest(session, "/api/highlight", {
+    groups: [
+      { id: "comment-start", path: "Model.kt", lines: ["/**", " * Hidden closing delimiter follows"] },
+      { id: "later-hunk", path: "Model.kt", lines: ["data class Visible(val value: String)"] },
+      { id: "control", path: "Model.kt", lines: ["data class Visible(val value: String)"] },
+    ],
+  }));
+  expect(discontinuous.status).toBe(200);
+  const discontinuousPayload = await discontinuous.json() as { groups: Array<{ id: string; lines: Array<Array<{ content: string; light: string; dark: string }>> }> };
+  expect(discontinuousPayload.groups.find((group) => group.id === "later-hunk")?.lines)
+    .toEqual(discontinuousPayload.groups.find((group) => group.id === "control")?.lines);
 
   const duplicate = await fetch(authorizedRequest(session, "/api/highlight", {
     groups: [{ id: "same", path: "a.ts", lines: ["a"] }, { id: "same", path: "b.ts", lines: ["b"] }],

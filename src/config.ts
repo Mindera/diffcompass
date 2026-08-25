@@ -31,7 +31,7 @@ export const DEFAULT_REVIEW_PREFERENCES: ReviewPreferences = {
   diffLayout: "split",
   changedFilesOnly: false,
   contextLines: 3,
-  prefetchSteps: 2,
+  prefetchSteps: 5,
   requireAllFilesReviewed: false,
   closeOutcome: "accepted",
 };

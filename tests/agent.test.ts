@@ -49,6 +49,7 @@ test("builds Gemini invocations as read-only resumable argv without shell interp
   expect(args).not.toContain("--yolo");
   expect(buildGeminiArgs("prompt", "auto")).toContain("auto");
   expect(buildGeminiArgs("prompt", "auto", undefined, "/private/tmp/owned/review.diff")).toContain("/private/tmp/owned");
+  expect(buildGeminiArgs("prompt", "auto", undefined, undefined, "auto_edit")).toContain("auto_edit");
 });
 
 test("builds Copilot invocations with exact sessions and a defense-in-depth read-only policy", () => {
@@ -70,6 +71,11 @@ test("builds Copilot invocations with exact sessions and a defense-in-depth read
   expect(args).not.toContain("--allow-all");
   expect(buildCopilotArgs("prompt", "550e8400-e29b-41d4-a716-446655440000", "auto", undefined, "/private/tmp/owned/review.diff"))
     .toContain("/private/tmp/owned/review.diff");
+  const writable = buildCopilotArgs("prompt", "550e8400-e29b-41d4-a716-446655440000", "auto", undefined, undefined, true);
+  expect(writable).toContain("--allow-tool=write");
+  expect(writable).toContain("--allow-tool=shell");
+  expect(writable).not.toContain("--deny-tool=write");
+  expect(writable).not.toContain("--disallow-temp-dir");
 });
 
 test("creates and restores adapter-specific continuation identifiers without cross-wiring", () => {

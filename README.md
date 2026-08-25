@@ -53,7 +53,7 @@ reviewer to the ordered route without locking ordinary browsing.
 - opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
 - exposes `Close` and `Send feedback & close` outcomes.
 
-All standalone agent sessions are read-only. In attached mode, the triggering agent may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
+All standalone agent sessions are read-only. In attached mode, the triggering agent—or its local fallback after a lost heartbeat—may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
 
 ## Attached-agent mode
 
@@ -92,7 +92,7 @@ user-facing page opens, so an agent-triggered launch appears ready at stop one
 and never needs to drive a second browser or press the setup button. In this
 mode, tour planning, step explanations, and reviewer questions are sent
 to the triggering agent through an authenticated loopback event bridge. Future
-stops are prepared concurrently within the configured prepare-ahead window, and
+stops are prepared concurrently within the configured prepare-ahead window (five by default), and
 a reviewer question is issued immediately without waiting for that background
 work. Attached-agent skills coordinate independent workers when the host supports
 them; every response is committed against its own bridge event. Browser and

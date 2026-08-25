@@ -67,6 +67,7 @@ export class AttachedAgentBridge implements AgentTransport {
   private persistCheckpoint?: () => Promise<void>;
   private fallback?: AgentTransport;
   private fallbackFactory?: () => AgentTransport;
+  private fallbackResultHandler?: (eventId: string, kind: BridgePromptKind, reply: AgentTransportReply) => Promise<number | undefined>;
   private fallbackInactivityMs = { ...DEFAULT_FALLBACK_INACTIVITY_MS };
   private resolveTerminalAcknowledged!: () => void;
   readonly terminalAcknowledged = new Promise<void>((resolve) => {
@@ -124,6 +125,12 @@ export class AttachedAgentBridge implements AgentTransport {
     this.fallback = undefined;
     this.configureFallbackInactivity(inactivityMs);
     for (const eventId of this.pending.keys()) this.armFallback(eventId);
+  }
+
+  setFallbackResultHandler(
+    handler: (eventId: string, kind: BridgePromptKind, reply: AgentTransportReply) => Promise<number | undefined>,
+  ): void {
+    this.fallbackResultHandler = handler;
   }
 
   private configureFallbackInactivity(
@@ -232,9 +239,12 @@ export class AttachedAgentBridge implements AgentTransport {
     await this.persistCheckpoint?.().catch(() => undefined);
     try {
       const response = await fallback.send(record.event.prompt, record.event.kind, pending.attachment, pending.progress);
-      const message = typeof response === "string" ? response : response.message;
+      const reply = typeof response === "string" ? { message: response } : response;
+      const message = reply.message;
       if (!message.trim()) throw new Error("The fallback agent returned an empty response.");
       if (this.disposed) throw new Error("The review closed before the fallback agent answered.");
+      const authorizedGeneration = await this.fallbackResultHandler?.(eventId, record.event.kind, reply);
+      if (authorizedGeneration !== undefined) this.refreshAuthorized.set(eventId, authorizedGeneration);
       record.response = message;
       record.acknowledged = true;
       this.acknowledged.add(eventId);

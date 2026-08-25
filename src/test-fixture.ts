@@ -262,7 +262,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
       diffLayout: "split",
       changedFilesOnly: true,
       contextLines: 3,
-      prefetchSteps: 2,
+      prefetchSteps: 5,
       requireAllFilesReviewed: false,
       closeOutcome: "accepted",
     },

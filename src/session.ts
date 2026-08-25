@@ -1,6 +1,6 @@
 import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
-import { TourAgent } from "./agent.ts";
+import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./agent.ts";
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
@@ -304,6 +304,22 @@ export class ReviewSession {
     });
   }
 
+  private async captureFallbackProposal(
+    eventId: string,
+    kind: BridgePromptKind,
+    reply: AgentTransportReply,
+  ): Promise<number | undefined> {
+    if (kind !== "review.question" || !this.activeAgentRequest) return undefined;
+    const result = await captureWorkingTreeSnapshot(this.activeAgentRequest.workspace.path);
+    if (result.tree === this.activeAgentRequest.workspace.tree) return undefined;
+    await this.refreshComparison({
+      source: "agent",
+      eventId,
+      verification: reply.verification ?? "The local fallback agent did not provide a verification summary.",
+    });
+    return this.comparisonGeneration;
+  }
+
   static async create(
     cwd: string,
     base?: string,
@@ -352,6 +368,7 @@ export class ReviewSession {
     }
     const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted);
     bridge?.setPersistence(() => session.persist());
+    bridge?.setFallbackResultHandler((eventId, kind, reply) => session.captureFallbackProposal(eventId, kind, reply));
     if (bridge && persisted && persisted.status !== "open" && !persisted.bridgeTerminalEvent) {
       bridge.prepareClose(persisted.status, persisted.comments);
     }
@@ -741,8 +758,8 @@ export class ReviewSession {
   async setPrefetchSteps(prefetchSteps: number) {
     return this.serializeMutation(async () => {
       this.ensureOpen();
-      if (!Number.isInteger(prefetchSteps) || prefetchSteps < 0 || prefetchSteps > 4) {
-        throw new ReviewError("Prepare ahead must be between 0 and 4 steps.");
+      if (!Number.isInteger(prefetchSteps) || prefetchSteps < 0 || prefetchSteps > 5) {
+        throw new ReviewError("Prepare ahead must be between 0 and 5 steps.");
       }
       if (this.preferences.prefetchSteps === prefetchSteps) return this.snapshot();
       const previous = this.preferences.prefetchSteps;

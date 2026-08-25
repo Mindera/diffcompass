@@ -13,7 +13,7 @@ import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
 import { exportReview, type ExportFormat } from "./export.ts";
 import { loadRepositoryFile } from "./git.ts";
-import { highlightGroups, type HighlightGroup } from "./highlight.ts";
+import { highlightGroups, SYNTAX_THEMES, type HighlightGroup, type SyntaxTheme } from "./highlight.ts";
 import { ReviewSession } from "./session.ts";
 import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
 import { createUpdateService, type UpdateService } from "./update.ts";
@@ -154,8 +154,8 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "POST" && url.pathname === "/api/preferences") {
         const input = await readJsonObject(request);
         exactKeys(input, ["prefetchSteps"]);
-        if (!Number.isInteger(input.prefetchSteps) || Number(input.prefetchSteps) < 0 || Number(input.prefetchSteps) > 4) {
-          throw new HttpError(422, "Prepare ahead must be between 0 and 4 steps.");
+        if (!Number.isInteger(input.prefetchSteps) || Number(input.prefetchSteps) < 0 || Number(input.prefetchSteps) > 5) {
+          throw new HttpError(422, "Prepare ahead must be between 0 and 5 steps.");
         }
         return json(await session.setPrefetchSteps(Number(input.prefetchSteps)));
       }
@@ -231,7 +231,8 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/highlight") {
         const input = await readJsonObject(request, 4 * 1024 * 1024);
-        exactKeys(input, ["groups"]);
+        exactKeys(input, ["groups", "theme"]);
+        const syntaxTheme = input.theme === undefined ? "github" : enumValue(input.theme, "theme", SYNTAX_THEMES) as SyntaxTheme;
         if (!Array.isArray(input.groups) || input.groups.length > 200) throw new HttpError(422, "groups must be an array with at most 200 entries.");
         let totalLines = 0;
         let totalCharacters = 0;
@@ -252,7 +253,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           return { id, path, lines: value.lines as string[] };
         });
         if (totalLines > 12_000 || totalCharacters > 2_000_000) throw new HttpError(413, "The highlight request is too large.");
-        return json({ groups: await highlightGroups(groups) });
+        return json({ groups: await highlightGroups(groups, syntaxTheme) });
       }
       if (request.method === "GET" && url.pathname === "/api/diff") {
         const path = requiredString(url.searchParams.get("path"), "path", 4_096);

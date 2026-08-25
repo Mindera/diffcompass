@@ -146,6 +146,8 @@ test("serves local Mermaid and bounds authenticated syntax highlighting", async 
   expect(mermaid.status).toBe(200);
   expect(mermaid.headers.get("content-type")).toContain("text/javascript");
   expect((await mermaid.text()).length).toBeGreaterThan(1_000_000);
+  expect((await jsonRequest(url, "/monaco-browser.js")).status).toBe(404);
+  expect((await jsonRequest(url, "/")).headers.get("content-security-policy")).not.toContain("worker-src");
 
   expect((await jsonRequest(url, "/api/highlight", {
     method: "POST", headers: { "content-type": "application/json", origin: url },

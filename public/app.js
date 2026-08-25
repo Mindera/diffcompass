@@ -13,6 +13,7 @@ const state = {
   commentTarget: null,
   editingCommentId: null,
   busy: false,
+  questionPending: false,
   navigationDirection: null,
   navigationGeneration: 0,
   activeTab: "diff",
@@ -59,18 +60,23 @@ const state = {
   closeCountdownSeconds: null,
   closeCountdownMessage: null,
   prDescriptionMode: "rendered",
+  syntaxTheme: ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("review-tour-syntax-theme"))
+    ? window.localStorage.getItem("review-tour-syntax-theme")
+    : "github",
 };
 
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
-    "settings-menu", "prefetch-steps", "theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
+
+document.documentElement.dataset.syntaxTheme = state.syntaxTheme;
 
 function escapeHtml(value) {
   return String(value)
@@ -264,7 +270,7 @@ function setBusy(busy, label = "Working…") {
   elements["feedback-button"].disabled = busy;
   elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
   elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
-  elements["chat-form"].querySelector("button").disabled = busy || !reviewIsOpen();
+  elements["chat-form"].querySelector("button").disabled = busy || state.questionPending || !reviewIsOpen();
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
     elements["step-explanation"].innerHTML = `<span class="loading">${escapeHtml(label)}</span>`;
   }
@@ -274,13 +280,17 @@ function setBusy(busy, label = "Working…") {
 function renderAgentActivity() {
   const activity = state.session?.agentActivity;
   const visible = Boolean(activity && (state.busy || activity.status === "waiting" || activity.status === "running" || activity.status === "failed"));
+  const followsExistingAnswer = activity?.kind === "review.question"
+    && state.session.messages.some((message) => message.role === "agent");
+  const activityAnchor = followsExistingAnswer ? elements["chat-messages"] : elements["step-explanation"];
+  activityAnchor.insertAdjacentElement("afterend", elements["agent-activity"]);
   elements["agent-activity"].classList.toggle("hidden", !visible);
   if (!visible) return;
   const renderedActivityId = elements["agent-activity"].dataset.activityId;
   const promptWasOpen = renderedActivityId === activity.id && Boolean(elements["agent-activity-body"].querySelector(".agent-prompt")?.open);
   elements["agent-activity"].dataset.activityId = activity.id;
   const status = activity.localQueued ? "Question queued" : activity.status === "waiting" ? "Waiting for agent" : activity.status === "running" ? "Agent working" : activity.status === "failed" ? "Agent failed" : "Agent finished";
-  const prefetchSteps = state.session.preferences?.prefetchSteps ?? 2;
+  const prefetchSteps = state.session.preferences?.prefetchSteps ?? 5;
   elements["agent-activity-title"].textContent = activity.kind === "tour.explanation" && activity.stepNumber && activity.totalSteps
     ? `${activity.status === "failed" ? "Agent failed. " : ""}${prefetchSteps === 0 ? "Preparing on demand." : `We prepare ${prefetchSteps} ${prefetchSteps === 1 ? "step" : "steps"} in advance.`} Preparing step ${activity.stepNumber} of ${activity.totalSteps}`
     : `${status} · ${activity.label}`;
@@ -551,15 +561,21 @@ function splitRows(rows) {
   const pairs = [];
   for (let index = 0; index < rows.length;) {
     const row = rows[index];
-    if (row.kind === "context") { pairs.push([row, row]); index += 1; continue; }
-    if (row.kind === "meta") { pairs.push([row, row]); index += 1; continue; }
+    if (row.kind === "context" || row.kind === "meta") {
+      pairs.push([row, row]);
+      index += 1;
+      continue;
+    }
     const removed = [];
     const added = [];
     while (index < rows.length && rows[index].kind !== "context" && rows[index].kind !== "meta") {
-      if (rows[index].kind === "deletion") removed.push(rows[index]); else added.push(rows[index]);
+      if (rows[index].kind === "deletion") removed.push(rows[index]);
+      else added.push(rows[index]);
       index += 1;
     }
-    for (let pair = 0; pair < Math.max(removed.length, added.length); pair += 1) pairs.push([removed[pair] ?? null, added[pair] ?? null]);
+    for (let pair = 0; pair < Math.max(removed.length, added.length); pair += 1) {
+      pairs.push([removed[pair] ?? null, added[pair] ?? null]);
+    }
   }
   return pairs;
 }
@@ -576,16 +592,36 @@ function renderSplitSide(file, row, side, findings) {
   </div>`;
 }
 
+function renderDiffFileHeader(file, collapsed, fullContent = false) {
+  const reviewControls = state.proposalPreview
+    ? '<span class="proposal-label">pending proposal</span> · '
+    : `${fullContent ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `;
+  const paging = !fullContent && file._page && file._page.totalRows > file._page.limit
+    ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · `
+    : "";
+  return `<header class="diff-file-header">
+    <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">⌄</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
+    <span class="file-stats">${reviewControls}${paging}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
+  </header>`;
+}
+
+function revealCodeLocation(path, side, line, { smooth = true } = {}) {
+  const row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"][data-line="${line}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "center" });
+    row.classList.add("selected");
+    return true;
+  }
+  return false;
+}
+
 function renderDiff(files) {
   const findings = state.proposalPreview ? [] : state.session.outline?.findings ?? [];
   elements.diff.innerHTML = files
     .map((file) => {
       const collapsed = !state.proposalPreview && state.collapsedFiles.has(file.path);
       return `<section class="diff-file${collapsed ? " collapsed" : ""}" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
-      <header class="diff-file-header">
-        <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">⌄</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
-        <span class="file-stats">${state.proposalPreview ? '<span class="proposal-label">pending proposal</span> · ' : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · <button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `}${file._page && file._page.totalRows > file._page.limit ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · ` : ""}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
-      </header>
+      ${renderDiffFileHeader(file, collapsed)}
       <div class="diff-file-scroll">
       ${file.hunks.map((hunk) => `<div class="hunk ${state.diffLayout}-layout">
         <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && !file._full && fileContext(file) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${fileContext(file)}">Expand context</button>` : ""}</div>
@@ -606,18 +642,27 @@ function renderDiff(files) {
 
 function syntaxTokenHtml(token) {
   const styles = [token.fontStyle & 1 ? "syntax-italic" : "", token.fontStyle & 2 ? "syntax-bold" : "", token.fontStyle & 4 ? "syntax-underline" : ""].filter(Boolean).join(" ");
-  return `<span class="syntax-token sl-${escapeHtml(token.light)} sd-${escapeHtml(token.dark)} ${styles}">${escapeHtml(token.content)}</span>`;
+  return `<span class="syntax-token sl-${escapeHtml(token.light)} sd-${escapeHtml(token.dark)} ${styles}" style="--syntax-light:#${escapeHtml(token.light)};--syntax-dark:#${escapeHtml(token.dark)}">${escapeHtml(token.content)}</span>`;
 }
 
 async function highlightRenderedCode() {
   const requestId = ++state.highlightRequestId;
-  const groups = [...elements.diff.querySelectorAll(".diff-file")].flatMap((section, index) => {
-    const nodes = [...section.querySelectorAll(".line-code")];
-    if (nodes.length === 0) return [];
-    const id = `diff-${index}`;
-    nodes.forEach((node) => { node.dataset.highlightGroup = id; });
-    return [{ id, path: section.dataset.path, lines: nodes.map((node) => node.textContent ?? "") }];
-  });
+  const groups = [...elements.diff.querySelectorAll(".diff-file")].flatMap((section, fileIndex) =>
+    [...section.querySelectorAll(":scope .hunk")].flatMap((hunk, hunkIndex) => {
+      // A hidden gap between hunks may contain syntax that closes a multiline
+      // comment or string. Never carry tokenizer state across that gap. In
+      // split view the old and new files are independent sources as well.
+      const segments = state.diffLayout === "split"
+        ? ["old", "new"].map((side) => [...hunk.querySelectorAll(`.split-side[data-side="${side}"] .line-code`)])
+        : [[...hunk.querySelectorAll(".line-code")]];
+      return segments.flatMap((nodes, segmentIndex) => {
+        if (nodes.length === 0) return [];
+        const id = `diff-${fileIndex}-${hunkIndex}-${segmentIndex}`;
+        nodes.forEach((node) => { node.dataset.highlightGroup = id; });
+        return [{ id, path: section.dataset.path, lines: nodes.map((node) => node.textContent ?? "") }];
+      });
+    })
+  );
   const source = elements.diff.querySelector(".source-file .source-code");
   if (source) {
     const lines = (source.textContent ?? "").split("\n");
@@ -626,9 +671,14 @@ async function highlightRenderedCode() {
   }
   if (groups.length === 0 || groups.reduce((sum, group) => sum + group.lines.length, 0) > 12_000) return;
   try {
-    const result = await api("/api/highlight", { method: "POST", body: JSON.stringify({ groups }) });
+    const batches = [];
+    for (let index = 0; index < groups.length; index += 200) batches.push(groups.slice(index, index + 200));
+    const results = await Promise.all(batches.map((batch) => api("/api/highlight", {
+      method: "POST",
+      body: JSON.stringify({ groups: batch, theme: state.syntaxTheme }),
+    })));
     if (requestId !== state.highlightRequestId) return;
-    for (const group of result.groups) {
+    for (const group of results.flatMap((result) => result.groups)) {
       if (group.id === "source") {
         const target = elements.diff.querySelector('.source-code[data-highlight-group="source"]');
         if (target) target.innerHTML = group.lines.map((line) => line.map(syntaxTokenHtml).join("")).join("\n");
@@ -771,11 +821,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   renderComments();
   renderFindings();
   if (!viewportAnchor) document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  if (line && side) {
-    const row = document.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"][data-line="${line}"]`);
-    row?.scrollIntoView({ behavior: "smooth", block: "center" });
-    row?.classList.add("selected");
-  }
+  if (line && side) revealCodeLocation(path, side, line);
   renderTourAnnotation();
   if (viewportAnchor) restoreFileViewport(viewportAnchor);
 }
@@ -902,7 +948,7 @@ function renderComments() {
     }
     const inline = document.createElement("article");
     inline.className = `inline-comment ${comment.status}`;
-    inline.innerHTML = `<button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><span class="inline-comment-label">Review comment</span><p>${renderInlineMarkdown(comment.body)}</p><span class="inline-comment-edit">Edit</span></button>`;
+    inline.innerHTML = `<header class="inline-comment-header"><span class="inline-comment-label">Review comment</span><span class="inline-comment-actions"><button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button></span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>`;
     const splitRow = row.closest(".split-row");
     if (splitRow) {
       const lane = document.createElement("div");
@@ -1385,6 +1431,7 @@ function renderTourAnnotation() {
   const activeStep = currentStep();
   const phase = currentPhase();
   if (!activeStep || !phase) return;
+  const activeStepIndex = phase.steps.findIndex((step) => step.id === activeStep.id);
   for (let index = phase.steps.length - 1; index >= 0; index -= 1) {
     const step = phase.steps[index];
     const { path, side, startLine, endLine } = step.anchor;
@@ -1397,10 +1444,12 @@ function renderTourAnnotation() {
     }
     const firstRow = rows[0];
     if (!firstRow) continue;
+    const isCurrent = step.id === activeStep.id;
+    const isNext = index === activeStepIndex + 1;
     const note = document.createElement("aside");
-    note.className = `tour-code-note${step.id === activeStep.id ? " active" : ""}`;
-    note.setAttribute("aria-label", `${step.id === activeStep.id ? "Current" : "Upcoming"} tour stop: ${step.title}`);
-    note.innerHTML = `<span>${step.id === activeStep.id ? "Current stop" : `Stop ${index + 1}`}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 180))}</p>`;
+    note.className = `tour-code-note${isCurrent ? " active" : isNext ? " next" : ""}`;
+    note.setAttribute("aria-label", `${isCurrent ? "Current" : isNext ? "Next" : "Tour"} stop: ${step.title}`);
+    note.innerHTML = `<span>${isCurrent ? "Current stop" : isNext ? "Next stop" : `Stop ${index + 1}`}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 180))}</p>`;
     (firstRow.closest(".split-row") ?? firstRow).insertAdjacentElement("beforebegin", note);
   }
 }
@@ -1573,7 +1622,7 @@ function renderSession() {
   elements["test-files-filter"].classList.toggle("active", state.testFilesOnly);
   elements["tree-mode"].value = state.treeMode;
   elements["diff-layout"].value = state.diffLayout;
-  elements["prefetch-steps"].value = String(state.session.preferences?.prefetchSteps ?? 2);
+  elements["prefetch-steps"].value = String(state.session.preferences?.prefetchSteps ?? 5);
   elements["diff-search"].disabled = Boolean(state.tourMode);
   elements["status-filter"].disabled = Boolean(state.tourMode);
   elements["review-filter"].disabled = Boolean(state.tourMode);
@@ -1623,7 +1672,7 @@ function renderSession() {
   elements["prefetch-steps"].disabled = closed;
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
-  elements["chat-form"].querySelector("button").disabled = state.busy || closed;
+  elements["chat-form"].querySelector("button").disabled = state.busy || state.questionPending || closed;
   elements["comment-drawer"].classList.toggle("closed", closed);
   if (closed && elements["comment-dialog"].open) elements["comment-dialog"].close();
   elements["agent-mode"].textContent = state.session.agentSelection?.adapterId === "attached" ? "edits on request" : "read-only";
@@ -1934,10 +1983,21 @@ async function saveComment(event) {
   }
 }
 
+async function deleteReviewComment(comment) {
+  if (!reviewIsOpen() || !window.confirm(`Delete feedback at ${comment.path}:${comment.line}?`)) return;
+  try {
+    state.session = await api(`/api/comments/${encodeURIComponent(comment.id)}`, { method: "DELETE" });
+    renderSession();
+    toast("Review comment deleted");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
 async function askAgent(event) {
   event.preventDefault();
   const body = elements["chat-input"].value.trim();
-  if (!body || state.busy || !reviewIsOpen()) return;
+  if (!body || state.busy || state.questionPending || !reviewIsOpen()) return;
   elements["chat-input"].value = "";
   const selectedContext = state.selectedLine
     ? `${state.selectedLine.path}:${state.selectedLine.line} (${state.selectedLine.side})\n${state.selectedLine.content}`
@@ -1962,7 +2022,9 @@ async function askAgent(event) {
     localQueued: true,
   };
   let answeredQuestionId = null;
-  setBusy(true, "The agent is responding…");
+  state.questionPending = true;
+  elements["chat-form"].querySelector("button").disabled = true;
+  renderAgentActivity();
   try {
     state.session = await api("/api/agent/message", {
       method: "POST",
@@ -1975,7 +2037,8 @@ async function askAgent(event) {
     state.expectedAgentActivity = null;
     toast(error.message);
   } finally {
-    setBusy(false);
+    state.questionPending = false;
+    elements["chat-form"].querySelector("button").disabled = state.busy || !reviewIsOpen();
     renderTour();
     if (answeredQuestionId) requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId));
   }
@@ -2039,6 +2102,11 @@ elements["cancel-comment"].addEventListener("click", () => elements["comment-dia
 elements["close-button"].addEventListener("click", () => close(state.session.preferences?.closeOutcome ?? "accepted"));
 elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
+document.addEventListener("pointerdown", (event) => {
+  if (elements["settings-menu"].open && !elements["settings-menu"].contains(event.target)) {
+    elements["settings-menu"].open = false;
+  }
+});
 elements["export-menu"].addEventListener("click", (event) => {
   const button = event.target.closest("[data-export-format]");
   if (!button) return;
@@ -2065,8 +2133,15 @@ elements["flow-form"].addEventListener("submit", saveFlow);
 elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
 elements["theme-select"].value = window.reviewTourTheme.preference();
 elements["theme-select"].addEventListener("change", () => window.reviewTourTheme.set(elements["theme-select"].value));
+elements["syntax-theme-select"].value = state.syntaxTheme;
+elements["syntax-theme-select"].addEventListener("change", () => {
+  state.syntaxTheme = elements["syntax-theme-select"].value;
+  window.localStorage.setItem("review-tour-syntax-theme", state.syntaxTheme);
+  document.documentElement.dataset.syntaxTheme = state.syntaxTheme;
+  void highlightRenderedCode();
+});
 elements["prefetch-steps"].addEventListener("change", async () => {
-  const previous = state.session.preferences?.prefetchSteps ?? 2;
+  const previous = state.session.preferences?.prefetchSteps ?? 5;
   const prefetchSteps = Number(elements["prefetch-steps"].value);
   elements["prefetch-steps"].disabled = true;
   try {
@@ -2172,6 +2247,7 @@ elements.diff.addEventListener("keydown", (event) => {
   setSplitOldWidth(width, true);
 });
 window.addEventListener("review-tour-theme-change", () => {
+  void highlightRenderedCode();
   if (state.session) renderArchitecture();
   if (state.session && state.activeTab === "call-flows") renderCallFlows();
   if (state.session && state.activeTab === "sequence") renderSequenceDiagrams();
@@ -2399,6 +2475,14 @@ elements["activity-list"].addEventListener("click", (event) => {
 });
 
 elements.diff.addEventListener("click", (event) => {
+  const inlineAction = event.target.closest("[data-inline-comment-action]");
+  if (inlineAction) {
+    const comment = state.session.comments.find((candidate) => candidate.id === inlineAction.dataset.inlineCommentId);
+    if (!comment || !reviewIsOpen()) return;
+    if (inlineAction.dataset.inlineCommentAction === "edit") openCommentEditor(comment);
+    else void deleteReviewComment(comment);
+    return;
+  }
   const inlineComment = event.target.closest("[data-inline-comment-id]");
   if (inlineComment) {
     const comment = state.session.comments.find((candidate) => candidate.id === inlineComment.dataset.inlineCommentId);
@@ -2515,7 +2599,7 @@ elements.diff.addEventListener("focusout", (event) => {
   if (event.target.closest(".finding-pin")) hideFindingTooltip();
 });
 elements.diff.addEventListener("keydown", (event) => {
-  if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+  if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
   const current = event.target.closest(".line-action");
   if (!current) return;
   const actions = [...elements.diff.querySelectorAll(".line-action:not(:disabled)")];
@@ -2587,16 +2671,7 @@ elements["comment-list"].addEventListener("click", async (event) => {
   }
   if (!reviewIsOpen()) return;
   if (action === "edit") return openCommentEditor(comment);
-  if (action === "delete") {
-    if (!window.confirm(`Delete feedback at ${comment.path}:${comment.line}?`)) return;
-    try {
-      state.session = await api(`/api/comments/${encodeURIComponent(comment.id)}`, { method: "DELETE" });
-      renderSession();
-      toast("Review comment deleted");
-    } catch (error) {
-      toast(error.message);
-    }
-  }
+  if (action === "delete") void deleteReviewComment(comment);
 });
 
 elements["comment-list"].addEventListener("change", async (event) => {

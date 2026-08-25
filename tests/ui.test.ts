@@ -60,11 +60,14 @@ test("tour rendering annotates code without continuously stealing navigation", a
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   const renderTour = app.slice(app.indexOf("function renderTour()"), app.indexOf("function renderFilteredDiff()"));
-  expect(app).toContain('note.className = `tour-code-note${step.id === activeStep.id ? " active" : ""}`');
+  expect(app).toContain('const isNext = index === activeStepIndex + 1');
+  expect(app).toContain('note.className = `tour-code-note${isCurrent ? " active" : isNext ? " next" : ""}`');
+  expect(app).toContain('isNext ? "Next stop"');
   expect(app).toContain("compactText(step.objective, 180)");
   expect(app).toContain('rows[0].classList.add("tour-anchor-start")');
   expect(app).toContain('rows.at(-1).classList.add("tour-anchor-end")');
   expect(styles).toContain(".diff-row.tour-anchor-start");
+  expect(styles).toContain(".tour-code-note.next {");
   expect(app).toContain("const phase = currentPhase()");
   expect(app).toContain("for (let index = phase.steps.length - 1; index >= 0; index -= 1)");
   expect(app).toContain('insertAdjacentElement("beforebegin", note)');
@@ -78,11 +81,16 @@ test("tour rendering annotates code without continuously stealing navigation", a
 
 test("agent answers scroll into view without hiding the reviewer question", async () => {
   const app = await readFile(join(root, "public/app.js"), "utf8");
+  const askAgent = app.slice(app.indexOf("async function askAgent"), app.indexOf("async function close"));
   expect(app).toContain('data-message-id="${escapeHtml(message.id)}"');
   expect(app).toContain("function revealAgentAnswer(questionId)");
   expect(app).toContain("Math.max(scroll.scrollTop, Math.min(questionTop, revealBottom))");
   expect(app).toContain('scroll.scrollTo({ top: target, behavior: "smooth" })');
   expect(app).toContain("requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId))");
+  expect(askAgent).toContain("state.questionPending = true");
+  expect(askAgent).toContain("state.questionPending = false");
+  expect(askAgent).not.toContain('setBusy(true, "The agent is responding…")');
+  expect(app).toContain('elements["next-step"].disabled = state.busy || !reviewIsOpen()');
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {
@@ -104,6 +112,7 @@ test("slow tour work exposes its prompt and safe progress while navigation remai
   expect(html).toContain('id="agent-activity"');
   expect(html).toContain('id="agent-activity-body"');
   expect(app).toContain("function renderAgentActivity()");
+  expect(app).toContain('followsExistingAnswer ? elements["chat-messages"] : elements["step-explanation"]');
   expect(app).toContain("Current prompt");
   expect(app).toContain("elapsed");
   expect(app).toContain('const promptWasOpen = renderedActivityId === activity.id');
@@ -111,7 +120,7 @@ test("slow tour work exposes its prompt and safe progress while navigation remai
   expect(app).toContain('dataset.contentKey !== contentKey');
   expect(app).toContain('querySelector(".agent-activity-elapsed").textContent');
   expect(app).toContain("the tour will switch to a local fallback agent automatically");
-  expect(app).toContain('const prefetchSteps = state.session.preferences?.prefetchSteps ?? 2');
+  expect(app).toContain('const prefetchSteps = state.session.preferences?.prefetchSteps ?? 5');
   expect(app).toContain('`We prepare ${prefetchSteps} ${prefetchSteps === 1 ? "step" : "steps"} in advance.`');
   expect(app).toContain('state.session.agentActivity = latest.agentActivity');
   expect(app).toContain('state.expectedAgentActivity = { kind: "review.question", previousActivityId }');
@@ -311,6 +320,9 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(app).toContain('if (preparingSteps) setBusy(true, "Preparing missing tour stops for the static export…")');
   expect(app).toContain('method: "POST"');
   expect(app).toContain('api("/api/preferences", { method: "POST", body: JSON.stringify({ prefetchSteps }) })');
+  expect(app).toContain('document.addEventListener("pointerdown"');
+  expect(app).toContain('!elements["settings-menu"].contains(event.target)');
+  expect(app).toContain('elements["settings-menu"].open = false');
   expect(styles).toContain(".settings-popover { position: absolute;");
   expect(styles).toContain(".export-options {");
 });
@@ -408,10 +420,11 @@ test("diff rows stay dense and the explanation owns a bounded scroll area", asyn
   expect(styles).not.toContain(".diff-row.split-side.empty");
   expect(html).toContain('id="tour-scroll" class="tour-scroll"');
   expect(styles).toContain(".diff-file-scroll { max-width: 100%; overflow-x: auto;");
-  expect(styles).toContain(".split-row { min-width: 0; display: grid;");
+  expect(styles).toContain(".split-row { min-width: 0; display: grid; grid-template-columns: minmax(0, var(--split-old-width, 50%)) minmax(0, 1fr);");
   expect(styles).toContain("min-height: 18px");
   expect(styles).toContain("line-height: 18px");
   expect(styles).toContain(".diff-row.split-side > .line-code { grid-column: 4; grid-row: 1; }");
+  expect(styles).toContain(".diff-row.split-side:first-child { border-right: 1px solid var(--border); }");
   expect(styles).toContain(".diff-row:not(.split-side) > .line-code { grid-column: 5; grid-row: 1; }");
   expect(styles).not.toContain(".line-code::-webkit-scrollbar");
 });
@@ -424,6 +437,56 @@ test("agent prose and selected paths wrap without widening the pane", async () =
   expect(styles).toContain(".anchor { max-width: 100%; overflow-wrap: anywhere;");
   expect(styles).toContain(".selection-pill { min-width: 0; max-width: 100%; overflow-wrap: anywhere;");
   expect(styles).toContain("white-space: normal;");
+});
+
+test("the baseline diff renderer retains selectable syntax palettes", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="syntax-theme-select"');
+  expect(html).toContain('<option value="github">GitHub</option>');
+  expect(html).not.toContain('<option value="catppuccin-latte">Catppuccin Latte</option>');
+  expect(html).toContain('<option value="catppuccin-frappe">Catppuccin Frappé</option>');
+  expect(html).toContain('<option value="catppuccin-macchiato">Catppuccin Macchiato</option>');
+  expect(html).toContain('<option value="catppuccin-mocha">Catppuccin Mocha</option>');
+  expect(app).toContain("function splitRows(rows)");
+  expect(app).toContain('theme: state.syntaxTheme');
+  expect(app).toContain("document.documentElement.dataset.syntaxTheme = state.syntaxTheme");
+  expect(styles).toContain(':root[data-theme="light"] .syntax-token { color: var(--syntax-light); }');
+  expect(styles).toContain(':root[data-theme="dark"] .syntax-token { color: var(--syntax-dark); }');
+  expect(styles).toContain(':root[data-syntax-theme="catppuccin-frappe"] {');
+  expect(styles).toContain(':root[data-syntax-theme="catppuccin-macchiato"] {');
+  expect(styles).toContain(':root[data-syntax-theme="catppuccin-mocha"] {');
+});
+
+test("syntax highlighting resets at hidden hunk gaps and between split sources", async () => {
+  const app = await Bun.file(new URL("../public/app.js", import.meta.url)).text();
+
+  expect(app).toContain('section.querySelectorAll(":scope .hunk")');
+  expect(app).toContain('["old", "new"].map((side)');
+  expect(app).toContain('hunk.querySelectorAll(`.split-side[data-side="${side}"] .line-code`)');
+  expect(app).toContain("index += 200");
+  expect(app).toContain("Promise.all(batches.map");
+  expect(app).not.toContain('const nodes = [...section.querySelectorAll(".line-code")]');
+});
+
+test("split diffs keep the native review UI without editor or moved-code overlays", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).not.toContain("monaco");
+  expect(app).not.toContain("Monaco");
+  expect(app).not.toContain("function detectMovedBlocks(file)");
+  expect(app).not.toContain("function renderMovedConnectors()");
+  expect(app).not.toContain("data-move-compare");
+  expect(app).toContain('${renderDiffFileHeader(file, collapsed)}');
+  expect(styles).not.toContain(".moved-connectors");
+  expect(styles).not.toContain(".move-banner");
+  expect(styles).not.toContain(".monaco-");
 });
 
 test("marking a file reviewed collapses its diff while keeping the header available", async () => {
@@ -466,14 +529,16 @@ test("review comments render inline and their marker opens the existing editor",
   expect(app).toContain('document.querySelectorAll(".inline-comment")');
   expect(app).toContain('inline.className = `inline-comment ${comment.status}`');
   expect(app).toContain('data-inline-comment-id="${escapeHtml(comment.id)}"');
-  expect(app).toContain('lane.className = `split-inline-comment ${comment.side}-side`');
+  expect(app).toContain('data-inline-comment-action="edit"');
+  expect(app).toContain('data-inline-comment-action="delete"');
+  expect(app).toContain("async function deleteReviewComment(comment)");
   expect(app).toContain('splitRow.insertAdjacentElement("afterend", lane)');
   expect(app).toContain("action.dataset.inlineCommentId = comment.id");
   expect(app).toContain("if (comment && reviewIsOpen()) openCommentEditor(comment)");
   expect(styles).toContain(".inline-comment { box-sizing: border-box; position: sticky;");
   expect(styles).toContain(".inline-comment-button { width: 100%;");
-  expect(styles).toContain(".split-inline-comment.new-side .inline-comment { grid-column: 2; }");
-  expect(styles).toContain(".split-inline-comment.old-side .inline-comment { grid-column: 1; }");
+  expect(styles).toContain(".inline-comment-actions { display: flex;");
+  expect(styles).toContain(".split-inline-comment .inline-comment { position: static;");
 });
 
 test("files expand and collapse in place while line actions expose comment and agent choices", async () => {
@@ -507,8 +572,12 @@ test("split diff panes are resizable and synchronize horizontal scrolling per si
   expect(styles).toContain(".hunk.split-layout { position: relative; width: 100%; min-width: 0; }");
   expect(styles).toContain("grid-template-columns: 42px 42px 22px max-content minmax(max-content, 1fr)");
   expect(styles).toContain("grid-template-columns: minmax(0, var(--split-old-width, 50%)) minmax(0, 1fr)");
+  expect(app).toContain('class="split-row"');
+  expect(app).toContain("function splitRows(rows)");
+  expect(app).not.toContain("function renderSplitTrack(file, hunk, side, findings, moves)");
+  expect(styles).toContain(".diff-row.split-side:first-child { border-right: 1px solid var(--border); }");
   expect(styles).toContain(".split-resizer { position: absolute;");
-  expect(styles).toContain(".diff-row.split-side { grid-template-columns: 42px 22px max-content minmax(max-content, 1fr); width: 100%; min-width: 0; overflow-x: auto;");
+  expect(styles).toContain("grid-template-columns: 42px 22px max-content minmax(max-content, 1fr); width: 100%; min-width: 0; overflow-x: auto;");
   expect(styles).not.toContain("grid-template-columns: minmax(50%, max-content) minmax(50%, max-content)");
   expect(app).toContain('data-split-resizer role="separator"');
   expect(app).toContain('setSplitOldWidth(((event.clientX - bounds.left) / bounds.width) * 100)');

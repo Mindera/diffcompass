@@ -206,6 +206,7 @@ test("repository file endpoint rejects traversal, symlink, binary, and oversized
   });
   expect(plain.status).toBe(200);
   await expect(plain.json()).resolves.toEqual({ path: "plain.txt", content: "plain text\n" });
+
 });
 
 test("required reviewed-file policy blocks successful closure but never blocks cancellation", async () => {
