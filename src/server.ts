@@ -83,7 +83,7 @@ function requireBrowserAuthorization(request: Request, session: ReviewSession): 
   }
 }
 
-export function createRequestHandler(session: ReviewSession, sessionDirectory = reviewSessionDirectory(), updateService: UpdateService = createUpdateService()) {
+export function createRequestHandler(session: ReviewSession, sessionDirectory = reviewSessionDirectory(), updateService: UpdateService = createUpdateService(), previewRedirect = false) {
   const fetch = async (request: Request) => {
     const url = new URL(request.url);
     try {
@@ -391,7 +391,14 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (url.pathname.startsWith("/api/")) throw new HttpError(404, "API endpoint not found.");
 
-      const relative = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\//, "");
+      // Preview clients open the bare origin, so the token cannot arrive in a fragment.
+      // The redirect target must differ from "/" or the browser reloads "/" forever.
+      if (previewRedirect && url.pathname === "/") {
+        return new Response(null, { status: 302, headers: { ...SECURITY_HEADERS, location: `/t#token=${session.browserToken}` } });
+      }
+
+      const shell = url.pathname === "/" || (previewRedirect && url.pathname === "/t");
+      const relative = shell ? "index.html" : url.pathname.replace(/^\//, "");
       const publicFile = PUBLIC_FILES[relative];
       if (publicFile) {
         const response = new Response(publicFile.body, { headers: { "content-type": publicFile.contentType } });
@@ -407,6 +414,6 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
   return fetch;
 }
 
-export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory()) {
-  return Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 60, fetch: createRequestHandler(session, sessionDirectory) });
+export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory(), previewRedirect = false) {
+  return Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 60, fetch: createRequestHandler(session, sessionDirectory, undefined, previewRedirect) });
 }

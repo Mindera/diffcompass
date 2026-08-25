@@ -109,3 +109,27 @@ test("in-process handler authenticates, bounds, and returns dual-theme highlight
   }));
   expect(duplicate.status).toBe(422);
 });
+
+test("preview redirect sends a bare origin to the tokenized shell", async () => {
+  const { session } = fixture();
+  const fetch = createRequestHandler(session, "/private/tmp/review-tour-handler-sessions", undefined, true);
+
+  const redirect = await fetch(new Request("http://127.0.0.1/"));
+  expect(redirect.status).toBe(302);
+  expect(redirect.headers.get("location")).toBe(`/t#token=${session.browserToken}`);
+
+  const shell = await fetch(new Request("http://127.0.0.1/t"));
+  expect(shell.status).toBe(200);
+  expect(shell.headers.get("content-type")).toBe("text/html; charset=utf-8");
+});
+
+test("preview redirect stays off by default", async () => {
+  const { session, fetch } = fixture();
+
+  const root = await fetch(new Request("http://127.0.0.1/"));
+  expect(root.status).toBe(200);
+  expect(await root.text()).not.toContain(session.browserToken);
+
+  const shell = await fetch(new Request("http://127.0.0.1/t"));
+  expect(shell.status).toBe(404);
+});

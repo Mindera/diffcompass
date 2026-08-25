@@ -30,6 +30,7 @@ interface Options {
   open: boolean;
   startTour: boolean;
   disableFindings: boolean;
+  previewRedirect: boolean;
   resume?: string;
   pullRequest?: string;
 }
@@ -61,13 +62,14 @@ Options:
   --caller-reasoning EFFORT
                        Optional attached-agent effort label
   --port PORT          Loopback port (default: random)
+  --preview-redirect   Redirect / to the tokenized URL so remote previews work
   --resume FILE        Resume a persisted review session
   --version            Print the installed version
   --help               Show this help`);
 }
 
 function parseOptions(args: string[]): Options {
-  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false, disableFindings: false };
+  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false, disableFindings: false, previewRedirect: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
@@ -91,6 +93,8 @@ function parseOptions(args: string[]): Options {
       options.disableFindings = true;
     } else if (arg === "--open") {
       options.open = true;
+    } else if (arg === "--preview-redirect") {
+      options.previewRedirect = true;
     } else if (arg === "--resume" && value) {
       options.resume = value;
       index += 1;
@@ -251,7 +255,7 @@ if (!session.pullRequest) {
     console.warn(`Automatic repository watching is unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-const server = startServer(session, options.port);
+const server = startServer(session, options.port, undefined, options.previewRedirect);
 const baseUrl = `http://${server.hostname}:${server.port}`;
 const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${options.startTour ? "&intro=1" : ""}`;
 console.log(`Code Review Tour: ${reviewUrl}`);
