@@ -63,6 +63,19 @@ An agent can launch the page and remain its conversation backend:
 code-review-tour --attached --start-tour --open --repo /path/to/repository
 ```
 
+If the change produced screenshots worth reviewing, add the repeatable
+`--screenshot` option. The files are copied into the persisted session and a
+Screenshots tab appears only when at least one image was supplied:
+
+```bash
+code-review-tour --attached --start-tour --open --repo /path/to/repository \
+  --screenshot /tmp/android-home.png \
+  --screenshot /tmp/ios-home.png
+```
+
+PNG, JPEG, GIF, and WebP are supported. Imported screenshots never modify the
+reviewed repository and survive session resume.
+
 Agents may optionally identify their current model and effort so the page starts
 with matching attached-session metadata:
 
@@ -90,7 +103,10 @@ session-only override and does not create or modify `.code-review-tour.json`.
 `--start-tour` completes the outline and first explanation before the single
 user-facing page opens, so an agent-triggered launch appears ready at stop one
 and never needs to drive a second browser or press the setup button. In this
-mode, tour planning, step explanations, and reviewer questions are sent
+mode, `--attached --open` implies `--start-tour`; omitting the explicit flag
+cannot open an empty tour. A preparation failure leaves the server available
+for diagnosis but does not open the browser.
+In this mode, tour planning, step explanations, and reviewer questions are sent
 to the triggering agent through an authenticated loopback event bridge. Future
 stops are prepared concurrently within the configured prepare-ahead window (five by default), and
 a reviewer question is issued immediately without waiting for that background
@@ -287,6 +303,13 @@ overwritten. Text, binary, added, deleted, and renamed files are retained in the
 bundle. A review cannot be accepted or closed with feedback while proposals are
 pending. Manual and background refreshes outside an active attached request are
 not attributed to the agent.
+
+Reviewers can also select `Edit` on a new-side diff line and type a replacement
+directly below the code. The edit becomes an isolated reviewer suggestion in
+the same Activity timeline; it never touches the reviewed tree until `Apply` is
+selected, and it can be rejected or conflict-safe undone like an agent proposal.
+Line comments are composed and edited inline as well, with an in-page deletion
+confirmation instead of a browser dialog.
 
 New state files live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/sessions` and are written atomically. A standalone server exits after the browser closes the review. An attached server waits until the triggering agent acknowledges that it handled the terminal outcome.
 

@@ -16,6 +16,13 @@ function boundedString(value: unknown, max = 500_000): value is string {
   return typeof value === "string" && value.length <= max;
 }
 
+function validScreenshot(value: unknown): boolean {
+  return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.name, 512) &&
+    ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(String(value.mimeType)) &&
+    Number.isInteger(value.size) && Number(value.size) > 0 && Number(value.size) <= 15 * 1024 * 1024 &&
+    typeof value.fileName === "string" && /^[0-9a-f-]{36}\.(?:png|jpg|gif|webp)$/.test(value.fileName);
+}
+
 function validAnchor(value: unknown): boolean {
   if (!record(value)) return false;
   return nonEmptyString(value.path, 4_096) && ["old", "new"].includes(String(value.side)) &&
@@ -167,6 +174,7 @@ function validChangeSummary(value: unknown): boolean {
 
 function validActivity(value: unknown): boolean {
   return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.requestMessageId, 128) &&
+    (value.source === undefined || ["agent", "reviewer"].includes(String(value.source))) &&
     nonEmptyString(value.request, 8_000) && (value.stepId === undefined || nonEmptyString(value.stepId, 128)) &&
     nonEmptyString(value.adapterId, 128) && nonEmptyString(value.modelId, 256) &&
     (value.eventId === undefined || nonEmptyString(value.eventId, 128)) &&
@@ -309,6 +317,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.reviewPolicy !== undefined && !validReviewPolicy(session.reviewPolicy)) ||
     (session.findingGenerationEnabled !== undefined && typeof session.findingGenerationEnabled !== "boolean") ||
     (session.pullRequest !== undefined && !validPullRequest(session.pullRequest)) ||
+    (session.screenshots !== undefined && (!Array.isArray(session.screenshots) || session.screenshots.length > 12 || !session.screenshots.every(validScreenshot) || new Set(session.screenshots.map((shot) => shot.id)).size !== session.screenshots.length)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||
     (session.agentContinuation !== undefined && !validContinuation(session.agentContinuation)) ||

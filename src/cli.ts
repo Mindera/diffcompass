@@ -31,6 +31,7 @@ interface Options {
   startTour: boolean;
   disableFindings: boolean;
   previewRedirect: boolean;
+  screenshots: string[];
   resume?: string;
   pullRequest?: string;
 }
@@ -53,6 +54,7 @@ Options:
   --base REF           Parent branch, commit, or captured Git tree to compare
   --attached           Use the launching agent as the conversation backend
   --start-tour         Prepare stop one before opening the review page
+                       (implied by --attached --open)
   --no-findings        Skip finding generation for this review session
   --open               Open the review automatically in the default browser
   --agent ID           Standalone agent: codex, claude, gemini, or copilot
@@ -63,13 +65,14 @@ Options:
                        Optional attached-agent effort label
   --port PORT          Loopback port (default: random)
   --preview-redirect   Redirect / to the tokenized URL so remote previews work
+  --screenshot PATH    Add a raster screenshot tab (repeatable)
   --resume FILE        Resume a persisted review session
   --version            Print the installed version
   --help               Show this help`);
 }
 
 function parseOptions(args: string[]): Options {
-  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false, disableFindings: false, previewRedirect: false };
+  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false, disableFindings: false, previewRedirect: false, screenshots: [] };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
@@ -95,6 +98,9 @@ function parseOptions(args: string[]): Options {
       options.open = true;
     } else if (arg === "--preview-redirect") {
       options.previewRedirect = true;
+    } else if (arg === "--screenshot" && value) {
+      options.screenshots.push(resolve(value));
+      index += 1;
     } else if (arg === "--resume" && value) {
       options.resume = value;
       index += 1;
@@ -157,6 +163,7 @@ if (command === "pr") {
   cliArguments = cliArguments.slice(2);
 }
 const options = parseOptions(cliArguments);
+if (options.attached && options.open) options.startTour = true;
 if ((options.callerModel || options.callerReasoning) && !options.attached && !options.resume) {
   throw new Error("--caller-model and --caller-reasoning require --attached or --resume.");
 }
@@ -227,6 +234,7 @@ try {
     reviewPolicy: repositoryConfig.reviewPolicy,
     includeFindings: options.disableFindings ? false : undefined,
     pullRequest,
+    screenshots: options.screenshots,
   });
   if (session.pullRequest?.workspaceRoot) {
     await writeFile(join(session.pullRequest.workspaceRoot, "..", ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
@@ -258,7 +266,8 @@ if (!session.pullRequest) {
 const server = startServer(session, options.port, undefined, options.previewRedirect);
 const baseUrl = `http://${server.hostname}:${server.port}`;
 const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${options.startTour ? "&intro=1" : ""}`;
-console.log(`Code Review Tour: ${reviewUrl}`);
+const deferReviewUrl = options.open && options.startTour;
+if (!deferReviewUrl) console.log(`Code Review Tour: ${reviewUrl}`);
 console.log(`Repository: ${session.comparison.repositoryRoot}`);
 console.log(`Comparison: ${session.comparison.base} (${session.comparison.mergeBase.slice(0, 8)}) → working tree`);
 console.log(`Tour agents: ${session.agentAdapters.map((adapter) => adapter.label).join(", ") || "none detected"}`);
@@ -304,6 +313,7 @@ const automaticTour = options.startTour ? session.startTour() : undefined;
 
 if (options.open) {
   await prepareAndOpenReviewPage(automaticTour, reviewUrl);
+  if (deferReviewUrl) console.log(`Code Review Tour: ${reviewUrl}`);
 } else if (automaticTour) {
   void automaticTour.catch((error) => {
     console.error(`Could not start the tour automatically: ${error instanceof Error ? error.message : String(error)}`);

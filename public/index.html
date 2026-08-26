@@ -20,9 +20,13 @@
         <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
         <button id="findings-tab" class="tab" data-tab="findings" role="tab" aria-selected="false" aria-controls="findings-view" tabindex="-1">Findings <span id="findings-tab-count" class="tab-count hidden">0</span></button>
         <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
+        <button id="screenshots-tab" class="tab hidden" data-tab="screenshots" role="tab" aria-selected="false" aria-controls="screenshots-view" tabindex="-1">Screenshots <span id="screenshots-tab-count" class="tab-count">0</span></button>
         <button id="pull-request-tab" class="tab hidden" data-tab="pull-request" role="tab" aria-selected="false" aria-controls="pull-request-view" tabindex="-1">Pull request</button>
       </div>
       <div class="actions">
+        <button id="file-panel-toggle" class="button secondary file-panel-toggle" type="button" aria-controls="file-panel" aria-expanded="false">
+          <span aria-hidden="true">☰</span> Files
+        </button>
         <button id="update-button" class="button update-button hidden" type="button" aria-live="polite">
           <span class="update-icon" aria-hidden="true">↻</span>
           <span id="update-label">Update</span>
@@ -72,13 +76,16 @@
     <div id="connection-banner" class="closed-banner connection hidden" role="status">The local server is unavailable. Restart it with the printed resume command, then reopen the new review URL.</div>
 
     <main id="workspace" class="workspace">
-      <aside class="file-panel">
+      <aside id="file-panel" class="file-panel" aria-label="Changed files">
         <div class="panel-heading">
           <div>
             <div class="eyebrow">Changes</div>
             <div id="comparison-label" class="comparison"></div>
           </div>
-          <span id="file-count" class="count"></span>
+          <div class="file-panel-heading-actions">
+            <span id="file-count" class="count"></span>
+            <button id="file-panel-close" class="file-panel-close" type="button" aria-label="Close changed files">×</button>
+          </div>
         </div>
         <div class="file-controls">
           <label class="search-control"><span class="sr-only">Search changed paths and code</span><input id="diff-search" type="search" placeholder="Search changes…" autocomplete="off" /></label>
@@ -138,8 +145,12 @@
           <div id="all-findings-list" class="all-findings-list"></div>
         </div>
         <div id="activity-view" class="review-view hidden" role="tabpanel" aria-labelledby="activity-tab">
-          <div id="activity-empty" class="empty">Agent-authored repository changes will appear here.</div>
+          <div id="activity-empty" class="empty">Proposed repository changes will appear here.</div>
           <div id="activity-list" class="activity-list"></div>
+        </div>
+        <div id="screenshots-view" class="review-view hidden" role="tabpanel" aria-labelledby="screenshots-tab">
+          <div class="flows-toolbar"><div><strong>Built output</strong><span class="muted">Screenshots supplied by the agent that launched this review.</span></div></div>
+          <div id="screenshots" class="screenshot-gallery"></div>
         </div>
         <div id="pull-request-view" class="review-view hidden" role="tabpanel" aria-labelledby="pull-request-tab">
           <div id="pull-request-content" class="pull-request-content"></div>
@@ -250,6 +261,7 @@
         </section>
       </aside>
     </main>
+    <button id="file-panel-backdrop" class="file-panel-backdrop hidden" type="button" aria-label="Close changed files"></button>
 
     <dialog id="tour-intro-dialog" class="tour-intro-dialog" aria-labelledby="tour-intro-title" aria-describedby="tour-intro-summary">
       <div class="tour-intro-scroll">
@@ -283,19 +295,6 @@
         <div id="architecture-viewer-diagram" class="sequence-diagram architecture-diagram" role="img" tabindex="0"></div>
         <p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
       </div>
-    </dialog>
-
-    <dialog id="comment-dialog">
-      <form id="comment-form">
-        <div class="eyebrow">Review comment</div>
-        <h3 id="comment-location"></h3>
-        <label class="sr-only" for="comment-body">Review comment</label>
-        <textarea id="comment-body" rows="5" placeholder="What should the agent revisit?"></textarea>
-        <div class="dialog-actions">
-          <button id="cancel-comment" type="button" class="button secondary">Cancel</button>
-          <button id="save-comment" type="submit" class="button primary">Add comment</button>
-        </div>
-      </form>
     </dialog>
 
     <dialog id="html-export-dialog" aria-labelledby="html-export-title" aria-describedby="html-export-description">

@@ -59,6 +59,19 @@ test("runtime preferences persist a bounded prepare-ahead window", async () => {
   expect(invalid.status).toBe(422);
 });
 
+test("inline edit requests accept only the editable new side", async () => {
+  const { session, fetch } = fixture();
+  const response = await fetch(authorizedRequest(session, "/api/edits", {
+    path: "app.ts",
+    side: "old",
+    line: 1,
+    expectedContent: "const base = 1;",
+    replacement: "const base = 2;",
+  }));
+  expect(response.status).toBe(422);
+  expect(await response.json()).toMatchObject({ error: expect.stringContaining("side") });
+});
+
 test("attached workers can report bounded progress for a leased prompt", async () => {
   const { session, fetch } = fixture();
   const updates: string[] = [];

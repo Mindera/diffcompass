@@ -6,6 +6,7 @@ import { runProcess } from "../src/process.ts";
 import { loadComparison } from "../src/git.ts";
 import { ReviewSession } from "../src/session.ts";
 import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
+import { createRequestHandler } from "../src/server.ts";
 import type { PersistedReviewSession } from "../src/types.ts";
 
 const directories: string[] = [];
@@ -92,6 +93,28 @@ function persistedAttachedSession(repositoryRoot: string, overrides: Partial<Per
     ...overrides,
   };
 }
+
+test("startup screenshots are snapshotted, authenticated, and persisted across resume", async () => {
+  const { directory, repository, stateFile } = await repositoryFixture();
+  const source = join(directory, "built-ui.png");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  await writeFile(source, png);
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, screenshots: [source] });
+  expect(session.snapshot().screenshots).toEqual([expect.objectContaining({ name: "built-ui.png", mimeType: "image/png", size: png.length })]);
+
+  await writeFile(source, "not the imported screenshot");
+  const screenshot = session.snapshot().screenshots[0]!;
+  const fetch = createRequestHandler(session, directory);
+  const unauthorized = await fetch(new Request(`http://127.0.0.1/api/screenshots/${screenshot.id}`));
+  expect(unauthorized.status).toBe(401);
+  const response = await fetch(new Request(`http://127.0.0.1/api/screenshots/${screenshot.id}`, { headers: { "x-review-tour-token": session.browserToken } }));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toBe("image/png");
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
+
+  const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  expect(resumed.snapshot().screenshots).toEqual(session.snapshot().screenshots);
+});
 
 function proposalWorkspace(prompt: { type: string; prompt?: string }): string {
   const match = /isolated proposal workspace ("(?:\\.|[^"])*")/.exec(prompt.prompt ?? "");
@@ -669,6 +692,52 @@ test("an attached review question can refresh after requested edits and still re
   expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst edited = 4;\n");
   const undone = await session.updateActivity(snapshot.activities[0]!.id, "undo");
   expect(undone.activities[0]).toMatchObject({ changeStatus: "undone" });
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
+});
+
+test("a reviewer inline edit stays isolated until apply and remains undoable", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+
+  const result = await session.proposeInlineEdit(
+    "app.ts",
+    "new",
+    2,
+    "const changed = 2;",
+    "const changed = 3;\nconst reviewerAdded = true;",
+  );
+  expect(result.session.activities).toEqual([expect.objectContaining({
+    id: result.activityId,
+    source: "reviewer",
+    adapterId: "reviewer",
+    modelId: "inline-edit",
+    status: "observed",
+    changeStatus: "pending",
+    hasProposal: true,
+    files: [expect.objectContaining({ path: "app.ts", change: "modified" })],
+  })]);
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
+  expect(session.activityDiff(result.activityId, "app.ts").file.hunks
+    .flatMap((hunk) => hunk.rows).map((row) => row.content)).toContain("const reviewerAdded = true;");
+
+  const applied = await session.updateActivity(result.activityId, "apply");
+  expect(applied.activities[0]).toMatchObject({ changeStatus: "applied", source: "reviewer" });
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 3;\nconst reviewerAdded = true;\n");
+  await session.updateActivity(result.activityId, "undo");
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
+});
+
+test("a reviewer inline edit rejects stale, unavailable, and no-op requests", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+
+  await expect(session.proposeInlineEdit("app.ts", "new", 2, "stale content", "const changed = 3;"))
+    .rejects.toThrow("changed before the edit");
+  await expect(session.proposeInlineEdit("app.ts", "new", 999, "not visible", "const base = 4;"))
+    .rejects.toThrow("changed before the edit");
+  await expect(session.proposeInlineEdit("app.ts", "new", 2, "const changed = 2;", "const changed = 2;"))
+    .rejects.toThrow("does not change");
+  expect(session.snapshot().activities).toEqual([]);
   expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
 });
 

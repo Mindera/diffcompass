@@ -62,6 +62,9 @@ test("session IDs resolve by an unambiguous prefix and reject ambiguous prefixes
 
 test("session commands rename, archive, resume, restore, and explicitly delete", async () => {
   const directory = await libraryFixture();
+  const assetDirectory = join(directory, "aaaaaaaa-1111.json.assets");
+  await mkdir(assetDirectory);
+  await writeFile(join(assetDirectory, "screenshot.png"), "fixture");
   expect((await runSessionCommand(["rename", "aaaa", "Release", "review"], directory)).output).toContain("Release review");
   expect((await loadPersistedSession(join(directory, "aaaaaaaa-1111.json"))).name).toBe("Primary review");
   expect((await listReviewSessions(directory, true)).sessions.find((item) => item.id.startsWith("aaaa"))?.name).toBe("Release review");
@@ -76,12 +79,16 @@ test("session commands rename, archive, resume, restore, and explicitly delete",
   await expect(runSessionCommand(["delete", "aaaa"], directory)).rejects.toThrow("destructive");
   expect((await runSessionCommand(["delete", "aaaa", "--yes"], directory)).output).toContain("Deleted");
   await expect(resolveReviewSession("aaaa", directory)).rejects.toThrow("No review session");
+  await expect(access(assetDirectory)).rejects.toThrow();
 });
 
 test("retention previews before deletion, excludes archived sessions by default, and protects active sessions", async () => {
   const directory = await libraryFixture();
   const now = new Date("2026-08-20T10:00:00.000Z");
   const primaryPath = join(directory, "aaaaaaaa-1111.json");
+  const assetDirectory = `${primaryPath}.assets`;
+  await mkdir(assetDirectory);
+  await writeFile(join(assetDirectory, "screenshot.png"), "fixture");
   const release = await acquireSessionLock(primaryPath);
 
   const protectedResult = await pruneReviewSessions(
@@ -99,6 +106,7 @@ test("retention previews before deletion, excludes archived sessions by default,
   await expect(access(primaryPath)).resolves.toBeNull();
   const applied = await pruneReviewSessions({ maxAgeDays: 1, includeArchived: false }, { directory, apply: true, now });
   expect(applied.sessions.map((item) => item.id)).toEqual(["aaaaaaaa-1111"]);
+  await expect(access(assetDirectory)).rejects.toThrow();
   expect((await listReviewSessions(directory, true)).sessions.map((item) => item.id)).toEqual(["bbbbbbbb-2222"]);
 });
 

@@ -259,6 +259,7 @@ export interface AgentChangeFile {
 
 export interface AgentChangeActivity {
   id: string;
+  source?: "agent" | "reviewer";
   requestMessageId: string;
   request: string;
   stepId?: string;
@@ -366,9 +367,18 @@ export interface PersistedReviewSession {
   reviewPolicy?: ReviewPolicy;
   findingGenerationEnabled?: boolean;
   pullRequest?: PullRequestContext;
+  screenshots?: ReviewScreenshot[];
   revision: number;
   status: ReviewStatus;
   selection?: AgentSelection;
   agentContinuation?: { adapterId: StandaloneAgentAdapterId; id: string };
   updatedAt: string;
+}
+
+export interface ReviewScreenshot {
+  id: string;
+  name: string;
+  mimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  size: number;
+  fileName: string;
 }

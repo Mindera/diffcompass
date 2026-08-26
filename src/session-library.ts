@@ -169,6 +169,7 @@ export async function pruneReviewSessions(
         await removePullRequestWorkspace(current.pullRequest);
       }
       await unlink(target.path);
+      await rm(`${target.path}.assets`, { recursive: true, force: true });
       delete metadata.sessions[target.id];
       result.sessions.push(target);
     } catch (error) {
@@ -276,6 +277,7 @@ export async function deleteReviewSession(
 ): Promise<SessionSummary> {
   const summary = await resolveReviewSession(id, directory);
   await unlink(summary.path);
+  await rm(`${summary.path}.assets`, { recursive: true, force: true });
   const metadata = await loadLibraryMetadata(directory);
   delete metadata.sessions[summary.id];
   await saveLibraryMetadata(directory, metadata);

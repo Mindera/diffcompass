@@ -22,6 +22,7 @@ describe("loadComparison", () => {
     await git(repository, "init", "-b", "main");
     await git(repository, "config", "user.name", "Review Tour Test");
     await git(repository, "config", "user.email", "review-tour@example.test");
+    await git(repository, "remote", "add", "origin", "git@github.com:acme/code-review-tour.git");
     await writeFile(join(repository, "app.txt"), "base\n");
     await git(repository, "add", "app.txt");
     await git(repository, "commit", "-m", "base");
@@ -38,6 +39,7 @@ describe("loadComparison", () => {
     const comparison = await loadComparison(repository);
 
     expect(comparison.base).toBe("origin/main");
+    expect(comparison.repositoryName).toBe("code-review-tour");
     expect(comparison.mergeBase).toBe(base);
     expect(comparison.files.map((file) => file.path)).toEqual(["app.txt", "new.txt"]);
     expect(comparison.files[0].additions).toBe(2);

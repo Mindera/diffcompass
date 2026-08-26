@@ -26,6 +26,26 @@ test("review navigation exposes expanded changed paths and a full repository mod
   expect(styles).toContain(".count, .mode { flex: 0 0 auto; white-space: nowrap;");
 });
 
+test("narrow layouts expose the changed files as a dismissible drawer", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="file-panel-toggle"');
+  expect(html).toContain('aria-controls="file-panel"');
+  expect(html).toContain('id="file-panel-close"');
+  expect(html).toContain('id="file-panel-backdrop"');
+  expect(app).toContain('function setFilePanelOpen(open, { restoreFocus = false } = {})');
+  expect(app).toContain('window.matchMedia("(max-width: 900px)").matches');
+  expect(app).toContain('if (event.key === "Escape" && state.filePanelOpen)');
+  expect(app).toContain('elements["file-panel"].inert = narrowFilePanelLayout() && !state.filePanelOpen');
+  expect(app).toContain('if (narrowFilePanelLayout()) setFilePanelOpen(false)');
+  expect(styles).toContain('.file-panel-open .file-panel { transform: translateX(0); }');
+  expect(styles).toContain('width: min(340px, 88vw)');
+  expect(styles).toContain('.file-panel-backdrop { position: fixed;');
+});
+
 test("the file pane can filter changed test files without changing the default", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
@@ -106,7 +126,11 @@ test("closing a review shows a five-second self-close countdown", async () => {
   expect(app).toContain('`You can close this window, or it will close in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`');
   expect(app).toContain("window.close()");
   expect(app).toContain("if (window.closed) return");
-  expect(app).toContain('beginCloseCountdown(outcome === "feedback"');
+  expect(app).toContain("function beginCloseCountdownForTransition(previousStatus, result)");
+  expect(app).toContain('previousStatus !== "open"');
+  expect(app).toContain("beginCloseCountdownForTransition(previousStatus, result)");
+  expect(app).toContain("beginCloseCountdownForTransition(previousStatus, latest)");
+  expect(app).toContain('`${state.closeCountdownMessage} You can close this window.`');
 });
 
 test("slow tour work exposes its prompt and safe progress while navigation remains busy", async () => {
@@ -255,6 +279,8 @@ test("agent-launched tours introduce the change before navigating to the first s
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(cli).toContain('options.startTour ? "&intro=1" : ""');
+  expect(cli).toContain("if (options.attached && options.open) options.startTour = true");
+  expect(cli).toContain("if (!deferReviewUrl) console.log(`Code Review Tour: ${reviewUrl}`)");
   expect(html).toContain('id="tour-intro-dialog"');
   expect(html).toContain('id="begin-tour"');
   expect(html).toContain('id="tour-intro-architecture"');
@@ -530,7 +556,7 @@ test("top-level panes preserve independent scroll positions", async () => {
   expect(app).toContain("activateReviewTab(nextTab, render)");
 });
 
-test("review comments render inline and their marker opens the existing editor", async () => {
+test("review comments compose and edit inline with an in-app delete confirmation", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
@@ -541,13 +567,18 @@ test("review comments render inline and their marker opens the existing editor",
   expect(app).toContain('data-inline-comment-action="edit"');
   expect(app).toContain('data-inline-comment-action="delete"');
   expect(app).toContain("async function deleteReviewComment(comment)");
+  expect(app).toContain("function openInlineCommentEditor(row, target, comment)");
+  expect(app).toContain('className = "inline-comment-form"');
+  expect(app).toContain('data-inline-comment-action="confirm-delete"');
+  expect(app).not.toContain("Delete feedback at ${comment.path}:${comment.line}");
   expect(app).toContain('splitRow.insertAdjacentElement("afterend", lane)');
   expect(app).toContain("action.dataset.inlineCommentId = comment.id");
-  expect(app).toContain("if (comment && reviewIsOpen()) openCommentEditor(comment)");
+  expect(app).toContain("if (comment && reviewIsOpen()) void openCommentEditor(comment)");
   expect(styles).toContain(".inline-comment { box-sizing: border-box; position: sticky;");
   expect(styles).toContain(".inline-comment-button { width: 100%;");
   expect(styles).toContain(".inline-comment-actions { display: flex;");
   expect(styles).toContain(".split-inline-comment .inline-comment { position: static;");
+  expect(styles).toContain(".inline-comment-editor-lane");
 });
 
 test("files expand and collapse in place while line actions expose comment and agent choices", async () => {
@@ -569,10 +600,15 @@ test("files expand and collapse in place while line actions expose comment and a
   expect(app).toContain("if (viewportAnchor) restoreFileViewport(viewportAnchor)");
   expect(app).toContain('data-line-tool="comment"');
   expect(app).toContain('data-line-tool="ask"');
+  expect(app).toContain('data-line-tool="edit"');
   expect(app).toContain("function openLineComment(row)");
   expect(app).toContain("function askAboutLine(row)");
+  expect(app).toContain("function openInlineEdit(row)");
+  expect(app).toContain('api("/api/edits"');
+  expect(app).toContain("The repository stays untouched until you apply this suggestion.");
   expect(styles).toContain(".line-tools");
   expect(styles).toContain(".diff-row:hover .line-tools");
+  expect(styles).toContain(".inline-edit-lane");
 });
 
 test("split diff panes are resizable and synchronize horizontal scrolling per side", async () => {
@@ -599,4 +635,18 @@ test("split diff panes are resizable and synchronize horizontal scrolling per si
   expect(app).toContain("function syncSplitScroll(hunk, side, scrollLeft)");
   expect(app).toContain('elements.diff.addEventListener("wheel"');
   expect(app).toContain("event.preventDefault()");
+});
+
+test("screenshots are exposed through a conditional authenticated review tab", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="screenshots-tab" class="tab hidden"');
+  expect(html).toContain('id="screenshots-view" class="review-view hidden"');
+  expect(app).toContain('state.session?.screenshots?.length ? ["screenshots"] : []');
+  expect(app).toContain('"X-Review-Tour-Token": state.apiToken');
+  expect(app).toContain('apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`)');
+  expect(styles).toContain(".screenshot-gallery { display: grid;");
 });

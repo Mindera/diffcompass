@@ -45,6 +45,13 @@ export async function resolveRepositoryRoot(cwd: string): Promise<string> {
   return git(cwd, ["rev-parse", "--show-toplevel"]);
 }
 
+async function resolveRepositoryName(repositoryRoot: string): Promise<string> {
+  const origin = await git(repositoryRoot, ["config", "--get", "remote.origin.url"], [0, 1]);
+  if (!origin) return basename(repositoryRoot);
+  const remoteName = origin.replace(/[\\/]+$/, "").split(/[\\/:]/).filter(Boolean).at(-1)?.replace(/\.git$/i, "");
+  return remoteName || basename(repositoryRoot);
+}
+
 export async function captureWorkingTreeSnapshot(repositoryRoot: string): Promise<WorkingTreeSnapshot> {
   const temporary = await mkdtemp(join(tmpdir(), "code-review-tour-index-"));
   const indexFile = join(temporary, "index");
@@ -153,6 +160,7 @@ async function untrackedPatch(repositoryRoot: string, contextLines = 3): Promise
 
 export async function loadComparison(cwd: string, explicitBase?: string, contextLines = 3): Promise<GitComparison> {
   const repositoryRoot = await resolveRepositoryRoot(cwd);
+  const repositoryName = await resolveRepositoryName(repositoryRoot);
   const base = await resolveBase(repositoryRoot, explicitBase);
   const mergeBase = await refExists(repositoryRoot, base)
     ? await git(repositoryRoot, ["merge-base", base, "HEAD"])
@@ -177,7 +185,7 @@ export async function loadComparison(cwd: string, explicitBase?: string, context
 
   return {
     repositoryRoot,
-    repositoryName: basename(repositoryRoot),
+    repositoryName,
     branch: branch || undefined,
     base,
     mergeBase,
@@ -225,5 +233,29 @@ export async function loadRepositoryFile(comparison: GitComparison, path: string
   } catch (error) {
     if (error instanceof ReviewError) throw error;
     throw new ReviewError("Repository file could not be read.");
+  }
+}
+
+export async function writeProposalFile(workspace: ProposalWorkspace, path: string, content: string, maxBytes = 1_000_000): Promise<void> {
+  const encoded = new TextEncoder().encode(content);
+  if (encoded.byteLength > maxBytes) throw new ReviewError("The edited repository file is too large.");
+  const root = await realpath(workspace.path);
+  const candidate = resolve(root, path);
+  const relativePath = relative(root, candidate);
+  if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new ReviewError("Repository file path is invalid.");
+  }
+  try {
+    const metadata = await lstat(candidate);
+    if (!metadata.isFile()) throw new ReviewError("Only regular repository files can be edited.");
+    const realCandidate = await realpath(candidate);
+    const realRelativePath = relative(root, realCandidate);
+    if (!realRelativePath || realRelativePath.startsWith("..") || isAbsolute(realRelativePath)) {
+      throw new ReviewError("Repository file path is invalid.");
+    }
+    await writeFile(candidate, content, "utf8");
+  } catch (error) {
+    if (error instanceof ReviewError) throw error;
+    throw new ReviewError("Repository file could not be edited.");
   }
 }

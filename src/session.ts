@@ -4,14 +4,15 @@ import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./ag
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
-import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, removeProposalWorkspace, type ProposalWorkspace } from "./git.ts";
+import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, loadRepositoryFile, removeProposalWorkspace, writeProposalFile, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
 import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, TourOutline } from "./types.ts";
+import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -26,6 +27,7 @@ interface AgentDefaults {
   reviewPolicy?: ReviewPolicy;
   includeFindings?: boolean;
   pullRequest?: PullRequestContext;
+  screenshots?: string[];
   githubRunner?: GitHubRunner;
   agentAdapters?: AgentAdapterOption[];
 }
@@ -73,6 +75,7 @@ export class ReviewSession {
   readonly browserToken: string;
   readonly preferences: ReviewPreferences;
   readonly reviewPolicy: ReviewPolicy;
+  readonly screenshots: ReviewScreenshot[];
   pullRequest?: PullRequestContext;
   outline?: TourOutline;
   currentStepIndex = -1;
@@ -119,6 +122,7 @@ export class ReviewSession {
     this.preferences = structuredClone(persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES);
     this.reviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
+    this.screenshots = structuredClone(persisted?.screenshots ?? []);
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
     this.activities = structuredClone(persisted?.activities ?? []);
@@ -187,6 +191,7 @@ export class ReviewSession {
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
       pullRequest: structuredClone(this.pullRequest),
+      screenshots: structuredClone(this.screenshots),
       revision: this.revision,
       status: this.status,
       selection: structuredClone(this.selection),
@@ -277,17 +282,12 @@ export class ReviewSession {
     if (!this.activeAgentRequest || !this.selection || context.source !== "agent") return;
     const changes = comparisonChanges(previousFiles, nextFiles);
     if (changes.length === 0 || !proposal.patch.trim()) return;
-    const retainedPatchBytes = this.activities.reduce(
-      (total, activity) => total + (activity.proposal ? new TextEncoder().encode(activity.proposal.patch).byteLength : 0),
-      0,
-    );
-    if (retainedPatchBytes + new TextEncoder().encode(proposal.patch).byteLength > 16 * 1024 * 1024) {
-      throw new ReviewError("Pending and undoable agent changes exceed the 16 MiB session limit. Resolve an existing proposal or split this request.");
-    }
+    this.ensureProposalCapacity(proposal.patch);
     const request = this.activeAgentRequest;
     const now = new Date().toISOString();
     this.activities.push({
       id: crypto.randomUUID(),
+      source: "agent",
       requestMessageId: request.messageId,
       request: request.body,
       stepId: request.stepId,
@@ -302,6 +302,16 @@ export class ReviewSession {
       createdAt: now,
       updatedAt: now,
     });
+  }
+
+  private ensureProposalCapacity(patch: string): void {
+    const retainedPatchBytes = this.activities.reduce(
+      (total, activity) => total + (activity.proposal ? new TextEncoder().encode(activity.proposal.patch).byteLength : 0),
+      0,
+    );
+    if (retainedPatchBytes + new TextEncoder().encode(patch).byteLength > 16 * 1024 * 1024) {
+      throw new ReviewError("Pending and undoable changes exceed the 16 MiB session limit. Resolve an existing proposal or split this edit.");
+    }
   }
 
   private async captureFallbackProposal(
@@ -367,6 +377,10 @@ export class ReviewSession {
       });
     }
     const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted);
+    if (defaults.screenshots?.length) {
+      if (!defaults.stateFile) throw new ReviewError("Screenshots require persisted review session storage.");
+      session.screenshots.splice(0, session.screenshots.length, ...await importReviewScreenshots(defaults.screenshots, defaults.stateFile, session.screenshots));
+    }
     bridge?.setPersistence(() => session.persist());
     bridge?.setFallbackResultHandler((eventId, kind, reply) => session.captureFallbackProposal(eventId, kind, reply));
     if (bridge && persisted && persisted.status !== "open" && !persisted.bridgeTerminalEvent) {
@@ -504,6 +518,7 @@ export class ReviewSession {
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
       pullRequest: structuredClone(this.pullRequest),
+      screenshots: structuredClone(this.screenshots),
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,
@@ -512,6 +527,12 @@ export class ReviewSession {
       agentActivity: structuredClone(this.agentActivity),
       tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
     };
+  }
+
+  screenshot(id: string): { metadata: ReviewScreenshot; path: string } | undefined {
+    const metadata = this.screenshots.find((candidate) => candidate.id === id);
+    if (!metadata || !this.defaults.stateFile) return undefined;
+    return { metadata, path: screenshotAssetPath(this.defaults.stateFile, metadata) };
   }
 
   diffFile(path: string, requestedOffset = 0, requestedLimit = 1_000, anchor?: { line: number; side: "old" | "new" }) {
@@ -611,6 +632,75 @@ export class ReviewSession {
     const file = parseUnifiedDiff(activity.proposal.patch).find((candidate) => candidate.path === path);
     if (!file) throw new ReviewError("The proposed file does not exist in this change.");
     return { file: structuredClone(file) };
+  }
+
+  async proposeInlineEdit(path: string, side: "new", line: number, expectedContent: string, replacement: string) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (side !== "new") throw new ReviewError("Only lines on the new side of a changed file can be edited.");
+      const changedFile = this.comparison.files.find((candidate) => candidate.path === path && candidate.status !== "deleted");
+      if (!changedFile) throw new ReviewError("Only lines on the new side of a changed file can be edited.");
+      if (replacement.includes("\0")) throw new ReviewError("Inline edits cannot contain binary data.");
+
+      let workspace: ProposalWorkspace | undefined;
+      try {
+        workspace = await createProposalWorkspace(this.comparison.repositoryRoot);
+        const workspaceComparison = { ...this.comparison, repositoryRoot: workspace.path };
+        const content = await loadRepositoryFile(workspaceComparison, path);
+        const newline = content.includes("\r\n") ? "\r\n" : "\n";
+        const normalized = content.replaceAll("\r\n", "\n");
+        const terminalNewline = normalized.endsWith("\n");
+        const lines = normalized.split("\n");
+        if (terminalNewline) lines.pop();
+        if (line > lines.length || lines[line - 1] !== expectedContent) {
+          throw new ReviewError("This file changed before the edit was submitted. Refresh it and try again.");
+        }
+        const replacementLines = replacement === "" ? [] : replacement.replaceAll("\r\n", "\n").split("\n");
+        lines.splice(line - 1, 1, ...replacementLines);
+        const nextContent = `${lines.join(newline)}${terminalNewline ? newline : ""}`;
+        if (nextContent === content) throw new ReviewError("The proposed edit does not change this file.");
+        await writeProposalFile(workspace, path, nextContent);
+
+        const result = await captureWorkingTreeSnapshot(workspace.path);
+        const patch = await createChangePatch(workspace.path, workspace.tree, result.tree);
+        if (!patch.trim()) throw new ReviewError("The proposed edit does not change this file.");
+        this.ensureProposalCapacity(patch);
+        const proposedComparison = await loadComparison(workspace.path, this.comparison.base, this.preferences.contextLines);
+        const files = comparisonChanges(this.comparison.files, proposedComparison.files);
+        if (files.length !== 1 || files[0]?.path !== path) {
+          throw new ReviewError("The inline edit affected an unexpected file and was discarded.");
+        }
+
+        const now = new Date().toISOString();
+        const activity: AgentChangeActivity = {
+          id: crypto.randomUUID(),
+          source: "reviewer",
+          requestMessageId: `reviewer-${crypto.randomUUID()}`,
+          request: `Edit ${path}:${line}`,
+          adapterId: "reviewer",
+          modelId: "inline-edit",
+          files,
+          status: "observed",
+          changeStatus: "pending",
+          proposal: { patch, baselineTree: workspace.tree, resultTree: result.tree },
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.activities.push(activity);
+        const previousRevision = this.revision;
+        this.revision += 1;
+        try {
+          await this.persist();
+        } catch (error) {
+          this.activities.pop();
+          this.revision = previousRevision;
+          throw error;
+        }
+        return { session: this.snapshot(), activityId: activity.id };
+      } finally {
+        if (workspace) await removeProposalWorkspace(this.comparison.repositoryRoot, workspace);
+      }
+    });
   }
 
   async updateActivity(id: string, action: "apply" | "reject" | "undo") {

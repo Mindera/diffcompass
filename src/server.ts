@@ -38,7 +38,7 @@ const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
-  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -151,6 +151,16 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "GET" && url.pathname.startsWith("/api/screenshots/")) {
+        const id = url.pathname.slice("/api/screenshots/".length);
+        const screenshot = session.screenshot(id);
+        if (!screenshot) throw new HttpError(404, "Screenshot not found.");
+        const file = Bun.file(screenshot.path);
+        if (!await file.exists()) throw new HttpError(404, "Screenshot asset is unavailable.");
+        const response = new Response(file, { headers: { "content-type": screenshot.metadata.mimeType } });
+        for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
+        return response;
+      }
       if (request.method === "POST" && url.pathname === "/api/preferences") {
         const input = await readJsonObject(request);
         exactKeys(input, ["prefetchSteps"]);
@@ -287,6 +297,22 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         return json(await session.updateActivity(
           decodeURIComponent(activityMatch[1]),
           enumValue(input.action, "action", ["apply", "reject", "undo"]),
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/api/edits") {
+        const input = await readJsonObject(request, 128 * 1024);
+        exactKeys(input, ["path", "side", "line", "expectedContent", "replacement"]);
+        const expectedContent = typeof input.expectedContent === "string" ? input.expectedContent : undefined;
+        const replacement = typeof input.replacement === "string" ? input.replacement : undefined;
+        if (expectedContent === undefined || expectedContent.length > 20_000) throw new HttpError(422, "expectedContent must be a string of at most 20,000 characters.");
+        if (replacement === undefined || replacement.length > 100_000) throw new HttpError(422, "replacement must be a string of at most 100,000 characters.");
+        if (expectedContent.includes("\0") || replacement.includes("\0")) throw new HttpError(422, "Inline edits cannot contain binary data.");
+        return json(await session.proposeInlineEdit(
+          requiredString(input.path, "path", 4_096),
+          enumValue(input.side, "side", ["new"]),
+          finitePositiveInteger(input.line, "line"),
+          expectedContent,
+          replacement,
         ));
       }
       if (request.method === "POST" && url.pathname === "/api/tour/start") {

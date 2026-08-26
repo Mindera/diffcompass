@@ -10,8 +10,7 @@ const state = {
   session: null,
   apiToken: fragmentToken ?? window.sessionStorage.getItem("review-tour-token"),
   selectedLine: null,
-  commentTarget: null,
-  editingCommentId: null,
+  deletingCommentId: null,
   busy: false,
   questionPending: false,
   navigationDirection: null,
@@ -31,6 +30,7 @@ const state = {
   architectureDiagramDrag: null,
   callFlowModes: new Map(),
   proposalPreview: false,
+  proposalActivityId: null,
   searchQuery: "",
   searchMatches: null,
   searchRequestId: 0,
@@ -63,16 +63,18 @@ const state = {
   syntaxTheme: ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("review-tour-syntax-theme"))
     ? window.localStorage.getItem("review-tour-syntax-theme")
     : "github",
+  screenshotUrls: new Map(),
+  filePanelOpen: false,
 };
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-backdrop", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "comment-dialog", "comment-form", "comment-location", "comment-body", "cancel-comment", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
-    "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "save-comment", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
+    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
 
@@ -163,6 +165,16 @@ async function api(path, options = {}) {
   return value;
 }
 
+async function apiBlob(path) {
+  if (!state.apiToken) throw new Error("This review URL is missing its session token. Reopen the URL printed by the server.");
+  const response = await fetch(path, { headers: { "X-Review-Tour-Token": state.apiToken } });
+  if (!response.ok) {
+    const value = await response.json().catch(() => ({}));
+    throw new Error(value.error || `Request failed: ${response.status}`);
+  }
+  return response.blob();
+}
+
 function toast(message, { duration = 3_500, tone = "default" } = {}) {
   window.clearTimeout(state.toastTimer);
   elements.toast.textContent = message;
@@ -186,6 +198,10 @@ function renderClosedBanner() {
     elements["closed-banner"].textContent = `${state.closeCountdownMessage} ${countdown}`;
     return;
   }
+  if (state.closeCountdownMessage !== null) {
+    elements["closed-banner"].textContent = `${state.closeCountdownMessage} You can close this window.`;
+    return;
+  }
   elements["closed-banner"].textContent = `This review is closed as ${state.session.status}. It is now read-only.`;
 }
 
@@ -204,9 +220,17 @@ function beginCloseCountdown(message) {
     window.setTimeout(() => {
       if (window.closed) return;
       state.closeCountdownSeconds = null;
-      elements["closed-banner"].textContent = `${state.closeCountdownMessage} You can close this window.`;
+      renderClosedBanner();
     }, 250);
   }, 1_000);
+}
+
+function beginCloseCountdownForTransition(previousStatus, result) {
+  if (previousStatus !== "open" || state.session.status === "open" || state.closeCountdownMessage !== null) return;
+  const delivered = state.session.status === "feedback" ? result?.comments?.length : undefined;
+  beginCloseCountdown(delivered === undefined
+    ? `This review is closed as ${state.session.status}.`
+    : `${delivered} feedback item(s) delivered.`);
 }
 
 async function checkForUpdate() {
@@ -345,6 +369,21 @@ async function updateLibrarySession(id, action, name) {
 
 function reviewIsOpen() {
   return state.session?.status === "open";
+}
+
+function narrowFilePanelLayout() {
+  return window.matchMedia("(max-width: 900px)").matches;
+}
+
+function setFilePanelOpen(open, { restoreFocus = false } = {}) {
+  state.filePanelOpen = narrowFilePanelLayout() && Boolean(open);
+  document.body.classList.toggle("file-panel-open", state.filePanelOpen);
+  elements["file-panel-toggle"].setAttribute("aria-expanded", String(state.filePanelOpen));
+  elements["file-panel-backdrop"].classList.toggle("hidden", !state.filePanelOpen);
+  elements["file-panel"].setAttribute("aria-hidden", String(narrowFilePanelLayout() && !state.filePanelOpen));
+  elements["file-panel"].inert = narrowFilePanelLayout() && !state.filePanelOpen;
+  if (state.filePanelOpen) elements["file-panel-close"].focus();
+  else if (restoreFocus) elements["file-panel-toggle"].focus();
 }
 
 function preferenceKey(name) {
@@ -543,6 +582,7 @@ function lineTools(file, side, line) {
   if (!line || state.proposalPreview) return "";
   const askDisabled = !state.session.outline || !reviewIsOpen();
   return `<span class="line-tools" role="group" aria-label="Actions for ${escapeHtml(`${file.path}, ${side} line ${line}`)}">
+    ${side === "new" && reviewIsOpen() ? '<button type="button" data-line-tool="edit" tabindex="-1">Edit</button>' : ""}
     <button type="button" data-line-tool="comment" tabindex="-1">Comment</button>
     <button type="button" data-line-tool="ask" tabindex="-1"${askDisabled ? ' disabled title="Start a tour to ask the agent about this line."' : ""}>Ask agent</button>
   </span>`;
@@ -596,7 +636,7 @@ function renderSplitSide(file, row, side, findings) {
 
 function renderDiffFileHeader(file, collapsed, fullContent = false) {
   const reviewControls = state.proposalPreview
-    ? '<span class="proposal-label">pending proposal</span> · '
+    ? `<span class="proposal-label">pending suggestion</span>${state.proposalActivityId ? ` · <button class="text-button" type="button" data-preview-activity-action="apply" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Apply</button> · <button class="text-button danger" type="button" data-preview-activity-action="reject" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Reject</button> · ` : " · "}`
     : `${fullContent ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `;
   const paging = !fullContent && file._page && file._page.totalRows > file._page.limit
     ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · `
@@ -858,6 +898,7 @@ async function showActivityFile(activityId, path) {
   const requestId = ++state.fileRequestId;
   state.activeTab = "diff";
   state.proposalPreview = true;
+  state.proposalActivityId = activityId;
   renderActiveTab();
   elements.diff.innerHTML = '<div class="empty">Loading proposed diff…</div>';
   elements["empty-diff"].classList.add("hidden");
@@ -959,7 +1000,10 @@ function renderComments() {
     }
     const inline = document.createElement("article");
     inline.className = `inline-comment ${comment.status}`;
-    inline.innerHTML = `<header class="inline-comment-header"><span class="inline-comment-label">Review comment</span><span class="inline-comment-actions"><button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button></span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>`;
+    const confirmingDelete = state.deletingCommentId === comment.id;
+    inline.innerHTML = `<header class="inline-comment-header${confirmingDelete ? " confirming-delete" : ""}"><span class="inline-comment-label">Review comment</span><span class="inline-comment-actions${confirmingDelete ? " confirming" : ""}">${confirmingDelete
+      ? `<span>Delete this comment?</span><button type="button" data-inline-comment-action="cancel-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Cancel</button><button class="danger confirm" type="button" data-inline-comment-action="confirm-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`
+      : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>`;
     const splitRow = row.closest(".split-row");
     if (splitRow) {
       const lane = document.createElement("div");
@@ -981,8 +1025,9 @@ function renderComments() {
       <p>${renderInlineMarkdown(comment.body)}</p>
       ${state.session.pullRequest ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
-        <button class="text-button" data-action="edit" type="button"${disabled}>Edit</button>
-        <button class="text-button danger" data-action="delete" type="button"${disabled}>Delete</button>
+        ${state.deletingCommentId === comment.id
+          ? `<span class="delete-confirmation">Delete this comment?</span><button class="text-button" data-action="cancel-delete" type="button">Cancel</button><button class="text-button danger" data-action="confirm-delete" type="button">Delete</button>`
+          : `<button class="text-button" data-action="edit" type="button"${disabled}>Edit</button><button class="text-button danger" data-action="delete" type="button"${disabled}>Delete</button>`}
       </div>
     </article>`).join("");
 }
@@ -1391,31 +1436,34 @@ function renderActivities() {
   elements["activity-empty"].classList.toggle("hidden", activities.length > 0);
   elements["activity-tab-count"].textContent = String(activities.length);
   elements["activity-tab-count"].classList.toggle("hidden", activities.length === 0);
-  elements["activity-list"].innerHTML = activities.map((activity) => `<article class="activity-card" data-activity-id="${escapeHtml(activity.id)}">
+  elements["activity-list"].innerHTML = activities.map((activity) => {
+    const reviewerAuthored = activity.source === "reviewer";
+    return `<article class="activity-card" data-activity-id="${escapeHtml(activity.id)}">
     <header>
       <div><span class="activity-status ${escapeHtml(activity.status)}">${activity.status === "verified" ? "verified" : "observed"}</span>${activity.changeStatus ? `<span class="change-status ${escapeHtml(activity.changeStatus)}">${escapeHtml(activity.changeStatus)}</span>` : ""}<h2>${escapeHtml(activity.request)}</h2></div>
       <time datetime="${escapeHtml(activity.updatedAt)}">${escapeHtml(new Date(activity.updatedAt).toLocaleString())}</time>
     </header>
-    <div class="activity-agent">${escapeHtml(activity.adapterId)} · ${escapeHtml(activity.modelId)}${activity.stepId ? ` · tour step ${escapeHtml(activity.stepId)}` : ""}</div>
+    <div class="activity-agent">${reviewerAuthored ? "Reviewer · inline edit" : `${escapeHtml(activity.adapterId)} · ${escapeHtml(activity.modelId)}${activity.stepId ? ` · tour step ${escapeHtml(activity.stepId)}` : ""}`}</div>
     <div class="activity-files">${activity.files.map((file) => `<button type="button" class="activity-file"${activity.hasProposal ? ` data-activity-id="${escapeHtml(activity.id)}" data-activity-file="${escapeHtml(file.path)}"` : activity.changeStatus ? " disabled" : ` data-current-file="${escapeHtml(file.path)}"`}>
       <span><strong>${escapeHtml(file.path)}</strong><small>${escapeHtml(file.change)}</small></span>
       <span class="file-stats">${file.after ? `<span class="plus">+${file.after.additions}</span> <span class="minus">-${file.after.deletions}</span>` : "removed from diff"}</span>
     </button>`).join("")}</div>
-    <section class="activity-verification"><div class="eyebrow">Verification</div>${activity.verification ? renderMarkdown(activity.verification) : `<p class="muted">${activity.status === "verified" ? "No verification summary was supplied." : "Waiting for the agent's explicit refresh."}</p>`}</section>
+    <section class="activity-verification"><div class="eyebrow">Verification</div>${activity.verification ? renderMarkdown(activity.verification) : `<p class="muted">${reviewerAuthored ? "No automated verification was run for this reviewer-authored suggestion." : activity.status === "verified" ? "No verification summary was supplied." : "Waiting for the agent's explicit refresh."}</p>`}</section>
     ${activity.changeStatus ? `<div class="activity-actions">
       ${activity.changeStatus === "pending" ? '<button type="button" class="button primary" data-activity-action="apply">Apply</button><button type="button" class="button secondary" data-activity-action="reject">Reject</button>' : ""}
       ${activity.changeStatus === "applied" ? '<button type="button" class="button secondary" data-activity-action="undo">Undo</button>' : ""}
       ${["rejected", "undone"].includes(activity.changeStatus) ? `<span class="muted">${activity.changeStatus === "rejected" ? "Proposal discarded" : "Applied change undone"}</span>` : ""}
     </div>` : ""}
-  </article>`).join("");
+  </article>`;
+  }).join("");
 }
 
 function availableTabs() {
-  return ["diff", "call-flows", "sequence", "findings", "activity", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "call-flows", "sequence", "findings", "activity", ...(state.session?.screenshots?.length ? ["screenshots"] : []), ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "call-flows", "sequence", "findings", "activity", "pull-request"]) {
+  for (const tabName of ["diff", "call-flows", "sequence", "findings", "activity", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -1423,6 +1471,38 @@ function renderActiveTab() {
     elements[`${tabName}-tab`].tabIndex = active ? 0 : -1;
   }
   scheduleCurrentStepReturnUpdate();
+}
+
+async function renderScreenshots() {
+  const screenshots = state.session?.screenshots ?? [];
+  elements["screenshots-tab"].classList.toggle("hidden", screenshots.length === 0);
+  elements["screenshots-tab-count"].textContent = String(screenshots.length);
+  if (screenshots.length === 0) {
+    if (state.activeTab === "screenshots") state.activeTab = "diff";
+    elements.screenshots.innerHTML = "";
+    return;
+  }
+  for (const [id, url] of state.screenshotUrls) {
+    if (!screenshots.some((shot) => shot.id === id)) {
+      URL.revokeObjectURL(url);
+      state.screenshotUrls.delete(id);
+    }
+  }
+  elements.screenshots.innerHTML = screenshots.map((shot) => `<figure class="screenshot-card" data-screenshot-id="${escapeHtml(shot.id)}"><div class="screenshot-loading">Loading screenshot…</div><figcaption><strong>${escapeHtml(shot.name)}</strong><span>${Math.max(1, Math.round(shot.size / 1024)).toLocaleString()} KiB</span></figcaption></figure>`).join("");
+  await Promise.all(screenshots.map(async (shot) => {
+    try {
+      let url = state.screenshotUrls.get(shot.id);
+      if (!url) {
+        url = URL.createObjectURL(await apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`));
+        state.screenshotUrls.set(shot.id, url);
+      }
+      const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
+      if (card) card.querySelector(".screenshot-loading").outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size screenshot"><img src="${escapeHtml(url)}" alt="${escapeHtml(shot.name)}" /></a>`;
+    } catch (error) {
+      const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
+      if (card) card.querySelector(".screenshot-loading").textContent = error.message;
+    }
+  }));
 }
 
 function activateReviewTab(tabName, render = null) {
@@ -1659,6 +1739,7 @@ function renderSession() {
   if (state.tourMode === null && state.session.outline) state.tourMode = true;
   initializeUiPreferences();
   state.proposalPreview = false;
+  state.proposalActivityId = null;
   const repositoryName = state.session.pullRequest?.repository ?? comparison.repositoryName;
   const branchName = state.session.pullRequest?.headRefName ?? comparison.branch ?? `detached@${comparison.head.slice(0, 8)}`;
   const repositoryIdentity = `${repositoryName} · ${branchName}`;
@@ -1711,6 +1792,7 @@ function renderSession() {
   if (state.activeTab === "sequence") renderSequenceDiagrams();
   renderActivities();
   renderPullRequest();
+  void renderScreenshots();
   renderActiveTab();
   elements["feedback-button"].classList.toggle("hidden", comments.length === 0);
   const closed = !reviewIsOpen();
@@ -1724,7 +1806,7 @@ function renderSession() {
   elements["chat-input"].disabled = closed;
   elements["chat-form"].querySelector("button").disabled = state.busy || state.questionPending || closed;
   elements["comment-drawer"].classList.toggle("closed", closed);
-  if (closed && elements["comment-dialog"].open) elements["comment-dialog"].close();
+  if (closed) closeInlineCommentEditor();
   elements["agent-mode"].textContent = state.session.agentSelection?.adapterId === "attached" ? "edits on request" : "read-only";
   renderAgentOptions();
   renderTour();
@@ -1965,7 +2047,7 @@ function selectLine(row) {
     line: Number(row.dataset.line),
     content: row.dataset.content,
   };
-  elements["selection-pill"].textContent = `${state.selectedLine.path}:${state.selectedLine.line} selected · comment or ask the agent`;
+  elements["selection-pill"].textContent = `${state.selectedLine.path}:${state.selectedLine.line} selected · edit, comment, or ask the agent`;
   elements["selection-pill"].classList.remove("hidden");
 }
 
@@ -1985,8 +2067,7 @@ function commentAt(target) {
 function openLineComment(row) {
   const target = lineTarget(row);
   const existing = commentAt(target);
-  if (existing) openCommentEditor(existing);
-  else openComment(target);
+  openInlineCommentEditor(row, target, existing);
 }
 
 function askAboutLine(row) {
@@ -1996,47 +2077,127 @@ function askAboutLine(row) {
   elements["chat-input"].scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function openComment(target) {
-  if (!reviewIsOpen()) return;
-  state.commentTarget = target;
-  state.editingCommentId = null;
-  elements["comment-location"].textContent = `${target.path}:${target.line} (${target.side})`;
-  elements["comment-body"].value = "";
-  elements["save-comment"].textContent = "Add comment";
-  elements["comment-dialog"].showModal();
+function closeInlineEdit() {
+  elements.diff.querySelectorAll(".inline-edit-lane, .inline-edit-form").forEach((editor) => editor.remove());
 }
 
-function openCommentEditor(comment) {
-  state.commentTarget = null;
-  state.editingCommentId = comment.id;
-  elements["comment-location"].textContent = `Edit ${comment.path}:${comment.line} (${comment.side})`;
-  elements["comment-body"].value = comment.body;
-  elements["save-comment"].textContent = "Save comment";
-  elements["comment-dialog"].showModal();
+function openInlineEdit(row) {
+  if (!reviewIsOpen() || row.dataset.side !== "new") return;
+  closeInlineEdit();
+  selectLine(row);
+  const target = lineTarget(row);
+  const form = document.createElement("form");
+  form.className = "inline-edit-form";
+  form.dataset.editPath = target.path;
+  form.dataset.editLine = String(target.line);
+  form.dataset.editExpected = target.content;
+  form.innerHTML = `<header><div><span class="eyebrow">Reviewer suggestion</span><strong>${escapeHtml(`${target.path}:${target.line}`)}</strong></div><button class="text-button" type="button" data-inline-edit-cancel>Cancel</button></header>
+    <textarea name="replacement" aria-label="Replacement code" spellcheck="false">${escapeHtml(target.content)}</textarea>
+    <footer><span>The repository stays untouched until you apply this suggestion.</span><button class="button primary" type="submit">Propose edit</button></footer>`;
+  const splitRow = row.closest(".split-row");
+  if (splitRow) {
+    const lane = document.createElement("div");
+    lane.className = "inline-edit-lane";
+    lane.append(form);
+    splitRow.insertAdjacentElement("afterend", lane);
+  } else {
+    row.insertAdjacentElement("afterend", form);
+  }
+  const textarea = form.querySelector("textarea");
+  textarea.focus({ preventScroll: true });
+  textarea.setSelectionRange(0, textarea.value.length);
 }
 
-async function saveComment(event) {
-  event.preventDefault();
-  if (!reviewIsOpen()) return;
-  const body = elements["comment-body"].value.trim();
-  if (!body) return;
+async function performActivityAction(activityId, action) {
+  if (state.busy || !reviewIsOpen()) return;
+  if ((action === "reject" || action === "undo") && !window.confirm(action === "reject"
+    ? "Reject this proposed change? The proposal will remain in the audit trail."
+    : "Undo this applied change? This stops if overlapping edits were made afterwards.")) return;
+  const activity = state.session.activities?.find((candidate) => candidate.id === activityId);
+  const label = activity?.source === "reviewer" ? "Reviewer suggestion" : "Agent change";
+  setBusy(true, `${action === "apply" ? "Applying" : action === "reject" ? "Rejecting" : "Undoing"} ${label.toLowerCase()}…`);
   try {
-    const target = state.commentTarget;
-    state.session = state.editingCommentId
-      ? await api(`/api/comments/${encodeURIComponent(state.editingCommentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
-      : await api("/api/comments", { method: "POST", body: JSON.stringify({ path: target.path, side: target.side, line: target.line, body }) });
-    elements["comment-dialog"].close();
+    state.session = await api(`/api/activities/${encodeURIComponent(activityId)}`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    state.proposalPreview = false;
+    state.proposalActivityId = null;
     renderSession();
-    toast(state.editingCommentId ? "Review comment updated" : "Review comment added");
+    toast(`${label} ${action === "apply" ? "applied" : action === "reject" ? "rejected" : "undone"}`);
   } catch (error) {
     toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+function closeInlineCommentEditor() {
+  elements.diff.querySelectorAll(".inline-comment-editor-lane, .inline-comment-form").forEach((editor) => editor.remove());
+}
+
+function openInlineCommentEditor(row, target, comment) {
+  if (!reviewIsOpen()) return;
+  closeInlineCommentEditor();
+  selectLine(row);
+  const form = document.createElement("form");
+  form.className = "inline-comment-form";
+  form.dataset.commentPath = target.path;
+  form.dataset.commentSide = target.side;
+  form.dataset.commentLine = String(target.line);
+  if (comment) form.dataset.commentId = comment.id;
+  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? "Edit review comment" : "New review comment"}</span><strong>${escapeHtml(`${target.path}:${target.line}`)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
+    <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? "")}</textarea>
+    <footer><span>Markdown is supported.</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;
+  const splitRow = row.closest(".split-row");
+  if (splitRow) {
+    const lane = document.createElement("div");
+    lane.className = `inline-comment-editor-lane ${target.side}-side`;
+    lane.append(form);
+    splitRow.insertAdjacentElement("afterend", lane);
+  } else {
+    row.insertAdjacentElement("afterend", form);
+  }
+  const textarea = form.querySelector("textarea");
+  textarea.focus({ preventScroll: true });
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
+
+async function openCommentEditor(comment) {
+  let row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`);
+  if (!row) {
+    await showChangedFile(comment.path, comment.line, comment.side);
+    row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`);
+  }
+  if (!row) return toast("That comment's line is no longer visible in the current diff.", { tone: "warning", duration: 6_000 });
+  openInlineCommentEditor(row, lineTarget(row), comment);
+}
+
+async function saveInlineComment(form) {
+  if (!reviewIsOpen()) return;
+  const body = form.elements.body.value.trim();
+  if (!body) return;
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const commentId = form.dataset.commentId;
+    state.session = commentId
+      ? await api(`/api/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
+      : await api("/api/comments", { method: "POST", body: JSON.stringify({ path: form.dataset.commentPath, side: form.dataset.commentSide, line: Number(form.dataset.commentLine), body }) });
+    renderSession();
+    toast(commentId ? "Review comment updated" : "Review comment added");
+  } catch (error) {
+    toast(error.message);
+    submit.disabled = false;
   }
 }
 
 async function deleteReviewComment(comment) {
-  if (!reviewIsOpen() || !window.confirm(`Delete feedback at ${comment.path}:${comment.line}?`)) return;
+  if (!reviewIsOpen()) return;
   try {
     state.session = await api(`/api/comments/${encodeURIComponent(comment.id)}`, { method: "DELETE" });
+    state.deletingCommentId = null;
     renderSession();
     toast("Review comment deleted");
   } catch (error) {
@@ -2110,9 +2271,10 @@ async function close(outcome) {
     } else {
       result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome }) });
     }
+    const previousStatus = state.session.status;
     state.session = { ...state.session, status: result.status };
+    beginCloseCountdownForTransition(previousStatus, result);
     renderSession();
-    beginCloseCountdown(outcome === "feedback" ? `${result.comments.length} feedback item(s) delivered.` : "Review closed.");
   } catch (error) {
     toast(error.message);
   }
@@ -2147,14 +2309,26 @@ elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
 elements["next-step"].addEventListener("click", () => navigate("next"));
 elements["chat-form"].addEventListener("submit", askAgent);
-elements["comment-form"].addEventListener("submit", saveComment);
-elements["cancel-comment"].addEventListener("click", () => elements["comment-dialog"].close());
 elements["close-button"].addEventListener("click", () => close(state.session.preferences?.closeOutcome ?? "accepted"));
 elements["feedback-button"].addEventListener("click", () => close("feedback"));
 elements["refresh-button"].addEventListener("click", refresh);
 document.addEventListener("pointerdown", (event) => {
   if (elements["settings-menu"].open && !elements["settings-menu"].contains(event.target)) {
     elements["settings-menu"].open = false;
+  }
+});
+elements["file-panel-toggle"].addEventListener("click", () => setFilePanelOpen(!state.filePanelOpen));
+elements["file-panel-close"].addEventListener("click", () => setFilePanelOpen(false, { restoreFocus: true }));
+elements["file-panel-backdrop"].addEventListener("click", () => setFilePanelOpen(false, { restoreFocus: true }));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.filePanelOpen) setFilePanelOpen(false, { restoreFocus: true });
+});
+window.addEventListener("resize", () => {
+  if (!narrowFilePanelLayout() && state.filePanelOpen) setFilePanelOpen(false);
+  else {
+    const hidden = narrowFilePanelLayout() && !state.filePanelOpen;
+    elements["file-panel"].setAttribute("aria-hidden", String(hidden));
+    elements["file-panel"].inert = hidden;
   }
 });
 elements["export-menu"].addEventListener("click", (event) => {
@@ -2376,6 +2550,7 @@ elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequ
 elements["findings-tab"].addEventListener("click", () => activateReviewTab("findings", renderFindings));
 elements["findings-back"].addEventListener("click", returnToFindingCode);
 elements["activity-tab"].addEventListener("click", () => activateReviewTab("activity", renderActivities));
+elements["screenshots-tab"].addEventListener("click", () => activateReviewTab("screenshots", renderScreenshots));
 elements["pull-request-tab"].addEventListener("click", () => activateReviewTab("pull-request", renderPullRequest));
 elements.flows.addEventListener("click", (event) => {
   const fileButton = event.target.closest("[data-flow-file]");
@@ -2484,7 +2659,8 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
   const render = nextTab === "call-flows" ? renderCallFlows
     : nextTab === "sequence" ? renderSequenceDiagrams
       : nextTab === "findings" ? renderFindings
-        : nextTab === "activity" ? renderActivities
+      : nextTab === "activity" ? renderActivities
+          : nextTab === "screenshots" ? renderScreenshots
           : nextTab === "pull-request" ? renderPullRequest
             : null;
   activateReviewTab(nextTab, render);
@@ -2505,41 +2681,76 @@ elements["activity-list"].addEventListener("click", (event) => {
   const actionButton = event.target.closest("[data-activity-action]");
   const card = event.target.closest("[data-activity-id]");
   if (!actionButton || !card || state.busy || !reviewIsOpen()) return;
-  const action = actionButton.dataset.activityAction;
-  if ((action === "reject" || action === "undo") && !window.confirm(action === "reject"
-    ? "Reject this proposed change? The proposal will remain in the audit trail."
-    : "Undo this applied change? This stops if overlapping edits were made afterwards.")) return;
+  void performActivityAction(card.dataset.activityId, actionButton.dataset.activityAction);
+});
+
+elements.diff.addEventListener("submit", (event) => {
+  const commentForm = event.target.closest(".inline-comment-form");
+  if (commentForm) {
+    event.preventDefault();
+    void saveInlineComment(commentForm);
+    return;
+  }
+  const form = event.target.closest(".inline-edit-form");
+  if (!form) return;
+  event.preventDefault();
+  if (state.busy || !reviewIsOpen()) return;
+  const replacement = form.elements.replacement.value;
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
   void (async () => {
-    setBusy(true, `${action === "apply" ? "Applying" : action === "reject" ? "Rejecting" : "Undoing"} agent change…`);
     try {
-      state.session = await api(`/api/activities/${encodeURIComponent(card.dataset.activityId)}`, {
+      const result = await api("/api/edits", {
         method: "POST",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({
+          path: form.dataset.editPath,
+          side: "new",
+          line: Number(form.dataset.editLine),
+          expectedContent: form.dataset.editExpected,
+          replacement,
+        }),
       });
+      state.session = result.session;
+      const path = form.dataset.editPath;
       renderSession();
-      toast(action === "apply" ? "Agent change applied" : action === "reject" ? "Agent change rejected" : "Agent change undone");
+      await showActivityFile(result.activityId, path);
+      toast("Reviewer suggestion created. Apply or reject it after previewing the diff.");
     } catch (error) {
-      toast(error.message);
-    } finally {
-      setBusy(false);
-      renderSession();
+      toast(error.message, { tone: "warning", duration: 6_000 });
+      submit.disabled = false;
     }
   })();
 });
 
 elements.diff.addEventListener("click", (event) => {
+  const previewAction = event.target.closest("[data-preview-activity-action]");
+  if (previewAction) {
+    void performActivityAction(previewAction.dataset.previewActivityId, previewAction.dataset.previewActivityAction);
+    return;
+  }
+  if (event.target.closest("[data-inline-edit-cancel]")) {
+    closeInlineEdit();
+    return;
+  }
+  if (event.target.closest("[data-inline-comment-cancel]")) {
+    closeInlineCommentEditor();
+    return;
+  }
   const inlineAction = event.target.closest("[data-inline-comment-action]");
   if (inlineAction) {
     const comment = state.session.comments.find((candidate) => candidate.id === inlineAction.dataset.inlineCommentId);
     if (!comment || !reviewIsOpen()) return;
-    if (inlineAction.dataset.inlineCommentAction === "edit") openCommentEditor(comment);
-    else void deleteReviewComment(comment);
+    const action = inlineAction.dataset.inlineCommentAction;
+    if (action === "edit") void openCommentEditor(comment);
+    else if (action === "delete") { state.deletingCommentId = comment.id; renderComments(); }
+    else if (action === "cancel-delete") { state.deletingCommentId = null; renderComments(); }
+    else if (action === "confirm-delete") void deleteReviewComment(comment);
     return;
   }
   const inlineComment = event.target.closest("[data-inline-comment-id]");
   if (inlineComment) {
     const comment = state.session.comments.find((candidate) => candidate.id === inlineComment.dataset.inlineCommentId);
-    if (comment && reviewIsOpen()) openCommentEditor(comment);
+    if (comment && reviewIsOpen()) void openCommentEditor(comment);
     return;
   }
   const collapseButton = event.target.closest("[data-collapse-file]");
@@ -2583,7 +2794,8 @@ elements.diff.addEventListener("click", (event) => {
   if (lineTool) {
     const toolRow = lineTool.closest(".diff-row");
     if (!toolRow?.dataset.line || lineTool.disabled) return;
-    if (lineTool.dataset.lineTool === "comment") openLineComment(toolRow);
+    if (lineTool.dataset.lineTool === "edit") openInlineEdit(toolRow);
+    else if (lineTool.dataset.lineTool === "comment") openLineComment(toolRow);
     else askAboutLine(toolRow);
     return;
   }
@@ -2600,7 +2812,8 @@ elements.diff.addEventListener("click", (event) => {
     state.selectedLine.side === row.dataset.side &&
     state.selectedLine.line === Number(row.dataset.line)
   ) {
-    openComment(state.selectedLine);
+    const selectedRow = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(state.selectedLine.path)}"][data-side="${state.selectedLine.side}"][data-line="${state.selectedLine.line}"]`);
+    if (selectedRow) openInlineCommentEditor(selectedRow, state.selectedLine);
   } else {
     selectLine(row);
   }
@@ -2671,6 +2884,7 @@ elements["file-tree"].addEventListener("click", (event) => {
   }
   const button = event.target.closest(".file-button");
   if (!button) return;
+  if (narrowFilePanelLayout()) setFilePanelOpen(false);
   if (button.dataset.source) return showRepositoryFile(button.dataset.source);
   if (button.dataset.file) void showChangedFile(button.dataset.file);
 });
@@ -2723,8 +2937,10 @@ elements["comment-list"].addEventListener("click", async (event) => {
     return showChangedFile(comment.path, comment.line, comment.side);
   }
   if (!reviewIsOpen()) return;
-  if (action === "edit") return openCommentEditor(comment);
-  if (action === "delete") void deleteReviewComment(comment);
+  if (action === "edit") return void openCommentEditor(comment);
+  if (action === "delete") { state.deletingCommentId = comment.id; renderComments(); }
+  if (action === "cancel-delete") { state.deletingCommentId = null; renderComments(); }
+  if (action === "confirm-delete") void deleteReviewComment(comment);
 });
 
 elements["comment-list"].addEventListener("change", async (event) => {
@@ -2747,6 +2963,7 @@ elements["comment-list"].addEventListener("change", async (event) => {
 
 elements["update-button"].addEventListener("click", installUpdate);
 elements["current-step-return"].addEventListener("click", () => void focusCurrentStep());
+setFilePanelOpen(false);
 
 try {
   state.session = await api("/api/session");
@@ -2776,7 +2993,9 @@ window.setInterval(async () => {
     }
     if (!state.session || latest.revision > state.session.revision || latest.tourState !== state.session.tourState || (state.session.status === "open" && latest.status !== "open")) {
       const pendingLocalActivity = expectedActivity && !receivedExpectedActivity ? state.session?.agentActivity : undefined;
+      const previousStatus = state.session?.status;
       state.session = latest;
+      beginCloseCountdownForTransition(previousStatus, latest);
       if (pendingLocalActivity) state.session.agentActivity = pendingLocalActivity;
       renderSession();
     }
