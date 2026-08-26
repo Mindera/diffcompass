@@ -67,7 +67,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
@@ -370,6 +370,7 @@ function setFilePanelWidth(value, persist = false) {
   elements.workspace.style.setProperty("--file-panel-width", `${width}px`);
   elements["file-resizer"].setAttribute("aria-valuenow", String(width));
   if (persist) window.localStorage.setItem(preferenceKey("file-panel-width"), String(width));
+  scheduleCurrentStepReturnUpdate();
 }
 
 function setAgentPanelWidth(value, persist = false) {
@@ -379,6 +380,7 @@ function setAgentPanelWidth(value, persist = false) {
   elements.workspace.style.setProperty("--agent-panel-width", `${width}px`);
   elements["agent-resizer"].setAttribute("aria-valuenow", String(width));
   if (persist) window.localStorage.setItem(preferenceKey("agent-panel-width"), String(width));
+  scheduleCurrentStepReturnUpdate();
 }
 
 function setSplitOldWidth(value, persist = false) {
@@ -741,14 +743,20 @@ async function ensureTourPhaseDiffs() {
   }
 }
 
-function captureFileViewport(path) {
+function captureFileViewport(path, origin) {
   const panel = elements["diff-panel"];
-  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(path)}"] > .diff-file-header`);
+  const file = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`);
+  const header = file?.querySelector(":scope > .diff-file-header");
   if (!header) return null;
+  const hunk = origin && file.contains(origin) ? origin.closest(".hunk") : null;
+  const row = hunk?.querySelector(".diff-row.addition[data-line], .diff-row.deletion[data-line], .diff-row[data-line]");
+  const target = row ?? header;
   return {
     path,
     scrollTop: panel.scrollTop,
-    headerOffset: header.getBoundingClientRect().top - panel.getBoundingClientRect().top,
+    side: row?.dataset.side,
+    line: row?.dataset.line,
+    targetOffset: target.getBoundingClientRect().top - panel.getBoundingClientRect().top,
   };
 }
 
@@ -756,20 +764,23 @@ function restoreFileViewport(anchor) {
   if (!anchor) return;
   const panel = elements["diff-panel"];
   panel.scrollTop = anchor.scrollTop;
-  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(anchor.path)}"] > .diff-file-header`);
-  if (!header) return;
-  const currentOffset = header.getBoundingClientRect().top - panel.getBoundingClientRect().top;
-  panel.scrollTop += currentOffset - anchor.headerOffset;
+  const row = anchor.side && anchor.line
+    ? elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"][data-line="${anchor.line}"]`)
+    : null;
+  const target = row ?? elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(anchor.path)}"] > .diff-file-header`);
+  if (!target) return;
+  const currentOffset = target.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+  panel.scrollTop += currentOffset - anchor.targetOffset;
 }
 
-async function showChangedFile(path, line, side, requestedOffset, requestedContext, requestedFull) {
+async function showChangedFile(path, line, side, requestedOffset, requestedContext, requestedFull, viewportOrigin) {
   if (state.tourMode && !filteredChangedFiles().some((file) => file.path === path)) {
     toast("That file belongs to another phase. Exit the tour to browse every changed file.", { duration: 9_000, tone: "warning" });
     return;
   }
   const requestId = ++state.fileRequestId;
-  const viewportAnchor = requestedFull !== undefined ? captureFileViewport(path) : null;
-  const expansionButton = viewportAnchor
+  const viewportAnchor = (viewportOrigin || requestedFull !== undefined) ? captureFileViewport(path, viewportOrigin) : null;
+  const expansionButton = requestedFull !== undefined
     ? elements.diff.querySelector(`[data-expand-file="${CSS.escape(path)}"]`)
     : null;
   const expansionLabel = expansionButton?.textContent;
@@ -1201,7 +1212,7 @@ function changeArchitectureDiagramView(key, action) {
 
 function architectureCard(architecture, label, key) {
   return `<article class="flow-card architecture-card">
-    <header><div><span class="architecture-label">${escapeHtml(label)}</span><h2>${escapeHtml(architecture.title)}</h2></div></header>
+    <header class="architecture-card-heading"><div><span class="architecture-label">${escapeHtml(label)}</span><h2>${escapeHtml(architecture.title)}</h2></div>${architectureDiagramExpandButton(label, key)}</header>
     <p>${escapeHtml(architecture.summary)}</p>
     <div class="architecture-diagram-shell" data-architecture-key="${key}">
       ${architectureDiagramControls(label)}
@@ -1234,7 +1245,8 @@ function tourIntroArchitectureCard(architecture, label, key) {
 
 function openArchitectureDiagramViewer(key) {
   const architecture = architectureEntries().find((entry) => entry.key === key);
-  const source = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${CSS.escape(key)}"]`);
+  const source = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${CSS.escape(key)}"]`)
+    ?? elements["architecture-content"].querySelector(`[data-architecture-diagram="${CSS.escape(key)}"]`);
   if (!architecture || !source?.querySelector("svg")) {
     toast("The component diagram is not ready yet.");
     return;
@@ -1410,6 +1422,7 @@ function renderActiveTab() {
     elements[`${tabName}-tab`].setAttribute("aria-selected", String(active));
     elements[`${tabName}-tab`].tabIndex = active ? 0 : -1;
   }
+  scheduleCurrentStepReturnUpdate();
 }
 
 function activateReviewTab(tabName, render = null) {
@@ -1424,9 +1437,46 @@ function activateReviewTab(tabName, render = null) {
   });
 }
 
+let currentStepReturnFrame = null;
+
+function updateCurrentStepReturnVisibility() {
+  currentStepReturnFrame = null;
+  const button = elements["current-step-return"];
+  if (!state.session || !state.tourMode || state.activeTab !== "diff" || !currentStep()) {
+    button.classList.add("hidden");
+    return;
+  }
+  const panel = elements["diff-panel"];
+  const target = elements.diff.querySelector(".tour-code-note.active")
+    ?? elements.diff.querySelector(".diff-row.tour-anchor");
+  const panelBounds = panel.getBoundingClientRect();
+  button.style.right = `${Math.max(12, window.innerWidth - panelBounds.right + 14)}px`;
+  button.style.bottom = `${Math.max(12, window.innerHeight - Math.min(window.innerHeight, panelBounds.bottom) + 14)}px`;
+  button.setAttribute("aria-label", `Return to current tour step ${state.session.currentStepIndex + 1}`);
+  if (!target) {
+    button.classList.remove("hidden");
+    return;
+  }
+  const targetBounds = target.getBoundingClientRect();
+  const fileHeader = target.closest(".diff-file")?.querySelector(":scope > .diff-file-header");
+  const headerBounds = fileHeader?.getBoundingClientRect();
+  const visibleTop = headerBounds && headerBounds.top <= panelBounds.top + 1
+    ? Math.max(0, panelBounds.top, headerBounds.bottom)
+    : Math.max(0, panelBounds.top);
+  const visibleBottom = Math.min(window.innerHeight, panelBounds.bottom);
+  const visible = visibleBottom > visibleTop && targetBounds.bottom > visibleTop + 4 && targetBounds.top < visibleBottom - 4;
+  button.classList.toggle("hidden", visible);
+}
+
+function scheduleCurrentStepReturnUpdate() {
+  if (currentStepReturnFrame !== null) return;
+  currentStepReturnFrame = window.requestAnimationFrame(updateCurrentStepReturnVisibility);
+}
+
 function renderTourAnnotation() {
   document.querySelectorAll(".tour-anchor, .tour-anchor-start, .tour-anchor-end").forEach((row) => row.classList.remove("tour-anchor", "tour-anchor-start", "tour-anchor-end"));
   document.querySelectorAll(".tour-code-note").forEach((note) => note.remove());
+  scheduleCurrentStepReturnUpdate();
   if (!state.tourMode) return;
   const activeStep = currentStep();
   const phase = currentPhase();
@@ -2210,7 +2260,10 @@ window.addEventListener("resize", () => {
   if (!state.session) return;
   setAgentPanelWidth(state.agentPanelWidth);
   setFilePanelWidth(state.filePanelWidth);
+  scheduleCurrentStepReturnUpdate();
 });
+window.addEventListener("scroll", scheduleCurrentStepReturnUpdate, { passive: true });
+elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate, { passive: true });
 let splitResizeStart = null;
 elements.diff.addEventListener("pointerdown", (event) => {
   const resizer = event.target.closest?.("[data-split-resizer]");
@@ -2500,7 +2553,7 @@ elements.diff.addEventListener("click", (event) => {
   }
   const expansionButton = event.target.closest("[data-expand-file]");
   if (expansionButton) {
-    void showChangedFile(expansionButton.dataset.expandFile, undefined, undefined, 0, undefined, expansionButton.dataset.fileExpansion === "full");
+    void showChangedFile(expansionButton.dataset.expandFile, undefined, undefined, 0, undefined, expansionButton.dataset.fileExpansion === "full", expansionButton);
     return;
   }
   const pageButton = event.target.closest("[data-diff-page]");
@@ -2512,7 +2565,7 @@ elements.diff.addEventListener("click", (event) => {
   if (contextButton) {
     const current = Number(contextButton.dataset.context) || 3;
     const next = current < 10 ? 10 : current < 25 ? 25 : current < 100 ? 100 : 200;
-    void showChangedFile(contextButton.dataset.expandContext, undefined, undefined, 0, next);
+    void showChangedFile(contextButton.dataset.expandContext, undefined, undefined, 0, next, undefined, contextButton);
     return;
   }
   const reviewedButton = event.target.closest("[data-reviewed-file]");
@@ -2693,6 +2746,7 @@ elements["comment-list"].addEventListener("change", async (event) => {
 });
 
 elements["update-button"].addEventListener("click", installUpdate);
+elements["current-step-return"].addEventListener("click", () => void focusCurrentStep());
 
 try {
   state.session = await api("/api/session");

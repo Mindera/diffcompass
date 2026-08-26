@@ -297,6 +297,8 @@ button { color: inherit; }
 .minus { color: var(--deletion-line); }
 
 .diff-panel { overflow: auto; background: var(--background); }
+.current-step-return { position: fixed; z-index: 14; border-color: var(--accent-border); color: var(--text); background: color-mix(in srgb, var(--panel-raised) 92%, var(--accent)); box-shadow: 0 10px 28px var(--shadow); font-weight: 700; }
+.current-step-return:hover, .current-step-return:focus-visible { border-color: var(--accent-strong); background: var(--surface-hover); }
 #diff { padding: 14px 14px max(180px, 24vh); scroll-padding-bottom: max(180px, 24vh); }
 .review-overview { margin: 12px 14px 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel); }
 .tour-overview h1 { margin: 4px 0 5px; font-size: 17px; line-height: 1.25; }
@@ -593,6 +595,8 @@ button { color: inherit; }
 .architecture-content { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; margin-top: 10px; }
 .architecture-content .flow-card { min-width: 0; margin-bottom: 0; }
 .architecture-card { border-color: var(--accent-border); }
+.architecture-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.architecture-card-heading > div { min-width: 0; }
 .architecture-label { display: block; margin-bottom: 5px; color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .architecture-diagram-shell { margin-top: 16px; }
 .diagram-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }

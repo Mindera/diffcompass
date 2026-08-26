@@ -55,7 +55,8 @@ test("the file pane can filter changed test files without changing the default",
 });
 
 test("tour rendering annotates code without continuously stealing navigation", async () => {
-  const [app, styles] = await Promise.all([
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
@@ -73,6 +74,11 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(app).toContain('insertAdjacentElement("beforebegin", note)');
   expect(app).toContain('document.querySelector(".tour-code-note.active")');
   expect(app).toContain("async function focusCurrentStep()");
+  expect(html).toContain('id="current-step-return"');
+  expect(app).toContain("function updateCurrentStepReturnVisibility()");
+  expect(app).toContain('elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate');
+  expect(app).toContain('elements["current-step-return"].addEventListener("click", () => void focusCurrentStep())');
+  expect(styles).toContain(".current-step-return { position: fixed;");
   expect(renderTour).not.toContain("scrollIntoView");
   expect(renderTour).not.toContain("showChangedFile");
   expect(app).not.toContain("Planning tour · 0s");
@@ -283,7 +289,10 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain("function architectureDiagramControls(label)");
   expect(app).toContain("function architectureDiagramExpandButton(label, key)");
   expect(app).toContain("function openArchitectureDiagramViewer(key)");
+  expect(app).toContain('<header class="architecture-card-heading"><div>');
+  expect(app).toContain('${architectureDiagramExpandButton(label, key)}</header>');
   expect(app).toContain('data-diagram-expand="${escapeHtml(key)}"');
+  expect(app).toContain('?? elements["architecture-content"].querySelector(`[data-architecture-diagram="${CSS.escape(key)}"]`)');
   expect(app).toContain("state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 })");
   expect(app).toContain("function changeArchitectureDiagramView(key, action)");
   expect(app).toContain('svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`');
@@ -551,9 +560,11 @@ test("files expand and collapse in place while line actions expose comment and a
   expect(app).toContain('data-file-expansion="${file._full ? "compact" : "full"}"');
   expect(app).toContain('${file._full ? "Collapse file" : "Expand file"}');
   expect(app).toContain('query.set("full", String(requestedFull))');
-  expect(app).toContain("function captureFileViewport(path)");
+  expect(app).toContain("function captureFileViewport(path, origin)");
   expect(app).toContain("function restoreFileViewport(anchor)");
-  expect(app).toContain("const viewportAnchor = requestedFull !== undefined ? captureFileViewport(path) : null");
+  expect(app).toContain('const row = hunk?.querySelector(".diff-row.addition[data-line], .diff-row.deletion[data-line], .diff-row[data-line]")');
+  expect(app).toContain("const viewportAnchor = (viewportOrigin || requestedFull !== undefined) ? captureFileViewport(path, viewportOrigin) : null");
+  expect(app).toContain("next, undefined, contextButton");
   expect(app).toContain("if (!viewportAnchor) {");
   expect(app).toContain("if (viewportAnchor) restoreFileViewport(viewportAnchor)");
   expect(app).toContain('data-line-tool="comment"');
