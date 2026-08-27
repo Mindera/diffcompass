@@ -2300,10 +2300,6 @@ async function refresh() {
 elements["start-tour"].addEventListener("click", startTour);
 elements["begin-tour"].addEventListener("click", () => void beginPreparedTour());
 elements["tour-intro-dialog"].addEventListener("cancel", (event) => event.preventDefault());
-elements["tour-intro-architecture"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-diagram-expand]");
-  if (button) openArchitectureDiagramViewer(button.dataset.diagramExpand);
-});
 elements["close-architecture-viewer"].addEventListener("click", () => elements["architecture-viewer-dialog"].close());
 elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
@@ -2600,6 +2596,11 @@ function finishArchitectureDiagramDrag(event) {
 
 function registerArchitectureDiagramInteractions(container) {
   container.addEventListener("click", (event) => {
+    const expandButton = event.target.closest("[data-diagram-expand]");
+    if (expandButton) {
+      openArchitectureDiagramViewer(expandButton.dataset.diagramExpand);
+      return;
+    }
     const diagramAction = event.target.closest("[data-diagram-action]");
     if (diagramAction) {
       const shell = diagramAction.closest("[data-architecture-key]");
@@ -2646,6 +2647,7 @@ function registerArchitectureDiagramInteractions(container) {
   });
 }
 
+registerArchitectureDiagramInteractions(elements["tour-intro-architecture"]);
 registerArchitectureDiagramInteractions(elements.architecture);
 registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"]);
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
