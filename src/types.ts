@@ -378,7 +378,7 @@ export interface PersistedReviewSession {
 export interface ReviewScreenshot {
   id: string;
   name: string;
-  mimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  mimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "video/mp4";
   size: number;
   fileName: string;
 }

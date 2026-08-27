@@ -21,11 +21,11 @@ test("the attached-agent skill documents authoritative event and anchor shapes",
   expect(skill).toContain("macOS does not provide `setsid`");
 });
 
-test("the attached-agent skill scopes preview redirects and screenshot evidence", async () => {
+test("the attached-agent skill scopes preview redirects and media evidence", async () => {
   const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
   expect(skill).toContain("Add `--preview-redirect` only when the host exposes the server through a preview");
   expect(skill).toContain("unrelated to the attached bridge token");
-  expect(skill).toContain("separate `--screenshot` argument");
+  expect(skill).toContain("separate `--media` argument");
   expect(skill).toContain("`--attached --open` also implies `--start-tour`");
   expect(skill).toContain("preparation failure leaves the server running without opening an empty tour");
 });

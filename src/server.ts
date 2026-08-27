@@ -154,9 +154,9 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "GET" && url.pathname.startsWith("/api/screenshots/")) {
         const id = url.pathname.slice("/api/screenshots/".length);
         const screenshot = session.screenshot(id);
-        if (!screenshot) throw new HttpError(404, "Screenshot not found.");
+        if (!screenshot) throw new HttpError(404, "Media not found.");
         const file = Bun.file(screenshot.path);
-        if (!await file.exists()) throw new HttpError(404, "Screenshot asset is unavailable.");
+        if (!await file.exists()) throw new HttpError(404, "Media asset is unavailable.");
         const response = new Response(file, { headers: { "content-type": screenshot.metadata.mimeType } });
         for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
         return response;

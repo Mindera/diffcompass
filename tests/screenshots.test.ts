@@ -19,11 +19,21 @@ test("screenshot imports are session-owned and a failed batch leaves no partial 
   await writeFile(valid, Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 0]));
   await writeFile(invalid, "plain text");
 
-  await expect(importReviewScreenshots([valid, invalid], stateFile)).rejects.toThrow("Unsupported screenshot format");
+  await expect(importReviewScreenshots([valid, invalid], stateFile)).rejects.toThrow("Unsupported media format");
   expect(await readdir(`${stateFile}.assets/screenshots`)).toEqual([]);
 
   const imported = await importReviewScreenshots([valid], stateFile);
   expect(imported).toHaveLength(1);
   expect(imported[0]).toMatchObject({ name: "built.png", mimeType: "image/png", size: 9 });
   await expect(access(join(`${stateFile}.assets/screenshots`, imported[0]!.fileName))).resolves.toBeNull();
+});
+
+test("MP4 evidence is accepted as review media", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "review-tour-media-"));
+  directories.push(directory);
+  const source = join(directory, "walkthrough.mp4");
+  const stateFile = join(directory, "session.json");
+  await writeFile(source, Uint8Array.from([0, 0, 0, 20, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0]));
+  const imported = await importReviewScreenshots([source], stateFile);
+  expect(imported[0]).toMatchObject({ name: "walkthrough.mp4", mimeType: "video/mp4", size: 16 });
 });

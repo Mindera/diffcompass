@@ -63,17 +63,17 @@ An agent can launch the page and remain its conversation backend:
 code-review-tour --attached --start-tour --open --repo /path/to/repository
 ```
 
-If the change produced screenshots worth reviewing, add the repeatable
-`--screenshot` option. The files are copied into the persisted session and a
-Screenshots tab appears only when at least one image was supplied:
+If the change produced visual evidence worth reviewing, add the repeatable
+`--media` option. The files are copied into the persisted session and a Media
+tab appears only when at least one image or video was supplied:
 
 ```bash
 code-review-tour --attached --start-tour --open --repo /path/to/repository \
-  --screenshot /tmp/android-home.png \
-  --screenshot /tmp/ios-home.png
+  --media /tmp/android-home.png \
+  --media /tmp/ios-flow.mp4
 ```
 
-PNG, JPEG, GIF, and WebP are supported. Imported screenshots never modify the
+PNG, JPEG, GIF, WebP, and MP4 are supported. Imported media never modify the
 reviewed repository and survive session resume.
 
 Agents may optionally identify their current model and effort so the page starts

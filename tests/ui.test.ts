@@ -640,7 +640,7 @@ test("split diff panes are resizable and synchronize horizontal scrolling per si
   expect(app).toContain("event.preventDefault()");
 });
 
-test("screenshots are exposed through a conditional authenticated review tab", async () => {
+test("images and videos are exposed through a conditional authenticated media tab", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
@@ -648,8 +648,10 @@ test("screenshots are exposed through a conditional authenticated review tab", a
   ]);
   expect(html).toContain('id="screenshots-tab" class="tab hidden"');
   expect(html).toContain('id="screenshots-view" class="review-view hidden"');
+  expect(html).toContain('>Media <span id="screenshots-tab-count"');
   expect(app).toContain('state.session?.screenshots?.length ? ["screenshots"] : []');
   expect(app).toContain('"X-Review-Tour-Token": state.apiToken');
   expect(app).toContain('apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`)');
+  expect(app).toContain('shot.mimeType === "video/mp4"');
   expect(styles).toContain(".screenshot-gallery { display: grid;");
 });

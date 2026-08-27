@@ -31,7 +31,7 @@ interface Options {
   startTour: boolean;
   disableFindings: boolean;
   previewRedirect: boolean;
-  screenshots: string[];
+  media: string[];
   resume?: string;
   pullRequest?: string;
 }
@@ -65,14 +65,14 @@ Options:
                        Optional attached-agent effort label
   --port PORT          Loopback port (default: random)
   --preview-redirect   Redirect / to the tokenized URL so remote previews work
-  --screenshot PATH    Add a raster screenshot tab (repeatable)
+  --media PATH         Add an image or MP4 to the Media tab (repeatable)
   --resume FILE        Resume a persisted review session
   --version            Print the installed version
   --help               Show this help`);
 }
 
 function parseOptions(args: string[]): Options {
-  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false, disableFindings: false, previewRedirect: false, screenshots: [] };
+  const options: Options = { repository: process.cwd(), port: 0, attached: false, open: false, startTour: false, disableFindings: false, previewRedirect: false, media: [] };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
@@ -98,9 +98,11 @@ function parseOptions(args: string[]): Options {
       options.open = true;
     } else if (arg === "--preview-redirect") {
       options.previewRedirect = true;
-    } else if (arg === "--screenshot" && value) {
-      options.screenshots.push(resolve(value));
+    } else if (arg === "--media" && value) {
+      options.media.push(resolve(value));
       index += 1;
+    } else if (arg === "--screenshot") {
+      throw new Error("--screenshot was replaced by --media; pass each image or MP4 with --media PATH.");
     } else if (arg === "--resume" && value) {
       options.resume = value;
       index += 1;
@@ -234,7 +236,7 @@ try {
     reviewPolicy: repositoryConfig.reviewPolicy,
     includeFindings: options.disableFindings ? false : undefined,
     pullRequest,
-    screenshots: options.screenshots,
+    screenshots: options.media,
   });
   if (session.pullRequest?.workspaceRoot) {
     await writeFile(join(session.pullRequest.workspaceRoot, "..", ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });

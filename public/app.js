@@ -983,7 +983,9 @@ function renderComments() {
   document.querySelectorAll(".diff-row.has-comment").forEach((row) => {
     row.classList.remove("has-comment");
     row.querySelector(".review-dot")?.classList.add("hidden");
-    row.querySelector(".line-action")?.removeAttribute("data-inline-comment-id");
+    const action = row.querySelector(".line-action");
+    action?.removeAttribute("data-inline-comment-id");
+    action?.setAttribute("aria-label", `Review ${row.dataset.path}, ${row.dataset.side} line ${row.dataset.line}`);
     row.removeAttribute("title");
   });
   for (const comment of state.session.comments) {
@@ -1488,7 +1490,7 @@ async function renderScreenshots() {
       state.screenshotUrls.delete(id);
     }
   }
-  elements.screenshots.innerHTML = screenshots.map((shot) => `<figure class="screenshot-card" data-screenshot-id="${escapeHtml(shot.id)}"><div class="screenshot-loading">Loading screenshot…</div><figcaption><strong>${escapeHtml(shot.name)}</strong><span>${Math.max(1, Math.round(shot.size / 1024)).toLocaleString()} KiB</span></figcaption></figure>`).join("");
+  elements.screenshots.innerHTML = screenshots.map((shot) => `<figure class="screenshot-card" data-screenshot-id="${escapeHtml(shot.id)}"><div class="screenshot-loading">Loading media…</div><figcaption><strong>${escapeHtml(shot.name)}</strong><span>${Math.max(1, Math.round(shot.size / 1024)).toLocaleString()} KiB</span></figcaption></figure>`).join("");
   await Promise.all(screenshots.map(async (shot) => {
     try {
       let url = state.screenshotUrls.get(shot.id);
@@ -1497,7 +1499,9 @@ async function renderScreenshots() {
         state.screenshotUrls.set(shot.id, url);
       }
       const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
-      if (card) card.querySelector(".screenshot-loading").outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size screenshot"><img src="${escapeHtml(url)}" alt="${escapeHtml(shot.name)}" /></a>`;
+      if (card) card.querySelector(".screenshot-loading").outerHTML = shot.mimeType === "video/mp4"
+        ? `<video src="${escapeHtml(url)}" controls preload="metadata" aria-label="${escapeHtml(shot.name)}"></video>`
+        : `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(shot.name)}" /></a>`;
     } catch (error) {
       const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
       if (card) card.querySelector(".screenshot-loading").textContent = error.message;
@@ -1734,6 +1738,92 @@ async function setReviewed(path, reviewed) {
   }
 }
 
+function isInPlaceSessionUpdate(previous, latest) {
+  if (!previous) return false;
+  // Explanations and comments can be updated without replacing the diff.
+  // Only skip the full render when everything else is unchanged, including
+  // the route, selected stop, diff, and review lifecycle.
+  const structuralSnapshot = ({ revision, agentActivity, comments, outline, ...session }) => ({
+    ...session,
+    outline: outline ? {
+      ...outline,
+      phases: outline.phases.map((phase) => ({
+        ...phase,
+        steps: phase.steps.map(({ explanation, ...step }) => step),
+      })),
+    } : outline,
+  });
+  return JSON.stringify(structuralSnapshot(previous)) === JSON.stringify(structuralSnapshot(latest));
+}
+
+function isSamePhaseNavigationUpdate(previous, latest) {
+  if (!previous?.outline || !latest?.outline || previous.currentStepIndex === latest.currentStepIndex) return false;
+  const previousSteps = previous.outline.phases.flatMap((phase) => phase.steps);
+  const latestSteps = latest.outline.phases.flatMap((phase) => phase.steps);
+  const previousStep = previousSteps[previous.currentStepIndex];
+  const latestStep = latestSteps[latest.currentStepIndex];
+  const previousPhase = previous.outline.phases.find((phase) => phase.steps.some((step) => step.id === previousStep?.id));
+  const latestPhase = latest.outline.phases.find((phase) => phase.steps.some((step) => step.id === latestStep?.id));
+  if (!previousPhase || previousPhase.id !== latestPhase?.id) return false;
+  const navigationSnapshot = ({ revision, agentActivity, currentStepIndex, outline, ...session }) => ({
+    ...session,
+    outline: outline ? {
+      ...outline,
+      phases: outline.phases.map((phase) => ({
+        ...phase,
+        steps: phase.steps.map(({ explanation, ...step }) => step),
+      })),
+    } : outline,
+  });
+  return JSON.stringify(navigationSnapshot(previous)) === JSON.stringify(navigationSnapshot(latest));
+}
+
+function renderInPlaceSessionUpdate(previous, { closeCommentEditor = false } = {}) {
+  // Keep loaded/expanded diffs valid across this metadata-only revision.
+  if (state.diffCacheRevision === previous.revision) state.diffCacheRevision = state.session.revision;
+  const panel = elements["diff-panel"];
+  const scroll = elements["tour-scroll"];
+  const scrollTop = scroll.scrollTop;
+  const diffScrollTop = panel.scrollTop;
+  const commentsChanged = JSON.stringify(previous.comments) !== JSON.stringify(state.session.comments);
+  // Retain a visible code line when comments above it change height. Capture
+  // now, after the request, so scrolling while a save is pending is respected.
+  const panelTop = panel.getBoundingClientRect().top;
+  const anchor = commentsChanged || closeCommentEditor
+    ? [...elements.diff.querySelectorAll(".diff-row")].find((row) => row.getBoundingClientRect().bottom > panelTop)
+    : null;
+  const anchorTop = anchor?.getBoundingClientRect().top;
+  const oldStep = previous.outline?.phases.flatMap((phase) => phase.steps)[previous.currentStepIndex];
+  const step = currentStep();
+  if (step?.explanation !== oldStep?.explanation) {
+    elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
+  }
+  if (commentsChanged) renderComments();
+  if (closeCommentEditor) closeInlineCommentEditor();
+  elements["feedback-button"].classList.toggle("hidden", state.session.comments.length === 0);
+  renderAgentActivity();
+  scroll.scrollTop = scrollTop;
+  if (commentsChanged || closeCommentEditor) {
+    panel.scrollTop = diffScrollTop;
+    if (anchor) panel.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+  }
+}
+
+function renderSessionUpdate(previous, options) {
+  if (isInPlaceSessionUpdate(previous, state.session)) {
+    renderInPlaceSessionUpdate(previous, options);
+    return false;
+  }
+  if (isSamePhaseNavigationUpdate(previous, state.session)) {
+    if (state.diffCacheRevision === previous.revision) state.diffCacheRevision = state.session.revision;
+    renderFindings();
+    renderTour();
+    return true;
+  }
+  renderSession();
+  return false;
+}
+
 function renderSession() {
   const { comparison, comments } = state.session;
   if (state.tourMode === null && state.session.outline) state.tourMode = true;
@@ -1860,14 +1950,16 @@ async function navigate(direction) {
   const generation = ++state.navigationGeneration;
   state.navigationDirection = direction;
   setBusy(true, direction === "next" ? "Preparing the next stop…" : "Returning to the previous stop…");
+  let shouldFocus = false;
   try {
     const session = await api("/api/tour/navigate", { method: "POST", body: JSON.stringify({ direction }) });
     if (generation !== state.navigationGeneration) return;
+    const previous = state.session;
     state.session = session;
-    renderSession();
-    elements["tour-scroll"].scrollTop = 0;
+    renderSessionUpdate(previous);
     await ensureTourPhaseDiffs();
-    await focusCurrentStep();
+    if (generation !== state.navigationGeneration) return;
+    shouldFocus = true;
   } catch (error) {
     if (generation === state.navigationGeneration) toast(error.message);
   } finally {
@@ -1876,6 +1968,7 @@ async function navigate(direction) {
     setBusy(false);
     renderTour();
   }
+  if (shouldFocus && generation === state.navigationGeneration) await focusCurrentStep();
 }
 
 async function toggleTourMode() {
@@ -2182,10 +2275,12 @@ async function saveInlineComment(form) {
   submit.disabled = true;
   try {
     const commentId = form.dataset.commentId;
-    state.session = commentId
+    const latest = commentId
       ? await api(`/api/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
       : await api("/api/comments", { method: "POST", body: JSON.stringify({ path: form.dataset.commentPath, side: form.dataset.commentSide, line: Number(form.dataset.commentLine), body }) });
-    renderSession();
+    const previous = state.session;
+    state.session = latest;
+    renderSessionUpdate(previous, { closeCommentEditor: true });
     toast(commentId ? "Review comment updated" : "Review comment added");
   } catch (error) {
     toast(error.message);
@@ -2196,9 +2291,11 @@ async function saveInlineComment(form) {
 async function deleteReviewComment(comment) {
   if (!reviewIsOpen()) return;
   try {
-    state.session = await api(`/api/comments/${encodeURIComponent(comment.id)}`, { method: "DELETE" });
+    const latest = await api(`/api/comments/${encodeURIComponent(comment.id)}`, { method: "DELETE" });
+    const previous = state.session;
+    state.session = latest;
     state.deletingCommentId = null;
-    renderSession();
+    renderSessionUpdate(previous);
     toast("Review comment deleted");
   } catch (error) {
     toast(error.message);
@@ -2995,11 +3092,13 @@ window.setInterval(async () => {
     }
     if (!state.session || latest.revision > state.session.revision || latest.tourState !== state.session.tourState || (state.session.status === "open" && latest.status !== "open")) {
       const pendingLocalActivity = expectedActivity && !receivedExpectedActivity ? state.session?.agentActivity : undefined;
-      const previousStatus = state.session?.status;
+      const previousSession = state.session;
+      const previousStatus = previousSession?.status;
       state.session = latest;
       beginCloseCountdownForTransition(previousStatus, latest);
       if (pendingLocalActivity) state.session.agentActivity = pendingLocalActivity;
-      renderSession();
+      const navigatedWithinPhase = renderSessionUpdate(previousSession);
+      if (navigatedWithinPhase) void focusCurrentStep();
     }
   } catch {
     if (!state.session || reviewIsOpen()) elements["connection-banner"].classList.remove("hidden");

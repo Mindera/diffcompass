@@ -18,9 +18,9 @@ function boundedString(value: unknown, max = 500_000): value is string {
 
 function validScreenshot(value: unknown): boolean {
   return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.name, 512) &&
-    ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(String(value.mimeType)) &&
-    Number.isInteger(value.size) && Number(value.size) > 0 && Number(value.size) <= 15 * 1024 * 1024 &&
-    typeof value.fileName === "string" && /^[0-9a-f-]{36}\.(?:png|jpg|gif|webp)$/.test(value.fileName);
+    ["image/png", "image/jpeg", "image/gif", "image/webp", "video/mp4"].includes(String(value.mimeType)) &&
+    Number.isInteger(value.size) && Number(value.size) > 0 && Number(value.size) <= (value.mimeType === "video/mp4" ? 100 : 15) * 1024 * 1024 &&
+    typeof value.fileName === "string" && /^[0-9a-f-]{36}\.(?:png|jpg|gif|webp|mp4)$/.test(value.fileName);
 }
 
 function validAnchor(value: unknown): boolean {

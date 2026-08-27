@@ -16,14 +16,14 @@ Run the local tour in attached mode so every explanation and reviewer question r
 2. Start a persistent terminal process from the repository being reviewed. The server prints its bridge details immediately, prepares the outline and first explanation through this agent, and opens the browser only after the first stop is ready:
 
    ```text
-   code-review-tour --attached --start-tour --open --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--no-findings] [--screenshot ABSOLUTE_IMAGE_PATH ...]
+   code-review-tour --attached --start-tour --open --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--no-findings] [--media ABSOLUTE_MEDIA_PATH ...]
    ```
 
    When reliable runtime metadata is available, pass the triggering model and effort with `--caller-model` and `--caller-reasoning`. Both flags are optional and independent; omit any value that is unavailable rather than guessing it. They describe the attached session in the page and do not switch the conversation to another model.
 
    Pass `--no-findings` only when the caller explicitly wants to skip finding generation. It applies to the session without writing repository configuration; findings remain enabled when the flag is absent.
 
-   When the work being reviewed produced useful UI evidence, pass each PNG, JPEG, GIF, or WebP with a separate `--screenshot` argument. The tool copies those files into session-owned storage and adds the `Screenshots` tab. Do not pass unrelated images, secrets, or screenshots that contain credentials.
+   When the work being reviewed produced useful UI evidence, pass each PNG, JPEG, GIF, WebP, or MP4 with a separate `--media` argument. The tool copies those files into session-owned storage and adds the `Media` tab. Do not pass unrelated files, secrets, or media that contain credentials.
 
    Add `--preview-redirect` only when the host exposes the server through a preview that opens the bare origin and cannot preserve the tokenized review URL. It redirects `/` once to `/t#token=...`, where the fragment contains the browser-session token. This is unrelated to the attached bridge token and is unnecessary for an ordinary local browser launch. The normal delay before `--open`—waiting until the first stop is ready—is also not a redirect.
 
