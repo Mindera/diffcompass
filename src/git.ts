@@ -8,6 +8,8 @@ import { runProcess } from "./process.ts";
 import type { DiffFile, GitComparison } from "./types.ts";
 
 const MAX_CHANGE_PATCH_BYTES = 12 * 1024 * 1024;
+const MAX_DIFF_IMAGE_BYTES = 20 * 1024 * 1024;
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 export interface WorkingTreeSnapshot {
   tree: string;
@@ -234,6 +236,53 @@ export async function loadRepositoryFile(comparison: GitComparison, path: string
     if (error instanceof ReviewError) throw error;
     throw new ReviewError("Repository file could not be read.");
   }
+}
+
+function pngBytes(data: ArrayBuffer): ArrayBuffer {
+  const bytes = new Uint8Array(data);
+  if (bytes.byteLength > MAX_DIFF_IMAGE_BYTES) throw new ReviewError("The changed PNG is too large to display.");
+  if (PNG_SIGNATURE.some((value, index) => bytes[index] !== value)) throw new ReviewError("The changed file is not a valid PNG image.");
+  return data;
+}
+
+export async function loadDiffImage(comparison: GitComparison, path: string, side: "old" | "new"): Promise<{ data: ArrayBuffer; mimeType: "image/png" }> {
+  const file = comparison.files.find((candidate) => candidate.path === path);
+  if (!file || !/\.png$/i.test(file.path)) throw new ReviewError("Changed PNG does not exist in this comparison.");
+  const sourcePath = side === "old" ? file.oldPath : file.newPath;
+  if (!sourcePath) throw new ReviewError(`The changed PNG has no ${side} version.`);
+
+  if (side === "old") {
+    const object = `${comparison.mergeBase}:${sourcePath}`;
+    const size = Number(await git(comparison.repositoryRoot, ["cat-file", "-s", object]).catch(() => "NaN"));
+    if (!Number.isSafeInteger(size) || size < 0) throw new ReviewError("The previous PNG is unavailable.");
+    if (size > MAX_DIFF_IMAGE_BYTES) throw new ReviewError("The changed PNG is too large to display.");
+    const process = Bun.spawn(["git", "cat-file", "blob", object], {
+      cwd: comparison.repositoryRoot,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const [data, exitCode] = await Promise.all([
+      new Response(process.stdout).arrayBuffer(),
+      process.exited,
+    ]);
+    if (exitCode !== 0) throw new ReviewError("The previous PNG is unavailable.");
+    return { data: pngBytes(data), mimeType: "image/png" };
+  }
+
+  const root = await realpath(comparison.repositoryRoot);
+  const candidate = resolve(root, sourcePath);
+  const relativePath = relative(root, candidate);
+  if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) throw new ReviewError("Changed PNG path is invalid.");
+  const metadata = await lstat(candidate).catch(() => undefined);
+  if (!metadata?.isFile() || metadata.isSymbolicLink()) throw new ReviewError("The changed PNG is unavailable.");
+  const realCandidate = await realpath(candidate);
+  const realRelativePath = relative(root, realCandidate);
+  if (!realRelativePath || realRelativePath.startsWith("..") || isAbsolute(realRelativePath)) throw new ReviewError("Changed PNG path is invalid.");
+  if (metadata.size > MAX_DIFF_IMAGE_BYTES) throw new ReviewError("The changed PNG is too large to display.");
+  const content = await readFile(candidate);
+  const data = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer;
+  return { data: pngBytes(data), mimeType: "image/png" };
 }
 
 export async function writeProposalFile(workspace: ProposalWorkspace, path: string, content: string, maxBytes = 1_000_000): Promise<void> {

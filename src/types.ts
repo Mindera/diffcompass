@@ -173,6 +173,7 @@ export interface ReviewComment {
 }
 
 export type ReviewOutcome = "accepted" | "feedback" | "cancelled";
+export type ReviewDecisionIntent = "approve" | "approve-with-comments" | "request-changes" | "cancel";
 export type ReviewStatus = "open" | ReviewOutcome;
 
 export interface ReviewPreferences {
@@ -224,6 +225,8 @@ export interface PullRequestContext {
   publication?: {
     intentId: string;
     outcome: Extract<ReviewOutcome, "accepted" | "feedback">;
+    decision?: ReviewDecisionIntent;
+    note?: string;
     commentIds: string[];
     status: "pending" | "published";
     reviewId?: string;
@@ -237,6 +240,12 @@ export interface ChatMessage {
   role: "user" | "agent";
   body: string;
   stepId?: string;
+  /** Root user message ID; independent of the currently selected tour step. */
+  threadId?: string;
+  /** Captured source, retained even if the reviewed code later changes. */
+  anchor?: { path: string; side: "old" | "new"; line: number; content: string };
+  /** Extra repository files explicitly added when this conversation started. */
+  contextPaths?: string[];
   createdAt: string;
 }
 
@@ -352,6 +361,8 @@ export interface PersistedReviewSession {
     id: string;
     type: "review.closed";
     outcome: ReviewOutcome;
+    decision?: ReviewDecisionIntent;
+    note?: string;
     comments: ReviewComment[];
     reviewedTree?: string;
     createdAt: string;

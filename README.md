@@ -17,7 +17,8 @@ to the relevant code, and stays available for follow-up questions.
 During the tour, the active stop is highlighted and summarized directly in the
 diff. The agent pane shows the current phase and a short explanation, while the
 file tree and code remain freely navigable. `Previous` and `Next` return the
-reviewer to the ordered route without locking ordinary browsing.
+reviewer to the ordered route without locking ordinary browsing. At the final
+stop, `Finish` ends the guided tour and leaves conversations available.
 
 ## Features
 
@@ -29,12 +30,14 @@ reviewer to the ordered route without locking ordinary browsing.
 - lets the reviewer choose an available agent, model, and reasoning effort, plus whether to generate the component map, call-flow changes, sequence diagrams, and findings;
 - asks the selected agent to organize the change into logical phases and precise code stops;
 - preloads the next explanation while the reviewer reads the current stop;
-- keeps follow-up questions in the same agent conversation;
+- keeps line-anchored conversations in a separate Questions area and Conversations tab, with speech-bubble badges that reopen threads without changing the tour stop;
+- lets reviewers remove selected code context or add up to eight repository files to a question;
 - places a prominent tour annotation immediately before the active code while the agent gives a short, plain-language explanation in a separately scrollable panel;
 - keeps the diff and file navigation reviewer-controlled; only Start, Previous, and Next jump to a tour anchor;
 - declares each phase's changed files and their role in a collapsed-on-entry section, with Git-derived additions and deletions;
 - separates stop-scoped and phase-scoped P0–P3 findings, with collapsed phase summaries matching the in-code pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
 - syntax-highlights loaded diffs locally in both light and dark themes;
+- previews changed PNGs directly in the diff with Before/After images, single-sided additions/deletions, and full-size links (up to 20 MiB per image; live review only);
 - traces changed caller-to-callee edges from concrete entrypoints, compares their Before and After trees, and links every added or removed call back to its diff evidence;
 - renders Mermaid sequence diagrams as strict local SVG for goal-critical flows, with exact expandable affected-file lists, explicit fully traced, partly inferred, or unverified provenance wording, validated editing, source fallback, and agent regeneration;
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
@@ -51,7 +54,7 @@ reviewer to the ordered route without locking ordinary browsing.
 - searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
 - starts with a dense split diff by default, also supports unified diffs, expands hunk context on demand, and persists per-file reviewed state;
 - opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
-- exposes `Close` and `Send feedback & close` outcomes.
+- exposes explicit `Approve`, `Approve with comments`, and `Request changes` decisions, with a review note for the latter two.
 
 All standalone agent sessions are read-only. In attached mode, the triggering agent—or its local fallback after a lost heartbeat—may edit only when the reviewer explicitly requests a concrete change. Those edits are prepared in an isolated proposal worktree: the reviewed working tree remains untouched until the reviewer presses `Apply`.
 

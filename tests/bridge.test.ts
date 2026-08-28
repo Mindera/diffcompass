@@ -159,6 +159,13 @@ test("terminal comment payloads are detached from input and returned event copie
   expect(secondRead).toMatchObject({ reviewedTree });
 });
 
+test("terminal events preserve the explicit review decision and overall note", () => {
+  const bridge = new AttachedAgentBridge();
+  const event = bridge.close("accepted", [], undefined, "approve-with-comments", "Looks good with one non-blocking note.");
+  expect(event.decision).toBe("approve-with-comments");
+  expect(event.note).toBe("Looks good with one non-blocking note.");
+});
+
 test("long polling wakes when the review closes with feedback", async () => {
   const bridge = new AttachedAgentBridge();
   const waiting = bridge.eventsAfter(0, 1_000);

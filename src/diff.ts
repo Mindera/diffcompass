@@ -39,6 +39,15 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
 
     if (!file) continue;
 
+    // Binary diffs have mode headers but no ---/+++ text headers.
+    if (!hunk && line.startsWith("new file mode ")) {
+      file.oldPath = null;
+      file.status = "added";
+    } else if (!hunk && line.startsWith("deleted file mode ")) {
+      file.newPath = null;
+      file.status = "deleted";
+    }
+
     if (!hunk && line.startsWith("--- ")) {
       file.oldPath = cleanPath(line.slice(4));
       file.metadata.push(line);

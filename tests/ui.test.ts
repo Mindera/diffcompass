@@ -119,6 +119,25 @@ test("agent answers scroll into view without hiding the reviewer question", asyn
   expect(app).toContain('elements["next-step"].disabled = state.busy || !reviewIsOpen()');
 });
 
+test("questions support removable line and file context while review decisions are explicit", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="add-question-files"');
+  expect(html).toContain('id="question-files-dialog"');
+  expect(app).toContain("data-remove-line-context");
+  expect(app).toContain("data-remove-question-file");
+  expect(app).toContain("contextPaths: contextPaths.length ? contextPaths : undefined");
+  expect(styles).toContain(".question-context-chip");
+  expect(html).toContain(">Request changes</button>");
+  expect(html).toContain(">Approve with comments</button>");
+  expect(html).toContain(">Approve</button>");
+  expect(app).toContain('openReviewDecision("approve-with-comments")');
+  expect(app).toContain('openReviewDecision("request-changes")');
+});
+
 test("closing a review shows a five-second self-close countdown", async () => {
   const app = await readFile(join(root, "public/app.js"), "utf8");
   expect(app).toContain("function beginCloseCountdown(message)");
@@ -142,7 +161,7 @@ test("slow tour work exposes its prompt and safe progress while navigation remai
   expect(html).toContain('id="agent-activity"');
   expect(html).toContain('id="agent-activity-body"');
   expect(app).toContain("function renderAgentActivity()");
-  expect(app).toContain('followsExistingAnswer ? elements["chat-messages"] : elements["step-explanation"]');
+  expect(app).toContain('isQuestion ? elements["chat-messages"] : elements["step-explanation"]');
   expect(app).toContain("Current prompt");
   expect(app).toContain("elapsed");
   expect(app).toContain('const promptWasOpen = renderedActivityId === activity.id');
@@ -187,7 +206,8 @@ test("tour mode scopes diffs to the current phase and can restore the baseline r
   expect(app).toContain("window.clearTimeout(state.toastTimer)");
   expect(styles).toContain(".toast.warning { display: flex;");
   expect(app).toContain('elements["diff-search"].disabled = Boolean(state.tourMode)');
-  expect(app).toContain("loading all ${filteredChangedFiles().length} files in this phase");
+  expect(html).not.toContain('id="large-diff-notice"');
+  expect(app).not.toContain('elements["large-diff-notice"]');
   expect(styles).toContain(".tour-overview-heading");
 });
 
@@ -473,7 +493,7 @@ test("agent prose and selected paths wrap without widening the pane", async () =
   expect(styles).toContain(".tour-scroll { min-width: 0;");
   expect(styles).toContain(".explanation { min-width: 0; max-width: 100%; overflow-wrap: anywhere;");
   expect(styles).toContain(".anchor { max-width: 100%; overflow-wrap: anywhere;");
-  expect(styles).toContain(".selection-pill { min-width: 0; max-width: 100%; overflow-wrap: anywhere;");
+  expect(styles).toContain(".selection-pill { min-width: 0; max-width: 100%; display: flex;");
   expect(styles).toContain("white-space: normal;");
 });
 
@@ -582,6 +602,9 @@ test("review comments compose and edit inline with an in-app delete confirmation
   expect(styles).toContain(".inline-comment-actions { display: flex;");
   expect(styles).toContain(".split-inline-comment .inline-comment { position: static;");
   expect(styles).toContain(".inline-comment-editor-lane");
+  expect(styles).toContain(".comment-item { min-width: 0;");
+  expect(styles).toContain(".comment-jump { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }");
+  expect(styles).toContain(".comment-status { flex: 0 0 auto;");
 });
 
 test("files expand and collapse in place while line actions expose comment and agent choices", async () => {

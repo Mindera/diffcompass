@@ -147,3 +147,13 @@ test("publication sends arguments without a shell and binds comments to the conf
   await publishPullRequestReview(context, [comment], "feedback", crypto.randomUUID(), githubRunner({ head, post: (body) => { payload = body; } }));
   expect(JSON.parse(payload)).toMatchObject({ commit_id: head, event: "REQUEST_CHANGES", comments: [{ path: "file.txt", line: 2, side: "RIGHT", body: "Fix this" }] });
 });
+
+test("publication includes the reviewer's overall note without changing the GitHub decision", async () => {
+  const { context, head } = await repositoryFixture();
+  context.headRefOid = head; context.baseRefOid = "a".repeat(40);
+  let payload = "";
+  await publishPullRequestReview(context, [], "accepted", crypto.randomUUID(), githubRunner({ head, post: (body) => { payload = body; } }), "Useful cleanup. Ship it.");
+  const review = JSON.parse(payload);
+  expect(review.event).toBe("APPROVE");
+  expect(review.body).toStartWith("Useful cleanup. Ship it.\n\nSubmitted from Code Review Tour.");
+});

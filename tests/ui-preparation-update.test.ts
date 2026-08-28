@@ -45,7 +45,7 @@ function harness(previous = snapshot()) {
     "connection-banner": { classList: { add() {}, remove() {} } },
     "diff-panel": diffNode,
     diff: { querySelectorAll: () => [anchor] },
-    "feedback-button": { classList: { toggle() {} } },
+    "feedback-button": { classList: { toggle() {}, remove() {} } },
     "tour-scroll": tourScroll,
     "step-explanation": { set innerHTML(value: string) {
       explanationWrites += 1;
@@ -54,14 +54,14 @@ function harness(previous = snapshot()) {
     } },
   };
   const commentActions = app.slice(app.indexOf("async function saveInlineComment("), app.indexOf("async function askAgent("));
-  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", `${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
+  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", "renderMessages", `${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
   const actions = run(state, elements, { setInterval(fn: () => Promise<void>) { tick = fn; } },
     async () => structuredClone(next), () => state.session.status === "open",
     () => state.session.outline.phases.flatMap((phase) => phase.steps)[state.session.currentStepIndex],
     (text: string) => `<p>${text}</p>`, () => {},
     () => { renders += 1; diffNode.scrollTop = 0; state.diffCache.clear(); }, () => {},
     () => { commentRenders += 1; anchorPosition += commentHeightChange; }, () => { editorClosed = true; }, () => {},
-    () => {}, () => { tourRenders += 1; }, () => { focusCalls += 1; }) as {
+    () => {}, () => { tourRenders += 1; }, () => { focusCalls += 1; }, () => {}) as {
       classify: (a: unknown, b: unknown) => boolean;
       classifyNavigation: (a: unknown, b: unknown) => boolean;
       saveInlineComment: (form: unknown) => Promise<void>;
@@ -118,12 +118,11 @@ test("the current explanation appears immediately without moving either pane", a
   expect(h.renders).toBe(0);
 });
 
-test("structural updates, answers, and terminal state still render normally", async () => {
+test("structural updates and terminal state still render normally", async () => {
   const mutations = [
     (s: ReturnType<typeof snapshot>) => { s.comparison.head = "def"; },
     (s: ReturnType<typeof snapshot>) => { s.outline.phases[0]!.steps[0]!.anchor.startLine = 11; },
     (s: ReturnType<typeof snapshot>) => { s.outline.phases[0]!.title = "New route"; },
-    (s: ReturnType<typeof snapshot>) => { s.messages.push({ role: "agent", content: "Answer" }); },
     (s: ReturnType<typeof snapshot>) => { s.reviewedFiles.push("cart.ts"); },
     (s: ReturnType<typeof snapshot>) => { s.status = "accepted"; },
   ];
@@ -176,6 +175,17 @@ test("adding, editing, and deleting inline comments never rebuilds the diff", as
   expect(h.renders).toBe(0);
   expect(h.state.diffCache.get("cart.ts")).toBe(h.cachedFile);
   expect(h.state.diffCacheRevision).toBe(next.revision);
+  expect(h.diffNode.scrollTop).toBe(1700);
+  expect(h.tourScroll.scrollTop).toBe(430);
+});
+
+test("conversation answers do not rebuild the diff or change its scroll", async () => {
+  const h = harness();
+  const next = structuredClone(h.state.session);
+  next.messages.push({ id: "reply", threadId: "question", role: "agent", body: "Answer" });
+  next.revision += 1;
+  await h.poll(next);
+  expect(h.renders).toBe(0);
   expect(h.diffNode.scrollTop).toBe(1700);
   expect(h.tourScroll.scrollTop).toBe(430);
 });

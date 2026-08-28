@@ -241,6 +241,7 @@ export async function publishPullRequestReview(
   outcome: Extract<ReviewOutcome, "accepted" | "feedback">,
   intentId: string,
   runner: Runner = runProcess,
+  note?: string,
 ): Promise<{ id: string; url?: string }> {
   const latest = await loadPullRequestContext(context.sourceRepositoryRoot, String(context.number), context.refNamespace, runner);
   if (latest.headRefOid !== context.headRefOid) throw new ReviewError("The pull request changed on GitHub. Refresh it before publishing this review.");
@@ -259,7 +260,7 @@ export async function publishPullRequestReview(
   const body = {
     commit_id: context.headRefOid,
     event: outcome === "accepted" ? "APPROVE" : "REQUEST_CHANGES",
-    body: `Submitted from Code Review Tour.\n\n${marker}`,
+    body: `${note?.trim() ? `${note.trim()}\n\n` : ""}Submitted from Code Review Tour.\n\n${marker}`,
     comments: comments.map((comment) => ({ path: comment.path, line: comment.line, side: comment.side === "old" ? "LEFT" : "RIGHT", body: comment.body })),
   };
   const response = await jsonCommand(runner, ["gh", "api", `repos/${context.repository}/pulls/${context.number}/reviews`, "--method", "POST", "--input", "-"], context.sourceRepositoryRoot, JSON.stringify(body));

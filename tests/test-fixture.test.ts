@@ -38,7 +38,7 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
     resume: true,
     agentAdapters: [],
   });
-  expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "src/cart.ts", "src/receipt.ts"]);
+  expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "screens/receipt.png", "src/cart.ts", "src/receipt.ts"]);
   expect(session.currentStepIndex).toBe(0);
   await session.dispose();
 

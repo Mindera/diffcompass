@@ -20,6 +20,7 @@
         <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
         <button id="findings-tab" class="tab" data-tab="findings" role="tab" aria-selected="false" aria-controls="findings-view" tabindex="-1">Findings <span id="findings-tab-count" class="tab-count hidden">0</span></button>
         <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
+        <button id="conversations-tab" class="tab" data-tab="conversations" role="tab" aria-selected="false" aria-controls="conversations-view" tabindex="-1">Conversations</button>
         <button id="screenshots-tab" class="tab hidden" data-tab="screenshots" role="tab" aria-selected="false" aria-controls="screenshots-view" tabindex="-1">Media <span id="screenshots-tab-count" class="tab-count">0</span></button>
         <button id="pull-request-tab" class="tab hidden" data-tab="pull-request" role="tab" aria-selected="false" aria-controls="pull-request-view" tabindex="-1">Pull request</button>
       </div>
@@ -67,8 +68,9 @@
           </div>
         </details>
         <button id="refresh-button" class="button secondary">Refresh</button>
-        <button id="close-button" class="button secondary">Close</button>
-        <button id="feedback-button" class="button primary hidden">Send feedback &amp; close</button>
+        <button id="feedback-button" class="button danger">Request changes</button>
+        <button id="approve-comments-button" class="button secondary">Approve with comments</button>
+        <button id="close-button" class="button primary">Approve</button>
       </div>
     </header>
 
@@ -125,7 +127,6 @@
             </details>
           </section>
           <div class="diff-toolbar"><span id="filter-summary" class="muted"></span></div>
-          <div id="large-diff-notice" class="view-notice hidden"></div>
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>
         </div>
@@ -143,6 +144,10 @@
           <div class="flows-toolbar"><div><strong>All findings</strong><span class="muted">Evidence-backed analysis across the complete tour</span></div><button id="findings-back" class="button secondary hidden" type="button">← Back to code</button></div>
           <div id="all-findings-empty" class="empty">No evidence-backed findings were generated.</div>
           <div id="all-findings-list" class="all-findings-list"></div>
+        </div>
+        <div id="conversations-view" class="review-view hidden" role="tabpanel" aria-labelledby="conversations-tab">
+          <h2>Conversations</h2><p class="muted">Questions across every phase. Opening a conversation keeps your tour position.</p>
+          <div id="conversation-list"></div>
         </div>
         <div id="activity-view" class="review-view hidden" role="tabpanel" aria-labelledby="activity-tab">
           <div id="activity-empty" class="empty">Proposed repository changes will appear here.</div>
@@ -192,6 +197,10 @@
           <button id="start-tour" class="button primary wide">Start tour</button>
         </div>
 
+        <div class="agent-pane-switch" id="agent-pane-switch">
+          <button id="show-tour-pane" type="button" class="button secondary">Tour</button>
+          <button id="show-questions-pane" type="button" class="button secondary">Questions</button>
+        </div>
         <div id="tour-active" class="tour-active hidden">
           <div class="tour-progress">
             <span id="step-count"></span>
@@ -225,7 +234,6 @@
                 <div id="agent-activity-body" class="agent-activity-body"></div>
               </details>
             </article>
-          <div id="chat-messages" class="chat-messages"></div>
           <section id="finding-drawer" class="finding-drawer" aria-labelledby="finding-drawer-title">
             <div class="comment-drawer-heading">
               <div>
@@ -242,13 +250,31 @@
               <button id="previous-step" class="button secondary">Previous</button>
               <button id="next-step" class="button secondary">Next</button>
             </div>
+          </div>
+        </div>
+        <div id="questions-resizer" class="questions-resizer hidden" role="separator" aria-label="Resize tour and questions" aria-orientation="horizontal" aria-valuemin="25" aria-valuemax="70" aria-valuenow="45" tabindex="0"></div>
+        <section id="questions-pane" class="questions-pane" aria-label="Questions">
+          <header class="questions-heading">
+            <button id="questions-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="questions-body">Questions</button>
+            <button id="new-question" class="text-button" type="button">New question</button>
+          </header>
+          <div id="questions-body" class="questions-body hidden">
+            <label class="conversation-picker">Conversation<select id="conversation-select"><option value="">New question</option></select></label>
+            <div id="questions-scroll" class="questions-scroll">
+              <p id="conversation-context" class="muted"></p>
+              <div id="chat-messages" class="chat-messages"></div>
+            </div>
+            <div class="question-composer">
             <div id="selection-pill" class="selection-pill hidden"></div>
+            <div id="question-file-context" class="question-file-context"></div>
+            <button id="add-question-files" class="text-button question-add-files" type="button">+ Add file</button>
             <form id="chat-form" class="chat-form">
               <textarea id="chat-input" rows="2" placeholder="Ask about this step or selected code…"></textarea>
               <button class="send-button" type="submit" aria-label="Send">↑</button>
             </form>
+            </div>
           </div>
-        </div>
+        </section>
         <section id="comment-drawer" class="comment-drawer persistent-comment-drawer" aria-labelledby="comment-drawer-title">
           <div class="comment-drawer-heading">
             <div>
@@ -262,6 +288,27 @@
       </aside>
     </main>
     <button id="file-panel-backdrop" class="file-panel-backdrop hidden" type="button" aria-label="Close changed files"></button>
+
+    <dialog id="question-files-dialog" class="question-files-dialog" aria-labelledby="question-files-title">
+      <form id="question-files-form">
+        <div class="eyebrow">Question context</div>
+        <h2 id="question-files-title">Add repository files</h2>
+        <p class="dialog-description">Selected files are sent with this new conversation. They cannot be changed after the first question is sent.</p>
+        <label class="question-file-search"><span class="sr-only">Filter repository files</span><input id="question-files-search" type="search" placeholder="Filter files…" autocomplete="off" /></label>
+        <div id="question-files-tree" class="question-files-tree"></div>
+        <div class="dialog-actions"><button id="cancel-question-files" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Add selected</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="review-decision-dialog" aria-labelledby="review-decision-title">
+      <form id="review-decision-form">
+        <div id="review-decision-eyebrow" class="eyebrow">Review decision</div>
+        <h2 id="review-decision-title">Approve with comments</h2>
+        <p id="review-decision-description" class="dialog-description"></p>
+        <label class="dialog-field">Overall review comment<textarea id="review-decision-note" rows="6" maxlength="8000" required></textarea></label>
+        <div class="dialog-actions"><button id="cancel-review-decision" class="button secondary" type="button">Cancel</button><button id="submit-review-decision" class="button primary" type="submit">Submit review</button></div>
+      </form>
+    </dialog>
 
     <dialog id="tour-intro-dialog" class="tour-intro-dialog" aria-labelledby="tour-intro-title" aria-describedby="tour-intro-summary">
       <div class="tour-intro-scroll">

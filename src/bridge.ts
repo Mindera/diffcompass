@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { ReviewError } from "./errors.ts";
 import type { AgentTransport, AgentTransportReply, BridgePromptKind } from "./agent.ts";
-import type { PersistedReviewSession, ReviewComment } from "./types.ts";
+import type { PersistedReviewSession, ReviewComment, ReviewDecisionIntent } from "./types.ts";
 
 export interface BridgePromptEvent {
   sequence: number;
@@ -23,6 +23,8 @@ export interface BridgeClosedEvent {
   id: string;
   type: "review.closed";
   outcome: "accepted" | "feedback" | "cancelled";
+  decision?: ReviewDecisionIntent;
+  note?: string;
   comments: ReviewComment[];
   reviewedTree?: string;
   createdAt: string;
@@ -328,13 +330,13 @@ export class AttachedAgentBridge implements AgentTransport {
     for (const record of records) this.promptRecords.set(record.event.id, structuredClone(record));
   }
 
-  close(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[], reviewedTree?: string): BridgeClosedEvent {
-    const event = this.prepareClose(outcome, comments, reviewedTree);
+  close(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[], reviewedTree?: string, decision?: BridgeClosedEvent["decision"], note?: string): BridgeClosedEvent {
+    const event = this.prepareClose(outcome, comments, reviewedTree, decision, note);
     this.publishClose();
     return event;
   }
 
-  prepareClose(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[], reviewedTree?: string): BridgeClosedEvent {
+  prepareClose(outcome: BridgeClosedEvent["outcome"], comments: ReviewComment[], reviewedTree?: string, decision?: BridgeClosedEvent["decision"], note?: string): BridgeClosedEvent {
     if (this.terminalEvent) {
       if (this.terminalEvent.outcome !== outcome) throw new ReviewError(`The review already closed as ${this.terminalEvent.outcome}.`);
       return structuredClone(this.terminalEvent);
@@ -344,6 +346,8 @@ export class AttachedAgentBridge implements AgentTransport {
       id: crypto.randomUUID(),
       type: "review.closed",
       outcome,
+      ...(decision ? { decision } : {}),
+      ...(note ? { note } : {}),
       comments: structuredClone(comments),
       ...(reviewedTree ? { reviewedTree } : {}),
       createdAt: new Date().toISOString(),

@@ -10,6 +10,7 @@ const FIXTURE_DIRECTORY = "code-review-tour-test-fixture-v1";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
 const baseFiles = {
+  "screens/receipt.png": Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=", "base64"),
   "README.md": "# Checkout\n\nThe checkout returns a numeric total.\n",
   "src/cart.ts": `export interface Item {
   price: number;
@@ -23,6 +24,7 @@ export function total(items: Item[]): number {
 };
 
 const workingFiles = {
+  "screens/receipt.png": Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
   "README.md": "# Checkout fixture\n\nThis fixture exercises guided tours, findings, comments, flows, and activity.\n",
   "src/cart.ts": `export interface Item {
   price: number;
@@ -59,7 +61,7 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-async function writeFiles(repository: string, files: Record<string, string>): Promise<void> {
+async function writeFiles(repository: string, files: Record<string, string | Uint8Array>): Promise<void> {
   for (const [path, content] of Object.entries(files)) {
     const destination = join(repository, path);
     await mkdir(dirname(destination), { recursive: true });
@@ -150,6 +152,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
         fileChanges: [
           { path: "src/receipt.ts", summary: "Adds a user-visible receipt string." },
           { path: "README.md", summary: "Documents what this reusable fixture covers." },
+          { path: "screens/receipt.png", summary: "Exercises before/after PNG previews with a tiny deterministic image." },
         ],
         steps: [{
           id: "format-receipt",
@@ -228,12 +231,15 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
     }],
     messages: [{
       id: "fixture-question",
+      threadId: "fixture-question",
+      anchor: { path: "src/cart.ts", side: "new", line: 17, content: "  return amount - amount * discount.percentage;" },
       role: "user",
       body: "Why is the percentage finding high priority?",
       stepId: "apply-discount",
       createdAt: FIXTURE_TIME,
     }, {
       id: "fixture-answer",
+      threadId: "fixture-question",
       role: "agent",
       body: "Because a common input such as 20 changes a €100 subtotal into −€1,900. The ambiguity affects the core result, not only its presentation.",
       stepId: "apply-discount",

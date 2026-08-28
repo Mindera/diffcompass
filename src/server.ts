@@ -38,7 +38,7 @@ const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
-  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -283,6 +283,14 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           : session.diffFile(path, offset, limit, line && side ? { line, side } : undefined);
         return json({ ...diff, revision: session.revision, context, full });
       }
+      if (request.method === "GET" && url.pathname === "/api/diff/image") {
+        const path = requiredString(url.searchParams.get("path"), "path", 4_096);
+        const side = enumValue(url.searchParams.get("side"), "side", ["old", "new"]);
+        const image = await session.diffImage(path, side);
+        const response = new Response(image.data, { headers: { "content-type": image.mimeType } });
+        for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
+        return response;
+      }
       const activityDiffMatch = /^\/api\/activities\/([^/]+)\/diff$/.exec(url.pathname);
       if (activityDiffMatch && request.method === "GET") {
         return json(session.activityDiff(
@@ -355,10 +363,22 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/agent/message") {
         const input = await readJsonObject(request, 32 * 1024);
-        exactKeys(input, ["body", "selectedContext"]);
+        exactKeys(input, ["body", "selectedContext", "threadId", "anchor", "contextPaths"]);
+        let anchor;
+        if (input.anchor !== undefined) {
+          if (!input.anchor || typeof input.anchor !== "object" || Array.isArray(input.anchor)) throw new ReviewError("anchor must be an object.");
+          const value = input.anchor as Record<string, unknown>;
+          exactKeys(value, ["path", "side", "line", "content"]);
+          if (typeof value.content !== "string" || value.content.length > 16000) throw new ReviewError("Invalid anchor content.");
+          anchor = { path: requiredString(value.path, "path", 4096), side: enumValue(value.side, "side", ["old", "new"]), line: finitePositiveInteger(value.line, "line"), content: value.content };
+        }
+        if (input.contextPaths !== undefined && (!Array.isArray(input.contextPaths) || input.contextPaths.length > 8 || input.contextPaths.some((path) => typeof path !== "string" || !path || path.length > 4_096))) {
+          throw new HttpError(422, "contextPaths must contain at most 8 repository paths.");
+        }
         return json(await session.ask(
           requiredString(input.body, "body", 8_000),
           optionalString(input.selectedContext, "selectedContext", 16_000),
+          { threadId: optionalString(input.threadId, "threadId", 128), anchor, contextPaths: input.contextPaths as string[] | undefined },
         ));
       }
       if (request.method === "POST" && url.pathname === "/api/comments") {
@@ -406,15 +426,22 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/github/review") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["outcome", "headOid", "confirm"]);
+        exactKeys(input, ["outcome", "headOid", "confirm", "decision", "note"]);
         if (input.confirm !== true) throw new HttpError(422, "Publishing a GitHub review requires explicit confirmation.");
         const outcome = enumValue(input.outcome, "outcome", ["accepted", "feedback"]);
-        return json(await session.publishPullRequest(outcome, requiredString(input.headOid, "headOid", 64)));
+        const decision = input.decision === undefined
+          ? (outcome === "accepted" ? "approve" : "request-changes")
+          : enumValue(input.decision, "decision", ["approve", "approve-with-comments", "request-changes"]);
+        return json(await session.publishPullRequest(outcome, requiredString(input.headOid, "headOid", 64), decision, optionalString(input.note, "note", 8_000)));
       }
       if (request.method === "POST" && url.pathname === "/api/close") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["outcome"]);
-        return json(await session.close(parseOutcome(input.outcome)));
+        exactKeys(input, ["outcome", "decision", "note"]);
+        const outcome = parseOutcome(input.outcome);
+        const decision = input.decision === undefined
+          ? (outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel")
+          : enumValue(input.decision, "decision", ["approve", "approve-with-comments", "request-changes", "cancel"]);
+        return json(await session.close(outcome, { decision, note: optionalString(input.note, "note", 8_000) }));
       }
       if (url.pathname.startsWith("/api/")) throw new HttpError(404, "API endpoint not found.");
 

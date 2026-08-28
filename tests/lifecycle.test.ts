@@ -12,6 +12,46 @@ import type { PersistedReviewSession } from "../src/types.ts";
 const directories: string[] = [];
 const noAdapters = { agentAdapters: [] };
 
+test("line conversations persist and follow-ups retain their original phase context", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const anchor = { path: "app.ts", side: "new" as const, line: 2, content: "const changed = 2;" };
+    const asking = session.ask("Why two?", undefined, { anchor, contextPaths: ["app.ts"] });
+    const [prompt] = await session.bridge!.eventsAfter(7, 1000);
+    if (!prompt || prompt.type !== "agent.prompt") throw new Error("Expected question");
+    expect(prompt.prompt).toContain("Captured code: const changed = 2;");
+    expect(prompt.prompt).toContain("Additional repository files selected by the reviewer:");
+    expect(prompt.prompt).toContain("File: app.ts");
+    await session.bridge!.respond(prompt.id, "Two is the fixture value.");
+    await session.bridge!.ack(prompt.id);
+    const first = await asking;
+    const root = first.messages[0]!;
+    expect(root.threadId).toBe(root.id);
+    expect(root.anchor).toEqual(anchor);
+    expect(root.contextPaths).toEqual(["app.ts"]);
+    session.currentStepIndex = 2; // Same file, different phase.
+    const followup = session.ask("Could it be three?", undefined, { threadId: root.id });
+    const events = await session.bridge!.eventsAfter(prompt.sequence, 1000);
+    const next = events.find((event) => event.type === "agent.prompt" && event.kind === "review.question");
+    if (!next || next.type !== "agent.prompt") throw new Error("Expected follow-up");
+    expect(next.prompt).toContain("Second step");
+    expect(next.prompt).not.toContain("Current tour step: Verification stop");
+    expect(next.prompt).toContain("Two is the fixture value.");
+    await session.bridge!.respond(next.id, "Yes, if the fixture expects it.");
+    await session.bridge!.ack(next.id);
+    const result = await followup;
+    expect(result.currentStepIndex).toBe(2);
+    expect(result.messages.every((message) => message.threadId === root.id)).toBe(true);
+    expect((await loadPersistedSession(stateFile)).messages).toEqual(result.messages);
+    await expect(session.ask("Invalid", undefined, { threadId: "missing" })).rejects.toThrow("Conversation not found");
+    await expect(session.ask("Wrong line", undefined, { anchor: { ...anchor, content: "other" } })).rejects.toThrow("selected code changed");
+    await expect(session.ask("Retarget", undefined, { threadId: root.id, anchor })).rejects.toThrow("original code location");
+    await expect(session.ask("Retarget files", undefined, { threadId: root.id, contextPaths: ["app.ts"] })).rejects.toThrow("original file context");
+  } finally { await session.dispose(); }
+});
+
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });

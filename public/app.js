@@ -13,6 +13,13 @@ const state = {
   deletingCommentId: null,
   busy: false,
   questionPending: false,
+  pendingQuestion: null,
+  activeThreadId: null,
+  questionsOpen: false,
+  questionDrafts: new Map(),
+  questionContextPaths: new Set(),
+  questionPanePercent: 45,
+  mobileAgentPane: "tour",
   navigationDirection: null,
   navigationGeneration: 0,
   activeTab: "diff",
@@ -64,16 +71,19 @@ const state = {
     ? window.localStorage.getItem("review-tour-syntax-theme")
     : "github",
   screenshotUrls: new Map(),
+  diffImageUrls: new Map(),
+  diffImageRequestId: 0,
   filePanelOpen: false,
 };
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-backdrop", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "large-diff-notice", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
-    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-backdrop", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
+    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "selection-pill", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
+    "selection-pill", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -291,6 +301,7 @@ function setBusy(busy, label = "Working…") {
   elements["update-button"].disabled = busy || state.updateInProgress || elements["update-button"].classList.contains("updated");
   elements["refresh-button"].disabled = busy;
   elements["close-button"].disabled = busy;
+  elements["approve-comments-button"].disabled = busy;
   elements["feedback-button"].disabled = busy;
   elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
   elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
@@ -304,11 +315,11 @@ function setBusy(busy, label = "Working…") {
 function renderAgentActivity() {
   const activity = state.session?.agentActivity;
   const visible = Boolean(activity && (state.busy || activity.status === "waiting" || activity.status === "running" || activity.status === "failed"));
-  const followsExistingAnswer = activity?.kind === "review.question"
-    && state.session.messages.some((message) => message.role === "agent");
-  const activityAnchor = followsExistingAnswer ? elements["chat-messages"] : elements["step-explanation"];
+  const isQuestion = activity?.kind === "review.question";
+  const activityAnchor = isQuestion ? elements["chat-messages"] : elements["step-explanation"];
   activityAnchor.insertAdjacentElement("afterend", elements["agent-activity"]);
-  elements["agent-activity"].classList.toggle("hidden", !visible);
+  const otherThread = isQuestion && state.pendingQuestion && state.pendingQuestion.threadId !== state.activeThreadId;
+  elements["agent-activity"].classList.toggle("hidden", !visible || Boolean(otherThread));
   if (!visible) return;
   const renderedActivityId = elements["agent-activity"].dataset.activityId;
   const promptWasOpen = renderedActivityId === activity.id && Boolean(elements["agent-activity-body"].querySelector(".agent-prompt")?.open);
@@ -637,13 +648,13 @@ function renderSplitSide(file, row, side, findings) {
 function renderDiffFileHeader(file, collapsed, fullContent = false) {
   const reviewControls = state.proposalPreview
     ? `<span class="proposal-label">pending suggestion</span>${state.proposalActivityId ? ` · <button class="text-button" type="button" data-preview-activity-action="apply" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Apply</button> · <button class="text-button danger" type="button" data-preview-activity-action="reject" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Reject</button> · ` : " · "}`
-    : `${fullContent ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `;
+    : `${fullContent || isPngDiff(file) ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `;
   const paging = !fullContent && file._page && file._page.totalRows > file._page.limit
     ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · `
     : "";
   return `<header class="diff-file-header">
     <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">⌄</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
-    <span class="file-stats">${reviewControls}${paging}<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span></span>
+    <span class="file-stats">${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}</span>
   </header>`;
 }
 
@@ -665,7 +676,7 @@ function renderDiff(files) {
       return `<section class="diff-file${collapsed ? " collapsed" : ""}" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       ${renderDiffFileHeader(file, collapsed)}
       <div class="diff-file-scroll">
-      ${file.hunks.map((hunk) => `<div class="hunk ${state.diffLayout}-layout">
+      ${isPngDiff(file) ? renderPngDiff(file) : file.hunks.map((hunk) => `<div class="hunk ${state.diffLayout}-layout">
         <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && !file._full && fileContext(file) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${fileContext(file)}">Expand context</button>` : ""}</div>
         ${state.diffLayout === "split"
           ? `<div class="split-resizer" data-split-resizer role="separator" aria-label="Resize old and new diff panes" aria-orientation="vertical" aria-valuemin="${SPLIT_PANE_MIN}" aria-valuemax="${SPLIT_PANE_MAX}" aria-valuenow="${state.splitOldWidth}" aria-valuetext="Old side ${state.splitOldWidth}%, new side ${100 - state.splitOldWidth}%" tabindex="0"></div>${splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings)}${renderSplitSide(file, newRow, "new", findings)}</div>`).join("")}`
@@ -680,6 +691,63 @@ function renderDiff(files) {
   if (selected) selected.tabIndex = 0;
   elements["empty-diff"].classList.toggle("hidden", files.length > 0);
   void highlightRenderedCode();
+  void hydrateDiffImages(files);
+  renderConversationBadges();
+}
+
+function isPngDiff(file) {
+  return /\.png$/i.test(file.path);
+}
+
+function renderPngDiff(file) {
+  if (state.proposalPreview) return '<p class="image-diff-loading">Image preview is unavailable for this pending suggestion.</p>';
+  const sides = [
+    file.oldPath ? ["old", "Before"] : null,
+    file.newPath ? ["new", "After"] : null,
+  ].filter(Boolean);
+  return `<div class="image-diff ${escapeHtml(file.status)}${sides.length === 1 ? " single" : ""}">${sides.map(([side, label]) => `<figure class="image-diff-side ${side}" data-diff-image-path="${escapeHtml(file.path)}" data-diff-image-side="${side}"><div class="image-diff-loading">Loading ${label.toLowerCase()} image…</div><figcaption>${label}</figcaption></figure>`).join("")}</div>`;
+}
+
+async function hydrateDiffImages(files) {
+  const requestId = ++state.diffImageRequestId;
+  const revision = state.session.revision;
+  const visibleKeys = new Set((state.proposalPreview ? [] : files.filter(isPngDiff)).flatMap((file) => [file.oldPath ? `${file.path}:old:${revision}` : null, file.newPath ? `${file.path}:new:${revision}` : null].filter(Boolean)));
+  for (const [key, url] of state.diffImageUrls) {
+    if (!visibleKeys.has(key)) {
+      URL.revokeObjectURL(url);
+      state.diffImageUrls.delete(key);
+    }
+  }
+  const pending = [...elements.diff.querySelectorAll("[data-diff-image-path]")];
+  async function hydrate(figure) {
+    const path = figure.dataset.diffImagePath;
+    const side = figure.dataset.diffImageSide;
+    const key = `${path}:${side}:${revision}`;
+    try {
+      let url = state.diffImageUrls.get(key);
+      if (!url) {
+        const blob = await apiBlob(`/api/diff/image?${new URLSearchParams({ path, side })}`);
+        if (requestId !== state.diffImageRequestId || !figure.isConnected) return;
+        url = URL.createObjectURL(blob);
+        state.diffImageUrls.set(key, url);
+      }
+      const loading = figure.querySelector(".image-diff-loading");
+      if (loading) loading.outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(`${side === "old" ? "Before" : "After"}: ${path}`)}" /></a>`;
+      const img = figure.querySelector("img");
+      if (img) img.onerror = () => {
+        const link = img.closest("a");
+        link.className = "image-diff-loading";
+        link.textContent = "Unable to display this PNG. Open the original image.";
+      };
+    } catch (error) {
+      const loading = figure.querySelector(".image-diff-loading");
+      if (loading) loading.textContent = error.message;
+    }
+  }
+  // Keep large screenshot collections from starting every binary read at once.
+  await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
+    while (pending.length && requestId === state.diffImageRequestId) await hydrate(pending.shift());
+  }));
 }
 
 function syntaxTokenHtml(token) {
@@ -1461,11 +1529,11 @@ function renderActivities() {
 }
 
 function availableTabs() {
-  return ["diff", "call-flows", "sequence", "findings", "activity", ...(state.session?.screenshots?.length ? ["screenshots"] : []), ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "call-flows", "sequence", "findings", "activity", "conversations", ...(state.session?.screenshots?.length ? ["screenshots"] : []), ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "call-flows", "sequence", "findings", "activity", "screenshots", "pull-request"]) {
+  for (const tabName of ["diff", "call-flows", "sequence", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -1602,16 +1670,103 @@ async function focusCurrentStep() {
   target?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
+function conversationThreads() {
+  const threads = new Map();
+  let legacyRoot = null;
+  for (const message of state.session?.messages ?? []) {
+    if (message.role === "user" && !message.threadId) legacyRoot = message.id;
+    const id = message.threadId ?? legacyRoot ?? message.id;
+    if (!threads.has(id)) threads.set(id, { id, root: message, messages: [] });
+    threads.get(id).messages.push(message);
+  }
+  if (state.pendingQuestion) {
+    const pending = state.pendingQuestion;
+    if (!threads.has(pending.threadId)) threads.set(pending.threadId, { id: pending.threadId, root: pending, messages: [] });
+    if (!threads.get(pending.threadId).messages.some((message) => message.id === pending.id)) threads.get(pending.threadId).messages.push(pending);
+  }
+  return [...threads.values()];
+}
+
+function renderQuestionLayout() {
+  const panel = elements["questions-pane"].closest(".agent-panel");
+  const guided = Boolean(state.tourMode && state.session.outline);
+  const open = state.questionsOpen || !guided;
+  panel.classList.toggle("questions-open", open);
+  panel.classList.toggle("questions-only", Boolean(state.session.outline && !guided));
+  panel.dataset.mobilePane = guided ? state.mobileAgentPane : "questions";
+  panel.style.setProperty("--questions-share", String(state.questionPanePercent));
+  panel.style.setProperty("--tour-share", String(100 - state.questionPanePercent));
+  elements["questions-body"].classList.toggle("hidden", !open);
+  elements["questions-toggle"].setAttribute("aria-expanded", String(open));
+  elements["questions-toggle"].disabled = !guided;
+  elements["questions-toggle"].textContent = `${open ? "▾" : "▸"} Questions (${conversationThreads().length})`;
+  elements["questions-resizer"].classList.toggle("hidden", !guided || !open);
+  elements["show-tour-pane"].disabled = !guided;
+  elements["show-tour-pane"].setAttribute("aria-pressed", String(guided && state.mobileAgentPane === "tour"));
+  elements["show-questions-pane"].setAttribute("aria-pressed", String(!guided || state.mobileAgentPane === "questions"));
+}
+
+function openConversation(id = null) {
+  state.questionDrafts.set(state.activeThreadId, { body: elements["chat-input"].value, line: state.selectedLine, contextPaths: [...state.questionContextPaths] });
+  state.activeThreadId = id;
+  const draft = state.questionDrafts.get(id);
+  elements["chat-input"].value = draft?.body ?? "";
+  state.selectedLine = id ? null : draft?.line ?? null;
+  state.questionContextPaths = new Set(id ? [] : draft?.contextPaths ?? []);
+  elements["chat-input"].placeholder = id ? "Follow up on this conversation…" : "Ask about this review or selected code…";
+  state.questionsOpen = true;
+  state.mobileAgentPane = "questions";
+  renderMessages();
+  renderAgentActivity();
+}
+
+function renderConversationBadges() {
+  elements.diff.querySelectorAll(".conversation-badge").forEach((badge) => badge.remove());
+  if (state.proposalPreview) return;
+  for (const thread of conversationThreads()) {
+    const anchor = thread.root.anchor;
+    if (!anchor) continue;
+    const row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"][data-line="${anchor.line}"]`);
+    // Never attach an old conversation to different code at the same line.
+    if (!row || row.dataset.content !== anchor.content) continue;
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = "conversation-badge";
+    badge.dataset.conversation = thread.id;
+    badge.title = compactText(thread.root.body, 160);
+    badge.setAttribute("aria-label", `Open conversation: ${compactText(thread.root.body, 100)}`);
+    badge.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h14v10H8l-5 4V3Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+    row.querySelector(".finding-markers")?.append(badge);
+  }
+}
+
 function renderMessages() {
-  const step = currentStep();
-  const messages = state.session.messages.filter((message) => !message.stepId || message.stepId === step?.id);
-  elements["chat-messages"].innerHTML = messages
+  const threads = conversationThreads();
+  const thread = threads.find((item) => item.id === state.activeThreadId);
+  const messages = thread?.messages ?? [];
+  const content = messages
     .map((message) => `<div class="chat-message ${message.role}" data-message-id="${escapeHtml(message.id)}">${renderMarkdown(message.body)}</div>`)
     .join("");
+  if (elements["chat-messages"].innerHTML !== content) elements["chat-messages"].innerHTML = content;
+  const anchor = thread?.root.anchor;
+  elements["conversation-context"].textContent = anchor ? `Conversation at ${anchor.path}:${anchor.line} (${anchor.side}). Location captured when asked; later edits may move it.` : thread ? "Review conversation" : "Ask a question here, or choose Ask agent on a code line.";
+  const options = '<option value="">New question</option>' + threads.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 80))}</option>`).join("");
+  if (elements["conversation-select"].innerHTML !== options) elements["conversation-select"].innerHTML = options;
+  elements["conversation-select"].value = state.activeThreadId ?? "";
+  elements["conversation-list"].innerHTML = threads.length ? threads.map((item) => `<article class="conversation-card"><button type="button" class="conversation-title" data-conversation="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 180))}</button><p class="muted">${item.root.anchor ? escapeHtml(`${item.root.anchor.path}:${item.root.anchor.line} (${item.root.anchor.side})`) : "Review question"} · ${item.messages.length} messages</p>${item.root.anchor ? `<button type="button" class="text-button" data-conversation-code="${escapeHtml(item.id)}">Show code</button>` : ""}</article>`).join("") : '<p class="empty">No conversations yet. Ask a question from a code line or the Questions pane.</p>';
+  const starting = !thread && !state.questionPending;
+  elements["selection-pill"].classList.toggle("hidden", !starting || !state.selectedLine);
+  elements["selection-pill"].innerHTML = starting && state.selectedLine
+    ? `<span>${escapeHtml(`${state.selectedLine.path}:${state.selectedLine.line} selected`)}</span><button type="button" data-remove-line-context aria-label="Remove selected line from question context">×</button>`
+    : "";
+  elements["question-file-context"].innerHTML = starting ? [...state.questionContextPaths].map((path) => `<span class="question-context-chip"><span>${escapeHtml(path)}</span><button type="button" data-remove-question-file="${escapeHtml(path)}" aria-label="Remove ${escapeHtml(path)} from question context">×</button></span>`).join("") : "";
+  elements["add-question-files"].classList.toggle("hidden", !starting);
+  renderQuestionLayout();
+  renderConversationBadges();
 }
 
 function revealAgentAnswer(questionId) {
-  const scroll = elements["tour-scroll"];
+  const scroll = elements["questions-scroll"];
   const question = elements["chat-messages"].querySelector(`[data-message-id="${CSS.escape(questionId)}"]`);
   const answer = question?.nextElementSibling;
   if (!question || !answer?.classList.contains("agent")) return;
@@ -1630,6 +1785,7 @@ function renderTour() {
   const planning = state.session.tourState === "planning";
   elements["tour-empty"].classList.toggle("hidden", active);
   elements["tour-active"].classList.toggle("hidden", !active);
+  renderMessages();
   if (!outline) {
     elements["tour-empty-title"].textContent = planning ? "Planning your tour" : "Walk through this change";
     elements["tour-empty-description"].textContent = planning
@@ -1673,7 +1829,8 @@ function renderTour() {
   elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
   elements["planning-note-list"].innerHTML = planningNotes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
   elements["previous-step"].disabled = (state.busy && state.navigationDirection !== "next") || !reviewIsOpen() || !state.tourMode || currentStepIndex === 0;
-  elements["next-step"].disabled = state.busy || !reviewIsOpen() || !state.tourMode || currentStepIndex === steps.length - 1;
+  elements["next-step"].disabled = state.busy || !reviewIsOpen() || !state.tourMode;
+  elements["next-step"].textContent = currentStepIndex === steps.length - 1 ? "Finish tour" : "Next";
   renderMessages();
   renderTourAnnotation();
 }
@@ -1743,7 +1900,7 @@ function isInPlaceSessionUpdate(previous, latest) {
   // Explanations and comments can be updated without replacing the diff.
   // Only skip the full render when everything else is unchanged, including
   // the route, selected stop, diff, and review lifecycle.
-  const structuralSnapshot = ({ revision, agentActivity, comments, outline, ...session }) => ({
+  const structuralSnapshot = ({ revision, agentActivity, comments, messages, outline, ...session }) => ({
     ...session,
     outline: outline ? {
       ...outline,
@@ -1799,8 +1956,9 @@ function renderInPlaceSessionUpdate(previous, { closeCommentEditor = false } = {
     elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
   }
   if (commentsChanged) renderComments();
+  if (JSON.stringify(previous.messages) !== JSON.stringify(state.session.messages)) renderMessages();
   if (closeCommentEditor) closeInlineCommentEditor();
-  elements["feedback-button"].classList.toggle("hidden", state.session.comments.length === 0);
+  elements["feedback-button"].classList.remove("hidden");
   renderAgentActivity();
   scroll.scrollTop = scrollTop;
   if (commentsChanged || closeCommentEditor) {
@@ -1858,12 +2016,6 @@ function renderSession() {
     state.diffCacheRevision = state.session.revision;
     if (state.searchQuery) void refreshDiffSearch();
   }
-  elements["large-diff-notice"].classList.toggle("hidden", !large);
-  elements["large-diff-notice"].textContent = large
-    ? state.tourMode
-      ? `Large diff (${comparison.diffRowCount.toLocaleString()} rows): loading all ${filteredChangedFiles().length} files in this phase.`
-      : `Large diff (${comparison.diffRowCount.toLocaleString()} rows): loading one file at a time.`
-    : "";
   renderDiff(visibleDiffFiles());
   if (state.tourMode && large) void ensureTourPhaseDiffs();
   if (!state.tourMode && large && visibleDiffFiles().length === 0 && filteredChangedFiles().length > 0) {
@@ -1884,12 +2036,16 @@ function renderSession() {
   renderPullRequest();
   void renderScreenshots();
   renderActiveTab();
-  elements["feedback-button"].classList.toggle("hidden", comments.length === 0);
+  elements["feedback-button"].classList.remove("hidden");
   const closed = !reviewIsOpen();
   renderClosedBanner();
   elements["refresh-button"].disabled = state.busy || closed;
   elements["close-button"].disabled = state.busy || closed;
-  elements["close-button"].textContent = state.session.preferences?.closeOutcome === "cancelled" ? "Cancel review" : "Close";
+  const cancelOnly = state.session.preferences?.closeOutcome === "cancelled";
+  elements["close-button"].textContent = cancelOnly ? "Cancel review" : "Approve";
+  elements["approve-comments-button"].classList.toggle("hidden", cancelOnly);
+  elements["feedback-button"].classList.toggle("hidden", cancelOnly);
+  elements["approve-comments-button"].disabled = state.busy || closed;
   elements["feedback-button"].disabled = state.busy || closed;
   elements["prefetch-steps"].disabled = closed;
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
@@ -2164,6 +2320,7 @@ function openLineComment(row) {
 }
 
 function askAboutLine(row) {
+  openConversation(null);
   selectLine(row);
   elements["chat-input"].placeholder = `Ask about ${row.dataset.path}:${row.dataset.line}…`;
   elements["chat-input"].focus({ preventScroll: true });
@@ -2310,6 +2467,17 @@ async function askAgent(event) {
   const selectedContext = state.selectedLine
     ? `${state.selectedLine.path}:${state.selectedLine.line} (${state.selectedLine.side})\n${state.selectedLine.content}`
     : undefined;
+  const originalThreadId = state.activeThreadId;
+  const requestThreadId = originalThreadId?.startsWith("local-question-") ? null : originalThreadId;
+  const localId = `local-question-${crypto.randomUUID()}`;
+  const anchor = !requestThreadId && state.selectedLine ? { ...state.selectedLine } : undefined;
+  const contextPaths = !requestThreadId ? [...state.questionContextPaths] : [];
+  state.pendingQuestion = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, anchor, contextPaths };
+  state.activeThreadId = state.pendingQuestion.threadId;
+  state.questionDrafts.delete(originalThreadId);
+  state.questionsOpen = true;
+  state.mobileAgentPane = "questions";
+  renderMessages();
   const previousActivityId = state.session.agentActivity?.id;
   const queuedAt = new Date().toISOString();
   state.expectedAgentActivity = { kind: "review.question", previousActivityId };
@@ -2334,15 +2502,25 @@ async function askAgent(event) {
   elements["chat-form"].querySelector("button").disabled = true;
   renderAgentActivity();
   try {
-    state.session = await api("/api/agent/message", {
+    const response = await api("/api/agent/message", {
       method: "POST",
-      body: JSON.stringify({ body, selectedContext }),
+      body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
     });
+    const previous = state.session;
+    state.session = response;
     answeredQuestionId = [...state.session.messages].reverse().find((message) => message.role === "user" && message.body === body)?.id ?? null;
+    const answered = state.session.messages.find((message) => message.id === answeredQuestionId);
+    if (state.activeThreadId === state.pendingQuestion?.threadId) state.activeThreadId = answered?.threadId ?? answeredQuestionId;
+    state.pendingQuestion = null;
     state.expectedAgentActivity = null;
-    renderSession();
+    renderSessionUpdate(previous);
   } catch (error) {
     state.expectedAgentActivity = null;
+    if (state.activeThreadId === state.pendingQuestion?.threadId) {
+      state.activeThreadId = originalThreadId;
+      elements["chat-input"].value = body;
+    } else state.questionDrafts.set(originalThreadId, { body, line: anchor, contextPaths });
+    state.pendingQuestion = null;
     toast(error.message);
   } finally {
     state.questionPending = false;
@@ -2352,21 +2530,21 @@ async function askAgent(event) {
   }
 }
 
-async function close(outcome) {
+async function close(outcome, decision = outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel", note) {
   if (!reviewIsOpen()) return;
-  if (outcome === "accepted" && state.session.comments.length > 0) {
-    toast("Send feedback & close, or remove all comments before accepting.");
+  if (decision === "approve" && state.session.comments.length > 0) {
+    toast("Use Approve with comments, request changes, or remove all inline comments.");
     return;
   }
   try {
     let result;
     if (state.session.pullRequest && outcome !== "cancelled") {
       const selected = state.session.comments.filter((comment) => comment.publishToGitHub).length;
-      const action = outcome === "accepted" ? "approve" : "request changes on";
+      const action = decision === "approve-with-comments" ? "approve with comments" : outcome === "accepted" ? "approve" : "request changes on";
       if (!window.confirm(`Publish a GitHub review to ${action} ${state.session.pullRequest.repository}#${state.session.pullRequest.number} at ${state.session.pullRequest.headRefOid.slice(0, 8)} with ${selected} selected inline comment(s)?`)) return;
-      result = await api("/api/github/review", { method: "POST", body: JSON.stringify({ outcome, headOid: state.session.pullRequest.headRefOid, confirm: true }) });
+      result = await api("/api/github/review", { method: "POST", body: JSON.stringify({ outcome, decision, note, headOid: state.session.pullRequest.headRefOid, confirm: true }) });
     } else {
-      result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome }) });
+      result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome, decision, note }) });
     }
     const previousStatus = state.session.status;
     state.session = { ...state.session, status: result.status };
@@ -2375,6 +2553,20 @@ async function close(outcome) {
   } catch (error) {
     toast(error.message);
   }
+}
+
+function openReviewDecision(decision) {
+  const requestChanges = decision === "request-changes";
+  elements["review-decision-dialog"].dataset.decision = decision;
+  elements["review-decision-eyebrow"].textContent = requestChanges ? "Changes required" : "Non-blocking review";
+  elements["review-decision-title"].textContent = requestChanges ? "Request changes" : "Approve with comments";
+  elements["review-decision-description"].textContent = requestChanges
+    ? "Explain what must change before this review can be approved. Inline comments will be included too."
+    : "Leave an overall non-blocking note while approving this review. Inline comments will be included too.";
+  elements["submit-review-decision"].textContent = requestChanges ? "Request changes" : "Approve with comments";
+  elements["review-decision-note"].value = "";
+  elements["review-decision-dialog"].showModal();
+  elements["review-decision-note"].focus();
 }
 
 async function refresh() {
@@ -2400,10 +2592,108 @@ elements["tour-intro-dialog"].addEventListener("cancel", (event) => event.preven
 elements["close-architecture-viewer"].addEventListener("click", () => elements["architecture-viewer-dialog"].close());
 elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
-elements["next-step"].addEventListener("click", () => navigate("next"));
+elements["next-step"].addEventListener("click", () => {
+  const steps = state.session.outline?.phases.flatMap((phase) => phase.steps) ?? [];
+  if (steps.length && state.session.currentStepIndex === steps.length - 1) {
+    state.questionsOpen = true;
+    void toggleTourMode();
+  } else void navigate("next");
+});
+elements["questions-toggle"].addEventListener("click", () => {
+  state.questionsOpen = !state.questionsOpen;
+  renderQuestionLayout();
+});
+elements["new-question"].addEventListener("click", () => { openConversation(); elements["chat-input"].focus({ preventScroll: true }); });
+elements["conversation-select"].addEventListener("change", (event) => openConversation(event.target.value || null));
+elements["selection-pill"].addEventListener("click", (event) => {
+  if (!event.target.closest("[data-remove-line-context]")) return;
+  state.selectedLine = null;
+  renderMessages();
+});
+elements["question-file-context"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-question-file]");
+  if (!button) return;
+  state.questionContextPaths.delete(button.dataset.removeQuestionFile);
+  renderMessages();
+});
+function renderQuestionFilePicker() {
+  const query = elements["question-files-search"].value.trim().toLowerCase();
+  const files = state.session.comparison.repositoryFiles.filter((path) => !query || path.toLowerCase().includes(query));
+  const root = { directories: new Map(), files: [] };
+  for (const path of files) {
+    const parts = path.split("/");
+    const name = parts.pop();
+    let node = root;
+    for (const part of parts) {
+      if (!node.directories.has(part)) node.directories.set(part, { directories: new Map(), files: [] });
+      node = node.directories.get(part);
+    }
+    node.files.push({ name, path });
+  }
+  const renderNode = (node) => [
+    ...[...node.directories.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, child]) => `<details ${query ? "open" : ""}><summary>${escapeHtml(name)}</summary><div>${renderNode(child)}</div></details>`),
+    ...node.files.sort((a, b) => a.name.localeCompare(b.name)).map(({ name, path }) => `<label><input type="checkbox" value="${escapeHtml(path)}" ${state.questionContextPaths.has(path) ? "checked" : ""} /><span>${escapeHtml(name)}</span></label>`),
+  ].join("");
+  elements["question-files-tree"].innerHTML = files.length ? renderNode(root) : '<p class="empty">No repository files match this filter.</p>';
+}
+elements["add-question-files"].addEventListener("click", () => {
+  elements["question-files-search"].value = "";
+  renderQuestionFilePicker();
+  elements["question-files-dialog"].showModal();
+  elements["question-files-search"].focus();
+});
+elements["question-files-search"].addEventListener("input", renderQuestionFilePicker);
+elements["cancel-question-files"].addEventListener("click", () => elements["question-files-dialog"].close());
+elements["question-files-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  const selected = [...elements["question-files-tree"].querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+  const visible = new Set([...elements["question-files-tree"].querySelectorAll('input[type="checkbox"]')].map((input) => input.value));
+  const next = new Set([...state.questionContextPaths].filter((path) => !visible.has(path)));
+  for (const path of selected) next.add(path);
+  if (next.size > 8) { toast("Choose at most 8 files for one question."); return; }
+  state.questionContextPaths = next;
+  elements["question-files-dialog"].close();
+  renderMessages();
+});
+elements["show-tour-pane"].addEventListener("click", () => { state.mobileAgentPane = "tour"; renderQuestionLayout(); });
+elements["show-questions-pane"].addEventListener("click", () => { state.mobileAgentPane = "questions"; state.questionsOpen = true; renderQuestionLayout(); });
+function resizeQuestions(percent) {
+  state.questionPanePercent = Math.max(25, Math.min(70, percent));
+  elements["questions-resizer"].setAttribute("aria-valuenow", String(Math.round(state.questionPanePercent)));
+  renderQuestionLayout();
+}
+elements["questions-resizer"].addEventListener("keydown", (event) => {
+  if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  resizeQuestions(event.key === "Home" ? 25 : event.key === "End" ? 70 : state.questionPanePercent + (event.key === "ArrowUp" ? 5 : -5));
+});
+elements["questions-resizer"].addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const separator = event.currentTarget;
+  const startY = event.clientY;
+  const startPercent = state.questionPanePercent;
+  const height = elements["questions-pane"].getBoundingClientRect().height + elements["tour-active"].getBoundingClientRect().height;
+  separator.setPointerCapture(event.pointerId);
+  const move = (next) => resizeQuestions(startPercent + (startY - next.clientY) / height * 100);
+  const end = () => { separator.removeEventListener("pointermove", move); separator.removeEventListener("pointerup", end); separator.removeEventListener("pointercancel", end); };
+  separator.addEventListener("pointermove", move);
+  separator.addEventListener("pointerup", end);
+  separator.addEventListener("pointercancel", end);
+});
 elements["chat-form"].addEventListener("submit", askAgent);
-elements["close-button"].addEventListener("click", () => close(state.session.preferences?.closeOutcome ?? "accepted"));
-elements["feedback-button"].addEventListener("click", () => close("feedback"));
+elements["close-button"].addEventListener("click", () => state.session.preferences?.closeOutcome === "cancelled" ? close("cancelled", "cancel") : close("accepted", "approve"));
+elements["approve-comments-button"].addEventListener("click", () => openReviewDecision("approve-with-comments"));
+elements["feedback-button"].addEventListener("click", () => openReviewDecision("request-changes"));
+elements["cancel-review-decision"].addEventListener("click", () => elements["review-decision-dialog"].close());
+elements["review-decision-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  const decision = elements["review-decision-dialog"].dataset.decision;
+  const note = elements["review-decision-note"].value.trim();
+  if (!note) return;
+  elements["review-decision-dialog"].close();
+  void close(decision === "request-changes" ? "feedback" : "accepted", decision, note);
+});
 elements["refresh-button"].addEventListener("click", refresh);
 document.addEventListener("pointerdown", (event) => {
   if (elements["settings-menu"].open && !elements["settings-menu"].contains(event.target)) {
@@ -2643,6 +2933,14 @@ elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequ
 elements["findings-tab"].addEventListener("click", () => activateReviewTab("findings", renderFindings));
 elements["findings-back"].addEventListener("click", returnToFindingCode);
 elements["activity-tab"].addEventListener("click", () => activateReviewTab("activity", renderActivities));
+elements["conversations-tab"].addEventListener("click", () => activateReviewTab("conversations", renderMessages));
+elements["conversation-list"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-conversation], [data-conversation-code]");
+  if (!button) return;
+  if (button.dataset.conversation) { openConversation(button.dataset.conversation); return; }
+  const anchor = conversationThreads().find((thread) => thread.id === button.dataset.conversationCode)?.root.anchor;
+  if (anchor) void showAnalysisFile(anchor.path, anchor.line, anchor.side);
+});
 elements["screenshots-tab"].addEventListener("click", () => activateReviewTab("screenshots", renderScreenshots));
 elements["pull-request-tab"].addEventListener("click", () => activateReviewTab("pull-request", renderPullRequest));
 elements.flows.addEventListener("click", (event) => {
@@ -2759,6 +3057,7 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
     : nextTab === "sequence" ? renderSequenceDiagrams
       : nextTab === "findings" ? renderFindings
       : nextTab === "activity" ? renderActivities
+        : nextTab === "conversations" ? renderMessages
           : nextTab === "screenshots" ? renderScreenshots
           : nextTab === "pull-request" ? renderPullRequest
             : null;
@@ -2822,6 +3121,8 @@ elements.diff.addEventListener("submit", (event) => {
 });
 
 elements.diff.addEventListener("click", (event) => {
+  const conversation = event.target.closest("[data-conversation]");
+  if (conversation) { event.stopPropagation(); openConversation(conversation.dataset.conversation); return; }
   const previewAction = event.target.closest("[data-preview-activity-action]");
   if (previewAction) {
     void performActivityAction(previewAction.dataset.previewActivityId, previewAction.dataset.previewActivityAction);

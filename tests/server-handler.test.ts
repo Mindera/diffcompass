@@ -101,6 +101,22 @@ test("in-process handler serves bundled Mermaid with the hardened browser policy
   expect((await response.text()).length).toBeGreaterThan(1_000_000);
 });
 
+test("review shell permits authenticated video blobs without loosening script or connection policy", async () => {
+  const { session, fetch } = fixture();
+  const response = await fetch(new Request(`http://127.0.0.1/?token=${session.browserToken}`));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("text/html");
+  const policy = response.headers.get("content-security-policy")!;
+  const directives = new Map(policy.split(";").map((directive) => {
+    const [name, ...sources] = directive.trim().split(/\s+/);
+    return [name, sources];
+  }));
+  expect(directives.get("media-src")).toEqual(["'self'", "blob:"]);
+  expect(directives.get("script-src")).toEqual(["'self'"]);
+  expect(directives.get("connect-src")).toEqual(["'self'"]);
+  expect(directives.get("object-src")).toEqual(["'none'"]);
+});
+
 test("in-process handler authenticates, bounds, and returns dual-theme highlight tokens", async () => {
   const { session, fetch } = fixture();
   const unauthorized = await fetch(new Request("http://127.0.0.1/api/highlight", {

@@ -155,6 +155,8 @@ function validPullRequest(value: unknown): boolean {
     typeof value.threadsTruncated === "boolean" && nonEmptyString(value.updatedAt, 64) &&
     (publication === undefined || (record(publication) && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(publication.intentId)) &&
       ["accepted", "feedback"].includes(String(publication.outcome)) && Array.isArray(publication.commentIds) && publication.commentIds.length <= 10_000 &&
+      (publication.decision === undefined || ["approve", "approve-with-comments", "request-changes", "cancel"].includes(String(publication.decision))) &&
+      (publication.note === undefined || nonEmptyString(publication.note, 8_000)) &&
       publication.commentIds.every((id) => nonEmptyString(id, 128)) && new Set(publication.commentIds).size === publication.commentIds.length &&
       ["pending", "published"].includes(String(publication.status)) && (publication.reviewId === undefined || nonEmptyString(publication.reviewId, 500)) &&
       (publication.url === undefined || nonEmptyString(publication.url, 4_096))));
@@ -163,6 +165,12 @@ function validPullRequest(value: unknown): boolean {
 function validMessage(value: unknown): boolean {
   return record(value) && nonEmptyString(value.id, 128) && ["user", "agent"].includes(String(value.role)) &&
     nonEmptyString(value.body, 500_000) && (value.stepId === undefined || nonEmptyString(value.stepId, 128)) &&
+    (value.threadId === undefined || nonEmptyString(value.threadId, 128)) &&
+    (value.anchor === undefined || (record(value.anchor) && nonEmptyString(value.anchor.path, 4096) &&
+      ["old", "new"].includes(String(value.anchor.side)) && Number.isInteger(value.anchor.line) && Number(value.anchor.line) > 0 &&
+      typeof value.anchor.content === "string" && value.anchor.content.length <= 16000)) &&
+    (value.contextPaths === undefined || (Array.isArray(value.contextPaths) && value.contextPaths.length <= 8 &&
+      value.contextPaths.every((path) => nonEmptyString(path, 4096)) && new Set(value.contextPaths).size === value.contextPaths.length)) &&
     nonEmptyString(value.createdAt, 64);
 }
 
@@ -233,6 +241,8 @@ function validTerminalEvent(value: unknown): boolean {
   return record(value) && Number.isInteger(value.sequence) && Number(value.sequence) > 0 &&
     nonEmptyString(value.id, 128) && value.type === "review.closed" &&
     ["accepted", "feedback", "cancelled"].includes(String(value.outcome)) &&
+    (value.decision === undefined || ["approve", "approve-with-comments", "request-changes", "cancel"].includes(String(value.decision))) &&
+    (value.note === undefined || nonEmptyString(value.note, 8_000)) &&
     Array.isArray(value.comments) && value.comments.length <= 10_000 && value.comments.every(validComment) &&
     (value.reviewedTree === undefined || (value.outcome === "feedback" && /^[0-9a-f]{40,64}$/.test(String(value.reviewedTree)))) &&
     nonEmptyString(value.createdAt, 64) && typeof value.acknowledged === "boolean";
