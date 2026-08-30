@@ -17,13 +17,31 @@ test("review navigation exposes expanded changed paths and a full repository mod
   expect(app).toContain("renderTreeNode(treeFromFiles(repositoryFiles, changedFiles))");
   expect(html).toContain('id="file-resizer"');
   expect(html).toContain('id="agent-resizer"');
+  expect(html).toContain('id="file-panel-collapse"');
+  expect(html).toContain('id="agent-panel-collapse"');
   expect(app).toContain("setFilePanelWidth(fileResizeStart.width + event.clientX - fileResizeStart.x)");
   expect(app).toContain("setAgentPanelWidth(agentResizeStart.width + agentResizeStart.x - event.clientX)");
   expect(app).toContain("state.session.pullRequest?.sourceRepositoryRoot ?? state.session.comparison.repositoryRoot");
   expect(styles).toContain("grid-template-columns: var(--file-panel-width)");
   expect(styles).toContain("var(--agent-panel-width)");
+  expect(styles).toContain(".workspace.file-pane-collapsed");
+  expect(styles).toContain(".workspace.agent-pane-collapsed");
+  expect(app).toContain('setPaneCollapsed("file", !state.filePanelCollapsed, true)');
+  expect(app).toContain('setPaneCollapsed("agent", !state.agentPanelCollapsed, true)');
   expect(app).not.toContain('id="changed-only"');
   expect(styles).toContain(".count, .mode { flex: 0 0 auto; white-space: nowrap;");
+});
+
+test("the file pane starts on unreviewed files and has clearer hierarchy controls", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('<option value="unreviewed" selected>Unreviewed</option>');
+  expect(app).toContain('reviewFilter: "unreviewed"');
+  expect(styles).toContain('font-size: 17px; font-weight: 800;');
+  expect(styles).toContain('.tree-children { margin-left: 10px; border-left: 1px solid var(--border-soft);');
 });
 
 test("narrow layouts expose the changed files as a dismissible drawer", async () => {
@@ -558,7 +576,8 @@ test("marking a file reviewed collapses its diff while keeping the header availa
   expect(app).toContain('aria-expanded="${!collapsed}"');
   expect(app).toContain("state.collapsedFiles.delete(path);");
   expect(styles).toContain(".diff-file.collapsed .diff-file-scroll { display: none; }");
-  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: rotate(-90deg); }");
+  expect(styles).toContain(".collapse-caret { position: absolute; left: 12px; top: 50%;");
+  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: translateY(-50%) rotate(-90deg); }");
 });
 
 test("file headers stick to the diff viewport while their file is visible", async () => {

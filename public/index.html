@@ -91,6 +91,7 @@
           </div>
           <div class="file-panel-heading-actions">
             <span id="file-count" class="count"></span>
+            <button id="file-panel-collapse" class="pane-collapse" type="button" aria-label="Collapse changed files" aria-expanded="true" aria-controls="file-panel" title="Collapse changed files">‹</button>
             <button id="file-panel-close" class="file-panel-close" type="button" aria-label="Close changed files">×</button>
           </div>
         </div>
@@ -101,7 +102,7 @@
               <option value="">All statuses</option><option value="modified">Modified</option><option value="added">Added</option><option value="deleted">Deleted</option><option value="renamed">Renamed</option>
             </select></label>
             <label><span class="sr-only">Review status</span><select id="review-filter" aria-label="Filter by review status">
-              <option value="">All files</option><option value="unreviewed">Unreviewed</option><option value="reviewed">Reviewed</option>
+              <option value="unreviewed" selected>Unreviewed</option><option value="">All files</option><option value="reviewed">Reviewed</option>
             </select></label>
           </div>
           <button id="test-files-filter" class="file-filter-toggle" type="button" aria-pressed="false">
@@ -110,7 +111,7 @@
           </button>
         </div>
         <div id="file-tree" class="file-tree"></div>
-        <div id="file-resizer" class="file-resizer" role="separator" aria-label="Resize file tree" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="480" aria-valuenow="240" tabindex="0"></div>
+        <div id="file-resizer" class="file-resizer" role="separator" aria-label="Resize file tree" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="480" aria-valuenow="240" tabindex="0"></div>
       </aside>
 
       <section id="diff-panel" class="diff-panel">
@@ -180,14 +181,17 @@
         <button id="current-step-return" class="button current-step-return hidden" type="button">↩ Current step</button>
       </section>
 
-      <aside class="agent-panel">
-        <div id="agent-resizer" class="agent-resizer" role="separator" aria-label="Resize agent pane" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="720" aria-valuenow="420" tabindex="0"></div>
+      <aside id="agent-panel" class="agent-panel">
+        <div id="agent-resizer" class="agent-resizer" role="separator" aria-label="Resize agent pane" aria-orientation="vertical" aria-valuemin="360" aria-valuemax="720" aria-valuenow="420" tabindex="0"></div>
         <div class="agent-heading">
           <div>
             <div class="eyebrow">Tour agent</div>
             <strong id="agent-name">Choose agent</strong>
           </div>
-          <span id="agent-mode" class="mode">read-only</span>
+          <div class="agent-heading-actions">
+            <span id="agent-mode" class="mode">read-only</span>
+            <button id="agent-panel-collapse" class="pane-collapse" type="button" aria-label="Collapse agent pane" aria-expanded="true" aria-controls="agent-panel" title="Collapse agent pane">›</button>
+          </div>
         </div>
 
         <div id="tour-empty" class="tour-empty">

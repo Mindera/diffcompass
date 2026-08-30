@@ -43,7 +43,7 @@ const state = {
   searchRequestId: 0,
   searchTimer: null,
   statusFilter: "",
-  reviewFilter: "",
+  reviewFilter: "unreviewed",
   testFilesOnly: false,
   preferenceRepository: null,
   treeMode: null,
@@ -52,6 +52,8 @@ const state = {
   renderedDiffFiles: [],
   filePanelWidth: 240,
   agentPanelWidth: 420,
+  filePanelCollapsed: false,
+  agentPanelCollapsed: false,
   splitOldWidth: 50,
   renderedPhaseId: null,
   tourMode: null,
@@ -80,7 +82,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-backdrop", "file-resizer", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
@@ -423,10 +425,11 @@ function preferredDiffWrap() {
   return ["scroll", "wrap"].includes(saved) ? saved : "scroll";
 }
 
-const FILE_PANEL_MIN = 180;
+const FILE_PANEL_MIN = 220;
 const FILE_PANEL_MAX = 480;
-const AGENT_PANEL_MIN = 320;
+const AGENT_PANEL_MIN = 360;
 const AGENT_PANEL_MAX = 720;
+const COLLAPSED_PANE_WIDTH = 40;
 const SPLIT_PANE_MIN = 20;
 const SPLIT_PANE_MAX = 80;
 
@@ -435,7 +438,8 @@ function diffPanelMinimum() {
 }
 
 function setFilePanelWidth(value, persist = false) {
-  const viewportLimit = Math.max(FILE_PANEL_MIN, Math.min(FILE_PANEL_MAX, window.innerWidth - state.agentPanelWidth - diffPanelMinimum()));
+  const agentWidth = state.agentPanelCollapsed ? COLLAPSED_PANE_WIDTH : state.agentPanelWidth;
+  const viewportLimit = Math.max(FILE_PANEL_MIN, Math.min(FILE_PANEL_MAX, window.innerWidth - agentWidth - diffPanelMinimum()));
   const width = Math.round(Math.max(FILE_PANEL_MIN, Math.min(viewportLimit, value)));
   state.filePanelWidth = width;
   elements.workspace.style.setProperty("--file-panel-width", `${width}px`);
@@ -445,12 +449,33 @@ function setFilePanelWidth(value, persist = false) {
 }
 
 function setAgentPanelWidth(value, persist = false) {
-  const viewportLimit = Math.max(AGENT_PANEL_MIN, Math.min(AGENT_PANEL_MAX, window.innerWidth - state.filePanelWidth - diffPanelMinimum()));
+  const fileWidth = state.filePanelCollapsed ? COLLAPSED_PANE_WIDTH : state.filePanelWidth;
+  const viewportLimit = Math.max(AGENT_PANEL_MIN, Math.min(AGENT_PANEL_MAX, window.innerWidth - fileWidth - diffPanelMinimum()));
   const width = Math.round(Math.max(AGENT_PANEL_MIN, Math.min(viewportLimit, value)));
   state.agentPanelWidth = width;
   elements.workspace.style.setProperty("--agent-panel-width", `${width}px`);
   elements["agent-resizer"].setAttribute("aria-valuenow", String(width));
   if (persist) window.localStorage.setItem(preferenceKey("agent-panel-width"), String(width));
+  scheduleCurrentStepReturnUpdate();
+}
+
+function setPaneCollapsed(side, collapsed, persist = false) {
+  const isFilePane = side === "file";
+  const stateKey = isFilePane ? "filePanelCollapsed" : "agentPanelCollapsed";
+  const className = isFilePane ? "file-pane-collapsed" : "agent-pane-collapsed";
+  const button = elements[isFilePane ? "file-panel-collapse" : "agent-panel-collapse"];
+  const label = isFilePane ? "changed files" : "agent pane";
+  state[stateKey] = Boolean(collapsed);
+  elements.workspace.classList.toggle(className, state[stateKey]);
+  button.setAttribute("aria-expanded", String(!state[stateKey]));
+  button.setAttribute("aria-label", `${state[stateKey] ? "Expand" : "Collapse"} ${label}`);
+  button.title = `${state[stateKey] ? "Expand" : "Collapse"} ${label}`;
+  button.textContent = isFilePane
+    ? (state[stateKey] ? "›" : "‹")
+    : (state[stateKey] ? "‹" : "›");
+  if (persist) window.localStorage.setItem(preferenceKey(`${side}-panel-collapsed`), String(state[stateKey]));
+  setAgentPanelWidth(state.agentPanelWidth);
+  setFilePanelWidth(state.filePanelWidth);
   scheduleCurrentStepReturnUpdate();
 }
 
@@ -472,6 +497,8 @@ function initializeUiPreferences() {
   const savedTreeMode = window.localStorage.getItem(preferenceKey("tree-mode"));
   const savedFilePanelWidth = Number(window.localStorage.getItem(preferenceKey("file-panel-width")));
   const savedAgentPanelWidth = Number(window.localStorage.getItem(preferenceKey("agent-panel-width")));
+  const savedFilePanelCollapsed = window.localStorage.getItem(preferenceKey("file-panel-collapsed")) === "true";
+  const savedAgentPanelCollapsed = window.localStorage.getItem(preferenceKey("agent-panel-collapsed")) === "true";
   const savedSplitOldWidth = Number(window.localStorage.getItem(preferenceKey("split-old-width")));
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = preferredDiffLayout();
@@ -483,6 +510,8 @@ function initializeUiPreferences() {
       : state.session.preferences?.changedFilesOnly ? "changes" : "repository";
   setFilePanelWidth(Number.isFinite(savedFilePanelWidth) && savedFilePanelWidth > 0 ? savedFilePanelWidth : 240);
   setAgentPanelWidth(Number.isFinite(savedAgentPanelWidth) && savedAgentPanelWidth > 0 ? savedAgentPanelWidth : 420);
+  setPaneCollapsed("file", savedFilePanelCollapsed);
+  setPaneCollapsed("agent", savedAgentPanelCollapsed);
   setSplitOldWidth(Number.isFinite(savedSplitOldWidth) && savedSplitOldWidth > 0 ? savedSplitOldWidth : 50);
   setFilePanelWidth(state.filePanelWidth);
 }
@@ -2906,6 +2935,8 @@ document.addEventListener("pointerdown", (event) => {
 });
 elements["file-panel-toggle"].addEventListener("click", () => setFilePanelOpen(!state.filePanelOpen));
 elements["file-panel-close"].addEventListener("click", () => setFilePanelOpen(false, { restoreFocus: true }));
+elements["file-panel-collapse"].addEventListener("click", () => setPaneCollapsed("file", !state.filePanelCollapsed, true));
+elements["agent-panel-collapse"].addEventListener("click", () => setPaneCollapsed("agent", !state.agentPanelCollapsed, true));
 elements["file-panel-backdrop"].addEventListener("click", () => setFilePanelOpen(false, { restoreFocus: true }));
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.filePanelOpen) setFilePanelOpen(false, { restoreFocus: true });
