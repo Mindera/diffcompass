@@ -48,6 +48,8 @@ const state = {
   preferenceRepository: null,
   treeMode: null,
   diffLayout: null,
+  diffWrap: "scroll",
+  renderedDiffFiles: [],
   filePanelWidth: 240,
   agentPanelWidth: 420,
   splitOldWidth: 50,
@@ -412,6 +414,15 @@ function preferredDiffLayout() {
   return narrowFilePanelLayout() ? "unified" : state.session.preferences?.diffLayout ?? "split";
 }
 
+function diffWrapPreferenceKey() {
+  return preferenceKey(narrowFilePanelLayout() ? "mobile-diff-wrap" : "diff-wrap");
+}
+
+function preferredDiffWrap() {
+  const saved = window.localStorage.getItem(diffWrapPreferenceKey());
+  return ["scroll", "wrap"].includes(saved) ? saved : "scroll";
+}
+
 const FILE_PANEL_MIN = 180;
 const FILE_PANEL_MAX = 480;
 const AGENT_PANEL_MIN = 320;
@@ -464,6 +475,7 @@ function initializeUiPreferences() {
   const savedSplitOldWidth = Number(window.localStorage.getItem(preferenceKey("split-old-width")));
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = preferredDiffLayout();
+  state.diffWrap = preferredDiffWrap();
   state.treeMode = ["changes", "repository"].includes(savedTreeMode)
     ? savedTreeMode
     : legacyChangedOnly !== null
@@ -516,9 +528,7 @@ function renderChangedFileEntry(file, label, flat = false) {
 }
 
 function renderChangedPathList(files) {
-  return [...files].sort((left, right) => left.path.localeCompare(right.path))
-    .map((file) => renderChangedFileEntry(file, file.path, true))
-    .join("");
+  return renderTreeNode(treeFromFiles(files.map((file) => file.path), files), 0, true);
 }
 
 function isTestFile(path) {
@@ -532,7 +542,7 @@ function isTestFile(path) {
   return testDirectory || testFilename;
 }
 
-function renderTreeNode(node, depth = 0, expandAll = false) {
+function renderTreeNode(node, depth = 0, expandAll = false, parentPath = "") {
   return Object.entries(node)
     .sort(([a, av], [b, bv]) => Number(Boolean(av.__file)) - Number(Boolean(bv.__file)) || a.localeCompare(b))
     .map(([name, value]) => {
@@ -541,7 +551,18 @@ function renderTreeNode(node, depth = 0, expandAll = false) {
         if (!file.changed) return `<button class="file-button unchanged" data-source="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span class="file-name">${escapeHtml(name)}</span></button>`;
         return renderChangedFileEntry(file.changed, name);
       }
-      return `<details class="tree-directory" ${expandAll || depth === 0 ? "open" : ""}><summary>${escapeHtml(name)}</summary><div class="tree-children">${renderTreeNode(value, depth + 1, expandAll)}</div></details>`;
+      // Keep real branches, but don't make reviewers open each directory in
+      // a single-child chain just to reach its files.
+      let label = name;
+      let directory = value;
+      while (Object.keys(directory).length === 1) {
+        const [childName, child] = Object.entries(directory)[0];
+        if (child.__file) break;
+        label += `/${childName}`;
+        directory = child;
+      }
+      const path = parentPath ? `${parentPath}/${label}` : label;
+      return `<details class="tree-directory" ${expandAll || depth === 0 ? "open" : ""}><summary title="${escapeHtml(path)}"><span class="tree-directory-path">${escapeHtml(label)}</span></summary><div class="tree-children">${renderTreeNode(directory, depth + 1, expandAll, path)}</div></details>`;
     })
     .join("");
 }
@@ -623,31 +644,84 @@ function whitespaceChangedRows(rows) {
   return marked;
 }
 
-function diffCodeHtml(content, marked = false, tokens = null) {
+function inlineChangedRanges(before, after, budget = { remaining: 200_000 }) {
+  if (before === after) return [[], []];
+  const tokenize = (text) => [...text.matchAll(/[\p{L}\p{N}_]+|[ \t]+|[^\s]/gu)].map(match => ({text: match[0], start: match.index, end: match.index + match[0].length}));
+  const oldTokens = tokenize(before), newTokens = tokenize(after);
+  let start = 0, oldEnd = oldTokens.length, newEnd = newTokens.length;
+  while (start < oldEnd && start < newEnd && oldTokens[start].text === newTokens[start].text) start++;
+  while (oldEnd > start && newEnd > start && oldTokens[oldEnd - 1].text === newTokens[newEnd - 1].text) { oldEnd--; newEnd--; }
+  const oldPart = oldTokens.slice(start, oldEnd), newPart = newTokens.slice(start, newEnd);
+  const wholeRange = (tokens) => tokens.length ? [[tokens[0].start, tokens.at(-1).end]] : [];
+  const cost = (oldPart.length + 1) * (newPart.length + 1);
+  // Bound work on generated/minified lines and large replacement blocks.
+  if (cost > 100_000 || cost > budget.remaining) return [wholeRange(oldPart), wholeRange(newPart)];
+  budget.remaining -= cost;
+  const table = Array.from({length: oldPart.length + 1}, () => new Uint32Array(newPart.length + 1));
+  for (let i = oldPart.length - 1; i >= 0; i--) {
+    for (let j = newPart.length - 1; j >= 0; j--) {
+      table[i][j] = oldPart[i].text === newPart[j].text ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  const oldRanges = [], newRanges = [];
+  const add = (ranges, token) => {
+    if (ranges.at(-1)?.[1] === token.start) ranges.at(-1)[1] = token.end;
+    else ranges.push([token.start, token.end]);
+  };
+  let i = 0, j = 0;
+  while (i < oldPart.length || j < newPart.length) {
+    if (i < oldPart.length && j < newPart.length && oldPart[i].text === newPart[j].text) { i++; j++; }
+    else if (i < oldPart.length && (j === newPart.length || table[i + 1][j] >= table[i][j + 1])) add(oldRanges, oldPart[i++]);
+    else add(newRanges, newPart[j++]);
+  }
+  return [oldRanges, newRanges];
+}
+
+function inlineChangesForRows(rows) {
+  const changes = new Map();
+  const budget = {remaining: 200_000};
+  for (const [oldRow, newRow] of splitRows(rows)) {
+    if (oldRow?.kind !== "deletion" || newRow?.kind !== "addition") continue;
+    const [oldRanges, newRanges] = inlineChangedRanges(oldRow.content, newRow.content, budget);
+    changes.set(oldRow, oldRanges);
+    changes.set(newRow, newRanges);
+  }
+  return changes;
+}
+
+function diffCodeHtml(content, marked = false, tokens = null, ranges = []) {
   const leading = content.match(/^[ \t]*/)[0].length;
   const trailing = content.length - content.match(/[ \t]*$/)[0].length;
   let offset = 0;
+  let rangeIndex = 0;
   const render = (text) => {
-    const html = marked ? [...text].map((character) => {
+    let inChange = false;
+    let html = "";
+    for (const character of text) {
+      while (rangeIndex < ranges.length && ranges[rangeIndex][1] <= offset) rangeIndex++;
+      const changed = rangeIndex < ranges.length && ranges[rangeIndex][0] <= offset;
+      if (changed !== inChange) html += changed ? '<span class="inline-change">' : '</span>';
+      inChange = changed;
       const edge = offset < leading || offset >= trailing;
       offset += character.length;
-      return edge && /[ \t]/.test(character)
+      html += marked && edge && /[ \t]/.test(character)
         ? `<span class="diff-whitespace" data-symbol="${character === "\t" ? "→" : "·"}">${character}</span>`
         : escapeHtml(character);
-    }).join("") : escapeHtml(text);
+    }
+    if (inChange) html += '</span>';
     return html;
   };
   return tokens ? tokens.map((token) => syntaxTokenHtml(token, render(token.content))).join("") || " " : render(content) || " ";
 }
 
-function renderUnifiedRow(file, row, findings, whitespaceOnly = false) {
+function renderUnifiedRow(file, row, findings, whitespaceOnly = false, ranges = []) {
   const line = rowLine(row);
   const side = rowSide(row);
   const prefix = row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " ";
-  return `<div class="diff-row ${row.kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(row.content)}">
-    <span class="line-number">${row.oldLine ?? ""}</span><span class="line-number">${row.newLine ?? ""}</span>
+  return `<div class="diff-row ${row.kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-old-line="${row.oldLine ?? ""}" data-new-line="${row.newLine ?? ""}" data-content="${escapeHtml(row.content)}">
+    <span class="line-number" title="Old: ${row.oldLine ?? "—"} · New: ${row.newLine ?? "—"}">${line ?? ""}</span>
     <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
-    <span class="finding-markers">${findingPins(file, row, side, findings)}</span><pre class="line-code"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(row.content, whitespaceOnly)}</pre>${lineTools(file, side, line)}
+    <span class="finding-markers">${findingPins(file, row, side, findings)}</span><pre class="line-code" data-inline-ranges="${escapeHtml(JSON.stringify(ranges))}"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(row.content, whitespaceOnly, null, ranges)}</pre>${lineTools(file, side, line)}
   </div>`;
 }
 
@@ -674,7 +748,7 @@ function splitRows(rows) {
   return pairs;
 }
 
-function renderSplitSide(file, row, side, findings, whitespaceOnly = false) {
+function renderSplitSide(file, row, side, findings, whitespaceOnly = false, ranges = []) {
   const line = side === "old" ? row?.oldLine : row?.newLine;
   const content = row?.content ?? "";
   const kind = row?.kind ?? "split-empty";
@@ -682,7 +756,7 @@ function renderSplitSide(file, row, side, findings, whitespaceOnly = false) {
   return `<div class="diff-row split-side ${kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(content)}">
     <span class="line-number">${line ?? ""}</span>
     <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
-    <span class="finding-markers">${row ? findingPins(file, row, side, findings) : ""}</span><pre class="line-code"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(content, whitespaceOnly)}</pre>${lineTools(file, side, line)}
+    <span class="finding-markers">${row ? findingPins(file, row, side, findings) : ""}</span><pre class="line-code" data-inline-ranges="${escapeHtml(JSON.stringify(ranges))}"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(content, whitespaceOnly, null, ranges)}</pre>${lineTools(file, side, line)}
   </div>`;
 }
 
@@ -711,6 +785,8 @@ function revealCodeLocation(path, side, line, { smooth = true } = {}) {
 }
 
 function renderDiff(files) {
+  state.renderedDiffFiles = files;
+  syncDiffViewControls();
   const findings = state.proposalPreview ? [] : state.session.outline?.findings ?? [];
   elements.diff.innerHTML = files
     .map((file) => {
@@ -720,12 +796,13 @@ function renderDiff(files) {
       <div class="diff-file-scroll">
       ${isPngDiff(file) ? renderPngDiff(file) : file.hunks.map((hunk) => {
         const whitespaceRows = whitespaceChangedRows(hunk.rows);
+        const inlineChanges = inlineChangesForRows(hunk.rows);
         return `<div class="hunk ${state.diffLayout}-layout">
         <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && !file._full && fileContext(file) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${fileContext(file)}">Expand context</button>` : ""}</div>
         ${whitespaceRows.size ? `<div class="whitespace-summary">${whitespaceRows.size / 2} line pair${whitespaceRows.size === 2 ? "" : "s"}: only leading/trailing whitespace differs. <span>· space · → tab</span></div>` : ""}
         ${state.diffLayout === "split"
-          ? `<div class="split-resizer" data-split-resizer role="separator" aria-label="Resize old and new diff panes" aria-orientation="vertical" aria-valuemin="${SPLIT_PANE_MIN}" aria-valuemax="${SPLIT_PANE_MAX}" aria-valuenow="${state.splitOldWidth}" aria-valuetext="Old side ${state.splitOldWidth}%, new side ${100 - state.splitOldWidth}%" tabindex="0"></div>${splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings, whitespaceRows.has(oldRow))}${renderSplitSide(file, newRow, "new", findings, whitespaceRows.has(newRow))}</div>`).join("")}`
-          : hunk.rows.map((row) => renderUnifiedRow(file, row, findings, whitespaceRows.has(row))).join("")}
+          ? `<div class="split-resizer" data-split-resizer role="separator" aria-label="Resize old and new diff panes" aria-orientation="vertical" aria-valuemin="${SPLIT_PANE_MIN}" aria-valuemax="${SPLIT_PANE_MAX}" aria-valuenow="${state.splitOldWidth}" aria-valuetext="Old side ${state.splitOldWidth}%, new side ${100 - state.splitOldWidth}%" tabindex="0"></div>${splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings, whitespaceRows.has(oldRow), inlineChanges.get(oldRow))}${renderSplitSide(file, newRow, "new", findings, whitespaceRows.has(newRow), inlineChanges.get(newRow))}</div>`).join("")}`
+          : hunk.rows.map((row) => renderUnifiedRow(file, row, findings, whitespaceRows.has(row), inlineChanges.get(row))).join("")}
       </div>`; }).join("")}
       </div>
     </section>`;
@@ -738,6 +815,65 @@ function renderDiff(files) {
   void highlightRenderedCode();
   void hydrateDiffImages(files);
   renderConversationBadges();
+}
+
+function syncDiffViewControls() {
+  elements["diff-layout"].value = state.diffLayout;
+  elements.diff.classList.toggle("wrap-code", state.diffWrap === "wrap");
+  document.querySelectorAll("[data-diff-layout]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.diffLayout === state.diffLayout)));
+  document.querySelectorAll("[data-diff-wrap]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.diffWrap === state.diffWrap)));
+}
+
+function diffViewRow(path, side, line) {
+  return elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"][data-line="${line}"]`)
+    ?? elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-${side}-line="${line}"]`);
+}
+
+function changeDiffView(layout, wrap, persist = true) {
+  if (!["unified", "split"].includes(layout) || !["scroll", "wrap"].includes(wrap)) return;
+  const panel = elements["diff-panel"];
+  const panelTop = panel.getBoundingClientRect().top;
+  const toolbarHeight = document.querySelector('.diff-toolbar').getBoundingClientRect().height;
+  const row = [...elements.diff.querySelectorAll('.diff-row[data-line]:not([data-line=""])')].find(row => row.getBoundingClientRect().bottom > panelTop + toolbarHeight + 80);
+  const anchor = row ? {path: row.dataset.path, side: row.dataset.side, line: row.dataset.line, top: row.getBoundingClientRect().top} : null;
+  const scrollTop = panel.scrollTop;
+  const pageTop = window.scrollY;
+  const rerender = state.diffLayout !== layout && !elements.diff.querySelector('.source-file');
+  const forms = [...elements.diff.querySelectorAll('.inline-edit-form, .inline-comment-form')];
+  state.diffLayout = layout;
+  state.diffWrap = wrap;
+  if (persist) {
+    window.localStorage.setItem(diffLayoutPreferenceKey(), state.diffLayout);
+    window.localStorage.setItem(diffWrapPreferenceKey(), state.diffWrap);
+  }
+  if (rerender) {
+    // Use the currently displayed files, including expanded/proposal diffs.
+    renderDiff(state.renderedDiffFiles);
+    renderComments();
+    renderFindings();
+    renderTourAnnotation();
+    for (const form of forms) {
+      const edit = form.classList.contains("inline-edit-form");
+      const side = edit ? "new" : form.dataset.commentSide;
+      const target = diffViewRow(edit ? form.dataset.editPath : form.dataset.commentPath, side, edit ? form.dataset.editLine : form.dataset.commentLine);
+      if (!target) continue;
+      const split = target.closest(".split-row");
+      if (split) {
+        const lane = document.createElement("div");
+        lane.className = edit ? "inline-edit-lane" : `inline-comment-editor-lane ${side}-side`;
+        lane.append(form);
+        split.insertAdjacentElement("afterend", lane);
+      } else target.insertAdjacentElement("afterend", form);
+    }
+    if (state.selectedLine) diffViewRow(state.selectedLine.path, state.selectedLine.side, state.selectedLine.line)?.classList.add("selected");
+  } else syncDiffViewControls();
+  // Restore the same source line, not its old pixel scroll offset: wrapping
+  // changes the height of every preceding line. No smooth jump via the top.
+  window.scrollTo({top: pageTop, behavior: "instant"});
+  panel.scrollTop = scrollTop;
+  const target = anchor && diffViewRow(anchor.path, anchor.side, anchor.line);
+  if (target) panel.scrollTop += target.getBoundingClientRect().top - anchor.top;
+  scheduleCurrentStepReturnUpdate();
 }
 
 function isPngDiff(file) {
@@ -840,7 +976,7 @@ async function highlightRenderedCode() {
         continue;
       }
       const nodes = [...elements.diff.querySelectorAll(`.line-code[data-highlight-group="${CSS.escape(group.id)}"]`)];
-      group.lines.forEach((line, index) => { if (nodes[index]) nodes[index].innerHTML = diffCodeHtml(nodes[index].closest(".diff-row").dataset.content, nodes[index].dataset.whitespaceOnly === "true", line); });
+      group.lines.forEach((line, index) => { if (nodes[index]) nodes[index].innerHTML = diffCodeHtml(nodes[index].closest(".diff-row").dataset.content, nodes[index].dataset.whitespaceOnly === "true", line, JSON.parse(nodes[index].dataset.inlineRanges || "[]")); });
     }
   } catch {
     // Raw escaped source remains readable if highlighting is unavailable.
@@ -2890,9 +3026,7 @@ window.addEventListener("resize", () => {
 window.matchMedia("(max-width: 900px)").addEventListener("change", () => {
   setReviewActionsOpen(false);
   if (!state.session) return;
-  state.diffLayout = preferredDiffLayout();
-  elements["diff-layout"].value = state.diffLayout;
-  renderFilteredDiff();
+  changeDiffView(preferredDiffLayout(), preferredDiffWrap(), false);
 });
 // Keep the code viewport below the actual toolbar, including text zoom/wrapping.
 function updateMobileViewportHeight() {
@@ -3010,10 +3144,15 @@ elements["tree-mode"].addEventListener("change", () => {
   renderFileTree();
 });
 elements["diff-layout"].addEventListener("change", () => {
-  state.diffLayout = elements["diff-layout"].value;
-  window.localStorage.setItem(diffLayoutPreferenceKey(), state.diffLayout);
-  renderFilteredDiff();
+  changeDiffView(elements["diff-layout"].value, state.diffWrap);
 });
+document.querySelectorAll("[data-diff-layout]").forEach(button => button.addEventListener("click", () => changeDiffView(button.dataset.diffLayout, state.diffWrap)));
+document.querySelectorAll("[data-diff-wrap]").forEach(button => button.addEventListener("click", () => changeDiffView(state.diffLayout, button.dataset.diffWrap)));
+new ResizeObserver(([entry]) => {
+  if (entry.target.getBoundingClientRect().height > 0) {
+    elements["diff-panel"].style.setProperty("--diff-toolbar-height", `${entry.target.getBoundingClientRect().height}px`);
+  }
+}).observe(document.querySelector('.diff-toolbar'));
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
 elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequence", renderSequenceDiagrams));

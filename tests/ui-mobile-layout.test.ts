@@ -39,7 +39,7 @@ test("mobile layout gives paths their own wrapping row and leaves code at its no
   expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: translateY(-50%) rotate(-90deg); }");
   expect(app).toContain('class="status mobile-file-status"');
   expect(styles).toContain("height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px))");
-  expect(styles).toContain("grid-template-columns: 34px 34px 18px max-content minmax(max-content, 1fr)");
+  expect(styles).toContain("grid-template-columns: 34px 18px max-content minmax(max-content, 1fr)");
   expect(styles).toContain(".tab { flex: 0 0 auto; min-height: 44px;");
   expect(styles).toContain(".settings-menu { position: static; }");
   expect(styles).toContain("html, body { scroll-padding-top: var(--mobile-topbar-height, 100px); }");

@@ -483,7 +483,7 @@ test("diff rows stay dense and the explanation owns a bounded scroll area", asyn
   expect(styles).toContain("line-height: 18px");
   expect(styles).toContain(".diff-row.split-side > .line-code { grid-column: 4; grid-row: 1; }");
   expect(styles).toContain(".diff-row.split-side:first-child { border-right: 1px solid var(--border); }");
-  expect(styles).toContain(".diff-row:not(.split-side) > .line-code { grid-column: 5; grid-row: 1; }");
+  expect(styles).toContain(".diff-row:not(.split-side) > .line-code { grid-column: 4; grid-row: 1; }");
   expect(styles).not.toContain(".line-code::-webkit-scrollbar");
 });
 
@@ -564,7 +564,7 @@ test("marking a file reviewed collapses its diff while keeping the header availa
 test("file headers stick to the diff viewport while their file is visible", async () => {
   const styles = await readFile(join(root, "public/styles.css"), "utf8");
   expect(styles).toContain(".diff-file { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: clip;");
-  expect(styles).toContain(".diff-file-header { position: sticky; top: 0; z-index: 3;");
+  expect(styles).toContain(".diff-file-header { position: sticky; top: var(--diff-toolbar-height, 0px); z-index: 3;");
   expect(styles).not.toContain(".diff-file { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden;");
 });
 
@@ -643,7 +643,7 @@ test("split diff panes are resizable and synchronize horizontal scrolling per si
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(styles).toContain(".hunk.split-layout { position: relative; width: 100%; min-width: 0; }");
-  expect(styles).toContain("grid-template-columns: 42px 42px 22px max-content minmax(max-content, 1fr)");
+  expect(styles).toContain("grid-template-columns: 42px 22px max-content minmax(max-content, 1fr)");
   expect(styles).toContain("grid-template-columns: minmax(0, var(--split-old-width, 50%)) minmax(0, 1fr)");
   expect(app).toContain('class="split-row"');
   expect(app).toContain("function splitRows(rows)");

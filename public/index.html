@@ -131,7 +131,19 @@
               <div id="architecture-content" class="architecture-content"></div>
             </details>
           </section>
-          <div class="diff-toolbar"><span id="filter-summary" class="muted"></span></div>
+          <div class="diff-toolbar">
+            <span id="filter-summary" class="muted"></span>
+            <div class="diff-view-controls">
+              <div class="diff-view-toggle" role="group" aria-label="Diff layout">
+                <button type="button" data-diff-layout="split" aria-pressed="false">Split</button>
+                <button type="button" data-diff-layout="unified" aria-pressed="false">Unified</button>
+              </div>
+              <div class="diff-view-toggle" role="group" aria-label="Long lines">
+                <button type="button" data-diff-wrap="scroll" aria-pressed="true">Scroll</button>
+                <button type="button" data-diff-wrap="wrap" aria-pressed="false">Wrap</button>
+              </div>
+            </div>
+          </div>
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>
         </div>

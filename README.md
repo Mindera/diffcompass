@@ -192,7 +192,7 @@ Installed releases manage their own lifecycle:
 
 ```sh
 code-review-tour update
-code-review-tour update --version v1.1.5
+code-review-tour update --version v1.1.6
 code-review-tour rollback
 code-review-tour rollback --to 1.1.3
 code-review-tour uninstall --dry-run
@@ -208,7 +208,7 @@ removes an unmarked skill directory or an unrelated command.
 Pin a particular release by setting the version for the installer process:
 
 ```sh
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.5 bash
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.6 bash
 ```
 
 Once the repository is public, this bootstrap can switch from authenticated
@@ -399,10 +399,19 @@ if the browser blocks it, the page remains read-only with manual-close guidance.
 ## Navigating the diff
 
 The left panel searches both changed paths and changed code. Combine it with
-file-status and reviewed/unreviewed filters. `Changed paths` shows a flat,
-Git-style list of changed files; `Full repository` restores the hierarchical
-tree and unchanged source navigation. `Settings → Diff view` switches between
-dense side-by-side and unified layouts. Each hunk can progressively load more surrounding
+file-status and reviewed/unreviewed filters. `Changed paths` groups changed files
+under expanded folder sections. Single-child folder chains are compacted into
+paths such as `.github/workflows`, while real branches remain nested. `Full
+repository` includes unchanged source navigation with the same compact folder
+chains. The sticky diff toolbar offers `Split / Unified` and `Scroll / Wrap`
+controls; layout also remains available in Settings. Choices are remembered
+separately for desktop and mobile. Switching preserves the visible source line
+and any inline comment or edit draft. Scroll is the default; Wrap fits long lines
+to the available width without changing their source line numbers. Unified uses
+one number gutter: old numbers for deletions, new numbers otherwise, with both
+references in the number's tooltip. Stronger inline backgrounds mark changed
+words and punctuation within paired removed/added lines while syntax colours
+remain intact. Each hunk can progressively load more surrounding
 context without making the initial session snapshot unbounded. Marking a file
 reviewed is stored with the session and survives server and browser restarts.
 
