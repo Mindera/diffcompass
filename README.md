@@ -192,7 +192,7 @@ Installed releases manage their own lifecycle:
 
 ```sh
 code-review-tour update
-code-review-tour update --version v1.1.4
+code-review-tour update --version v1.1.5
 code-review-tour rollback
 code-review-tour rollback --to 1.1.3
 code-review-tour uninstall --dry-run
@@ -208,7 +208,7 @@ removes an unmarked skill directory or an unrelated command.
 Pin a particular release by setting the version for the installer process:
 
 ```sh
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.4 bash
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.5 bash
 ```
 
 Once the repository is public, this bootstrap can switch from authenticated
@@ -409,6 +409,13 @@ reviewed is stored with the session and survives server and browser restarts.
 Use `Expand context` for more surrounding lines or `Expand file` for the whole
 text file. Expansion and background preparation preserve your reading position.
 When the current tour stop is out of view, `Current step` takes you back to it.
+
+Paired removed/added lines that differ only in leading or trailing spaces/tabs
+are labelled `whitespace only`. Dots show spaces and arrows show tabs on those
+lines, in both diff layouts; copying the code retains its original whitespace.
+A hunk summary counts these pairs. This describes the textual change, not its
+safety: indentation and whitespace can still affect behaviour. Internal
+whitespace changes (including spaces inside strings) are not classified this way.
 
 ### Appearance and narrow screens
 

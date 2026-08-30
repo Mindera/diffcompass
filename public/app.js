@@ -608,14 +608,46 @@ function lineTools(file, side, line) {
   </span>`;
 }
 
-function renderUnifiedRow(file, row, findings) {
+function whitespaceChangedRows(rows) {
+  const marked = new Set();
+  for (const [oldRow, newRow] of splitRows(rows)) {
+    if (oldRow?.kind !== "deletion" || newRow?.kind !== "addition") continue;
+    const oldText = oldRow.content;
+    const newText = newRow.content;
+    // Do not strip internal whitespace: it may be part of a string or token.
+    if (oldText !== newText && oldText.replace(/^[ \t]+|[ \t]+$/g, "") === newText.replace(/^[ \t]+|[ \t]+$/g, "")) {
+      marked.add(oldRow);
+      marked.add(newRow);
+    }
+  }
+  return marked;
+}
+
+function diffCodeHtml(content, marked = false, tokens = null) {
+  const leading = content.match(/^[ \t]*/)[0].length;
+  const trailing = content.length - content.match(/[ \t]*$/)[0].length;
+  let offset = 0;
+  const render = (text) => {
+    const html = marked ? [...text].map((character) => {
+      const edge = offset < leading || offset >= trailing;
+      offset += character.length;
+      return edge && /[ \t]/.test(character)
+        ? `<span class="diff-whitespace" data-symbol="${character === "\t" ? "→" : "·"}">${character}</span>`
+        : escapeHtml(character);
+    }).join("") : escapeHtml(text);
+    return html;
+  };
+  return tokens ? tokens.map((token) => syntaxTokenHtml(token, render(token.content))).join("") || " " : render(content) || " ";
+}
+
+function renderUnifiedRow(file, row, findings, whitespaceOnly = false) {
   const line = rowLine(row);
   const side = rowSide(row);
   const prefix = row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " ";
   return `<div class="diff-row ${row.kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(row.content)}">
     <span class="line-number">${row.oldLine ?? ""}</span><span class="line-number">${row.newLine ?? ""}</span>
     <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
-    <span class="finding-markers">${findingPins(file, row, side, findings)}</span><pre class="line-code">${escapeHtml(row.content || " ")}</pre>${lineTools(file, side, line)}
+    <span class="finding-markers">${findingPins(file, row, side, findings)}</span><pre class="line-code"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(row.content, whitespaceOnly)}</pre>${lineTools(file, side, line)}
   </div>`;
 }
 
@@ -642,7 +674,7 @@ function splitRows(rows) {
   return pairs;
 }
 
-function renderSplitSide(file, row, side, findings) {
+function renderSplitSide(file, row, side, findings, whitespaceOnly = false) {
   const line = side === "old" ? row?.oldLine : row?.newLine;
   const content = row?.content ?? "";
   const kind = row?.kind ?? "split-empty";
@@ -650,7 +682,7 @@ function renderSplitSide(file, row, side, findings) {
   return `<div class="diff-row split-side ${kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(content)}">
     <span class="line-number">${line ?? ""}</span>
     <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
-    <span class="finding-markers">${row ? findingPins(file, row, side, findings) : ""}</span><pre class="line-code">${escapeHtml(content || " ")}</pre>${lineTools(file, side, line)}
+    <span class="finding-markers">${row ? findingPins(file, row, side, findings) : ""}</span><pre class="line-code"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(content, whitespaceOnly)}</pre>${lineTools(file, side, line)}
   </div>`;
 }
 
@@ -686,12 +718,15 @@ function renderDiff(files) {
       return `<section class="diff-file${collapsed ? " collapsed" : ""}" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       ${renderDiffFileHeader(file, collapsed)}
       <div class="diff-file-scroll">
-      ${isPngDiff(file) ? renderPngDiff(file) : file.hunks.map((hunk) => `<div class="hunk ${state.diffLayout}-layout">
+      ${isPngDiff(file) ? renderPngDiff(file) : file.hunks.map((hunk) => {
+        const whitespaceRows = whitespaceChangedRows(hunk.rows);
+        return `<div class="hunk ${state.diffLayout}-layout">
         <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && !file._full && fileContext(file) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${fileContext(file)}">Expand context</button>` : ""}</div>
+        ${whitespaceRows.size ? `<div class="whitespace-summary">${whitespaceRows.size / 2} line pair${whitespaceRows.size === 2 ? "" : "s"}: only leading/trailing whitespace differs. <span>· space · → tab</span></div>` : ""}
         ${state.diffLayout === "split"
-          ? `<div class="split-resizer" data-split-resizer role="separator" aria-label="Resize old and new diff panes" aria-orientation="vertical" aria-valuemin="${SPLIT_PANE_MIN}" aria-valuemax="${SPLIT_PANE_MAX}" aria-valuenow="${state.splitOldWidth}" aria-valuetext="Old side ${state.splitOldWidth}%, new side ${100 - state.splitOldWidth}%" tabindex="0"></div>${splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings)}${renderSplitSide(file, newRow, "new", findings)}</div>`).join("")}`
-          : hunk.rows.map((row) => renderUnifiedRow(file, row, findings)).join("")}
-      </div>`).join("")}
+          ? `<div class="split-resizer" data-split-resizer role="separator" aria-label="Resize old and new diff panes" aria-orientation="vertical" aria-valuemin="${SPLIT_PANE_MIN}" aria-valuemax="${SPLIT_PANE_MAX}" aria-valuenow="${state.splitOldWidth}" aria-valuetext="Old side ${state.splitOldWidth}%, new side ${100 - state.splitOldWidth}%" tabindex="0"></div>${splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings, whitespaceRows.has(oldRow))}${renderSplitSide(file, newRow, "new", findings, whitespaceRows.has(newRow))}</div>`).join("")}`
+          : hunk.rows.map((row) => renderUnifiedRow(file, row, findings, whitespaceRows.has(row))).join("")}
+      </div>`; }).join("")}
       </div>
     </section>`;
     })
@@ -760,9 +795,9 @@ async function hydrateDiffImages(files) {
   }));
 }
 
-function syntaxTokenHtml(token) {
+function syntaxTokenHtml(token, contentHtml = escapeHtml(token.content)) {
   const styles = [token.fontStyle & 1 ? "syntax-italic" : "", token.fontStyle & 2 ? "syntax-bold" : "", token.fontStyle & 4 ? "syntax-underline" : ""].filter(Boolean).join(" ");
-  return `<span class="syntax-token sl-${escapeHtml(token.light)} sd-${escapeHtml(token.dark)} ${styles}" style="--syntax-light:#${escapeHtml(token.light)};--syntax-dark:#${escapeHtml(token.dark)}">${escapeHtml(token.content)}</span>`;
+  return `<span class="syntax-token sl-${escapeHtml(token.light)} sd-${escapeHtml(token.dark)} ${styles}" style="--syntax-light:#${escapeHtml(token.light)};--syntax-dark:#${escapeHtml(token.dark)}">${contentHtml}</span>`;
 }
 
 async function highlightRenderedCode() {
@@ -801,11 +836,11 @@ async function highlightRenderedCode() {
     for (const group of results.flatMap((result) => result.groups)) {
       if (group.id === "source") {
         const target = elements.diff.querySelector('.source-code[data-highlight-group="source"]');
-        if (target) target.innerHTML = group.lines.map((line) => line.map(syntaxTokenHtml).join("")).join("\n");
+        if (target) target.innerHTML = group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n");
         continue;
       }
       const nodes = [...elements.diff.querySelectorAll(`.line-code[data-highlight-group="${CSS.escape(group.id)}"]`)];
-      group.lines.forEach((line, index) => { if (nodes[index]) nodes[index].innerHTML = line.map(syntaxTokenHtml).join("") || " "; });
+      group.lines.forEach((line, index) => { if (nodes[index]) nodes[index].innerHTML = diffCodeHtml(nodes[index].closest(".diff-row").dataset.content, nodes[index].dataset.whitespaceOnly === "true", line); });
     }
   } catch {
     // Raw escaped source remains readable if highlighting is unavailable.

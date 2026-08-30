@@ -2,6 +2,14 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+test("mobile approval notices sit below the measured toolbar and wrap inside the viewport", async () => {
+  const styles = await readFile(join(import.meta.dir, "..", "public", "styles.css"), "utf8");
+  const mobile = styles.slice(styles.indexOf("@media (max-width: 900px)", styles.indexOf("@media (max-width: 1050px)")));
+  expect(mobile).toContain(".closed-banner { top: calc(var(--mobile-topbar-height, 100px) + 8px); z-index: 30;");
+  expect(mobile).toContain("width: calc(100% - 24px); max-width: 680px;");
+  expect(mobile).toContain("overflow: auto; overflow-wrap: anywhere;");
+});
+
 test("close transitions count down and preserve manual-close guidance when the browser blocks closing", async () => {
   const app = await readFile(join(import.meta.dir, "..", "public", "app.js"), "utf8");
   const start = app.indexOf("function renderClosedBanner()");

@@ -35,6 +35,8 @@ test("mobile layout gives paths their own wrapping row and leaves code at its no
   expect(styles).toContain(".diff-file-header > .file-stats { grid-area: actions; min-width: 0; text-align: right;");
   expect(styles).toContain(".mobile-file-status { display: none; }");
   expect(styles).toContain(".diff-file-toggle .status { display: none; }");
+  expect(styles).toContain(".diff-file-toggle .collapse-caret { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); }");
+  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: translateY(-50%) rotate(-90deg); }");
   expect(app).toContain('class="status mobile-file-status"');
   expect(styles).toContain("height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px))");
   expect(styles).toContain("grid-template-columns: 34px 34px 18px max-content minmax(max-content, 1fr)");
