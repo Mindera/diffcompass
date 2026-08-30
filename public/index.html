@@ -68,9 +68,14 @@
           </div>
         </details>
         <button id="refresh-button" class="button secondary">Refresh</button>
-        <button id="feedback-button" class="button danger">Request changes</button>
-        <button id="approve-comments-button" class="button secondary">Approve with comments</button>
-        <button id="close-button" class="button primary">Approve</button>
+        <div id="review-actions" class="review-actions">
+          <button id="review-actions-toggle" class="button secondary review-actions-toggle" type="button" aria-expanded="false" aria-controls="review-options">Review <span aria-hidden="true">▾</span></button>
+          <div id="review-options" class="review-options">
+            <button id="feedback-button" class="button danger">Request changes</button>
+            <button id="approve-comments-button" class="button secondary">Approve with comments</button>
+            <button id="close-button" class="button primary">Approve</button>
+          </div>
+        </div>
       </div>
     </header>
 

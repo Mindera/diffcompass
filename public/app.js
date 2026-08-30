@@ -402,6 +402,16 @@ function preferenceKey(name) {
   return `review-tour:${repository}:${name}`;
 }
 
+function diffLayoutPreferenceKey() {
+  return preferenceKey(narrowFilePanelLayout() ? "mobile-diff-layout" : "diff-layout");
+}
+
+function preferredDiffLayout() {
+  const saved = window.localStorage.getItem(diffLayoutPreferenceKey());
+  if (["unified", "split"].includes(saved)) return saved;
+  return narrowFilePanelLayout() ? "unified" : state.session.preferences?.diffLayout ?? "split";
+}
+
 const FILE_PANEL_MIN = 180;
 const FILE_PANEL_MAX = 480;
 const AGENT_PANEL_MIN = 320;
@@ -448,13 +458,12 @@ function initializeUiPreferences() {
   const repository = state.session.pullRequest?.sourceRepositoryRoot ?? state.session.comparison.repositoryRoot;
   if (state.preferenceRepository === repository) return;
   state.preferenceRepository = repository;
-  const savedLayout = window.localStorage.getItem(preferenceKey("diff-layout"));
   const savedTreeMode = window.localStorage.getItem(preferenceKey("tree-mode"));
   const savedFilePanelWidth = Number(window.localStorage.getItem(preferenceKey("file-panel-width")));
   const savedAgentPanelWidth = Number(window.localStorage.getItem(preferenceKey("agent-panel-width")));
   const savedSplitOldWidth = Number(window.localStorage.getItem(preferenceKey("split-old-width")));
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
-  state.diffLayout = ["unified", "split"].includes(savedLayout) ? savedLayout : state.session.preferences?.diffLayout ?? "split";
+  state.diffLayout = preferredDiffLayout();
   state.treeMode = ["changes", "repository"].includes(savedTreeMode)
     ? savedTreeMode
     : legacyChangedOnly !== null
@@ -653,6 +662,7 @@ function renderDiffFileHeader(file, collapsed, fullContent = false) {
     ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · `
     : "";
   return `<header class="diff-file-header">
+    <span class="status mobile-file-status">${escapeHtml(file.status)}</span>
     <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">⌄</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
     <span class="file-stats">${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}</span>
   </header>`;
@@ -2331,6 +2341,10 @@ function closeInlineEdit() {
   elements.diff.querySelectorAll(".inline-edit-lane, .inline-edit-form").forEach((editor) => editor.remove());
 }
 
+function revealInlineForm(form) {
+  if (narrowFilePanelLayout()) form.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 function openInlineEdit(row) {
   if (!reviewIsOpen() || row.dataset.side !== "new") return;
   closeInlineEdit();
@@ -2353,6 +2367,7 @@ function openInlineEdit(row) {
   } else {
     row.insertAdjacentElement("afterend", form);
   }
+  revealInlineForm(form);
   const textarea = form.querySelector("textarea");
   textarea.focus({ preventScroll: true });
   textarea.setSelectionRange(0, textarea.value.length);
@@ -2409,6 +2424,7 @@ function openInlineCommentEditor(row, target, comment) {
   } else {
     row.insertAdjacentElement("afterend", form);
   }
+  revealInlineForm(form);
   const textarea = form.querySelector("textarea");
   textarea.focus({ preventScroll: true });
   textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -2695,7 +2711,24 @@ elements["review-decision-form"].addEventListener("submit", (event) => {
   void close(decision === "request-changes" ? "feedback" : "accepted", decision, note);
 });
 elements["refresh-button"].addEventListener("click", refresh);
+const reviewActions = document.getElementById("review-actions");
+const reviewActionsToggle = document.getElementById("review-actions-toggle");
+function setReviewActionsOpen(open) {
+  reviewActions.classList.toggle("open", open);
+  reviewActionsToggle.setAttribute("aria-expanded", String(open));
+}
+reviewActionsToggle.addEventListener("click", () => setReviewActionsOpen(!reviewActions.classList.contains("open")));
+reviewActions.addEventListener("click", (event) => {
+  if (event.target.closest("#review-options button")) setReviewActionsOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && reviewActions.classList.contains("open")) {
+    setReviewActionsOpen(false);
+    reviewActionsToggle.focus();
+  }
+});
 document.addEventListener("pointerdown", (event) => {
+  if (!reviewActions.contains(event.target)) setReviewActionsOpen(false);
   if (elements["settings-menu"].open && !elements["settings-menu"].contains(event.target)) {
     elements["settings-menu"].open = false;
   }
@@ -2819,6 +2852,25 @@ window.addEventListener("resize", () => {
   setFilePanelWidth(state.filePanelWidth);
   scheduleCurrentStepReturnUpdate();
 });
+window.matchMedia("(max-width: 900px)").addEventListener("change", () => {
+  setReviewActionsOpen(false);
+  if (!state.session) return;
+  state.diffLayout = preferredDiffLayout();
+  elements["diff-layout"].value = state.diffLayout;
+  renderFilteredDiff();
+});
+// Keep the code viewport below the actual toolbar, including text zoom/wrapping.
+function updateMobileViewportHeight() {
+  const viewport = window.visualViewport;
+  // Keyboard resizing changes the visible height; pinch zoom must not relayout code.
+  if (!viewport || viewport.scale !== 1) return;
+  document.documentElement.style.setProperty("--mobile-viewport-height", `${viewport.height}px`);
+}
+window.visualViewport?.addEventListener("resize", updateMobileViewportHeight);
+updateMobileViewportHeight();
+new ResizeObserver(([entry]) => {
+  document.documentElement.style.setProperty("--mobile-topbar-height", `${entry.target.getBoundingClientRect().height}px`);
+}).observe(document.querySelector(".topbar"));
 window.addEventListener("scroll", scheduleCurrentStepReturnUpdate, { passive: true });
 elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate, { passive: true });
 let splitResizeStart = null;
@@ -2924,7 +2976,7 @@ elements["tree-mode"].addEventListener("change", () => {
 });
 elements["diff-layout"].addEventListener("change", () => {
   state.diffLayout = elements["diff-layout"].value;
-  window.localStorage.setItem(preferenceKey("diff-layout"), state.diffLayout);
+  window.localStorage.setItem(diffLayoutPreferenceKey(), state.diffLayout);
   renderFilteredDiff();
 });
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));

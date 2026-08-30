@@ -62,7 +62,7 @@ review. Questions remain available, and you can resume the tour later.
 - checks for new releases without interrupting the review and shows an animated, one-click update control only when one is available;
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
-- starts with a dense split diff by default, also supports unified diffs, expands hunk context on demand, and persists per-file reviewed state;
+- starts with a dense split diff on desktop and unified diff on narrow screens, expands hunk context on demand, and persists per-file reviewed state;
 - opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
 - exposes explicit `Approve`, `Approve with comments`, and `Request changes` decisions, with a review note for the latter two.
 
@@ -192,9 +192,9 @@ Installed releases manage their own lifecycle:
 
 ```sh
 code-review-tour update
-code-review-tour update --version v1.1.3
+code-review-tour update --version v1.1.4
 code-review-tour rollback
-code-review-tour rollback --to 1.1.2
+code-review-tour rollback --to 1.1.3
 code-review-tour uninstall --dry-run
 code-review-tour uninstall --yes
 code-review-tour uninstall --yes --purge
@@ -208,7 +208,7 @@ removes an unmarked skill directory or an unrelated command.
 Pin a particular release by setting the version for the installer process:
 
 ```sh
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.3 bash
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.4 bash
 ```
 
 Once the repository is public, this bootstrap can switch from authenticated
@@ -419,7 +419,15 @@ selector, file-tree mode, exports, and saved sessions. Clicking outside closes
 the settings menu.
 
 On narrow screens, the `Files` button opens the left pane as a dismissible
-drawer. `Tour` and `Questions` controls switch the agent pane's content rather
+drawer. Diffs start in unified mode; an explicit layout choice is remembered
+separately from desktop. Tabs scroll horizontally, file status and actions share
+the top header row with the wrapping file path below, and the code pane fills
+the space below the toolbar. The `Review` button groups Approve, Approve with
+comments, and Request changes.
+Inline edit/comment forms stay within the visible code pane when code scrolls
+sideways. Line actions appear below the selected line with touch-sized controls;
+the code pane adapts to the visible viewport when the keyboard opens.
+`Tour` and `Questions` controls switch the agent pane's content rather
 than squeezing both into the same small area. PNG Before/After previews stack
 vertically on phone-sized screens. These are responsive browser layouts, not
 a separate mobile app or a remote-access service.
