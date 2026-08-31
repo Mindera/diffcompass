@@ -49,6 +49,7 @@ const state = {
   treeMode: null,
   diffLayout: null,
   diffWrap: "scroll",
+  showDiffMarkers: false,
   renderedDiffFiles: [],
   filePanelWidth: 240,
   agentPanelWidth: 420,
@@ -503,6 +504,7 @@ function initializeUiPreferences() {
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = preferredDiffLayout();
   state.diffWrap = preferredDiffWrap();
+  state.showDiffMarkers = window.localStorage.getItem(preferenceKey("show-diff-markers")) === "true";
   state.treeMode = ["changes", "repository"].includes(savedTreeMode)
     ? savedTreeMode
     : legacyChangedOnly !== null
@@ -820,16 +822,17 @@ function renderDiff(files) {
   elements.diff.innerHTML = files
     .map((file) => {
       const collapsed = !state.proposalPreview && state.collapsedFiles.has(file.path);
+      const layout = file.status === "added" ? "unified" : state.diffLayout;
       return `<section class="diff-file${collapsed ? " collapsed" : ""}" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       ${renderDiffFileHeader(file, collapsed)}
       <div class="diff-file-scroll">
       ${isPngDiff(file) ? renderPngDiff(file) : file.hunks.map((hunk) => {
         const whitespaceRows = whitespaceChangedRows(hunk.rows);
         const inlineChanges = inlineChangesForRows(hunk.rows);
-        return `<div class="hunk ${state.diffLayout}-layout">
+        return `<div class="hunk ${layout}-layout">
         <div class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${!state.proposalPreview && !file._full && fileContext(file) < 200 ? `<button class="text-button" type="button" data-expand-context="${escapeHtml(file.path)}" data-context="${fileContext(file)}">Expand context</button>` : ""}</div>
         ${whitespaceRows.size ? `<div class="whitespace-summary">${whitespaceRows.size / 2} line pair${whitespaceRows.size === 2 ? "" : "s"}: only leading/trailing whitespace differs. <span>· space · → tab</span></div>` : ""}
-        ${state.diffLayout === "split"
+        ${layout === "split"
           ? `<div class="split-resizer" data-split-resizer role="separator" aria-label="Resize old and new diff panes" aria-orientation="vertical" aria-valuemin="${SPLIT_PANE_MIN}" aria-valuemax="${SPLIT_PANE_MAX}" aria-valuenow="${state.splitOldWidth}" aria-valuetext="Old side ${state.splitOldWidth}%, new side ${100 - state.splitOldWidth}%" tabindex="0"></div>${splitRows(hunk.rows).map(([oldRow, newRow]) => `<div class="split-row">${renderSplitSide(file, oldRow, "old", findings, whitespaceRows.has(oldRow), inlineChanges.get(oldRow))}${renderSplitSide(file, newRow, "new", findings, whitespaceRows.has(newRow), inlineChanges.get(newRow))}</div>`).join("")}`
           : hunk.rows.map((row) => renderUnifiedRow(file, row, findings, whitespaceRows.has(row), inlineChanges.get(row))).join("")}
       </div>`; }).join("")}
@@ -849,6 +852,8 @@ function renderDiff(files) {
 function syncDiffViewControls() {
   elements["diff-layout"].value = state.diffLayout;
   elements.diff.classList.toggle("wrap-code", state.diffWrap === "wrap");
+  elements.diff.classList.toggle("show-diff-markers", state.showDiffMarkers);
+  document.getElementById("show-diff-markers").checked = state.showDiffMarkers;
   document.querySelectorAll("[data-diff-layout]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.diffLayout === state.diffLayout)));
   document.querySelectorAll("[data-diff-wrap]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.diffWrap === state.diffWrap)));
 }
@@ -972,7 +977,7 @@ async function highlightRenderedCode() {
       // A hidden gap between hunks may contain syntax that closes a multiline
       // comment or string. Never carry tokenizer state across that gap. In
       // split view the old and new files are independent sources as well.
-      const segments = state.diffLayout === "split"
+      const segments = hunk.classList.contains("split-layout")
         ? ["old", "new"].map((side) => [...hunk.querySelectorAll(`.split-side[data-side="${side}"] .line-code`)])
         : [[...hunk.querySelectorAll(".line-code")]];
       return segments.flatMap((nodes, segmentIndex) => {
@@ -2089,16 +2094,53 @@ async function refreshDiffSearch() {
   }
 }
 
+function nextUnreviewedRenderedPath(path) {
+  const index = state.renderedDiffFiles.findIndex((file) => file.path === path);
+  if (index < 0) return null;
+  const reviewed = new Set(state.session.reviewedFiles ?? []);
+  return state.renderedDiffFiles.slice(index + 1).find((file) => !reviewed.has(file.path))?.path ?? null;
+}
+
+function captureVisibleFileHeader(path) {
+  if (!path) return null;
+  const panel = elements["diff-panel"];
+  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(path)}"] > .diff-file-header`);
+  if (!header) return null;
+  const panelBounds = panel.getBoundingClientRect();
+  const toolbarBounds = document.querySelector(".diff-toolbar")?.getBoundingClientRect();
+  const visibleTop = Math.max(panelBounds.top, toolbarBounds?.bottom ?? panelBounds.top);
+  const visibleBottom = Math.min(panelBounds.bottom, window.innerHeight);
+  const headerBounds = header.getBoundingClientRect();
+  if (headerBounds.bottom <= visibleTop || headerBounds.top >= visibleBottom) return null;
+  return { path, visibleTop };
+}
+
+function recoverVisibleFileHeader(anchor) {
+  if (!anchor) return;
+  const panel = elements["diff-panel"];
+  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(anchor.path)}"] > .diff-file-header`);
+  if (!header) return;
+  const headerBounds = header.getBoundingClientRect();
+  if (headerBounds.bottom > anchor.visibleTop) return;
+  panel.scrollTop += headerBounds.top - anchor.visibleTop;
+}
+
 async function setReviewed(path, reviewed) {
   if (!reviewIsOpen() || state.busy) return;
+  const nextPath = reviewed ? nextUnreviewedRenderedPath(path) : null;
   try {
     state.session = await api("/api/files/reviewed", {
       method: "POST",
       body: JSON.stringify({ path, reviewed }),
     });
+    // Capture after the request so scrolling while it is pending is respected.
+    // Only a next file whose header is currently visible is eligible for
+    // recovery; ordinary collapses should not move the viewport at all.
+    const nextFileAnchor = captureVisibleFileHeader(nextPath);
     if (reviewed) state.collapsedFiles.add(path);
     else state.collapsedFiles.delete(path);
     renderSession();
+    recoverVisibleFileHeader(nextFileAnchor);
     toast(reviewed ? "File marked reviewed" : "File marked unreviewed");
   } catch (error) {
     toast(error.message);
@@ -3173,6 +3215,11 @@ elements["tree-mode"].addEventListener("change", () => {
   state.treeMode = elements["tree-mode"].value;
   window.localStorage.setItem(preferenceKey("tree-mode"), state.treeMode);
   renderFileTree();
+});
+document.getElementById("show-diff-markers").addEventListener("change", (event) => {
+  state.showDiffMarkers = event.target.checked;
+  window.localStorage.setItem(preferenceKey("show-diff-markers"), String(state.showDiffMarkers));
+  syncDiffViewControls();
 });
 elements["diff-layout"].addEventListener("change", () => {
   changeDiffView(elements["diff-layout"].value, state.diffWrap);

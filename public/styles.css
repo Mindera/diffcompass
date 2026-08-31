@@ -214,6 +214,8 @@ button { color: inherit; }
 
 .brand, .actions, .tabs, .panel-heading, .agent-heading, .nav-buttons { display: flex; align-items: center; }
 .brand { gap: 10px; min-width: 0; }
+.brand { overflow: hidden; }
+.brand strong { flex-shrink: 0; white-space: nowrap; }
 .brand-mark { color: var(--accent); font-size: 20px; }
 .review-identity { display: grid; min-width: 0; gap: 2px; }
 .repository-identity { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -402,6 +404,7 @@ button { color: inherit; }
 .review-dot { color: var(--warning); font-size: 9px; }
 .has-comment { box-shadow: inset -2px 0 var(--warning); }
 .has-comment .row-prefix { display: none; }
+#diff:not(.show-diff-markers) .row-prefix { visibility: hidden; }
 .inline-comment { box-sizing: border-box; position: sticky; left: 8px; width: min(680px, calc(100vw - 32px)); margin: 7px 8px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: 8px; background: var(--surface-item); box-shadow: 0 5px 16px var(--shadow); }
 .split-inline-comment { min-width: 0; display: grid; grid-template-columns: minmax(0, var(--split-old-width, 50%)) minmax(0, 1fr); }
 .split-inline-comment .inline-comment { position: static; width: auto; min-width: 0; }
@@ -916,6 +919,15 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   .agent-panel[data-mobile-pane="questions"] .questions-pane, .agent-panel[data-mobile-pane="tour"] #tour-active { flex: 1 1 0; }
   .agent-panel:has(.questions-pane) { height: 75dvh; min-height: 520px; }
   .questions-heading button { min-height: 44px; }
+}
+
+@media (min-width: 901px) and (max-width: 1500px) {
+  .topbar { height: 98px; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 54px 44px; column-gap: 12px; }
+  .topbar > .actions { grid-column: 2; grid-row: 1; }
+  .topbar > .tabs { grid-column: 1 / -1; grid-row: 2; min-width: 0; overflow-x: auto; }
+  .topbar .tab { flex: 0 0 auto; white-space: nowrap; }
+  .workspace { height: calc(100vh - 98px); }
+  .closed-banner { top: 106px; }
 }
 
 @media (max-width: 1050px) {
