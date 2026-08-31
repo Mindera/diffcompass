@@ -12,7 +12,10 @@
       <div class="brand">
         <span class="brand-mark">⌘</span>
         <strong>Code Review Tour</strong>
-        <span id="repository-label" class="repository-identity"></span>
+        <span class="review-identity">
+          <span id="repository-label" class="repository-identity"></span>
+          <span id="comparison-label" class="comparison-identity"></span>
+        </span>
       </div>
       <div class="tabs" role="tablist">
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
@@ -85,10 +88,7 @@
     <main id="workspace" class="workspace">
       <aside id="file-panel" class="file-panel" aria-label="Changed files">
         <div class="panel-heading">
-          <div>
-            <div class="eyebrow">Changes</div>
-            <div id="comparison-label" class="comparison"></div>
-          </div>
+          <div class="eyebrow">Changed files</div>
           <div class="file-panel-heading-actions">
             <span id="file-count" class="count"></span>
             <button id="file-panel-collapse" class="pane-collapse" type="button" aria-label="Collapse changed files" aria-expanded="true" aria-controls="file-panel" title="Collapse changed files">‹</button>
@@ -276,11 +276,11 @@
         <div id="questions-resizer" class="questions-resizer hidden" role="separator" aria-label="Resize tour and questions" aria-orientation="horizontal" aria-valuemin="25" aria-valuemax="70" aria-valuenow="45" tabindex="0"></div>
         <section id="questions-pane" class="questions-pane" aria-label="Questions">
           <header class="questions-heading">
-            <button id="questions-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="questions-body">Questions</button>
-            <button id="new-question" class="text-button" type="button">New question</button>
+            <button id="questions-toggle" class="questions-toggle" type="button" aria-expanded="false" aria-controls="questions-body">Questions (0)</button>
+            <button id="new-question" class="questions-new" type="button"><span aria-hidden="true">＋</span> New question</button>
           </header>
           <div id="questions-body" class="questions-body hidden">
-            <label class="conversation-picker">Conversation<select id="conversation-select"><option value="">New question</option></select></label>
+            <label class="conversation-picker"><span class="conversation-picker-label">Conversation</span><select id="conversation-select"><option value="">New question</option></select></label>
             <div id="questions-scroll" class="questions-scroll">
               <p id="conversation-context" class="muted"></p>
               <div id="chat-messages" class="chat-messages"></div>

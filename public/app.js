@@ -1909,7 +1909,7 @@ function renderQuestionLayout() {
   elements["questions-body"].classList.toggle("hidden", !open);
   elements["questions-toggle"].setAttribute("aria-expanded", String(open));
   elements["questions-toggle"].disabled = !guided;
-  elements["questions-toggle"].textContent = `${open ? "▾" : "▸"} Questions (${conversationThreads().length})`;
+  elements["questions-toggle"].textContent = `Questions (${conversationThreads().length})`;
   elements["questions-resizer"].classList.toggle("hidden", !guided || !open);
   elements["show-tour-pane"].disabled = !guided;
   elements["show-tour-pane"].setAttribute("aria-pressed", String(guided && state.mobileAgentPane === "tour"));

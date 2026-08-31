@@ -137,6 +137,21 @@ test("agent answers scroll into view without hiding the reviewer question", asyn
   expect(app).toContain('elements["next-step"].disabled = state.busy || !reviewIsOpen()');
 });
 
+test("the questions pane uses compact, responsive conversation controls", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('class="questions-toggle"');
+  expect(html).toContain('class="questions-new"');
+  expect(html).toContain('class="conversation-picker-label">Conversation</span>');
+  expect(app).toContain('textContent = `Questions (${conversationThreads().length})`');
+  expect(styles).toContain('.questions-toggle[aria-expanded="true"]::before');
+  expect(styles).toContain('.conversation-picker select { width: 100%; min-width: 0;');
+  expect(styles).toContain('appearance: none;');
+});
+
 test("questions support removable line and file context while review decisions are explicit", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
@@ -428,10 +443,14 @@ test("topbar identifies the repository and reviewed branch", async () => {
   const styles = await Bun.file(new URL("../public/styles.css", import.meta.url)).text();
 
   expect(html).toContain('id="repository-label" class="repository-identity"');
+  expect(html).toContain('class="review-identity"');
+  expect(html).toContain('id="comparison-label" class="comparison-identity"');
+  expect(html.indexOf('id="comparison-label"')).toBeLessThan(html.indexOf('id="file-panel"'));
   expect(app).toContain("state.session.pullRequest?.repository ?? comparison.repositoryName");
   expect(app).toContain("state.session.pullRequest?.headRefName ?? comparison.branch");
   expect(app).toContain("`${repositoryName} · ${branchName}`");
   expect(styles).toContain(".repository-identity");
+  expect(styles).toContain(".comparison-identity");
 });
 
 test("tour startup defaults diagrams and findings on and sends both choices", async () => {
