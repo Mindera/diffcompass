@@ -265,7 +265,7 @@ if (!session.pullRequest) {
     console.warn(`Automatic repository watching is unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-const server = startServer(session, options.port, undefined, options.previewRedirect);
+const server = startServer(session, options.port, undefined, options.previewRedirect, options.startTour);
 const baseUrl = `http://${server.hostname}:${server.port}`;
 const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${options.startTour ? "&intro=1" : ""}`;
 const deferReviewUrl = options.open && options.startTour;

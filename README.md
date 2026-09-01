@@ -64,7 +64,7 @@ review. Questions remain available, and you can resume the tour later.
 - searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
 - starts with a dense split diff on desktop and unified diff on narrow screens, expands hunk context on demand, and persists per-file reviewed state;
 - opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
-- exposes explicit `Approve`, `Approve with comments`, and `Request changes` decisions, with a review note for the latter two.
+- exposes explicit `Approve`, `Approve with comments`, and `Request changes` decisions, with a review note for the latter two, plus `Close review` when the reviewer wants to end without a verdict.
 
 Standalone **agents** are read-only; reviewers can still create inline edit
 suggestions. In attached mode, the triggering agent—or its local fallback after
@@ -388,6 +388,7 @@ Finishing the tour and completing the review are separate actions:
 | Approve | Closes the review as approved, without an overall note. Remove existing inline comments or use Approve with comments. |
 | Approve with comments | Asks for an overall non-blocking note, includes inline comments, and closes as approved. |
 | Request changes | Asks what must change, includes inline comments, and closes with feedback. |
+| Close review | Confirms, then closes the local review without approving or requesting changes. No review is published to GitHub. |
 
 Apply or reject pending suggestions before completing a review. Repository
 policy can also require every changed file to be marked reviewed. In a local
@@ -439,7 +440,7 @@ drawer. Diffs start in unified mode; an explicit layout choice is remembered
 separately from desktop. Tabs scroll horizontally, file status and actions share
 the top header row with the wrapping file path below, and the code pane fills
 the space below the toolbar. The `Review` button groups Approve, Approve with
-comments, and Request changes.
+comments, Request changes, and the neutral Close review action.
 Inline edit/comment forms stay within the visible code pane when code scrolls
 sideways. Line actions appear below the selected line with touch-sized controls;
 the code pane adapts to the visible viewport when the keyboard opens.
@@ -572,6 +573,15 @@ certain.
 Component diagrams in the review overview's Architecture section, the tour
 introduction, and the Call flows tab include `Expand` to open a larger viewer,
 with independent pan, zoom, and reset controls.
+
+Settings includes an About view with the running version, runtime, repository,
+comparison, review status, selected agent, and workspace mode.
+
+When architecture is enabled, both the behaviour and implementation diagrams are
+required. Missing or invalid diagrams trigger up to two automatic correction
+requests with the validation errors; if correction fails, tour startup reports
+the error instead of silently hiding the Architecture section. Preview redirects
+also preserve the automatic tour introduction.
 
 The Sequence diagrams tab renders the documented Mermaid sequence subset as
 SVG using the locally bundled Mermaid runtime in strict mode; it never loads a CDN. The

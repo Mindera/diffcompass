@@ -114,7 +114,7 @@ test("configures a standalone safety fallback for an attached tour agent", () =>
 
 test("normalizes context findings and derives all priority levels from the documented contract", async () => {
   const bridge = new AttachedAgentBridge();
-  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository",
     repositoryName: "repository",
@@ -215,7 +215,7 @@ test("asks for short plain-language stop explanations", async () => {
 
 test("repository policy is bounded context and findings are enforced after generation", async () => {
   const bridge = new AttachedAgentBridge();
-  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "patch", repositoryFiles: ["app.ts"],
     files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
@@ -255,7 +255,7 @@ test("repository policy is bounded context and findings are enforced after gener
 
 test("drops undeclared stops and findings whose declared scope does not match the normalized anchor", async () => {
   const bridge = new AttachedAgentBridge();
-  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "", repositoryFiles: ["app.ts"],
     files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
@@ -305,7 +305,7 @@ test("drops undeclared stops and findings whose declared scope does not match th
 
 test("audits release-path candidates to a concrete causal finding before returning the tour", async () => {
   const bridge = new AttachedAgentBridge();
-  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head",
     patch: "+aps-environment = development", repositoryFiles: ["ios/App.entitlements", "ios/project.pbxproj", "fastlane/Fastfile"],
@@ -355,7 +355,7 @@ test("audits release-path candidates to a concrete causal finding before returni
 
 test("fails closed instead of showing candidates when the finding audit is malformed", async () => {
   const bridge = new AttachedAgentBridge();
-  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+changed", repositoryFiles: ["app.ts"],
     files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,

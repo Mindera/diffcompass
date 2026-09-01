@@ -69,6 +69,10 @@
                 <button class="text-button" type="button" data-export-format="html">HTML</button>
               </div>
             </section>
+            <section class="settings-section settings-actions">
+              <strong>Application</strong>
+              <button id="about-button" class="text-button" type="button">About Code Review Tour</button>
+            </section>
           </div>
         </details>
         <button id="refresh-button" class="button secondary">Refresh</button>
@@ -78,6 +82,7 @@
             <button id="feedback-button" class="button danger">Request changes</button>
             <button id="approve-comments-button" class="button secondary">Approve with comments</button>
             <button id="close-button" class="button primary">Approve</button>
+            <button id="close-review-button" class="button secondary" type="button">Close review</button>
           </div>
         </div>
       </div>
@@ -396,6 +401,18 @@
       </div>
       <label class="archive-toggle"><input id="show-archived-sessions" type="checkbox" /> Show archived</label>
       <div id="sessions-list" class="sessions-list"></div>
+    </dialog>
+
+    <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-title">
+      <div class="dialog-heading">
+        <div>
+          <div class="eyebrow">Application information</div>
+          <h2 id="about-title">About Code Review Tour</h2>
+        </div>
+        <button id="close-about" type="button" class="button secondary">Close</button>
+      </div>
+      <dl id="about-details" class="about-details"><div><dt>Status</dt><dd>Loading…</dd></div></dl>
+      <p class="dialog-description">A local, agent-guided workspace for understanding, discussing, and reviewing changes.</p>
     </dialog>
 
     <dialog id="flow-dialog">

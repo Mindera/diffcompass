@@ -311,6 +311,29 @@ test("comment API rejects malformed bodies and anchors outside the diff", async 
   })).status).toBe(409);
 });
 
+test.each([
+  ["feedback", "request-changes"],
+  ["accepted", "approve-with-comments"],
+])("%s delivers the modal note to the attached agent without inline comments", async (outcome, decision) => {
+  const { bridge, session, url } = await fixture();
+  const note = "Please preserve the selected file.\nKeep its scroll position too.";
+  const response = await jsonRequest(url, "/api/close", {
+    method: "POST",
+    headers: browserHeaders(url, session.browserToken),
+    body: JSON.stringify({ outcome, decision, note }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ outcome, decision, note, comments: [] });
+  const eventsResponse = await jsonRequest(url, "/api/bridge/events?after=0&waitMs=0", {
+    headers: { "x-review-tour-token": bridge.token },
+  });
+  expect(eventsResponse.status).toBe(200);
+  const { events } = await eventsResponse.json();
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ type: "review.closed", outcome, decision, note, comments: [] });
+  if (outcome === "feedback") expect(events[0].reviewedTree).toMatch(/^[a-f0-9]{40}$/);
+});
+
 test("close is terminal while an identical close remains idempotent", async () => {
   const { session, url } = await fixture();
   const headers = browserHeaders(url, session.browserToken);

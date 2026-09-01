@@ -120,9 +120,11 @@ Prompt kinds:
 
 When a `review.closed` event arrives:
 
-- `accepted`: acknowledge the terminal event, stop the local server, and report that the tour was accepted.
+Read the full terminal payload, including `decision`, `note`, and `comments`, before acknowledging it. `note` is the overall message written in the Request changes or Approve with comments modal; it is separate from line-anchored `comments`. An empty `comments` array does not mean there is no feedback when `note` is present.
+
+- `accepted`: report approval and convey any `note` and inline `comments` as non-blocking feedback (including when `decision` is `approve-with-comments`). Do not silently discard them or treat approval alone as a request to implement changes. Acknowledge the terminal event and stop the local server.
 - `cancelled`: acknowledge the terminal event and stop the local server without changing the repository.
-- `feedback`: treat active `comments` as requested code changes. The event also carries `reviewedTree`, the exact working-tree snapshot the human reviewed. Implement the comments in the reviewed repository, run proportionate verification, then acknowledge the terminal event and stop the server. Report outdated comments separately instead of applying them blindly. The review is terminal at this point, so do not call refresh after close. If the calling workflow requires another tour after feedback, launch that next tour with `--base <reviewedTree>` so it contains only changes made in response to this feedback, not the already-reviewed diff. Never substitute the branch base or the original audit base for this fixed-point pass.
+- `feedback`: treat the overall `note` and active `comments` together as requested code changes, even when there are no inline comments. Summarize both before acting so the reviewer can see that the modal message was received. The event also carries `reviewedTree`, the exact working-tree snapshot the human reviewed. Implement the requested changes in the reviewed repository, run proportionate verification, then acknowledge the terminal event and stop the server. Report outdated comments separately instead of applying them blindly. The review is terminal at this point, so do not call refresh after close. If the calling workflow requires another tour after feedback, launch that next tour with `--base <reviewedTree>` so it contains only changes made in response to this feedback, not the already-reviewed diff. Never substitute the branch base or the original audit base for this fixed-point pass.
 
 Acknowledge the terminal event only after its outcome has been handled:
 

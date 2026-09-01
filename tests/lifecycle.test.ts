@@ -649,7 +649,7 @@ test("a refresh rejects an in-flight outline generated for the previous comparis
   const { repository, stateFile } = await repositoryFixture();
   const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
   const bridge = session.bridge!;
-  const starting = session.startTour({ adapterId: "attached", modelId: "current-session" });
+  const starting = session.startTour({ adapterId: "attached", modelId: "current-session", includeArchitecture: false });
   const [prompt] = await bridge.eventsAfter(0, 1_000);
 
   await writeFile(join(repository, "app.ts"), "const base = 1;\nconst refreshed = 3;\n");

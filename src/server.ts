@@ -9,6 +9,7 @@ import styles from "../public/styles.css" with { type: "text" };
 import themeScript from "../public/theme.js" with { type: "text" };
 // @ts-expect-error Bun's text loader embeds the local browser runtime in release binaries.
 import mermaidScript from "mermaid/dist/mermaid.min.js" with { type: "text" };
+import packageJson from "../package.json" with { type: "json" };
 import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
 import { exportReview, type ExportFormat } from "./export.ts";
@@ -83,7 +84,7 @@ function requireBrowserAuthorization(request: Request, session: ReviewSession): 
   }
 }
 
-export function createRequestHandler(session: ReviewSession, sessionDirectory = reviewSessionDirectory(), updateService: UpdateService = createUpdateService(), previewRedirect = false) {
+export function createRequestHandler(session: ReviewSession, sessionDirectory = reviewSessionDirectory(), updateService: UpdateService = createUpdateService(), previewRedirect = false, launchTourIntro = false) {
   const fetch = async (request: Request) => {
     const url = new URL(request.url);
     try {
@@ -151,6 +152,20 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "GET" && url.pathname === "/api/about") {
+        const snapshot = session.snapshot();
+        return json({
+          name: "Code Review Tour",
+          version: packageJson.version,
+          runtime: `Bun ${Bun.version}`,
+          repository: snapshot.comparison.repositoryName,
+          repositoryPath: snapshot.comparison.repositoryRoot,
+          comparison: `${snapshot.comparison.base} → working tree`,
+          reviewStatus: snapshot.status,
+          agent: snapshot.agentSelection?.adapterId ?? "not selected",
+          mode: snapshot.pullRequest ? "pull request workspace" : "working tree",
+        });
+      }
       if (request.method === "GET" && url.pathname.startsWith("/api/screenshots/")) {
         const id = url.pathname.slice("/api/screenshots/".length);
         const screenshot = session.screenshot(id);
@@ -448,7 +463,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       // Preview clients open the bare origin, so the token cannot arrive in a fragment.
       // The redirect target must differ from "/" or the browser reloads "/" forever.
       if (previewRedirect && url.pathname === "/") {
-        return new Response(null, { status: 302, headers: { ...SECURITY_HEADERS, location: `/t#token=${session.browserToken}` } });
+        return new Response(null, { status: 302, headers: { ...SECURITY_HEADERS, location: `/t#token=${session.browserToken}${launchTourIntro ? "&intro=1" : ""}` } });
       }
 
       const shell = url.pathname === "/" || (previewRedirect && url.pathname === "/t");
@@ -473,8 +488,8 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
 const DISCOVERABLE_PORT_START = 47550;
 const DISCOVERABLE_PORT_END = 47599;
 
-export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory(), previewRedirect = false) {
-  const options = { hostname: "127.0.0.1", idleTimeout: 60, fetch: createRequestHandler(session, sessionDirectory, undefined, previewRedirect) };
+export function startServer(session: ReviewSession, port: number, sessionDirectory = reviewSessionDirectory(), previewRedirect = false, launchTourIntro = false) {
+  const options = { hostname: "127.0.0.1", idleTimeout: 60, fetch: createRequestHandler(session, sessionDirectory, undefined, previewRedirect, launchTourIntro) };
   if (port !== 0) return Bun.serve({ ...options, port });
   for (let candidate = DISCOVERABLE_PORT_START; candidate <= DISCOVERABLE_PORT_END; candidate += 1) {
     try {

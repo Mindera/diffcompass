@@ -167,8 +167,12 @@ test("questions support removable line and file context while review decisions a
   expect(html).toContain(">Request changes</button>");
   expect(html).toContain(">Approve with comments</button>");
   expect(html).toContain(">Approve</button>");
+  expect(html).toContain('id="close-review-button"');
+  expect(html).toContain(">Close review</button>");
   expect(app).toContain('openReviewDecision("approve-with-comments")');
   expect(app).toContain('openReviewDecision("request-changes")');
+  expect(app).toContain('window.confirm("Close this review without approving or requesting changes?")');
+  expect(app).toContain('void close("cancelled", "cancel")');
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {

@@ -857,6 +857,12 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .architecture-viewer-dialog .sequence-diagram { width: 100%; height: 100%; min-height: 0; max-height: none; margin-top: 10px; }
 .architecture-viewer-dialog .sequence-diagram svg { max-width: none; }
 .sessions-dialog { width: min(760px, calc(100vw - 30px)); max-height: min(760px, calc(100vh - 40px)); overflow: hidden; }
+.about-dialog { width: min(560px, calc(100vw - 30px)); }
+.about-details { display: grid; gap: 0; margin: 18px 0 4px; overflow: hidden; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-control); }
+.about-details > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+.about-details > div:last-child { border-bottom: 0; }
+.about-details dt { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.about-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .dialog-heading, .session-summary, .session-detail, .session-actions { display: flex; align-items: center; }
 .dialog-heading, .session-summary { justify-content: space-between; gap: 12px; }
 .archive-toggle { display: flex; align-items: center; gap: 7px; margin: 16px 0 10px; color: var(--muted); font-size: 11px; }

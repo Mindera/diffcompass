@@ -84,7 +84,7 @@ const state = {
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
-    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "export-menu", "refresh-button", "close-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
@@ -217,7 +217,9 @@ function renderClosedBanner() {
     elements["closed-banner"].textContent = `${state.closeCountdownMessage} You can close this window.`;
     return;
   }
-  elements["closed-banner"].textContent = `This review is closed as ${state.session.status}. It is now read-only.`;
+  elements["closed-banner"].textContent = state.session.status === "cancelled"
+    ? "This review was closed without a decision. It is now read-only."
+    : `This review is closed as ${state.session.status}. It is now read-only.`;
 }
 
 function beginCloseCountdown(message) {
@@ -242,10 +244,12 @@ function beginCloseCountdown(message) {
 
 function beginCloseCountdownForTransition(previousStatus, result) {
   if (previousStatus !== "open" || state.session.status === "open" || state.closeCountdownMessage !== null) return;
-  const delivered = state.session.status === "feedback" ? result?.comments?.length : undefined;
-  beginCloseCountdown(delivered === undefined
-    ? `This review is closed as ${state.session.status}.`
-    : `${delivered} feedback item(s) delivered.`);
+  const submitted = state.session.status === "feedback" && result
+    ? (result.comments?.length ?? 0) + (result.note?.trim() ? 1 : 0)
+    : undefined;
+  beginCloseCountdown(submitted === undefined
+    ? state.session.status === "cancelled" ? "This review was closed without a decision." : `This review is closed as ${state.session.status}.`
+    : `${submitted} feedback item(s) submitted.`);
 }
 
 async function checkForUpdate() {
@@ -306,6 +310,7 @@ function setBusy(busy, label = "Working…") {
   elements["update-button"].disabled = busy || state.updateInProgress || elements["update-button"].classList.contains("updated");
   elements["refresh-button"].disabled = busy;
   elements["close-button"].disabled = busy;
+  elements["close-review-button"].disabled = busy;
   elements["approve-comments-button"].disabled = busy;
   elements["feedback-button"].disabled = busy;
   elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
@@ -372,6 +377,28 @@ async function loadSessions() {
     if (result.invalid.length > 0) toast(`${result.invalid.length} unreadable session file(s) were ignored.`);
   } catch (error) {
     elements["sessions-list"].innerHTML = `<div class="empty compact">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function openAboutDialog() {
+  elements["settings-menu"].open = false;
+  elements["about-details"].innerHTML = "<div><dt>Status</dt><dd>Loading…</dd></div>";
+  elements["about-dialog"].showModal();
+  try {
+    const about = await api("/api/about");
+    const rows = [
+      ["Version", about.version],
+      ["Runtime", about.runtime],
+      ["Repository", about.repository],
+      ["Location", about.repositoryPath],
+      ["Comparison", about.comparison],
+      ["Review", about.reviewStatus],
+      ["Agent", about.agent],
+      ["Mode", about.mode],
+    ];
+    elements["about-details"].innerHTML = rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
+  } catch (error) {
+    elements["about-details"].innerHTML = `<div><dt>Error</dt><dd>${escapeHtml(error.message)}</dd></div>`;
   }
 }
 
@@ -2094,11 +2121,10 @@ async function refreshDiffSearch() {
   }
 }
 
-function nextUnreviewedRenderedPath(path) {
+function nextRenderedPath(path) {
   const index = state.renderedDiffFiles.findIndex((file) => file.path === path);
   if (index < 0) return null;
-  const reviewed = new Set(state.session.reviewedFiles ?? []);
-  return state.renderedDiffFiles.slice(index + 1).find((file) => !reviewed.has(file.path))?.path ?? null;
+  return state.renderedDiffFiles[index + 1]?.path ?? null;
 }
 
 function captureVisibleFileHeader(path) {
@@ -2115,9 +2141,10 @@ function captureVisibleFileHeader(path) {
   return { path, visibleTop };
 }
 
-function recoverVisibleFileHeader(anchor) {
+function recoverVisibleFileHeader(anchor, expectedScrollTop) {
   if (!anchor) return;
   const panel = elements["diff-panel"];
+  if (expectedScrollTop !== undefined && panel.scrollTop !== expectedScrollTop) return;
   const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(anchor.path)}"] > .diff-file-header`);
   if (!header) return;
   const headerBounds = header.getBoundingClientRect();
@@ -2125,9 +2152,16 @@ function recoverVisibleFileHeader(anchor) {
   panel.scrollTop += headerBounds.top - anchor.visibleTop;
 }
 
+function recoverVisibleFileHeaderAfterLayout(anchor) {
+  if (!anchor) return;
+  const panel = elements["diff-panel"];
+  const expectedScrollTop = panel.scrollTop;
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => recoverVisibleFileHeader(anchor, expectedScrollTop)));
+}
+
 async function setReviewed(path, reviewed) {
   if (!reviewIsOpen() || state.busy) return;
-  const nextPath = reviewed ? nextUnreviewedRenderedPath(path) : null;
+  const nextPath = reviewed ? nextRenderedPath(path) : null;
   try {
     state.session = await api("/api/files/reviewed", {
       method: "POST",
@@ -2140,7 +2174,7 @@ async function setReviewed(path, reviewed) {
     if (reviewed) state.collapsedFiles.add(path);
     else state.collapsedFiles.delete(path);
     renderSession();
-    recoverVisibleFileHeader(nextFileAnchor);
+    recoverVisibleFileHeaderAfterLayout(nextFileAnchor);
     toast(reviewed ? "File marked reviewed" : "File marked unreviewed");
   } catch (error) {
     toast(error.message);
@@ -2294,7 +2328,9 @@ function renderSession() {
   elements["refresh-button"].disabled = state.busy || closed;
   elements["close-button"].disabled = state.busy || closed;
   const cancelOnly = state.session.preferences?.closeOutcome === "cancelled";
-  elements["close-button"].textContent = cancelOnly ? "Cancel review" : "Approve";
+  elements["close-button"].textContent = cancelOnly ? "Close review" : "Approve";
+  elements["close-review-button"].classList.toggle("hidden", cancelOnly);
+  elements["close-review-button"].disabled = state.busy || closed;
   elements["approve-comments-button"].classList.toggle("hidden", cancelOnly);
   elements["feedback-button"].classList.toggle("hidden", cancelOnly);
   elements["approve-comments-button"].disabled = state.busy || closed;
@@ -2813,6 +2849,12 @@ async function close(outcome, decision = outcome === "accepted" ? "approve" : ou
   }
 }
 
+function requestCloseReview() {
+  if (!reviewIsOpen()) return;
+  if (!window.confirm("Close this review without approving or requesting changes?")) return;
+  void close("cancelled", "cancel");
+}
+
 function openReviewDecision(decision) {
   const requestChanges = decision === "request-changes";
   elements["review-decision-dialog"].dataset.decision = decision;
@@ -2940,7 +2982,8 @@ elements["questions-resizer"].addEventListener("pointerdown", (event) => {
   separator.addEventListener("pointercancel", end);
 });
 elements["chat-form"].addEventListener("submit", askAgent);
-elements["close-button"].addEventListener("click", () => state.session.preferences?.closeOutcome === "cancelled" ? close("cancelled", "cancel") : close("accepted", "approve"));
+elements["close-button"].addEventListener("click", () => state.session.preferences?.closeOutcome === "cancelled" ? requestCloseReview() : close("accepted", "approve"));
+elements["close-review-button"].addEventListener("click", requestCloseReview);
 elements["approve-comments-button"].addEventListener("click", () => openReviewDecision("approve-with-comments"));
 elements["feedback-button"].addEventListener("click", () => openReviewDecision("request-changes"));
 elements["cancel-review-decision"].addEventListener("click", () => elements["review-decision-dialog"].close());
@@ -3159,6 +3202,8 @@ window.addEventListener("review-tour-theme-change", () => {
 elements["sessions-button"].addEventListener("click", () => { elements["settings-menu"].open = false; elements["sessions-dialog"].showModal(); void loadSessions(); });
 elements["close-sessions"].addEventListener("click", () => elements["sessions-dialog"].close());
 elements["show-archived-sessions"].addEventListener("change", loadSessions);
+elements["about-button"].addEventListener("click", () => void openAboutDialog());
+elements["close-about"].addEventListener("click", () => elements["about-dialog"].close());
 elements["sessions-list"].addEventListener("click", async (event) => {
   const button = event.target.closest("[data-session-action]");
   const item = event.target.closest("[data-session-id]");

@@ -3,6 +3,7 @@ import { AttachedAgentBridge } from "../src/bridge.ts";
 import { createRequestHandler } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
 import type { GitComparison } from "../src/types.ts";
+import packageJson from "../package.json" with { type: "json" };
 
 function fixture() {
   const comparison: GitComparison = {
@@ -164,6 +165,23 @@ test("preview redirect sends a bare origin to the tokenized shell", async () => 
   expect(shell.headers.get("content-type")).toBe("text/html; charset=utf-8");
 });
 
+test("about reports the running version and review context", async () => {
+  const { session, fetch } = fixture();
+  const response = await fetch(new Request("http://127.0.0.1/api/about", {
+    headers: { "x-review-tour-token": session.browserToken },
+  }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    name: "Code Review Tour",
+    version: packageJson.version,
+    repository: "review-tour-handler",
+    comparison: "main → working tree",
+    reviewStatus: "open",
+    agent: "not selected",
+    mode: "working tree",
+  });
+});
+
 test("preview redirect stays off by default", async () => {
   const { session, fetch } = fixture();
 
@@ -173,4 +191,12 @@ test("preview redirect stays off by default", async () => {
 
   const shell = await fetch(new Request("http://127.0.0.1/t"));
   expect(shell.status).toBe(404);
+});
+
+test("preview redirect preserves the automatic tour introduction", async () => {
+  const { session } = fixture();
+  const fetch = createRequestHandler(session, "/private/tmp/review-tour-handler-sessions", undefined, true, true);
+  const redirect = await fetch(new Request("http://127.0.0.1/"));
+  expect(redirect.headers.get("location")).toBe(`/t#token=${session.browserToken}&intro=1`);
+  expect((await fetch(new Request("http://127.0.0.1/t"))).status).toBe(200);
 });
