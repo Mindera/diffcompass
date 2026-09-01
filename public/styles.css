@@ -517,6 +517,11 @@ button { color: inherit; }
 .tour-code-note p { display: inline; margin: 0 0 0 8px; color: var(--text-soft); }
 .source-file { margin: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-code); }
 .source-code { margin: 0; padding: 14px; color: var(--text-code); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; }
+.markdown-preview { box-sizing: border-box; width: min(100%, 920px); min-height: 180px; margin: 0 auto; padding: clamp(24px, 5vw, 56px); overflow-wrap: anywhere; color: var(--text); background: var(--panel); font-size: 14px; line-height: 1.65; }
+.markdown-preview h1 { margin: 0 0 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); font-size: 28px; line-height: 1.25; }
+.markdown-preview h2 { padding-bottom: 7px; border-bottom: 1px solid var(--border-soft); font-size: 21px; }
+.markdown-preview code { border-radius: 4px; padding: 2px 5px; color: var(--text-code); background: var(--surface-code); font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+.markdown-preview-error { color: var(--danger); }
 .empty { margin: 60px auto; color: var(--muted); text-align: center; }
 .empty.compact { margin: 24px auto; }
 
@@ -908,7 +913,8 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .conversation-picker::after { content: "⌄"; position: absolute; right: 25px; bottom: 22px; color: var(--muted); font-size: 14px; line-height: 1; pointer-events: none; }
 .conversation-picker:hover select { border-color: var(--border-hover); background: var(--surface-hover); }
 .question-composer { padding: 8px 12px 12px; border-top: 1px solid var(--border); }
-.questions-resizer { flex: 0 0 8px; cursor: row-resize; touch-action: none; border-block: 1px solid var(--border); background: var(--panel); }
+.questions-resizer { position: relative; flex: 0 0 8px; cursor: row-resize; touch-action: none; border-block: 1px solid var(--border); background: var(--panel); }
+.questions-resizer::after { content: ""; position: absolute; inset: 2px 42%; border-radius: 999px; background: var(--muted); }
 .questions-resizer:hover, .questions-resizer:focus-visible { background: var(--accent); }
 .agent-pane-switch { display: none; }
 .conversation-card { padding: 16px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; overflow-wrap: anywhere; }

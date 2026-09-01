@@ -4,7 +4,7 @@ import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./ag
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
-import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, loadDiffImage, loadRepositoryFile, removeProposalWorkspace, writeProposalFile, type ProposalWorkspace } from "./git.ts";
+import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, loadDiffImage, loadDiffText, loadRepositoryFile, removeProposalWorkspace, writeProposalFile, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
 import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
@@ -573,6 +573,10 @@ export class ReviewSession {
 
   diffImage(path: string, side: "old" | "new") {
     return loadDiffImage(this.comparison, path, side);
+  }
+
+  diffText(path: string, side: "old" | "new") {
+    return loadDiffText(this.comparison, path, side);
   }
 
   private pageDiffFile(file: DiffFile, requestedOffset = 0, requestedLimit = 1_000, anchor?: { line: number; side: "old" | "new" }) {

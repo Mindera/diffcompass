@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureWorkingTreeSnapshot, loadComparison, loadDiffFileWithContext } from "../src/git.ts";
+import { captureWorkingTreeSnapshot, loadComparison, loadDiffFileWithContext, loadDiffText } from "../src/git.ts";
 import { runProcess } from "../src/process.ts";
 
 const repositories: string[] = [];
@@ -94,5 +94,23 @@ describe("loadComparison", () => {
     expect(comparison.mergeBase).toBe(reviewedTree);
     expect(comparison.patch).toContain("+feedback fix");
     expect(comparison.patch).not.toContain("+original review change");
+  });
+
+  test("loads both sides of a changed Markdown file for preview", async () => {
+    const repository = await mkdtemp(join(tmpdir(), "review-tour-markdown-"));
+    repositories.push(repository);
+    await git(repository, "init", "-b", "main");
+    await git(repository, "config", "user.name", "Review Tour Test");
+    await git(repository, "config", "user.email", "review-tour@example.test");
+    await writeFile(join(repository, "README.md"), "# Before\n");
+    await git(repository, "add", "README.md");
+    await git(repository, "commit", "-m", "base");
+    await writeFile(join(repository, "README.md"), "# After\n\nUpdated docs.\n");
+
+    const comparison = await loadComparison(repository);
+
+    expect(await loadDiffText(comparison, "README.md", "old")).toBe("# Before\n");
+    expect(await loadDiffText(comparison, "README.md", "new")).toBe("# After\n\nUpdated docs.\n");
+    await expect(loadDiffText(comparison, "README.txt", "new")).rejects.toThrow("Markdown");
   });
 });

@@ -78,6 +78,12 @@ const state = {
   screenshotUrls: new Map(),
   diffImageUrls: new Map(),
   diffImageRequestId: 0,
+  markdownPreviewPaths: new Set(),
+  markdownPreviewCache: new Map(),
+  markdownPreviewRequestId: 0,
+  repositoryFileView: "preview",
+  repositoryFilePath: null,
+  repositoryFileContent: "",
   filePanelOpen: false,
 };
 
@@ -119,7 +125,7 @@ function renderInlineMarkdown(value) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
-function renderMarkdown(value) {
+function renderMarkdown(value, headingOffset = 1) {
   const output = [];
   let listType = null;
   const closeList = () => {
@@ -130,7 +136,7 @@ function renderMarkdown(value) {
     const heading = /^\s*(#{1,6})\s+(.+?)\s*$/.exec(line);
     if (heading) {
       closeList();
-      const level = Math.min(6, heading[1].length + 1);
+      const level = Math.min(6, heading[1].length + headingOffset);
       output.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
       continue;
     }
@@ -528,6 +534,7 @@ function initializeUiPreferences() {
   const savedFilePanelCollapsed = window.localStorage.getItem(preferenceKey("file-panel-collapsed")) === "true";
   const savedAgentPanelCollapsed = window.localStorage.getItem(preferenceKey("agent-panel-collapsed")) === "true";
   const savedSplitOldWidth = Number(window.localStorage.getItem(preferenceKey("split-old-width")));
+  const savedQuestionPanePercent = Number(window.localStorage.getItem(preferenceKey("question-pane-percent")));
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = preferredDiffLayout();
   state.diffWrap = preferredDiffWrap();
@@ -542,6 +549,7 @@ function initializeUiPreferences() {
   setPaneCollapsed("file", savedFilePanelCollapsed);
   setPaneCollapsed("agent", savedAgentPanelCollapsed);
   setSplitOldWidth(Number.isFinite(savedSplitOldWidth) && savedSplitOldWidth > 0 ? savedSplitOldWidth : 50);
+  resizeQuestions(Number.isFinite(savedQuestionPanePercent) && savedQuestionPanePercent > 0 ? savedQuestionPanePercent : 45);
   setFilePanelWidth(state.filePanelWidth);
 }
 
@@ -819,9 +827,13 @@ function renderSplitSide(file, row, side, findings, whitespaceOnly = false, rang
 }
 
 function renderDiffFileHeader(file, collapsed, fullContent = false) {
+  const markdownPreview = isMarkdownFile(file) && state.markdownPreviewPaths.has(file.path);
+  const markdownControl = isMarkdownFile(file) && !state.proposalPreview
+    ? `<button class="text-button" type="button" data-markdown-preview="${escapeHtml(file.path)}">${markdownPreview ? "Changes" : "Preview"}</button> · `
+    : "";
   const reviewControls = state.proposalPreview
     ? `<span class="proposal-label">pending suggestion</span>${state.proposalActivityId ? ` · <button class="text-button" type="button" data-preview-activity-action="apply" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Apply</button> · <button class="text-button danger" type="button" data-preview-activity-action="reject" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Reject</button> · ` : " · "}`
-    : `${fullContent || isPngDiff(file) ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `;
+    : `${markdownControl}${fullContent || isPngDiff(file) || markdownPreview ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `;
   const paging = !fullContent && file._page && file._page.totalRows > file._page.limit
     ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · `
     : "";
@@ -853,7 +865,7 @@ function renderDiff(files) {
       return `<section class="diff-file${collapsed ? " collapsed" : ""}" id="file-${CSS.escape(file.path)}" data-path="${escapeHtml(file.path)}">
       ${renderDiffFileHeader(file, collapsed)}
       <div class="diff-file-scroll">
-      ${isPngDiff(file) ? renderPngDiff(file) : file.hunks.map((hunk) => {
+      ${isPngDiff(file) ? renderPngDiff(file) : /\.md$/i.test(file.path) && state.markdownPreviewPaths?.has(file.path) ? renderMarkdownDiff(file) : file.hunks.map((hunk) => {
         const whitespaceRows = whitespaceChangedRows(hunk.rows);
         const inlineChanges = inlineChangesForRows(hunk.rows);
         return `<div class="hunk ${layout}-layout">
@@ -873,6 +885,7 @@ function renderDiff(files) {
   elements["empty-diff"].classList.toggle("hidden", files.length > 0);
   void highlightRenderedCode();
   void hydrateDiffImages(files);
+  if (files.some((file) => /\.md$/i.test(file.path) && state.markdownPreviewPaths?.has(file.path))) void hydrateMarkdownPreviews(files);
   renderConversationBadges();
 }
 
@@ -939,6 +952,39 @@ function changeDiffView(layout, wrap, persist = true) {
 
 function isPngDiff(file) {
   return /\.png$/i.test(file.path);
+}
+
+function isMarkdownFile(file) {
+  return /\.md$/i.test(file.path);
+}
+
+function renderMarkdownDiff(file) {
+  const side = file.newPath ? "new" : "old";
+  return `<article class="markdown-preview rendered-markdown" data-markdown-path="${escapeHtml(file.path)}" data-markdown-side="${side}"><p class="muted">Loading Markdown preview…</p></article>`;
+}
+
+async function hydrateMarkdownPreviews(files) {
+  const requestId = ++state.markdownPreviewRequestId;
+  const revision = state.session.revision;
+  const previews = files.filter((file) => isMarkdownFile(file) && state.markdownPreviewPaths.has(file.path));
+  for (const file of previews) {
+    const side = file.newPath ? "new" : "old";
+    const target = elements.diff.querySelector(`[data-markdown-path="${CSS.escape(file.path)}"][data-markdown-side="${side}"]`);
+    if (!target) continue;
+    const key = `${revision}:${file.path}:${side}`;
+    try {
+      let content = state.markdownPreviewCache.get(key);
+      if (content === undefined) {
+        const result = await api(`/api/diff/markdown?${new URLSearchParams({ path: file.path, side })}`);
+        if (requestId !== state.markdownPreviewRequestId || !target.isConnected) return;
+        content = result.content;
+        state.markdownPreviewCache.set(key, content);
+      }
+      target.innerHTML = renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>';
+    } catch (error) {
+      if (requestId === state.markdownPreviewRequestId && target.isConnected) target.innerHTML = `<p class="markdown-preview-error">${escapeHtml(error.message)}</p>`;
+    }
+  }
 }
 
 function renderPngDiff(file) {
@@ -1196,12 +1242,21 @@ async function showRepositoryFile(path) {
   try {
     const file = await api(`/api/files?path=${encodeURIComponent(path)}`);
     if (requestId !== state.fileRequestId) return;
-    elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="muted">unchanged</span></header><pre class="source-code">${escapeHtml(file.content)}</pre></section>`;
+    state.repositoryFilePath = path;
+    state.repositoryFileContent = file.content;
+    state.repositoryFileView = /\.md$/i.test(path) ? "preview" : "source";
+    renderRepositoryFile(path, file.content);
     elements["empty-diff"].classList.add("hidden");
-    void highlightRenderedCode();
   } catch (error) {
     if (requestId === state.fileRequestId) toast(error.message);
   }
+}
+
+function renderRepositoryFile(path, content) {
+  const markdown = /\.md$/i.test(path);
+  const preview = markdown && state.repositoryFileView === "preview";
+  elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">unchanged</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
+  if (!preview) void highlightRenderedCode();
 }
 
 async function showActivityFile(activityId, path) {
@@ -2957,15 +3012,17 @@ elements["question-files-form"].addEventListener("submit", (event) => {
 });
 elements["show-tour-pane"].addEventListener("click", () => { state.mobileAgentPane = "tour"; renderQuestionLayout(); });
 elements["show-questions-pane"].addEventListener("click", () => { state.mobileAgentPane = "questions"; state.questionsOpen = true; renderQuestionLayout(); });
-function resizeQuestions(percent) {
+function resizeQuestions(percent, persist = false) {
   state.questionPanePercent = Math.max(25, Math.min(70, percent));
   elements["questions-resizer"].setAttribute("aria-valuenow", String(Math.round(state.questionPanePercent)));
+  elements["questions-resizer"].setAttribute("aria-valuetext", `Questions ${Math.round(state.questionPanePercent)}%, tour ${Math.round(100 - state.questionPanePercent)}%`);
+  if (persist && state.preferenceRepository) window.localStorage.setItem(preferenceKey("question-pane-percent"), String(state.questionPanePercent));
   renderQuestionLayout();
 }
 elements["questions-resizer"].addEventListener("keydown", (event) => {
   if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
-  resizeQuestions(event.key === "Home" ? 25 : event.key === "End" ? 70 : state.questionPanePercent + (event.key === "ArrowUp" ? 5 : -5));
+  resizeQuestions(event.key === "Home" ? 25 : event.key === "End" ? 70 : state.questionPanePercent + (event.key === "ArrowUp" ? 5 : -5), true);
 });
 elements["questions-resizer"].addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
@@ -2976,11 +3033,12 @@ elements["questions-resizer"].addEventListener("pointerdown", (event) => {
   const height = elements["questions-pane"].getBoundingClientRect().height + elements["tour-active"].getBoundingClientRect().height;
   separator.setPointerCapture(event.pointerId);
   const move = (next) => resizeQuestions(startPercent + (startY - next.clientY) / height * 100);
-  const end = () => { separator.removeEventListener("pointermove", move); separator.removeEventListener("pointerup", end); separator.removeEventListener("pointercancel", end); };
+  const end = () => { resizeQuestions(state.questionPanePercent, true); separator.removeEventListener("pointermove", move); separator.removeEventListener("pointerup", end); separator.removeEventListener("pointercancel", end); };
   separator.addEventListener("pointermove", move);
   separator.addEventListener("pointerup", end);
   separator.addEventListener("pointercancel", end);
 });
+elements["questions-resizer"].addEventListener("dblclick", () => resizeQuestions(45, true));
 elements["chat-form"].addEventListener("submit", askAgent);
 elements["close-button"].addEventListener("click", () => state.session.preferences?.closeOutcome === "cancelled" ? requestCloseReview() : close("accepted", "approve"));
 elements["close-review-button"].addEventListener("click", requestCloseReview);
@@ -3470,6 +3528,23 @@ elements.diff.addEventListener("submit", (event) => {
 });
 
 elements.diff.addEventListener("click", (event) => {
+  const sourceView = event.target.closest("[data-source-view]");
+  if (sourceView) {
+    state.repositoryFileView = sourceView.dataset.sourceView;
+    renderRepositoryFile(state.repositoryFilePath, state.repositoryFileContent);
+    return;
+  }
+  const markdownPreview = event.target.closest("[data-markdown-preview]");
+  if (markdownPreview) {
+    const path = markdownPreview.dataset.markdownPreview;
+    if (state.markdownPreviewPaths.has(path)) state.markdownPreviewPaths.delete(path);
+    else state.markdownPreviewPaths.add(path);
+    renderDiff(state.renderedDiffFiles);
+    renderComments();
+    renderFindings();
+    renderTourAnnotation();
+    return;
+  }
   const conversation = event.target.closest("[data-conversation]");
   if (conversation) { event.stopPropagation(); openConversation(conversation.dataset.conversation); return; }
   const previewAction = event.target.closest("[data-preview-activity-action]");

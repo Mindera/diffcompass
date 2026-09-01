@@ -306,6 +306,11 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
         return response;
       }
+      if (request.method === "GET" && url.pathname === "/api/diff/markdown") {
+        const path = requiredString(url.searchParams.get("path"), "path", 4_096);
+        const side = enumValue(url.searchParams.get("side"), "side", ["old", "new"]);
+        return json({ path, side, content: await session.diffText(path, side) });
+      }
       const activityDiffMatch = /^\/api\/activities\/([^/]+)\/diff$/.exec(url.pathname);
       if (activityDiffMatch && request.method === "GET") {
         return json(session.activityDiff(

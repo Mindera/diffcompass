@@ -9,6 +9,7 @@ import type { DiffFile, GitComparison } from "./types.ts";
 
 const MAX_CHANGE_PATCH_BYTES = 12 * 1024 * 1024;
 const MAX_DIFF_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_DIFF_TEXT_BYTES = 1 * 1024 * 1024;
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 export interface WorkingTreeSnapshot {
@@ -283,6 +284,33 @@ export async function loadDiffImage(comparison: GitComparison, path: string, sid
   const content = await readFile(candidate);
   const data = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer;
   return { data: pngBytes(data), mimeType: "image/png" };
+}
+
+export async function loadDiffText(comparison: GitComparison, path: string, side: "old" | "new"): Promise<string> {
+  const file = comparison.files.find((candidate) => candidate.path === path);
+  if (!file || !/\.md$/i.test(file.path)) throw new ReviewError("Changed Markdown file does not exist in this comparison.");
+  const sourcePath = side === "old" ? file.oldPath : file.newPath;
+  if (!sourcePath) throw new ReviewError(`The changed Markdown file has no ${side} version.`);
+
+  if (side === "old") {
+    const object = `${comparison.mergeBase}:${sourcePath}`;
+    const size = Number(await git(comparison.repositoryRoot, ["cat-file", "-s", object]).catch(() => "NaN"));
+    if (!Number.isSafeInteger(size) || size < 0) throw new ReviewError("The previous Markdown file is unavailable.");
+    if (size > MAX_DIFF_TEXT_BYTES) throw new ReviewError("The changed Markdown file is too large to display.");
+    const process = Bun.spawn(["git", "cat-file", "blob", object], {
+      cwd: comparison.repositoryRoot,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const [content, exitCode] = await Promise.all([new Response(process.stdout).arrayBuffer(), process.exited]);
+    if (exitCode !== 0) throw new ReviewError("The previous Markdown file is unavailable.");
+    const bytes = new Uint8Array(content);
+    if (bytes.includes(0)) throw new ReviewError("Binary files cannot be previewed as Markdown.");
+    return new TextDecoder().decode(bytes);
+  }
+
+  return loadRepositoryFile(comparison, sourcePath, MAX_DIFF_TEXT_BYTES);
 }
 
 export async function writeProposalFile(workspace: ProposalWorkspace, path: string, content: string, maxBytes = 1_000_000): Promise<void> {
