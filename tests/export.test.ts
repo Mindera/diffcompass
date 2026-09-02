@@ -106,6 +106,29 @@ test("HTML export embeds server-prepared syntax highlighting", async () => {
   expect(artifact.content).toContain("const");
 });
 
+test("HTML export embeds a safe interactive Markdown preview", () => {
+  const session = fixture();
+  const file = session.comparison.files[0]!;
+  file.path = "README.md";
+  file.oldPath = "README.md";
+  file.newPath = "README.md";
+  session.outline!.phases[0]!.fileChanges[0]!.path = "README.md";
+  session.outline!.phases[0]!.steps[0]!.anchor.path = "README.md";
+  const artifact = exportReview(session, "html", {
+    markdownPreviews: [{ path: "README.md", side: "new", content: "# Preview heading\n\n**Bold** and `<safe>`.\n\n<script>bad()</script>" }],
+  });
+
+  expect(artifact.content).toContain('data-markdown-toggle>Preview</button>');
+  expect(artifact.content).toContain('class="diff-source"');
+  expect(artifact.content).toContain('class="markdown-preview rendered-markdown" data-markdown-side="new" hidden');
+  expect(artifact.content).toContain("<h1>Preview heading</h1>");
+  expect(artifact.content).toContain("<strong>Bold</strong> and <code>&lt;safe&gt;</code>.");
+  expect(artifact.content).toContain("&lt;script&gt;bad()&lt;/script&gt;");
+  expect(artifact.content).not.toContain("<script>bad()</script>");
+  expect(artifact.content).toContain("button.textContent=showPreview?'Changes':'Preview'");
+  expect(artifact.content).toContain(".diff-side{border-bottom:0}");
+});
+
 test("HTML export prioritizes tour files when the syntax budget is exceeded", () => {
   const session = fixture();
   const rows = Array.from({ length: 12_001 }, (_, index) => ({

@@ -199,11 +199,22 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         }
         if (format === "html" && input.prepareMissingSteps === true) await session.prepareTourForExport();
         const highlightedGroups = format === "html" ? await highlightGroups(htmlHighlightGroups(session), "review-tour") : undefined;
+        const markdownPreviews = format === "html" ? (await Promise.all(session.comparison.files
+          .filter((file) => /\.md$/i.test(file.path))
+          .map(async (file) => {
+            const side = file.newPath ? "new" as const : "old" as const;
+            try {
+              return { path: file.path, side, content: await session.diffText(file.path, side) };
+            } catch {
+              return undefined;
+            }
+          }))).filter((preview): preview is NonNullable<typeof preview> => preview !== undefined) : undefined;
         const artifact = exportReview(session, format, {
           includeFindings: input.includeFindings !== false,
           includeCallFlows: input.includeCallFlows !== false,
           includeDiagrams: input.includeDiagrams !== false,
           highlightedGroups,
+          markdownPreviews,
         });
         const baseName = session.comparison.repositoryName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "code-review";
         const response = new Response(artifact.content, {

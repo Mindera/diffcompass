@@ -171,8 +171,10 @@ test("serves local Mermaid and bounds authenticated syntax highlighting", async 
 });
 
 test("flow edits are validated and exports are authenticated downloadable artifacts", async () => {
-  const { session, url } = await fixture();
+  const { repository, session, url } = await fixture();
   const headers = browserHeaders(url, session.browserToken);
+  await writeFile(join(repository, "README.md"), "# Exported preview\n\nA **rendered** Markdown document.\n");
+  await session.refreshComparison();
   session.outline = {
     title: "<script>Review</script>",
     summary: "Summary",
@@ -190,6 +192,9 @@ test("flow edits are validated and exports are authenticated downloadable artifa
   const exportedContent = await exported.text();
   expect(exportedContent).toContain("&lt;script&gt;Review&lt;/script&gt;");
   expect(exportedContent).toContain('class="syntax-token');
+  expect(exportedContent).toContain('data-markdown-toggle>Preview</button>');
+  expect(exportedContent).toContain("<h1>Exported preview</h1>");
+  expect(exportedContent).toContain("A <strong>rendered</strong> Markdown document.");
   expect(exportedContent).not.toContain("mermaid.initialize");
 
   const invalid = await jsonRequest(url, "/api/flows/flow", {
