@@ -189,6 +189,7 @@ test("flow edits are validated and exports are authenticated downloadable artifa
   expect(exported.headers.get("content-disposition")).toMatch(/attachment; filename="[A-Za-z0-9._-]+-review\.html"/);
   const exportedContent = await exported.text();
   expect(exportedContent).toContain("&lt;script&gt;Review&lt;/script&gt;");
+  expect(exportedContent).toContain('class="syntax-token');
   expect(exportedContent).not.toContain("mermaid.initialize");
 
   const invalid = await jsonRequest(url, "/api/flows/flow", {

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { exportReview } from "../src/export.ts";
+import { exportReview, htmlHighlightGroups } from "../src/export.ts";
+import { highlightGroups } from "../src/highlight.ts";
 import type { ReviewSession } from "../src/session.ts";
 
 function fixture(): ReviewSession {
@@ -87,8 +88,32 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain('data-diff-file="app.ts"');
   expect(artifact.content).toContain('<div class="diff-row">');
   expect(artifact.content).toContain('class="architecture-legend"');
-  expect(artifact.content).toContain('<div class="mermaid">sequenceDiagram');
+  expect(artifact.content).toContain('data-diagram-expand="behavior"');
+  expect(artifact.content).toContain('id="architecture-viewer"');
+  expect(artifact.content).toContain("className='tour-code-note'");
+  expect(artifact.content).toContain('<div class="mermaid sequence-diagram">sequenceDiagram');
   expect(artifact.content).toContain("mermaid.initialize");
+});
+
+test("HTML export embeds server-prepared syntax highlighting", async () => {
+  const session = fixture();
+  const highlightedGroups = await highlightGroups(htmlHighlightGroups(session), "review-tour");
+  const artifact = exportReview(session, "html", { highlightedGroups });
+  expect(artifact.content).toContain('class="syntax-token');
+  expect(artifact.content).toContain("--syntax-dark:#");
+  expect(artifact.content).toContain("const");
+});
+
+test("HTML export preserves interactive call-tree modes", () => {
+  const session = fixture();
+  session.outline!.callFlows = [{ id: "calls", title: "Call graph", summary: "Calls", entrypointNodeId: "entry", provenance: "verified", nodes: [{ id: "entry", label: "entry", kind: "function", change: "modified", newLocation: { path: "app.ts", side: "new", line: 1 } }, { id: "child", label: "child", kind: "function", change: "added", newLocation: { path: "app.ts", side: "new", line: 1 } }], edges: [{ id: "edge", from: "entry", to: "child", change: "added", newCallSite: { path: "app.ts", side: "new", line: 1 }, label: "calls" }], affectedFiles: ["app.ts"] }];
+  const artifact = exportReview(session, "html");
+  expect(artifact.content).toContain('class="call-flow-card"');
+  expect(artifact.content).toContain('data-call-mode="changes"');
+  expect(artifact.content).toContain('data-call-mode="before"');
+  expect(artifact.content).toContain('data-call-mode="after"');
+  expect(artifact.content).toContain('class="call-tree-legend"');
+  expect(artifact.content).toContain('class="call-node modified entrypoint"');
 });
 
 test("HTML export can omit findings, call flows, and diagrams", () => {

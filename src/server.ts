@@ -12,7 +12,7 @@ import mermaidScript from "mermaid/dist/mermaid.min.js" with { type: "text" };
 import packageJson from "../package.json" with { type: "json" };
 import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
-import { exportReview, type ExportFormat } from "./export.ts";
+import { exportReview, htmlHighlightGroups, type ExportFormat } from "./export.ts";
 import { loadRepositoryFile } from "./git.ts";
 import { highlightGroups, SYNTAX_THEMES, type HighlightGroup, type SyntaxTheme } from "./highlight.ts";
 import { ReviewSession } from "./session.ts";
@@ -198,10 +198,12 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           if (input[key] !== undefined && typeof input[key] !== "boolean") throw new HttpError(422, `${key} must be a boolean.`);
         }
         if (format === "html" && input.prepareMissingSteps === true) await session.prepareTourForExport();
+        const highlightedGroups = format === "html" ? await highlightGroups(htmlHighlightGroups(session), "review-tour") : undefined;
         const artifact = exportReview(session, format, {
           includeFindings: input.includeFindings !== false,
           includeCallFlows: input.includeCallFlows !== false,
           includeDiagrams: input.includeDiagrams !== false,
+          highlightedGroups,
         });
         const baseName = session.comparison.repositoryName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "code-review";
         const response = new Response(artifact.content, {
