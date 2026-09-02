@@ -17,7 +17,7 @@ function fixture(): ReviewSession {
         path: "app.ts",
         oldPath: "app.ts",
         newPath: "app.ts",
-        status: "modified",
+        status: "added",
         metadata: [],
         hunks: [{
           header: "@@ -0,0 +1,2 @@",
@@ -86,6 +86,8 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain("steps.forEach((node,index)=>node.hidden=index!==current)");
   expect(artifact.content).toContain("<strong>Explanation</strong> with <code>code</code>.");
   expect(artifact.content).toContain('data-diff-file="app.ts"');
+  expect(artifact.content).toContain('class="file-diff single-side"');
+  expect(artifact.content).not.toContain('data-path="app.ts" data-side="old"');
   expect(artifact.content).toContain('<div class="diff-row">');
   expect(artifact.content).toContain('class="architecture-legend"');
   expect(artifact.content).toContain('data-diagram-expand="behavior"');
@@ -102,6 +104,26 @@ test("HTML export embeds server-prepared syntax highlighting", async () => {
   expect(artifact.content).toContain('class="syntax-token');
   expect(artifact.content).toContain("--syntax-dark:#");
   expect(artifact.content).toContain("const");
+});
+
+test("HTML export prioritizes tour files when the syntax budget is exceeded", () => {
+  const session = fixture();
+  const rows = Array.from({ length: 12_001 }, (_, index) => ({
+    kind: "addition" as const,
+    content: `const unrelated${index} = ${index};`,
+    oldLine: null,
+    newLine: index + 1,
+  }));
+  session.comparison.files.unshift({
+    path: "generated.ts", oldPath: "/dev/null", newPath: "generated.ts", status: "added", metadata: [],
+    hunks: [{ header: "@@ -0,0 +1,12001 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: rows.length, rows }],
+    additions: rows.length, deletions: 0,
+  });
+
+  const groups = htmlHighlightGroups(session);
+  expect(groups.reduce((total, group) => total + group.lines.length, 0)).toBe(12_000);
+  expect(groups[0]).toMatchObject({ id: "export-1-0-new", path: "app.ts" });
+  expect(groups.some((group) => group.id.endsWith("-old"))).toBe(false);
 });
 
 test("HTML export preserves interactive call-tree modes", () => {

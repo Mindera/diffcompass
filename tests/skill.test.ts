@@ -4,13 +4,15 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
 
-test("the attached-agent skill distinguishes continuous watch from bounded polling", async () => {
+test("the attached-agent skill defaults to bounded polling and scopes continuous watch to persistent hosts", async () => {
   const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
-  expect(skill).toContain("`bridge watch` blocks until an event exists");
-  expect(skill).toContain("bounds one internal HTTP long poll, not the lifetime of the command");
-  expect(skill).toContain("MUST NOT wrap `bridge watch` in its own timeout");
-  expect(skill).toContain("use `bridge next`");
-  expect(skill).toContain("If the host cannot keep an unbounded child process alive");
+  expect(skill).toContain("Poll for work with one bounded");
+  expect(skill).toContain("Do not put repeated polls in one long-running Bash loop");
+  expect(skill).toContain("invoke `bridge next` again immediately");
+  expect(skill).toContain("It blocks until an event exists");
+  expect(skill).toContain("bounds one internal HTTP long poll");
+  expect(skill).toContain("not the lifetime of the command");
+  expect(skill).toContain("Never run it through a shell tool with a command");
 });
 
 test("the attached-agent skill documents authoritative event and anchor shapes", async () => {

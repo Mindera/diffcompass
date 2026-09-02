@@ -11,7 +11,7 @@ import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorks
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, DiffFile, DiffRow, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, DiffFile, DiffRow, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, TourOutline } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 
 interface AgentDefaults {
@@ -65,6 +65,18 @@ function comparisonChanges(before: DiffFile[], after: DiffFile[]): AgentChangeFi
       after: current ? fileSummary(current) : undefined,
     }];
   });
+}
+
+function sameComparison(before: GitComparison, after: GitComparison): boolean {
+  return before.repositoryRoot === after.repositoryRoot &&
+    before.repositoryName === after.repositoryName &&
+    before.branch === after.branch &&
+    before.base === after.base &&
+    before.mergeBase === after.mergeBase &&
+    before.head === after.head &&
+    before.patch === after.patch &&
+    before.repositoryFiles.length === after.repositoryFiles.length &&
+    before.repositoryFiles.every((path, index) => path === after.repositoryFiles[index]);
 }
 
 export class ReviewSession {
@@ -1359,6 +1371,7 @@ export class ReviewSession {
         refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base, this.preferences.contextLines);
       }
       this.ensureOpen();
+      if (context.source === "watcher" && sameComparison(this.comparison, refreshed)) return this.snapshot();
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;
       let operationRevision = before.revision;

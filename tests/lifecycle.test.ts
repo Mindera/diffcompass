@@ -670,6 +670,42 @@ test("a refresh rejects an in-flight outline generated for the previous comparis
   await expect(retry).rejects.toThrow();
 });
 
+test("an ignored-file watcher event does not invalidate an in-flight attached outline", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await mkdir(join(repository, ".ace"));
+  await writeFile(join(repository, ".git", "info", "exclude"), ".ace/\n");
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
+  const bridge = session.bridge!;
+  const starting = session.startTour({ adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeCallFlows: false, includeFlows: false, includeFindings: false });
+  const [outlinePrompt] = await bridge.eventsAfter(0, 1_000);
+  const generation = session.currentComparisonGeneration;
+
+  await writeFile(join(repository, ".ace", "agent-state.json"), "{}\n");
+  await session.refreshComparison({ source: "watcher" });
+  expect(session.currentComparisonGeneration).toBe(generation);
+
+  await bridge.respond(outlinePrompt!.id, JSON.stringify({
+    title: "Current outline", summary: "Generated for the unchanged comparison", phases: [{
+      id: "current-phase", title: "Current", summary: "Current phase", fileChanges: [{ path: "app.ts", summary: "Current file" }],
+      steps: [{ id: "current", title: "Current", objective: "Current", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
+    }], callFlows: [], flows: [], findings: [],
+  }));
+  let explanation;
+  for (let attempt = 0; attempt < 20 && !explanation; attempt += 1) {
+    const events = await bridge.eventsAfter(outlinePrompt!.sequence, 1_000);
+    explanation = events.find((event) => event.type === "agent.prompt" && event.kind === "tour.explanation");
+    if (!explanation) await Bun.sleep(10);
+  }
+  if (!explanation || explanation.type !== "agent.prompt") throw new Error("Expected an explanation prompt.");
+  await bridge.respond(explanation.id, "The changed line remains current.");
+  await expect(starting).resolves.toMatchObject({ outline: { title: "Current outline" } });
+
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changedAgain = 3;\n");
+  await session.refreshComparison({ source: "watcher" });
+  expect(session.currentComparisonGeneration).toBe(generation + 1);
+  await session.dispose();
+});
+
 test("a failed automatic outline remains visible in the session so the browser can explain and retry it", async () => {
   const { repository, stateFile } = await repositoryFixture();
   const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, attached: true });
