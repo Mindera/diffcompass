@@ -94,7 +94,7 @@ const elements = Object.fromEntries(
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -1646,6 +1646,15 @@ function architectureEntries() {
   ].filter(Boolean);
 }
 
+function architectureLegend() {
+  return `<div class="architecture-legend" role="list" aria-label="Architecture diagram legend">
+    <span role="listitem"><i class="new" aria-hidden="true"></i>New</span>
+    <span role="listitem"><i class="touched" aria-hidden="true"></i>Changed</span>
+    <span role="listitem"><i class="removed" aria-hidden="true"></i>Removed</span>
+    <span role="listitem"><i class="external" aria-hidden="true"></i>Outside this change</span>
+  </div>`;
+}
+
 function tourIntroArchitectureCard(architecture, label, key) {
   return `<article class="tour-intro-chart">
     <div class="tour-intro-chart-heading"><div><span class="architecture-label">${escapeHtml(label)}</span><h4>${escapeHtml(architecture.title)}</h4></div>${architectureDiagramExpandButton(label, key)}</div>
@@ -1667,6 +1676,7 @@ function openArchitectureDiagramViewer(key) {
   state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 });
   elements["architecture-viewer-title"].textContent = architecture.value.title;
   elements["architecture-viewer-controls"].innerHTML = architectureDiagramControls(architecture.label);
+  elements["architecture-viewer-legend"].innerHTML = architectureLegend();
   elements["architecture-viewer-shell"].dataset.architectureKey = viewerKey;
   elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
   elements["architecture-viewer-diagram"].setAttribute("aria-label", `${architecture.label}: ${architecture.value.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
@@ -1682,7 +1692,7 @@ function renderTourIntro() {
   elements["tour-intro-title"].textContent = state.session.pullRequest?.title ?? state.session.outline.title;
   elements["tour-intro-summary"].textContent = state.session.outline.summary;
   elements["tour-intro-architecture-section"].classList.toggle("hidden", architectures.length === 0);
-  elements["tour-intro-architecture"].innerHTML = architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("");
+  elements["tour-intro-architecture"].innerHTML = `${architectureLegend()}${architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("")}`;
 }
 
 function maybeShowTourIntro() {
@@ -1696,7 +1706,7 @@ function renderArchitecture() {
   const architectures = architectureEntries();
   if (state.tourIntroPending && !state.tourIntroShown) renderTourIntro();
   elements.architecture.classList.toggle("hidden", architectures.length === 0);
-  elements["architecture-content"].innerHTML = architectures.map(({ key, label, value }) => architectureCard(value, label, key)).join("");
+  elements["architecture-content"].innerHTML = `${architectureLegend()}${architectures.map(({ key, label, value }) => architectureCard(value, label, key)).join("")}`;
   const generation = ++state.flowRenderGeneration;
   void renderFlowDiagrams(architectures, [], generation);
 }
@@ -1825,8 +1835,17 @@ function renderActivities() {
   }).join("");
 }
 
+function changedImageMedia() {
+  const revision = state.session?.revision ?? 0;
+  return (state.session?.comparison?.files ?? []).filter(isPngDiff).flatMap((file) => [
+    file.oldPath ? { id: `diff:${revision}:${file.path}:old`, path: file.path, side: "old", name: `${file.path} · Before` } : null,
+    file.newPath ? { id: `diff:${revision}:${file.path}:new`, path: file.path, side: "new", name: `${file.path} · After` } : null,
+  ].filter(Boolean));
+}
+
 function availableTabs() {
-  return ["diff", "call-flows", "sequence", "findings", "activity", "conversations", ...(state.session?.screenshots?.length ? ["screenshots"] : []), ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  const mediaCount = (state.session?.screenshots?.length ?? 0) + changedImageMedia().length;
+  return ["diff", "call-flows", "sequence", "findings", "activity", "conversations", ...(mediaCount ? ["screenshots"] : []), ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
@@ -1842,21 +1861,27 @@ function renderActiveTab() {
 
 async function renderScreenshots() {
   const screenshots = state.session?.screenshots ?? [];
-  elements["screenshots-tab"].classList.toggle("hidden", screenshots.length === 0);
-  elements["screenshots-tab-count"].textContent = String(screenshots.length);
-  if (screenshots.length === 0) {
+  const changedImages = changedImageMedia();
+  const mediaCount = screenshots.length + changedImages.length;
+  elements["screenshots-tab"].classList.toggle("hidden", mediaCount === 0);
+  elements["screenshots-tab-count"].textContent = String(mediaCount);
+  if (mediaCount === 0) {
     if (state.activeTab === "screenshots") state.activeTab = "diff";
     elements.screenshots.innerHTML = "";
     return;
   }
+  const visibleIds = new Set([...screenshots.map((shot) => shot.id), ...changedImages.map((image) => image.id)]);
   for (const [id, url] of state.screenshotUrls) {
-    if (!screenshots.some((shot) => shot.id === id)) {
+    if (!visibleIds.has(id)) {
       URL.revokeObjectURL(url);
       state.screenshotUrls.delete(id);
     }
   }
-  elements.screenshots.innerHTML = screenshots.map((shot) => `<figure class="screenshot-card" data-screenshot-id="${escapeHtml(shot.id)}"><div class="screenshot-loading">Loading media…</div><figcaption><strong>${escapeHtml(shot.name)}</strong><span>${Math.max(1, Math.round(shot.size / 1024)).toLocaleString()} KiB</span></figcaption></figure>`).join("");
-  await Promise.all(screenshots.map(async (shot) => {
+  elements.screenshots.innerHTML = [
+    ...screenshots.map((shot) => `<figure class="screenshot-card" data-screenshot-id="${escapeHtml(shot.id)}"><div class="screenshot-loading">Loading media…</div><figcaption><strong>${escapeHtml(shot.name)}</strong><span>${Math.max(1, Math.round(shot.size / 1024)).toLocaleString()} KiB</span></figcaption></figure>`),
+    ...changedImages.map((image) => `<figure class="screenshot-card changed-image-media" data-changed-image-id="${escapeHtml(image.id)}"><div class="screenshot-loading">Loading changed image…</div><figcaption><strong>${escapeHtml(image.name)}</strong><span>Changed PNG</span></figcaption></figure>`),
+  ].join("");
+  await Promise.all([...screenshots.map(async (shot) => {
     try {
       let url = state.screenshotUrls.get(shot.id);
       if (!url) {
@@ -1871,7 +1896,20 @@ async function renderScreenshots() {
       const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
       if (card) card.querySelector(".screenshot-loading").textContent = error.message;
     }
-  }));
+  }), ...changedImages.map(async (image) => {
+    try {
+      let url = state.screenshotUrls.get(image.id);
+      if (!url) {
+        url = URL.createObjectURL(await apiBlob(`/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`));
+        state.screenshotUrls.set(image.id, url);
+      }
+      const card = elements.screenshots.querySelector(`[data-changed-image-id="${CSS.escape(image.id)}"]`);
+      if (card) card.querySelector(".screenshot-loading").outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(image.name)}" /></a>`;
+    } catch (error) {
+      const card = elements.screenshots.querySelector(`[data-changed-image-id="${CSS.escape(image.id)}"]`);
+      if (card) card.querySelector(".screenshot-loading").textContent = error.message;
+    }
+  })]);
 }
 
 function activateReviewTab(tabName, render = null) {
@@ -2583,7 +2621,7 @@ function openHtmlExportDialog() {
   elements["html-export-description"].textContent = missing === 0
     ? "Every tour step is already prepared. Choose which supporting analysis to include."
     : `${missing} ${missing === 1 ? "step explanation is" : "step explanations are"} not prepared yet. Export the current tour as-is, or prepare them before downloading.`;
-  elements["export-prepare-steps"].disabled = missing === 0;
+  elements["export-prepare-steps"].closest("label").classList.toggle("hidden", missing === 0);
   elements["settings-menu"].open = false;
   elements["html-export-dialog"].showModal();
 }

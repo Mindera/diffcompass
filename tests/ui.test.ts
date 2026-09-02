@@ -361,6 +361,7 @@ test("each architecture chart has independent movement and zoom controls", async
   ]);
   expect(html).toContain('id="architecture-viewer-dialog"');
   expect(html).toContain('id="architecture-viewer-diagram"');
+  expect(html).toContain('id="architecture-viewer-legend"');
   expect(html).toContain('id="close-architecture-viewer"');
   expect(app).toContain("architectureDiagramViews: new Map()");
   expect(app).toContain('data-architecture-key="${key}"');
@@ -372,6 +373,7 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain("function architectureDiagramControls(label)");
   expect(app).toContain("function architectureDiagramExpandButton(label, key)");
   expect(app).toContain("function openArchitectureDiagramViewer(key)");
+  expect(app).toContain('elements["architecture-viewer-legend"].innerHTML = architectureLegend()');
   expect(app).toContain('<header class="architecture-card-heading"><div>');
   expect(app).toContain('${architectureDiagramExpandButton(label, key)}</header>');
   expect(app).toContain('data-diagram-expand="${escapeHtml(key)}"');
@@ -385,8 +387,14 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["tour-intro-architecture"])');
   expect(app).toContain("registerArchitectureDiagramInteractions(elements.architecture)");
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"])');
+  expect(app).toContain('aria-label="Architecture diagram legend"');
+  expect(app).toContain('`${architectureLegend()}${architectures.map');
   expect(styles).toContain(".architecture-diagram.dragging");
+  expect(styles).toContain(".architecture-legend { grid-column: 1 / -1;");
+  expect(styles).toContain(".architecture-legend i.removed { border-color: var(--architecture-removed); border-style: dashed; }");
   expect(styles).toContain(".architecture-viewer-dialog[open]");
+  expect(styles).toContain(".architecture-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));");
+  expect(styles).toContain(".architecture-viewer-dialog .architecture-legend { justify-content: center;");
   expect(styles).toContain("touch-action: none");
 });
 
@@ -411,6 +419,8 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(html).not.toContain('id="export-format"');
   expect(app).toContain("async function downloadExport(format, options = {})");
   expect(app).toContain('elements["html-export-dialog"].showModal()');
+  expect(app).toContain('elements["export-prepare-steps"].closest("label").classList.toggle("hidden", missing === 0)');
+  expect(app).not.toContain('elements["export-prepare-steps"].disabled = missing === 0');
   expect(app).toContain('prepareMissingSteps: elements["export-prepare-steps"].checked');
   expect(app).toContain('if (preparingSteps) setBusy(true, "Preparing missing tour stops for the static export…")');
   expect(app).toContain('method: "POST"');
@@ -714,9 +724,12 @@ test("images and videos are exposed through a conditional authenticated media ta
   expect(html).toContain('id="screenshots-tab" class="tab hidden"');
   expect(html).toContain('id="screenshots-view" class="review-view hidden"');
   expect(html).toContain('>Media <span id="screenshots-tab-count"');
-  expect(app).toContain('state.session?.screenshots?.length ? ["screenshots"] : []');
+  expect(app).toContain("function changedImageMedia()");
+  expect(app).toContain("const mediaCount = screenshots.length + changedImages.length");
   expect(app).toContain('"X-Review-Tour-Token": state.apiToken');
   expect(app).toContain('apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`)');
+  expect(app).toContain('apiBlob(`/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`)');
   expect(app).toContain('shot.mimeType === "video/mp4"');
   expect(styles).toContain(".screenshot-gallery { display: grid;");
+  expect(styles).toContain(".changed-image-media > a");
 });

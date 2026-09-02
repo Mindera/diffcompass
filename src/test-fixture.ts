@@ -1,6 +1,7 @@
 import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { deflateSync } from "node:zlib";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import type { PersistedReviewSession } from "./types.ts";
@@ -9,8 +10,60 @@ const FIXTURE_SCHEMA = 1;
 const FIXTURE_DIRECTORY = "code-review-tour-test-fixture-v1";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
+function pngCrc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Buffer {
+  const name = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.byteLength);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(pngCrc32(Buffer.concat([name, data])));
+  return Buffer.concat([length, name, data, checksum]);
+}
+
+function receiptPng(accent: [number, number, number]): Buffer {
+  const width = 480;
+  const height = 240;
+  const stride = width * 4 + 1;
+  const pixels = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y += 1) {
+    pixels[y * stride] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const offset = y * stride + 1 + x * 4;
+      const receipt = x >= 105 && x < 375 && y >= 14 && y < 226;
+      const shadow = x >= 111 && x < 381 && y >= 20 && y < 232;
+      const heading = x >= 143 && x < 337 && y >= 38 && y < 52;
+      const item = x >= 135 && x < 345 && ((y >= 78 && y < 86) || (y >= 105 && y < 113) || (y >= 132 && y < 140));
+      const rule = x >= 130 && x < 350 && y >= 166 && y < 169;
+      const total = x >= 130 && x < 350 && y >= 184 && y < 204;
+      const color = total ? accent : heading ? [30, 41, 59] : item ? [123, 137, 155] : rule ? [203, 213, 225] : receipt ? [248, 250, 252] : shadow ? [15, 23, 42] : [0, 0, 0];
+      pixels[offset] = color[0]!;
+      pixels[offset + 1] = color[1]!;
+      pixels[offset + 2] = color[2]!;
+      pixels[offset + 3] = receipt || shadow ? 255 : 0;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 6, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(pixels)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
 const baseFiles = {
-  "screens/receipt.png": Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=", "base64"),
+  "screens/receipt.png": receiptPng([100, 116, 139]),
   "README.md": "# Checkout\n\nThe checkout returns a numeric total.\n",
   "src/cart.ts": `export interface Item {
   price: number;
@@ -24,8 +77,22 @@ export function total(items: Item[]): number {
 };
 
 const workingFiles = {
-  "screens/receipt.png": Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  "screens/receipt.png": receiptPng([22, 163, 74]),
   "README.md": "# Checkout fixture\n\nThis fixture exercises guided tours, findings, comments, flows, and activity.\n",
+  "docs/preview.md": `# Markdown preview
+
+This document exercises the rendered **Markdown preview** in the review UI.
+
+## Review surfaces
+
+- Headings and paragraphs
+- Ordered and unordered content
+- Inline \`code\` and **strong text**
+
+1. Open this file from the changed paths.
+2. Select **Preview** in its file header.
+3. Select **Changes** to return to the diff.
+`,
   "src/cart.ts": `export interface Item {
   price: number;
   quantity: number;
@@ -152,7 +219,8 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
         fileChanges: [
           { path: "src/receipt.ts", summary: "Adds a user-visible receipt string." },
           { path: "README.md", summary: "Documents what this reusable fixture covers." },
-          { path: "screens/receipt.png", summary: "Exercises before/after PNG previews with a tiny deterministic image." },
+          { path: "docs/preview.md", summary: "Provides rich Markdown content for the rendered preview." },
+          { path: "screens/receipt.png", summary: "Exercises before/after PNG previews with a deterministic receipt mockup." },
         ],
         steps: [{
           id: "format-receipt",
