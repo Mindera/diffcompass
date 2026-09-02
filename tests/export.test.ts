@@ -65,7 +65,7 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   expect(artifact.content).toContain("# &lt;/title&gt;&lt;script&gt;bad()");
 });
 
-test("HTML export is a self-contained static tour with rendered prose and phase diffs", () => {
+test("HTML export is a self-contained interactive copy of the review tour", () => {
   const artifact = exportReview(fixture(), "html");
   expect(artifact).toMatchObject({ contentType: "text/html; charset=utf-8", extension: "html" });
   expect(artifact.content).not.toContain('<script src=');
@@ -75,11 +75,18 @@ test("HTML export is a self-contained static tour with rendered prose and phase 
   expect(artifact.content).toContain("&lt;/title&gt;&lt;script&gt;bad()");
   expect(artifact.content).toContain("&lt;script&gt;comment()");
   expect(artifact.content).toContain("&lt;/style&gt;&lt;script&gt;alert(1)");
-  expect(artifact.content).toContain('<nav class="phase-nav"');
-  expect(artifact.content).toContain('<article class="stop" id="stop-1">');
+  expect(artifact.content).toContain('<main class="workspace">');
+  expect(artifact.content).toContain('<aside class="file-panel">');
+  expect(artifact.content).toContain('<aside class="agent-panel">');
+  expect(artifact.content).toContain('data-view="diff"');
+  expect(artifact.content).toContain('class="tour-step" data-step="0"');
+  expect(artifact.content).toContain('id="previous"');
+  expect(artifact.content).toContain('id="next"');
+  expect(artifact.content).toContain("steps.forEach((node,index)=>node.hidden=index!==current)");
   expect(artifact.content).toContain("<strong>Explanation</strong> with <code>code</code>.");
-  expect(artifact.content).toContain('<div class="phase-diffs"><h3>Changes in this phase</h3>');
+  expect(artifact.content).toContain('data-diff-file="app.ts"');
   expect(artifact.content).toContain('<div class="diff-row">');
+  expect(artifact.content).toContain('class="architecture-legend"');
   expect(artifact.content).toContain('<div class="mermaid">sequenceDiagram');
   expect(artifact.content).toContain("mermaid.initialize");
 });
@@ -96,5 +103,5 @@ test("HTML export can omit findings, call flows, and diagrams", () => {
   expect(artifact.content).not.toContain("Sequence diagrams");
   expect(artifact.content).not.toContain("mermaid.initialize");
   expect(artifact.content).toContain("Reviewer feedback");
-  expect(artifact.content).toContain("Stop 1");
+  expect(artifact.content).toContain('class="tour-step" data-step="0"');
 });
