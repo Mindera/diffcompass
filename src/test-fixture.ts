@@ -92,6 +92,15 @@ This document exercises the rendered **Markdown preview** in the review UI.
 1. Open this file from the changed paths.
 2. Select **Preview** in its file header.
 3. Select **Changes** to return to the diff.
+
+## Example
+
+\`\`\`kotlin
+sealed interface SessionRestoration
+
+data class Restored(val session: Session) : SessionRestoration
+data object Missing : SessionRestoration
+\`\`\`
 `,
   "src/cart.ts": `export interface Item {
   price: number;

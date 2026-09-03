@@ -525,6 +525,8 @@ button { color: inherit; }
 .markdown-preview h1 { margin: 0 0 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); font-size: 28px; line-height: 1.25; }
 .markdown-preview h2 { padding-bottom: 7px; border-bottom: 1px solid var(--border-soft); font-size: 21px; }
 .markdown-preview code { border-radius: 4px; padding: 2px 5px; color: var(--text-code); background: var(--surface-code); font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+.markdown-preview pre { max-width: 100%; margin: 14px 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--surface-code); }
+.markdown-preview pre code { padding: 0; color: var(--text); background: transparent; font-size: .9em; white-space: pre; }
 .markdown-table-wrap { max-width: 100%; margin: 14px 0; overflow-x: auto; }
 .rendered-markdown table { width: max-content; min-width: 100%; border-spacing: 0; border-collapse: collapse; }
 .rendered-markdown th, .rendered-markdown td { border: 1px solid var(--border); padding: 7px 10px; vertical-align: top; }

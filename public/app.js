@@ -157,9 +157,25 @@ function markdownTableAlignments(line, columns) {
   return cells.map((cell) => cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : "left");
 }
 
+function markdownFenceStart(line) {
+  const match = /^\s*(`{3,}|~{3,})\s*([A-Za-z0-9_+.-]*)\s*$/.exec(line);
+  return match ? { marker: match[1][0], length: match[1].length, language: match[2], lines: [] } : null;
+}
+
+function markdownFenceEnd(line, fence) {
+  const value = line.trim();
+  return value.length >= fence.length && [...value].every((character) => character === fence.marker);
+}
+
+function markdownCodeBlock(fence) {
+  const language = fence.language ? ` class="language-${escapeHtml(fence.language)}"` : "";
+  return `<pre><code${language}>${escapeHtml(fence.lines.join("\n"))}</code></pre>`;
+}
+
 function renderMarkdown(value, headingOffset = 1) {
   const output = [];
   let listType = null;
+  let fence = null;
   const closeList = () => {
     if (listType) output.push(`</${listType}>`);
     listType = null;
@@ -167,6 +183,21 @@ function renderMarkdown(value, headingOffset = 1) {
   const lines = String(value).split("\n");
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    if (fence) {
+      if (markdownFenceEnd(line, fence)) {
+        output.push(markdownCodeBlock(fence));
+        fence = null;
+      } else {
+        fence.lines.push(line);
+      }
+      continue;
+    }
+    const fenceStart = markdownFenceStart(line);
+    if (fenceStart) {
+      closeList();
+      fence = fenceStart;
+      continue;
+    }
     const headers = markdownTableCells(line);
     const alignments = headers && markdownTableAlignments(lines[index + 1] ?? "", headers.length);
     if (headers && alignments) {
@@ -205,6 +236,7 @@ function renderMarkdown(value, headingOffset = 1) {
     if (line.trim()) output.push(`<p>${renderInlineMarkdown(line)}</p>`);
   }
   closeList();
+  if (fence) output.push(markdownCodeBlock(fence));
   return output.join("");
 }
 

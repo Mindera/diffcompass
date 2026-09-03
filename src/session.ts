@@ -808,13 +808,15 @@ export class ReviewSession {
   }
 
   private async prefetchStep(stepId: string, index: number, totalSteps: number): Promise<void> {
-    const step = tourSteps(this.outline).find((candidate) => candidate.id === stepId);
+    const outline = this.outline;
+    if (!outline) return;
+    const step = tourSteps(outline).find((candidate) => candidate.id === stepId);
     if (!step || step.explanation) return;
     const comparisonGeneration = this.comparisonGeneration;
     const worker = this.createWorkerAgent();
     worker.useComparison(this.comparison);
     try {
-      const generated = await worker.explainStep(step, index, totalSteps);
+      const generated = await worker.explainStep(step, index, totalSteps, outline);
       await this.serializeMutation(async () => {
         this.ensureOpen();
         this.ensureComparisonCurrent(comparisonGeneration);
@@ -931,7 +933,7 @@ export class ReviewSession {
         const steps = tourSteps(this.outline);
         const step = steps[this.currentStepIndex]!;
         if (!step.explanation) {
-          const explanation = await this.agent.explainStep(step, this.currentStepIndex, steps.length);
+          const explanation = await this.agent.explainStep(step, this.currentStepIndex, steps.length, this.outline);
           receipts.push(...explanation.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);
           step.explanation = explanation.value;
@@ -984,7 +986,7 @@ export class ReviewSession {
       }
       if (this.currentStepIndex !== expectedCurrentStepIndex) return this.snapshot();
       if (!step.explanation) {
-        const explanation = await this.agent.explainStep(step, index, steps.length);
+        const explanation = await this.agent.explainStep(step, index, steps.length, this.outline);
         receipts = explanation.receipts;
         this.ensureComparisonCurrent(comparisonGeneration);
         if (this.currentStepIndex !== expectedCurrentStepIndex) {

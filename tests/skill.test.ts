@@ -31,3 +31,21 @@ test("the attached-agent skill scopes preview redirects and media evidence", asy
   expect(skill).toContain("`--attached --open` also implies `--start-tour`");
   expect(skill).toContain("preparation failure leaves the server running without opening an empty tour");
 });
+
+test("the attached-agent skill keeps reviewer conversations concise, contextual, and scoped", async () => {
+  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  expect(skill).toContain("Lead with the direct answer and default to a concise response");
+  expect(skill).toContain("preceding reviewer conversation");
+  expect(skill).toContain("Once the reviewer clarifies the intended scope, follow that clarification");
+  expect(skill).toContain("without substituting a preferred implementation or relitigating the choice");
+  expect(skill).toContain("Do not narrate tool limitations or offer unrelated follow-up work");
+});
+
+test("the attached-agent skill resolves feedback without inventing edits or unrelated fixes", async () => {
+  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  expect(skill).toContain("comments` together as concerns to resolve");
+  expect(skill).toContain("For an investigative question, verify the concern");
+  expect(skill).toContain("For a pure clarification, report the answer without inventing an edit");
+  expect(skill).toContain("Every repository change after review closure must be directly required");
+  expect(skill).toContain("report independently discovered issues separately");
+});

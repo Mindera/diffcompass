@@ -189,23 +189,45 @@ test("asks for short plain-language stop explanations", async () => {
   const bridge = new AttachedAgentBridge();
   const activities: AgentRunActivity[] = [];
   const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge, undefined, (activity) => activities.push(activity));
-  const pending = agent.explainStep({
+  const step = {
     id: "plain-step",
     title: "A direct behavior",
-    objective: "See the changed result.",
+    objective: "The changed value reaches the result.",
     anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 },
-  }, 0, 2);
+  } as const;
+  const pending = agent.explainStep(step, 1, 2, {
+    title: "Value propagation",
+    summary: "A new input changes the returned value.",
+    phases: [{
+      id: "behavior",
+      title: "Carry the value",
+      summary: "The implementation moves the input to the result.",
+      fileChanges: [{ path: "app.ts", summary: "Transforms the value." }],
+      steps: [
+        { id: "input-step", title: "Accept the input", objective: "The function receives the new value.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } },
+        step,
+      ],
+    }],
+    callFlows: [],
+    flows: [],
+    findings: [],
+  });
   const [event] = await bridge.eventsAfter(0, 1_000);
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an explanation prompt.");
-  expect(event.prompt).toContain("Keep it under 180 words");
-  expect(event.prompt).toContain("Avoid jargon");
+  expect(event.prompt).toContain("Tour purpose: A new input changes the returned value.");
+  expect(event.prompt).toContain("Current phase: Carry the value — The implementation moves the input to the result.");
+  expect(event.prompt).toContain("Previously established: Accept the input — The function receives the new value.");
+  expect(event.prompt).toContain("next link in the tour's causal journey");
+  expect(event.prompt).toContain("Keep it under 150 words");
+  expect(event.prompt).toContain("Use short active sentences, one idea per sentence");
+  expect(event.prompt).toContain("Avoid metaphors and idioms");
   expect(event.prompt).toContain("Do not predict, name, or summarize the next step");
   expect(event.prompt).toContain("select Next when ready");
   expect(activities.at(-1)).toMatchObject({
     status: "waiting",
     label: "Preparing a tour stop",
     prompt: expect.stringContaining("A direct behavior"),
-    stepNumber: 1,
+    stepNumber: 2,
     totalSteps: 2,
   });
   await bridge.respond(event!.id, "The value now changes here. Check the result.");
@@ -322,12 +344,17 @@ test("audits release-path candidates to a concrete causal finding before returni
   };
   const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
   const [outlineEvent] = await bridge.eventsAfter(0, 1_000);
-  await bridge.respond(outlineEvent!.id, JSON.stringify({
+  if (!outlineEvent || outlineEvent.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
+  expect(outlineEvent.prompt).toContain("Use that journey as the narrative spine of the tour");
+  expect(outlineEvent.prompt).toContain("Order phases and stops by causal dependency");
+  expect(outlineEvent.prompt).toContain("Each later stop adds one concrete fact");
+  expect(outlineEvent.prompt).toContain("not a generic instruction to inspect, see, or check code");
+  await bridge.respond(outlineEvent.id, JSON.stringify({
     title: "Delivery review", summary: "Review notification delivery.", flows: [],
-    phases: [{ id: "delivery", title: "Delivery", summary: "Inspect delivery settings.", fileChanges: [{ path: "ios/App.entitlements", summary: "Selects the notification environment." }], steps: [{ id: "entitlement", title: "Notification environment", objective: "Check the shipped environment.", anchor: { path: "ios/App.entitlements", side: "new", startLine: 1, endLine: 1 } }] }],
+    phases: [{ id: "delivery", title: "Delivery", summary: "Inspect delivery settings.", fileChanges: [{ path: "ios/App.entitlements", summary: "Selects the notification environment." }], steps: [{ id: "entitlement", title: "Notification environment", objective: "The entitlement selects the shipped notification environment.", anchor: { path: "ios/App.entitlements", side: "new", startLine: 1, endLine: 1 } }] }],
     findings: [candidate],
   }));
-  await bridge.ack(outlineEvent!.id);
+  await bridge.ack(outlineEvent.id);
   const [auditEvent] = await bridge.eventsAfter(outlineEvent!.sequence, 1_000);
   if (!auditEvent || auditEvent.type !== "agent.prompt") throw new Error("Expected a finding-audit prompt.");
   expect(auditEvent?.prompt).toContain("trace the changed source or configuration through its actual consumers");

@@ -129,7 +129,7 @@ test("HTML export embeds a safe interactive Markdown preview", () => {
   session.outline!.phases[0]!.fileChanges[0]!.path = "README.md";
   session.outline!.phases[0]!.steps[0]!.anchor.path = "README.md";
   const artifact = exportReview(session, "html", {
-    markdownPreviews: [{ path: "README.md", side: "new", content: "# Preview heading\n\n**Bold** and `<safe>`.\n\n| Name | Result |\n| :--- | ---: |\n| `<script>` | **safe** |\n\n<script>bad()</script>" }],
+    markdownPreviews: [{ path: "README.md", side: "new", content: "# Preview heading\n\n**Bold** and `<safe>`.\n\n| Name | Result |\n| :--- | ---: |\n| `<script>` | **safe** |\n\n```kotlin\nval safe = `<value>`\n```\n\n<script>bad()</script>" }],
   });
 
   expect(artifact.content).toContain('data-markdown-toggle>Preview</button>');
@@ -141,6 +141,7 @@ test("HTML export embeds a safe interactive Markdown preview", () => {
   expect(artifact.content).not.toContain("<script>bad()</script>");
   expect(artifact.content).toContain('<table><thead><tr><th class="align-left">Name</th><th class="align-right">Result</th>');
   expect(artifact.content).toContain('<td class="align-left"><code>&lt;script&gt;</code></td><td class="align-right"><strong>safe</strong></td>');
+  expect(artifact.content).toContain("<pre><code>val safe = `&lt;value&gt;`</code></pre>");
   expect(artifact.content).toContain("button.textContent=showPreview?'Changes':'Preview'");
   expect(artifact.content).toContain(".diff-side{border-bottom:0}");
 });
