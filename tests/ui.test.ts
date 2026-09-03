@@ -422,6 +422,7 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(app).toContain('elements["export-prepare-steps"].closest("label").classList.toggle("hidden", missing === 0)');
   expect(app).not.toContain('elements["export-prepare-steps"].disabled = missing === 0');
   expect(app).toContain('prepareMissingSteps: elements["export-prepare-steps"].checked');
+  expect(app).toContain("diffWrap: state.diffWrap");
   expect(app).toContain('if (preparingSteps) setBusy(true, "Preparing missing tour stops for the static export…")');
   expect(app).toContain('method: "POST"');
   expect(app).toContain('api("/api/preferences", { method: "POST", body: JSON.stringify({ prefetchSteps }) })');

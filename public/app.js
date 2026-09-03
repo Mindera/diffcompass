@@ -3194,6 +3194,7 @@ elements["html-export-form"].addEventListener("submit", (event) => {
     includeFindings: elements["export-findings"].checked,
     includeCallFlows: elements["export-call-flows"].checked,
     includeDiagrams: elements["export-diagrams"].checked,
+    diffWrap: state.diffWrap,
   };
   elements["html-export-dialog"].close();
   void downloadExport("html", options);

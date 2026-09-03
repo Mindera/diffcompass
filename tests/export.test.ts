@@ -101,6 +101,14 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain('svg.removeAttribute("width")');
   expect(artifact.content).not.toContain('mermaid.run({querySelector:".mermaid"})');
   expect(artifact.content).toContain(".viewer-body .architecture-diagram svg{width:100%!important;");
+  expect(artifact.content).toContain('<html lang="en" data-diff-wrap="scroll">');
+});
+
+test("HTML export preserves the selected wrapped diff presentation", () => {
+  const artifact = exportReview(fixture(), "html", { diffWrap: "wrap" });
+  expect(artifact.content).toContain('<html lang="en" data-diff-wrap="wrap">');
+  expect(artifact.content).toContain('html[data-diff-wrap="wrap"] .diff-side code{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}');
+  expect(artifact.content).toContain('content:"Split · Wrap"');
 });
 
 test("HTML export embeds server-prepared syntax highlighting", async () => {

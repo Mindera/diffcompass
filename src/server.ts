@@ -193,10 +193,11 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "POST" && url.pathname === "/api/export") {
         const format = enumValue(url.searchParams.get("format"), "format", ["markdown", "html"]) as ExportFormat;
         const input = await readJsonObject(request);
-        exactKeys(input, ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams"]);
+        exactKeys(input, ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams", "diffWrap"]);
         for (const key of ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams"] as const) {
           if (input[key] !== undefined && typeof input[key] !== "boolean") throw new HttpError(422, `${key} must be a boolean.`);
         }
+        if (input.diffWrap !== undefined && input.diffWrap !== "scroll" && input.diffWrap !== "wrap") throw new HttpError(422, "diffWrap must be scroll or wrap.");
         if (format === "html" && input.prepareMissingSteps === true) await session.prepareTourForExport();
         const highlightedGroups = format === "html" ? await highlightGroups(htmlHighlightGroups(session), "review-tour") : undefined;
         const markdownPreviews = format === "html" ? (await Promise.all(session.comparison.files
@@ -213,6 +214,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           includeFindings: input.includeFindings !== false,
           includeCallFlows: input.includeCallFlows !== false,
           includeDiagrams: input.includeDiagrams !== false,
+          diffWrap: input.diffWrap as "scroll" | "wrap" | undefined,
           highlightedGroups,
           markdownPreviews,
         });

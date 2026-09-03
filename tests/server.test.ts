@@ -185,7 +185,7 @@ test("flow edits are validated and exports are authenticated downloadable artifa
   };
 
   expect((await jsonRequest(url, "/api/export?format=html", { method: "POST" })).status).toBe(401);
-  const exported = await jsonRequest(url, "/api/export?format=html", { method: "POST", headers, body: JSON.stringify({ prepareMissingSteps: false, includeFindings: true, includeCallFlows: true, includeDiagrams: false }) });
+  const exported = await jsonRequest(url, "/api/export?format=html", { method: "POST", headers, body: JSON.stringify({ prepareMissingSteps: false, includeFindings: true, includeCallFlows: true, includeDiagrams: false, diffWrap: "wrap" }) });
   expect(exported.status).toBe(200);
   expect(exported.headers.get("content-type")).toContain("text/html");
   expect(exported.headers.get("content-disposition")).toMatch(/attachment; filename="[A-Za-z0-9._-]+-review\.html"/);
@@ -196,6 +196,10 @@ test("flow edits are validated and exports are authenticated downloadable artifa
   expect(exportedContent).toContain("<h1>Exported preview</h1>");
   expect(exportedContent).toContain("A <strong>rendered</strong> Markdown document.");
   expect(exportedContent).not.toContain("mermaid.initialize");
+  expect(exportedContent).toContain('<html lang="en" data-diff-wrap="wrap">');
+
+  const invalidExport = await jsonRequest(url, "/api/export?format=html", { method: "POST", headers, body: JSON.stringify({ diffWrap: "fold" }) });
+  expect(invalidExport.status).toBe(422);
 
   const invalid = await jsonRequest(url, "/api/flows/flow", {
     method: "PATCH", headers, body: JSON.stringify({ title: "Flow", summary: "Summary", mermaid: "graph TD\nA-->B", provenance: "verified", blastRadiusSize: 1, affectedFiles: ["app.ts"] }),
