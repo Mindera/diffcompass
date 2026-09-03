@@ -95,6 +95,12 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain("className='tour-code-note'");
   expect(artifact.content).toContain('<div class="mermaid sequence-diagram">sequenceDiagram');
   expect(artifact.content).toContain("mermaid.initialize");
+  expect(artifact.content).toContain('await mermaid.render("review-tour-export-diagram-"+index,source)');
+  expect(artifact.content).toContain('svg.style.maxWidth="100%"');
+  expect(artifact.content).toContain('svg.style.width=naturalWidth?"min("+naturalWidth+"px, 100%)":"100%"');
+  expect(artifact.content).toContain('svg.removeAttribute("width")');
+  expect(artifact.content).not.toContain('mermaid.run({querySelector:".mermaid"})');
+  expect(artifact.content).toContain(".viewer-body .architecture-diagram svg{width:100%!important;");
 });
 
 test("HTML export embeds server-prepared syntax highlighting", async () => {
