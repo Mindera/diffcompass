@@ -10,7 +10,10 @@ test("Markdown files expose rendered previews without replacing the diff permane
   expect(app).toContain("/api/diff/markdown?");
   expect(app).toContain('data-source-view="${preview ? "source" : "preview"}"');
   expect(app).toContain("renderMarkdown(content, 0)");
+  expect(app).toContain("function markdownTableAlignments(line, columns)");
+  expect(app).toContain('class="markdown-table-wrap"');
   expect(styles).toContain(".markdown-preview { box-sizing: border-box;");
+  expect(styles).toContain(".rendered-markdown th, .rendered-markdown td {");
 });
 
 test("the tour/questions separator persists accessible pointer and keyboard resizing", () => {

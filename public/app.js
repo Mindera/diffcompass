@@ -125,6 +125,38 @@ function renderInlineMarkdown(value) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
+function markdownTableCells(line) {
+  const value = String(line).trim();
+  if (!value.includes("|")) return null;
+  const body = value.replace(/^\|/, "").replace(/\|$/, "");
+  const cells = [];
+  let cell = "";
+  let code = false;
+  for (let index = 0; index < body.length; index += 1) {
+    const character = body[index];
+    if (character === "\\" && body[index + 1] === "|") {
+      cell += "|";
+      index += 1;
+    } else if (character === "`") {
+      code = !code;
+      cell += character;
+    } else if (character === "|" && !code) {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+  cells.push(cell.trim());
+  return cells.length > 1 ? cells : null;
+}
+
+function markdownTableAlignments(line, columns) {
+  const cells = markdownTableCells(line);
+  if (!cells || cells.length !== columns || !cells.every((cell) => /^:?-{3,}:?$/.test(cell))) return null;
+  return cells.map((cell) => cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : "left");
+}
+
 function renderMarkdown(value, headingOffset = 1) {
   const output = [];
   let listType = null;
@@ -132,7 +164,25 @@ function renderMarkdown(value, headingOffset = 1) {
     if (listType) output.push(`</${listType}>`);
     listType = null;
   };
-  for (const line of String(value).split("\n")) {
+  const lines = String(value).split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const headers = markdownTableCells(line);
+    const alignments = headers && markdownTableAlignments(lines[index + 1] ?? "", headers.length);
+    if (headers && alignments) {
+      closeList();
+      const tableRows = [];
+      index += 2;
+      while (index < lines.length) {
+        const cells = markdownTableCells(lines[index]);
+        if (!cells) break;
+        tableRows.push(headers.map((_header, cellIndex) => cells[cellIndex] ?? ""));
+        index += 1;
+      }
+      index -= 1;
+      output.push(`<div class="markdown-table-wrap"><table><thead><tr>${headers.map((header, cellIndex) => `<th class="align-${alignments[cellIndex]}">${renderInlineMarkdown(header)}</th>`).join("")}</tr></thead><tbody>${tableRows.map((cells) => `<tr>${cells.map((cell, cellIndex) => `<td class="align-${alignments[cellIndex]}">${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
     const heading = /^\s*(#{1,6})\s+(.+?)\s*$/.exec(line);
     if (heading) {
       closeList();

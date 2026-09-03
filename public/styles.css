@@ -525,6 +525,13 @@ button { color: inherit; }
 .markdown-preview h1 { margin: 0 0 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); font-size: 28px; line-height: 1.25; }
 .markdown-preview h2 { padding-bottom: 7px; border-bottom: 1px solid var(--border-soft); font-size: 21px; }
 .markdown-preview code { border-radius: 4px; padding: 2px 5px; color: var(--text-code); background: var(--surface-code); font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+.markdown-table-wrap { max-width: 100%; margin: 14px 0; overflow-x: auto; }
+.rendered-markdown table { width: max-content; min-width: 100%; border-spacing: 0; border-collapse: collapse; }
+.rendered-markdown th, .rendered-markdown td { border: 1px solid var(--border); padding: 7px 10px; vertical-align: top; }
+.rendered-markdown th { background: var(--panel-raised); font-weight: 700; }
+.rendered-markdown tr:nth-child(even) td { background: var(--surface-item); }
+.rendered-markdown .align-center { text-align: center; }
+.rendered-markdown .align-right { text-align: right; }
 .markdown-preview-error { color: var(--danger); }
 .empty { margin: 60px auto; color: var(--muted); text-align: center; }
 .empty.compact { margin: 24px auto; }
