@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateReviewArchitecture } from "../src/architecture.ts";
+import { normalizeReviewArchitectureMermaid, validateReviewArchitecture } from "../src/architecture.ts";
 
 const valid = {
   title: "Component relationships",
@@ -36,4 +36,21 @@ test("requires bounded dependency descriptions and exact changed-file evidence",
   expect(() => validateReviewArchitecture({ ...valid, dependencyChanges: [] })).not.toThrow();
   expect(() => validateReviewArchitecture({ ...valid, affectedFiles: [] })).toThrow("affectedFiles");
   expect(() => validateReviewArchitecture({ ...valid, unexpected: true })).toThrow("unsupported field");
+});
+
+test("rejects Mermaid keywords as component IDs", () => {
+  const mermaid = valid.mermaid
+    .replace('caller["Checkout caller"]', 'graph["Checkout caller"]')
+    .replace("caller -->|requests receipt from| receipt", "graph -->|requests receipt from| receipt");
+  expect(() => validateReviewArchitecture({ ...valid, mermaid })).toThrow("component id is reserved by Mermaid: graph");
+});
+
+test("repairs Mermaid keyword IDs in diagrams from older sessions", () => {
+  const mermaid = valid.mermaid
+    .replace('caller["Checkout caller"]', 'graph["Checkout caller"]')
+    .replace("caller -->|requests receipt from| receipt", "graph -->|requests receipt from| receipt");
+  const normalized = normalizeReviewArchitectureMermaid(mermaid);
+  expect(normalized).toContain('graph_component["Checkout caller"]:::external');
+  expect(normalized).toContain("graph_component -->|requests receipt from| receipt");
+  expect(validateReviewArchitecture({ ...valid, mermaid: normalized }).mermaid).toBe(normalized);
 });

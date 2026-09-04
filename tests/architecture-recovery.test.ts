@@ -36,14 +36,17 @@ test("attached outline repairs both rejected diagrams and retains every response
   const [initial] = await bridge.eventsAfter(0, 1000);
   await bridge.respond(initial!.id, JSON.stringify({ ...outline,
     behaviorArchitecture: { ...diagram, mermaid: "flowchart LR\n  F[Breaching Finding] --> A[Attribution]" },
-    architecture: { ...diagram, mermaid: diagram.mermaid.replace("flowchart LR", "flowchart TB") },
+    architecture: { ...diagram, mermaid: diagram.mermaid
+      .replace('service["Service"]', 'graph["Service"]')
+      .replace("app -->|calls| service", "app -->|calls| graph") },
   }));
   await bridge.ack(initial!.id);
   const [repair] = await bridge.eventsAfter(initial!.sequence, 1000);
   if (!repair || repair.type !== "agent.prompt") throw new Error("Expected correction prompt");
   expect(repair.kind).toBe("tour.outline");
   expect(repair.prompt).toContain("behaviorArchitecture: Architecture contains unsupported Mermaid syntax");
-  expect(repair.prompt).toContain("architecture: Architecture must use a left-to-right");
+  expect(repair.prompt).toContain("architecture: Architecture component id is reserved by Mermaid: graph");
+  expect(repair.prompt).toContain("Never use Mermaid keywords");
   expect(repair.prompt).toContain("complete corrected outline JSON");
   await bridge.respond(repair.id, JSON.stringify(outline));
   const result = await pending;

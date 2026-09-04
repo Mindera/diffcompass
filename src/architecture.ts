@@ -11,6 +11,52 @@ const CLASS_DEFS = new Set([
   "classDef external stroke:#888888,stroke-dasharray:3 3",
 ]);
 
+// Mermaid's flowchart lexer reserves these words even where our constrained
+// grammar otherwise permits an identifier. Keeping this list here lets us
+// reject new diagrams before they reach the browser renderer.
+const MERMAID_RESERVED_IDS = new Set([
+  "acctitle", "accdescr", "style", "default", "linkstyle", "interpolate",
+  "classdef", "class", "href", "click", "graph", "flowchart", "subgraph",
+  "end", "direction", "lr", "rl", "tb", "bt", "td", "br", "v",
+]);
+
+function reservedId(id: string): boolean {
+  return MERMAID_RESERVED_IDS.has(id.toLowerCase());
+}
+
+/** Repair diagrams persisted by versions that allowed Mermaid keywords as IDs. */
+export function normalizeReviewArchitectureMermaid(source: string): string {
+  const lines = source.replaceAll("\r\n", "\n").split("\n");
+  const declared = new Set<string>();
+  for (const line of lines) {
+    const node = NODE.exec(line.trim());
+    if (node) declared.add(node[1]!);
+  }
+  const replacements = new Map<string, string>();
+  for (const id of declared) {
+    if (!reservedId(id)) continue;
+    let replacement = `${id}_component`;
+    let suffix = 2;
+    while (declared.has(replacement) || reservedId(replacement)) replacement = `${id}_component${suffix++}`;
+    replacements.set(id, replacement);
+    declared.add(replacement);
+  }
+  if (replacements.size === 0) return source.replaceAll("\r\n", "\n");
+  return lines.map((rawLine) => {
+    const line = rawLine.trim();
+    const node = NODE.exec(line);
+    if (node) return line.replace(node[1]!, replacements.get(node[1]!) ?? node[1]!);
+    const edge = LABELLED_EDGE.exec(line);
+    if (edge) return `${replacements.get(edge[1]!) ?? edge[1]!} -->|${edge[2]!}| ${replacements.get(edge[3]!) ?? edge[3]!}`;
+    const classAssignment = CLASS.exec(line);
+    if (classAssignment) {
+      const ids = classAssignment[1]!.split(",").map((id) => replacements.get(id) ?? id);
+      return `class ${ids.join(",")} ${classAssignment[2]!}`;
+    }
+    return line;
+  }).join("\n");
+}
+
 export function validateReviewArchitecture(value: unknown): ReviewArchitecture {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Architecture must be an object.");
   const architecture = value as Record<string, unknown>;
@@ -37,6 +83,7 @@ export function validateReviewArchitecture(value: unknown): ReviewArchitecture {
     if (line.startsWith("%%")) continue;
     const node = NODE.exec(line);
     if (node) {
+      if (reservedId(node[1]!)) throw new Error(`Architecture component id is reserved by Mermaid: ${node[1]}`);
       if (nodes.has(node[1]!)) throw new Error(`Architecture declares a component more than once: ${node[1]}`);
       nodes.add(node[1]!);
       if (node[3]) styledNodes.add(node[1]!);

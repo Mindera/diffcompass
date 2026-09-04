@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promise
 import { dirname } from "node:path";
 import type { PersistedReviewSession } from "./types.ts";
 import { normalizeSequenceDiagram } from "./flows.ts";
-import { validateReviewArchitecture } from "./architecture.ts";
+import { normalizeReviewArchitectureMermaid, validateReviewArchitecture } from "./architecture.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -285,6 +285,12 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     value.outline.callFlows ??= [];
     value.outline.flows ??= [];
     value.outline.findings ??= [];
+    for (const field of ["behaviorArchitecture", "architecture"] as const) {
+      const diagram = value.outline[field];
+      if (record(diagram) && typeof diagram.mermaid === "string") {
+        diagram.mermaid = normalizeReviewArchitectureMermaid(diagram.mermaid);
+      }
+    }
     if (Array.isArray(value.outline.flows)) {
       for (const flow of value.outline.flows) {
         if (!record(flow)) continue;

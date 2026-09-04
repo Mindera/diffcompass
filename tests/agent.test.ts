@@ -419,6 +419,7 @@ test("skips optional findings and diagrams at generation time", async () => {
   expect(event.prompt).toContain("Architecture: omit");
   expect(event.prompt).toContain('"behaviorArchitectureStatus":"implemented|proposed"');
   expect(event.prompt).toContain("implementation journey");
+  expect(event.prompt).toContain("never use Mermaid keywords");
   expect(event.prompt).toContain("Call-flow diffs: omit");
   expect(event.prompt).toContain("Sequence diagrams: omit");
   expect(event.prompt).toContain("Findings: omit");

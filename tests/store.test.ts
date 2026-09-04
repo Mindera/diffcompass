@@ -83,6 +83,30 @@ test("persists a complete session atomically and with owner-only permissions whe
   }
 });
 
+test("repairs Mermaid keyword IDs when loading an older session", async () => {
+  const path = await temporaryStateFile();
+  const session = persistedSession();
+  session.outline!.architecture = {
+    title: "Application graph",
+    summary: "The application assembles the dependency graph.",
+    mermaid: `flowchart LR
+  app["Application"]:::touched
+  graph["Dependency graph"]:::new
+  app -->|creates| graph
+  classDef new stroke:#2e7d32,stroke-width:3px
+  classDef touched stroke:#f9a825,stroke-width:3px
+  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3
+  classDef external stroke:#888888,stroke-dasharray:3 3`,
+    dependencyChanges: ["Added Application → Dependency graph: creates"],
+    affectedFiles: ["src/app.ts"],
+  };
+  await savePersistedSession(path, session);
+
+  const loaded = await loadPersistedSession(path);
+  expect(loaded.outline!.architecture!.mermaid).toContain('graph_component["Dependency graph"]:::new');
+  expect(loaded.outline!.architecture!.mermaid).toContain("app -->|creates| graph_component");
+});
+
 test("rejects unreadable JSON and unsupported persisted schemas", async () => {
   const path = await temporaryStateFile();
   await savePersistedSession(path, persistedSession());
