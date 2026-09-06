@@ -10,7 +10,7 @@ test("mobile approval notices sit below the measured toolbar and wrap inside the
   expect(mobile).toContain("overflow: auto; overflow-wrap: anywhere;");
 });
 
-test("close transitions count down and preserve manual-close guidance when the browser blocks closing", async () => {
+async function createCloseHarness() {
   const app = await readFile(join(import.meta.dir, "..", "public", "app.js"), "utf8");
   const start = app.indexOf("function renderClosedBanner()");
   const end = app.indexOf("async function checkForUpdate()", start);
@@ -18,7 +18,7 @@ test("close transitions count down and preserve manual-close guidance when the b
   expect(end).toBeGreaterThan(start);
   const closeFunctions = app.slice(start, end);
 
-  let interval: (() => void) | undefined;
+  const intervals = new Map<number, () => void>();
   let timeout: (() => void) | undefined;
   let closeCalls = 0;
   const state = {
@@ -28,32 +28,74 @@ test("close transitions count down and preserve manual-close guidance when the b
     closeCountdownMessage: null as string | null,
   };
   const banner = {
-    textContent: "",
     classList: { toggle: () => undefined },
+  };
+  const message = { textContent: "" };
+  const action = {
+    hidden: true,
+    classList: {
+      add(name: string) { if (name === "hidden") action.hidden = true; },
+      toggle(name: string, force: boolean) { if (name === "hidden") action.hidden = force; },
+    },
   };
   const windowMock = {
     closed: false,
-    setInterval(callback: () => void) { interval = callback; return 1; },
-    clearInterval() {},
+    setInterval(callback: () => void) { intervals.set(1, callback); return 1; },
+    clearInterval(id: number) { intervals.delete(id); },
     setTimeout(callback: () => void) { timeout = callback; return 2; },
     close() { closeCalls += 1; },
   };
-  const createHarness = new Function("state", "elements", "window", "reviewIsOpen", `${closeFunctions}; return { renderClosedBanner, beginCloseCountdownForTransition };`);
-  const harness = createHarness(state, { "closed-banner": banner }, windowMock, () => state.session.status === "open") as {
+  const createHarness = new Function("state", "elements", "window", "reviewIsOpen", `${closeFunctions}; return { renderClosedBanner, cancelCloseCountdown, beginCloseCountdownForTransition };`);
+  const harness = createHarness(state, {
+    "closed-banner": banner,
+    "closed-banner-message": message,
+    "cancel-auto-close": action,
+  }, windowMock, () => state.session.status === "open") as {
     renderClosedBanner: () => void;
+    cancelCloseCountdown: () => void;
     beginCloseCountdownForTransition: (previousStatus: string, result: unknown) => void;
   };
+  return {
+    action,
+    closeCalls: () => closeCalls,
+    flushTimeout: () => timeout?.(),
+    harness,
+    message,
+    state,
+    tick: () => intervals.get(1)?.(),
+  };
+}
+
+test("close transitions count down and preserve manual-close guidance when the browser blocks closing", async () => {
+  const { closeCalls, flushTimeout, harness, message, state, tick } = await createCloseHarness();
 
   harness.beginCloseCountdownForTransition("open", { status: "accepted", comments: [] });
   expect(state.closeCountdownSeconds).toBe(5);
-  expect(banner.textContent).toContain("close in 5 seconds");
-  for (let tick = 0; tick < 5; tick += 1) interval!();
-  expect(closeCalls).toBe(1);
-  timeout!();
+  expect(message.textContent).toContain("close in 5 seconds");
+  for (let count = 0; count < 5; count += 1) tick();
+  expect(closeCalls()).toBe(1);
+  flushTimeout();
   expect(state.closeCountdownSeconds).toBeNull();
-  expect(banner.textContent).toContain("You can close this window.");
+  expect(message.textContent).toContain("You can close this window.");
 
   harness.renderClosedBanner();
-  expect(banner.textContent).toContain("You can close this window.");
-  expect(banner.textContent).not.toContain("It is now read-only.");
+  expect(message.textContent).toContain("You can close this window.");
+  expect(message.textContent).not.toContain("It is now read-only.");
+});
+
+test("cancelling auto-close keeps the submitted review open for inspection", async () => {
+  const { action, closeCalls, harness, message, state, tick } = await createCloseHarness();
+
+  harness.beginCloseCountdownForTransition("open", { status: "accepted", comments: [] });
+  expect(action.hidden).toBeFalse();
+  harness.cancelCloseCountdown();
+  tick();
+
+  expect(closeCalls()).toBe(0);
+  expect(state.session.status).toBe("accepted");
+  expect(state.closeCountdownTimer).toBeNull();
+  expect(state.closeCountdownSeconds).toBeNull();
+  expect(message.textContent).toContain("This review is closed as accepted.");
+  expect(message.textContent).toContain("You can close this window.");
+  expect(action.hidden).toBeTrue();
 });

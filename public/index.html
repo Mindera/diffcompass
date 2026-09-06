@@ -88,7 +88,10 @@
       </div>
     </header>
 
-    <div id="closed-banner" class="closed-banner hidden" role="status"></div>
+    <div id="closed-banner" class="closed-banner hidden">
+      <span id="closed-banner-message" role="status"></span>
+      <button id="cancel-auto-close" class="closed-banner-action hidden" type="button">Cancel auto-close</button>
+    </div>
     <div id="connection-banner" class="closed-banner connection hidden" role="status">The local server is unavailable. Restart it with the printed resume command, then reopen the new review URL.</div>
 
     <main id="workspace" class="workspace">
@@ -108,7 +111,7 @@
               <option value="">All statuses</option><option value="modified">Modified</option><option value="added">Added</option><option value="deleted">Deleted</option><option value="renamed">Renamed</option>
             </select></label>
             <label><span class="sr-only">Review status</span><select id="review-filter" aria-label="Filter by review status">
-              <option value="unreviewed" selected>Unreviewed</option><option value="">All files</option><option value="reviewed">Reviewed</option>
+              <option value="unreviewed" selected>Unreviewed</option><option value="tour">All files in this tour</option><option value="">All changed files</option><option value="reviewed">Reviewed</option>
             </select></label>
           </div>
           <button id="test-files-filter" class="file-filter-toggle" type="button" aria-pressed="false">

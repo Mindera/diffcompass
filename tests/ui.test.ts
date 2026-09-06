@@ -39,9 +39,41 @@ test("the file pane starts on unreviewed files and has clearer hierarchy control
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).toContain('<option value="unreviewed" selected>Unreviewed</option>');
+  expect(html).toContain('<option value="tour">All files in this tour</option>');
+  expect(html).toContain('<option value="">All changed files</option>');
   expect(app).toContain('reviewFilter: "unreviewed"');
+  expect(app).toContain('state.reviewFilter === "tour"');
+  expect(app).toContain("tourPaths.has(file.path)");
   expect(styles).toContain('font-size: 17px; font-weight: 800;');
   expect(styles).toContain('.tree-children { margin-left: 10px; border-left: 1px solid var(--border-soft);');
+});
+
+test("the tour file filter combines reviewed and unreviewed files from every phase", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function filteredChangedFiles()"), app.indexOf("function renderFileTree()"));
+  const state = {
+    tourMode: null,
+    reviewFilter: "tour",
+    statusFilter: "",
+    testFilesOnly: false,
+    searchQuery: "",
+    searchMatches: null,
+    session: {
+      reviewedFiles: ["src/reviewed.ts", "src/not-in-tour.ts"],
+      comparison: { files: [
+        { path: "src/reviewed.ts", status: "modified" },
+        { path: "src/unreviewed.ts", status: "added" },
+        { path: "src/not-in-tour.ts", status: "modified" },
+      ] },
+      outline: { phases: [
+        { fileChanges: [{ path: "src/reviewed.ts" }] },
+        { fileChanges: [{ path: "src/unreviewed.ts" }] },
+      ] },
+    },
+  };
+  const filteredChangedFiles = new Function("state", "currentPhase", "isTestFile", `${source}; return filteredChangedFiles;`)(state, () => null, () => false) as () => Array<{ path: string }>;
+
+  expect(filteredChangedFiles().map((file) => file.path)).toEqual(["src/reviewed.ts", "src/unreviewed.ts"]);
 });
 
 test("narrow layouts expose the changed files as a dismissible drawer", async () => {
@@ -78,7 +110,8 @@ test("the file pane can filter changed test files without changing the default",
   expect(app).toContain("(!state.testFilesOnly || isTestFile(file.path))");
   expect(app).toContain('state.testFilesOnly = !state.testFilesOnly');
   expect(app).toContain('elements["test-files-filter"].disabled = Boolean(state.tourMode)');
-  expect(app).toContain('const candidates = [state.visibleFile, currentStep()?.anchor.path]');
+  expect(app).toContain("async function ensureReviewDiffs()");
+  expect(app).toContain('return files.map((file) => state.diffCache.get(file.path)).filter(Boolean)');
   expect(styles).toContain(".file-filter-toggle.active");
 
   const helperSource = app.slice(app.indexOf("function isTestFile(path)"), app.indexOf("function renderTreeNode("));
@@ -176,8 +209,14 @@ test("questions support removable line and file context while review decisions a
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {
-  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const [html, app] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+  ]);
+  expect(html).toContain('id="cancel-auto-close"');
+  expect(html).toContain(">Cancel auto-close</button>");
   expect(app).toContain("function beginCloseCountdown(message)");
+  expect(app).toContain("function cancelCloseCountdown()");
   expect(app).toContain("state.closeCountdownSeconds = 5");
   expect(app).toContain('`You can close this window, or it will close in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`');
   expect(app).toContain("window.close()");
@@ -187,6 +226,7 @@ test("closing a review shows a five-second self-close countdown", async () => {
   expect(app).toContain("beginCloseCountdownForTransition(previousStatus, result)");
   expect(app).toContain("beginCloseCountdownForTransition(previousStatus, latest)");
   expect(app).toContain('`${state.closeCountdownMessage} You can close this window.`');
+  expect(app).toContain('elements["cancel-auto-close"].addEventListener("click", cancelCloseCountdown)');
 });
 
 test("slow tour work exposes its prompt and safe progress while navigation remains busy", async () => {

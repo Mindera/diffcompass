@@ -31,6 +31,9 @@ const state = {
   fileRequestId: 0,
   phaseDiffLoadKey: null,
   phaseDiffLoadPromise: null,
+  reviewDiffLoadKey: null,
+  reviewDiffLoadPromise: null,
+  reviewDiffLoadGeneration: 0,
   highlightRequestId: 0,
   flowRenderGeneration: 0,
   architectureDiagramViews: new Map(),
@@ -90,7 +93,7 @@ const state = {
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
-    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
@@ -292,22 +295,33 @@ function toast(message, { duration = 3_500, tone = "default" } = {}) {
 function renderClosedBanner() {
   const closed = !reviewIsOpen();
   elements["closed-banner"].classList.toggle("hidden", !closed);
-  if (!closed) return;
+  if (!closed) {
+    elements["cancel-auto-close"].classList.add("hidden");
+    return;
+  }
+  elements["cancel-auto-close"].classList.toggle("hidden", state.closeCountdownSeconds === null || state.closeCountdownSeconds <= 0);
   if (state.closeCountdownSeconds !== null) {
     const seconds = state.closeCountdownSeconds;
     const countdown = seconds > 0
       ? `You can close this window, or it will close in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`
       : "Closing this window…";
-    elements["closed-banner"].textContent = `${state.closeCountdownMessage} ${countdown}`;
+    elements["closed-banner-message"].textContent = `${state.closeCountdownMessage} ${countdown}`;
     return;
   }
   if (state.closeCountdownMessage !== null) {
-    elements["closed-banner"].textContent = `${state.closeCountdownMessage} You can close this window.`;
+    elements["closed-banner-message"].textContent = `${state.closeCountdownMessage} You can close this window.`;
     return;
   }
-  elements["closed-banner"].textContent = state.session.status === "cancelled"
+  elements["closed-banner-message"].textContent = state.session.status === "cancelled"
     ? "This review was closed without a decision. It is now read-only."
     : `This review is closed as ${state.session.status}. It is now read-only.`;
+}
+
+function cancelCloseCountdown() {
+  if (state.closeCountdownTimer !== null) window.clearInterval(state.closeCountdownTimer);
+  state.closeCountdownTimer = null;
+  state.closeCountdownSeconds = null;
+  renderClosedBanner();
 }
 
 function beginCloseCountdown(message) {
@@ -316,6 +330,7 @@ function beginCloseCountdown(message) {
   state.closeCountdownSeconds = 5;
   renderClosedBanner();
   state.closeCountdownTimer = window.setInterval(() => {
+    if (state.closeCountdownSeconds === null) return;
     state.closeCountdownSeconds -= 1;
     renderClosedBanner();
     if (state.closeCountdownSeconds > 0) return;
@@ -719,10 +734,13 @@ function filteredChangedFiles() {
   const reviewed = new Set(state.session.reviewedFiles ?? []);
   const searchMatches = state.searchQuery && state.searchMatches ? new Set(state.searchMatches) : null;
   const phasePaths = state.tourMode ? new Set(currentPhase()?.fileChanges.map((change) => change.path) ?? []) : null;
+  const tourPaths = state.reviewFilter === "tour"
+    ? new Set(state.session.outline?.phases.flatMap((phase) => phase.fileChanges.map((change) => change.path)) ?? [])
+    : null;
   if (phasePaths) return state.session.comparison.files.filter((file) => phasePaths.has(file.path));
   return state.session.comparison.files.filter((file) =>
     (!state.statusFilter || file.status === state.statusFilter) &&
-    (!state.reviewFilter || (state.reviewFilter === "reviewed") === reviewed.has(file.path)) &&
+    (!state.reviewFilter || (tourPaths ? tourPaths.has(file.path) : (state.reviewFilter === "reviewed") === reviewed.has(file.path))) &&
     (!state.testFilesOnly || isTestFile(file.path)) &&
     (!searchMatches || searchMatches.has(file.path))
   );
@@ -1176,12 +1194,7 @@ function visibleDiffFiles() {
   const comparison = state.session.comparison;
   const files = filteredChangedFiles();
   if (comparison.diffMode !== "file") return files.map((file) => state.diffCache.get(file.path) ?? file);
-  if (state.tourMode) return files.map((file) => state.diffCache.get(file.path)).filter(Boolean);
-  const candidates = [state.visibleFile, currentStep()?.anchor.path];
-  const path = candidates.find((candidate) => files.some((file) => file.path === candidate)) ?? files[0]?.path;
-  state.visibleFile = path;
-  const cached = state.diffCache.get(path);
-  return cached ? [cached] : [];
+  return files.map((file) => state.diffCache.get(file.path)).filter(Boolean);
 }
 
 async function ensureTourPhaseDiffs() {
@@ -1217,6 +1230,45 @@ async function ensureTourPhaseDiffs() {
     if (state.phaseDiffLoadPromise === load) {
       state.phaseDiffLoadKey = null;
       state.phaseDiffLoadPromise = null;
+    }
+  }
+}
+
+async function ensureReviewDiffs() {
+  if (state.tourMode || state.session.comparison.diffMode !== "file") return;
+  const files = filteredChangedFiles();
+  const missing = files.map((file) => file.path).filter((path) => !state.diffCache.has(path));
+  if (missing.length === 0) return;
+  const key = `${state.session.revision}:${files.map((file) => file.path).join("\0")}`;
+  if (state.reviewDiffLoadKey === key && state.reviewDiffLoadPromise) return state.reviewDiffLoadPromise;
+  const generation = ++state.reviewDiffLoadGeneration;
+  const revision = state.session.revision;
+  const load = (async () => {
+    if (visibleDiffFiles().length === 0) elements.diff.innerHTML = '<div class="empty">Loading changed files…</div>';
+    let failures = 0;
+    for (let offset = 0; offset < missing.length; offset += 8) {
+      const results = await Promise.allSettled(missing.slice(offset, offset + 8).map(async (path) => {
+        const result = await api(`/api/diff?${new URLSearchParams({ path })}`);
+        return [path, { ...result.file, _context: result.context, _full: result.full, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } }];
+      }));
+      if (generation !== state.reviewDiffLoadGeneration || state.tourMode || state.session.revision !== revision) return;
+      for (const result of results) {
+        if (result.status === "fulfilled") state.diffCache.set(result.value[0], result.value[1]);
+        else failures += 1;
+      }
+    }
+    renderDiff(visibleDiffFiles());
+    renderComments();
+    renderFindings();
+    renderTourAnnotation();
+    if (failures > 0) toast(`Could not load ${failures} changed file diff${failures === 1 ? "" : "s"}.`);
+  })();
+  state.reviewDiffLoadKey = key;
+  state.reviewDiffLoadPromise = load;
+  try { await load; } finally {
+    if (state.reviewDiffLoadPromise === load) {
+      state.reviewDiffLoadKey = null;
+      state.reviewDiffLoadPromise = null;
     }
   }
 }
@@ -1301,7 +1353,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
         return;
       }
     }
-    files = state.tourMode || state.session.comparison.diffMode !== "file" ? visibleDiffFiles() : [file];
+    files = visibleDiffFiles();
   } else if (!files.some((file) => file.path === path)) {
     const requested = state.session.comparison.files.find((file) => file.path === path);
     files = requested ? [requested] : files;
@@ -2267,11 +2319,7 @@ function renderFilteredDiff() {
     renderTourAnnotation();
     return;
   }
-  if (large && files.length === 0 && filteredChangedFiles().length > 0) {
-    const target = filteredChangedFiles()[0].path;
-    state.visibleFile = target;
-    void showChangedFile(target);
-  }
+  if (large) void ensureReviewDiffs();
   renderComments();
   renderFindings();
   renderTourAnnotation();
@@ -2302,29 +2350,32 @@ function nextRenderedPath(path) {
   return state.renderedDiffFiles[index + 1]?.path ?? null;
 }
 
-function captureVisibleFileHeader(path) {
+function captureNextFileAnchor(path) {
   if (!path) return null;
   const panel = elements["diff-panel"];
-  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(path)}"] > .diff-file-header`);
-  if (!header) return null;
+  const file = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`);
+  const header = file?.querySelector(":scope > .diff-file-header");
+  if (!file || !header) return null;
   const panelBounds = panel.getBoundingClientRect();
   const toolbarBounds = document.querySelector(".diff-toolbar")?.getBoundingClientRect();
   const visibleTop = Math.max(panelBounds.top, toolbarBounds?.bottom ?? panelBounds.top);
   const visibleBottom = Math.min(panelBounds.bottom, window.innerHeight);
+  const fileBounds = file.getBoundingClientRect();
   const headerBounds = header.getBoundingClientRect();
-  if (headerBounds.bottom <= visibleTop || headerBounds.top >= visibleBottom) return null;
-  return { path, visibleTop };
+  const naturalHeaderBottom = fileBounds.top + headerBounds.height;
+  const wasVisible = naturalHeaderBottom > visibleTop && fileBounds.top < visibleBottom;
+  return { path, visibleTop, wasVisible };
 }
 
 function recoverVisibleFileHeader(anchor, expectedScrollTop) {
   if (!anchor) return;
   const panel = elements["diff-panel"];
   if (expectedScrollTop !== undefined && panel.scrollTop !== expectedScrollTop) return;
-  const header = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(anchor.path)}"] > .diff-file-header`);
-  if (!header) return;
-  const headerBounds = header.getBoundingClientRect();
-  if (headerBounds.bottom > anchor.visibleTop) return;
-  panel.scrollTop += headerBounds.top - anchor.visibleTop;
+  const file = elements.diff.querySelector(`.diff-file[data-path="${CSS.escape(anchor.path)}"]`);
+  if (!file) return;
+  const fileBounds = file.getBoundingClientRect();
+  if (anchor.wasVisible && fileBounds.top >= anchor.visibleTop) return;
+  panel.scrollTop += fileBounds.top - anchor.visibleTop;
 }
 
 function recoverVisibleFileHeaderAfterLayout(anchor) {
@@ -2338,14 +2389,16 @@ async function setReviewed(path, reviewed) {
   if (!reviewIsOpen() || state.busy) return;
   const nextPath = reviewed ? nextRenderedPath(path) : null;
   try {
+    const previousRevision = state.session.revision;
     state.session = await api("/api/files/reviewed", {
       method: "POST",
       body: JSON.stringify({ path, reviewed }),
     });
+    if (state.diffCacheRevision === previousRevision) state.diffCacheRevision = state.session.revision;
     // Capture after the request so scrolling while it is pending is respected.
-    // Only a next file whose header is currently visible is eligible for
-    // recovery; ordinary collapses should not move the viewport at all.
-    const nextFileAnchor = captureVisibleFileHeader(nextPath);
+    // Sticky headers conceal whether a collapse moved the next file's actual
+    // beginning above the viewport, so recovery tracks the file section.
+    const nextFileAnchor = captureNextFileAnchor(nextPath);
     if (reviewed) state.collapsedFiles.add(path);
     else state.collapsedFiles.delete(path);
     renderSession();
@@ -2458,6 +2511,7 @@ function renderSession() {
   elements["diff-search"].value = state.searchQuery;
   elements["status-filter"].value = state.statusFilter;
   elements["review-filter"].value = state.reviewFilter;
+  elements["review-filter"].querySelector('option[value="tour"]').disabled = !state.session.outline;
   elements["test-files-filter"].setAttribute("aria-pressed", String(state.testFilesOnly));
   elements["test-files-filter"].classList.toggle("active", state.testFilesOnly);
   elements["tree-mode"].value = state.treeMode;
@@ -2479,14 +2533,7 @@ function renderSession() {
   }
   renderDiff(visibleDiffFiles());
   if (state.tourMode && large) void ensureTourPhaseDiffs();
-  if (!state.tourMode && large && visibleDiffFiles().length === 0 && filteredChangedFiles().length > 0) {
-    const step = currentStep();
-    const target = state.visibleFile && filteredChangedFiles().some((file) => file.path === state.visibleFile)
-      ? state.visibleFile
-      : filteredChangedFiles().some((file) => file.path === step?.anchor.path) ? step?.anchor.path : filteredChangedFiles()[0].path;
-    const targetsStep = target === step?.anchor.path;
-    void showChangedFile(target, targetsStep ? step.anchor.startLine : undefined, targetsStep ? step.anchor.side : undefined);
-  }
+  if (!state.tourMode && large) void ensureReviewDiffs();
   renderComments();
   renderFindings();
   renderReviewOverview();
@@ -2596,6 +2643,9 @@ async function toggleTourMode() {
   state.fileRequestId += 1;
   state.phaseDiffLoadKey = null;
   state.phaseDiffLoadPromise = null;
+  state.reviewDiffLoadGeneration += 1;
+  state.reviewDiffLoadKey = null;
+  state.reviewDiffLoadPromise = null;
   state.visibleFile = null;
   state.activeTab = "diff";
   renderSession();
@@ -2605,6 +2655,7 @@ async function toggleTourMode() {
     await focusCurrentStep();
     toast("Tour resumed. Diffs are scoped to this phase.");
   } else {
+    await ensureReviewDiffs();
     toast("Tour exited. All changed files are visible.");
   }
 }
@@ -3162,6 +3213,7 @@ elements["questions-resizer"].addEventListener("dblclick", () => resizeQuestions
 elements["chat-form"].addEventListener("submit", askAgent);
 elements["close-button"].addEventListener("click", () => state.session.preferences?.closeOutcome === "cancelled" ? requestCloseReview() : close("accepted", "approve"));
 elements["close-review-button"].addEventListener("click", requestCloseReview);
+elements["cancel-auto-close"].addEventListener("click", cancelCloseCountdown);
 elements["approve-comments-button"].addEventListener("click", () => openReviewDecision("approve-with-comments"));
 elements["feedback-button"].addEventListener("click", () => openReviewDecision("request-changes"));
 elements["cancel-review-decision"].addEventListener("click", () => elements["review-decision-dialog"].close());
