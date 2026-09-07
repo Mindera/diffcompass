@@ -193,7 +193,7 @@ Installed releases manage their own lifecycle:
 
 ```sh
 code-review-tour update
-code-review-tour update --version v1.1.21
+code-review-tour update --version v1.1.22
 code-review-tour rollback
 code-review-tour rollback --to 1.1.3
 code-review-tour uninstall --dry-run
@@ -209,7 +209,7 @@ removes an unmarked skill directory or an unrelated command.
 Pin a particular release by setting the version for the installer process:
 
 ```sh
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.21 bash
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.22 bash
 ```
 
 Once the repository is public, this bootstrap can switch from authenticated
