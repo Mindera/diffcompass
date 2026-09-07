@@ -4,15 +4,16 @@ import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./ag
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
-import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadDiffFileWithContext, loadDiffImage, loadDiffText, loadRepositoryFile, removeProposalWorkspace, writeProposalFile, type ProposalWorkspace } from "./git.ts";
+import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadComparisonBetweenTrees, loadDiffFileWithContext, loadDiffImage, loadDiffText, loadRepositoryFile, removeCheckpointRef, removeProposalWorkspace, writeCheckpointRef, writeProposalFile, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
 import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, DiffFile, DiffRow, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, ComparisonView, DiffFile, DiffRow, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SourceCheckpoint, TourOutline } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
+import { revisionSummary } from "./revision.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -74,6 +75,7 @@ function sameComparison(before: GitComparison, after: GitComparison): boolean {
     before.base === after.base &&
     before.mergeBase === after.mergeBase &&
     before.head === after.head &&
+    before.sourceTree === after.sourceTree &&
     before.patch === after.patch &&
     before.repositoryFiles.length === after.repositoryFiles.length &&
     before.repositoryFiles.every((path, index) => path === after.repositoryFiles[index]);
@@ -88,6 +90,10 @@ export class ReviewSession {
   readonly preferences: ReviewPreferences;
   readonly reviewPolicy: ReviewPolicy;
   readonly screenshots: ReviewScreenshot[];
+  readonly checkpoints: SourceCheckpoint[];
+  readonly checkpointRefNamespace: string;
+  comparisonView: ComparisonView = "full";
+  selectedCheckpointId?: string;
   pullRequest?: PullRequestContext;
   outline?: TourOutline;
   currentStepIndex = -1;
@@ -118,6 +124,9 @@ export class ReviewSession {
   };
   private readonly sessionName?: string;
   private readonly archived: boolean;
+  private fullComparison: GitComparison;
+  private currentRevisionSummary: RevisionSummary;
+  private currentSinceFiles: DiffFile[] = [];
   private resolveClosed!: (outcome: ReviewOutcome) => void;
   readonly closed = new Promise<ReviewOutcome>((resolve) => {
     this.resolveClosed = resolve;
@@ -135,6 +144,8 @@ export class ReviewSession {
     this.reviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.screenshots = structuredClone(persisted?.screenshots ?? []);
+    this.checkpoints = structuredClone(persisted?.checkpoints ?? []);
+    this.checkpointRefNamespace = persisted?.checkpointRefNamespace ?? `refs/code-review-tour/checkpoints/${this.refKey(defaults.stateFile)}`;
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
     this.activities = structuredClone(persisted?.activities ?? []);
@@ -148,6 +159,10 @@ export class ReviewSession {
     this.currentStepIndex = persisted?.currentStepIndex ?? -1;
     this.revision = persisted?.revision ?? 1;
     this.status = persisted?.status ?? "open";
+    this.comparisonView = persisted?.comparisonView ?? "full";
+    this.selectedCheckpointId = persisted?.selectedCheckpointId;
+    this.fullComparison = comparison;
+    this.currentRevisionSummary = { changedFiles: 0, additions: 0, deletions: 0, newFiles: [], changedAgainFiles: [], resolvedFiles: [], unchangedFiles: [], text: "No review checkpoint yet. Create one before refreshing to preserve reviewed files." };
     this.selection = persisted?.selection
       ? { ...structuredClone(persisted.selection), includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings }
       : undefined;
@@ -156,6 +171,15 @@ export class ReviewSession {
       this.agent = this.createAgent(this.agentContinuation);
     }
     if (this.status !== "open") queueMicrotask(() => this.resolveClosed(this.status as ReviewOutcome));
+  }
+
+  private static refKey(value?: string): string {
+    const source = value?.split(/[\\/]/).at(-1)?.replace(/\.json$/i, "") || crypto.randomUUID();
+    return source.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128) || crypto.randomUUID();
+  }
+
+  private refKey(value?: string): string {
+    return ReviewSession.refKey(value);
   }
 
   private ensureOpen(): void {
@@ -182,7 +206,7 @@ export class ReviewSession {
 
   private persistedState(): PersistedReviewSession {
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       name: this.sessionName,
       archived: this.archived,
       repositoryRoot: this.comparison.repositoryRoot,
@@ -199,6 +223,10 @@ export class ReviewSession {
       messages: structuredClone(this.messages),
       activities: structuredClone(this.activities),
       reviewedFiles: [...this.reviewedFiles].sort(),
+      checkpoints: structuredClone(this.checkpoints),
+      checkpointRefNamespace: this.checkpointRefNamespace,
+      comparisonView: this.comparisonView,
+      selectedCheckpointId: this.selectedCheckpointId,
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
@@ -350,6 +378,177 @@ export class ReviewSession {
     return this.comparisonGeneration;
   }
 
+  private latestCheckpoint(): SourceCheckpoint | undefined {
+    return this.checkpoints.at(-1);
+  }
+
+  private selectedCheckpoint(): SourceCheckpoint | undefined {
+    if (this.selectedCheckpointId) return this.checkpoints.find((checkpoint) => checkpoint.id === this.selectedCheckpointId);
+    return this.latestCheckpoint();
+  }
+
+  private async comparisonForView(full: GitComparison = this.fullComparison): Promise<GitComparison> {
+    if (this.comparisonView !== "since-last-review") return full;
+    const checkpoint = this.selectedCheckpoint();
+    if (!checkpoint) return full;
+    try {
+      return await loadComparisonBetweenTrees(full.repositoryRoot, {
+        repositoryName: full.repositoryName,
+        branch: full.branch,
+        base: full.base,
+        mergeBase: checkpoint.sourceTree,
+        head: full.head,
+        sourceTree: full.sourceTree ?? full.head,
+        contextLines: this.preferences.contextLines,
+      });
+    } catch {
+      return full;
+    }
+  }
+
+  private async updateRevisionSummary(full: GitComparison): Promise<void> {
+    const checkpoint = this.latestCheckpoint();
+    if (!checkpoint || !full.sourceTree) {
+      this.currentSinceFiles = [];
+      this.currentRevisionSummary = {
+        changedFiles: 0, additions: 0, deletions: 0, newFiles: [], changedAgainFiles: [], resolvedFiles: [], unchangedFiles: [],
+        text: "No review checkpoint yet. Create one before refreshing to preserve reviewed files.",
+      };
+      return;
+    }
+    const checkpointComparison = await loadComparisonBetweenTrees(full.repositoryRoot, {
+      repositoryName: full.repositoryName,
+      branch: full.branch,
+      base: full.base,
+      mergeBase: checkpoint.baseTree,
+      head: checkpoint.sourceHead,
+      sourceTree: checkpoint.sourceTree,
+      contextLines: this.preferences.contextLines,
+    });
+    const since = await loadComparisonBetweenTrees(full.repositoryRoot, {
+      repositoryName: full.repositoryName,
+      branch: full.branch,
+      base: full.base,
+      mergeBase: checkpoint.sourceTree,
+      head: full.head,
+      sourceTree: full.sourceTree,
+      contextLines: this.preferences.contextLines,
+    });
+    this.currentSinceFiles = since.files;
+    this.currentRevisionSummary = revisionSummary(checkpoint.id, checkpoint.createdAt, checkpointComparison.files, full.files, since.files);
+  }
+
+  private reconcileRevisionState(full: GitComparison, sinceFiles: DiffFile[]): void {
+    const changedPaths = new Set(sinceFiles.map((file) => file.path));
+    const currentPaths = new Set(full.files.map((file) => file.path));
+    const checkpoint = this.latestCheckpoint();
+    const reviewedAtCheckpoint = new Set(checkpoint?.reviewedFiles ?? []);
+    this.reviewedFiles.clear();
+    for (const path of reviewedAtCheckpoint) if (currentPaths.has(path) && !changedPaths.has(path)) this.reviewedFiles.add(path);
+    this.comparison = full;
+    for (const comment of this.comments) {
+      comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
+    }
+    for (const step of tourSteps(this.outline)) {
+      step.outdated = changedPaths.has(step.anchor.path) || !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
+    }
+    for (const finding of this.outline?.findings ?? []) {
+      const row = this.findRow(finding.path, finding.side, finding.line);
+      finding.outdated = changedPaths.has(finding.path) || row?.content !== finding.lineContent;
+    }
+    const diagrams = [this.outline?.architecture, this.outline?.behaviorArchitecture, ...(this.outline?.flows ?? []), ...(this.outline?.callFlows ?? [])];
+    for (const diagram of diagrams) {
+      if (!diagram?.affectedFiles) continue;
+      diagram.outdated = diagram.affectedFiles.some((path) => changedPaths.has(path));
+    }
+  }
+
+  private async selectComparisonView(): Promise<void> {
+    this.comparison = await this.comparisonForView(this.fullComparison);
+  }
+
+  async setComparisonView(view: ComparisonView) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (view !== "full" && view !== "since-last-review") throw new ReviewError("Unknown comparison view.");
+      if (view === this.comparisonView) return this.snapshot();
+      this.comparisonView = view;
+      await this.selectComparisonView();
+      this.comparisonGeneration += 1;
+      this.revision += 1;
+      this.agent?.useComparison(this.comparison);
+      await this.persist();
+      return this.snapshot();
+    });
+  }
+
+  private async createCheckpointRecord(kind: "manual" | "decision", decision?: ReviewDecisionIntent, outcome?: Extract<ReviewOutcome, "accepted" | "feedback">): Promise<SourceCheckpoint> {
+    const full = await loadComparison(this.fullComparison.repositoryRoot, this.fullComparison.base, this.preferences.contextLines);
+    const sourceTree = full.sourceTree;
+    if (!sourceTree) throw new ReviewError("The current source snapshot could not be captured.");
+    const id = crypto.randomUUID();
+    const ref = `${this.checkpointRefNamespace}/${id}`;
+    const previous = this.latestCheckpoint();
+    let summary: RevisionSummary;
+    if (previous) {
+      const previousComparison = await loadComparisonBetweenTrees(full.repositoryRoot, {
+        base: full.base, mergeBase: previous.baseTree, sourceTree: previous.sourceTree, head: previous.sourceHead,
+        contextLines: this.preferences.contextLines,
+      });
+      const since = await loadComparisonBetweenTrees(full.repositoryRoot, {
+        base: full.base, mergeBase: previous.sourceTree, sourceTree, head: full.head,
+        contextLines: this.preferences.contextLines,
+      });
+      summary = revisionSummary(id, new Date().toISOString(), previousComparison.files, full.files, since.files);
+    } else {
+      summary = revisionSummary(id, new Date().toISOString(), [], full.files, full.files);
+      summary.text = `${kind === "manual" ? "Manual" : "Decision"} checkpoint created at the current source.`;
+    }
+    await writeCheckpointRef(full.repositoryRoot, ref, sourceTree);
+    const checkpoint: SourceCheckpoint = {
+      id, kind, ref, sourceTree, sourceHead: full.head, base: full.base, baseTree: full.mergeBase,
+      reviewedFiles: [...new Set([...this.reviewedFiles, ...(previous?.reviewedFiles ?? [])])].filter((path) => full.files.some((file) => file.path === path)).sort(),
+      ...(outcome ? { outcome } : {}),
+      ...(decision && decision !== "cancel" ? { decision } : {}),
+      summary,
+      createdAt: summary.checkpointCreatedAt!,
+    };
+    this.checkpoints.push(checkpoint);
+    this.fullComparison = full;
+    this.currentSinceFiles = [];
+    this.currentRevisionSummary = summary;
+    return checkpoint;
+  }
+
+  async createManualCheckpoint(label?: string) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (this.pullRequest) throw new ReviewError("Manual checkpoints are available for local reviews only.");
+      const previousRevision = this.revision;
+      const previousComparison = this.comparison;
+      const previousFullComparison = this.fullComparison;
+      const previousRevisionSummary = structuredClone(this.currentRevisionSummary);
+      const previousSinceFiles = structuredClone(this.currentSinceFiles);
+      const checkpoint = await this.createCheckpointRecord("manual");
+      if (label?.trim()) checkpoint.summary.text = `Manual checkpoint: ${label.trim()}`.slice(0, 2_000);
+      await this.selectComparisonView();
+      this.revision += 1;
+      try {
+        await this.persist();
+      } catch (error) {
+        this.checkpoints.pop();
+        await removeCheckpointRef(this.fullComparison.repositoryRoot, checkpoint.ref).catch(() => undefined);
+        this.fullComparison = previousFullComparison;
+        this.comparison = previousComparison;
+        this.currentRevisionSummary = previousRevisionSummary;
+        this.currentSinceFiles = previousSinceFiles;
+        this.revision = previousRevision;
+        throw error;
+      }
+      return this.snapshot();
+    });
+  }
+
   static async create(
     cwd: string,
     base?: string,
@@ -397,6 +596,8 @@ export class ReviewSession {
       });
     }
     const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted);
+    await session.selectComparisonView();
+    await session.updateRevisionSummary(session.fullComparison).catch(() => undefined);
     if (defaults.screenshots?.length) {
       if (!defaults.stateFile) throw new ReviewError("Screenshots require persisted review session storage.");
       session.screenshots.splice(0, session.screenshots.length, ...await importReviewScreenshots(defaults.screenshots, defaults.stateFile, session.screenshots));
@@ -534,6 +735,10 @@ export class ReviewSession {
       messages: this.messages,
       activities: this.activities.map(({ proposal, ...activity }) => ({ ...activity, hasProposal: Boolean(proposal) })),
       reviewedFiles: [...this.reviewedFiles].sort(),
+      checkpoints: structuredClone(this.checkpoints),
+      comparisonView: this.comparisonView,
+      selectedCheckpointId: this.selectedCheckpointId ?? this.latestCheckpoint()?.id,
+      revisionSummary: structuredClone(this.currentRevisionSummary),
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
@@ -743,6 +948,9 @@ export class ReviewSession {
       if (action === "undo" && activity.changeStatus !== "applied") throw new ReviewError("Only an applied change can be undone.");
 
       const previousComparison = this.comparison;
+      const previousFullComparison = this.fullComparison;
+      const previousRevisionSummary = structuredClone(this.currentRevisionSummary);
+      const previousSinceFiles = structuredClone(this.currentSinceFiles);
       const previousStatus = activity.changeStatus;
       const previousRevision = this.revision;
       const previousGeneration = this.comparisonGeneration;
@@ -755,7 +963,10 @@ export class ReviewSession {
           patched = true;
         }
         if (modifiesWorkingTree) {
-          this.comparison = await loadComparison(this.comparison.repositoryRoot, this.comparison.base, this.preferences.contextLines);
+          this.fullComparison = await loadComparison(this.comparison.repositoryRoot, this.fullComparison.base, this.preferences.contextLines);
+          await this.updateRevisionSummary(this.fullComparison);
+          this.reconcileRevisionState(this.fullComparison, this.currentSinceFiles);
+          await this.selectComparisonView();
           this.comparisonGeneration += 1;
         }
         activity.changeStatus = action === "apply" ? "applied" : action === "reject" ? "rejected" : "undone";
@@ -769,6 +980,9 @@ export class ReviewSession {
           await applyChangePatch(this.comparison.repositoryRoot, proposal.patch, !reverse).catch(() => undefined);
         }
         this.comparison = previousComparison;
+        this.fullComparison = previousFullComparison;
+        this.currentRevisionSummary = previousRevisionSummary;
+        this.currentSinceFiles = previousSinceFiles;
         this.comparisonGeneration = previousGeneration;
         activity.changeStatus = previousStatus;
         activity.proposal = proposal;
@@ -1383,30 +1597,24 @@ export class ReviewSession {
         refreshed = await loadComparison(this.comparison.repositoryRoot, this.comparison.base, this.preferences.contextLines);
       }
       this.ensureOpen();
-      if (context.source === "watcher" && sameComparison(this.comparison, refreshed)) return this.snapshot();
+      if (context.source === "watcher" && sameComparison(this.fullComparison, refreshed)) return this.snapshot();
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;
       let operationRevision = before.revision;
       const previousComparison = this.comparison;
+      const previousFullComparison = this.fullComparison;
+      const previousRevisionSummary = structuredClone(this.currentRevisionSummary);
+      const previousSinceFiles = structuredClone(this.currentSinceFiles);
       const previousGeneration = this.comparisonGeneration;
       const previousActivities = structuredClone(this.activities);
       try {
-      this.comparison = refreshed;
-      const refreshedPaths = new Set(refreshed.files.map((file) => file.path));
-      for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
+      this.fullComparison = refreshed;
+      await this.updateRevisionSummary(refreshed);
+      this.reconcileRevisionState(refreshed, this.currentSinceFiles);
+      await this.selectComparisonView();
       this.comparisonGeneration += 1;
       this.revision += 1;
       operationRevision = this.revision;
-      for (const comment of this.comments) {
-        comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
-      }
-      for (const step of tourSteps(this.outline)) {
-        step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
-      }
-      for (const finding of this.outline?.findings ?? []) {
-        const row = this.findRow(finding.path, finding.side, finding.line);
-        finding.outdated = row?.content !== finding.lineContent;
-      }
       if (proposal && proposed && activeRequest) {
         this.recordAgentActivity(activeRequest.baselineComparison.files, proposed.files, context, proposal);
       }
@@ -1415,6 +1623,9 @@ export class ReviewSession {
       } catch (error) {
         if (this.status === "open" && this.terminalEpoch === terminalEpoch) {
           this.comparison = previousComparison;
+          this.fullComparison = previousFullComparison;
+          this.currentRevisionSummary = previousRevisionSummary;
+          this.currentSinceFiles = previousSinceFiles;
           this.comparisonGeneration = previousGeneration;
           this.activities.splice(0, this.activities.length, ...previousActivities);
         }
@@ -1428,12 +1639,18 @@ export class ReviewSession {
 
   async refreshPullRequest() {
     return this.serializeMutation(async () => {
-      this.ensureOpen();
       if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
-      this.ensurePublicationMutable();
+      const wasClosed = this.status !== "open";
+      if (wasClosed && this.status === "cancelled") throw new ReviewError("A cancelled review cannot be reopened.");
+      if (wasClosed && this.bridge) throw new ReviewError("Attached-agent reviews cannot start a new pass after closing; start a new review session for the updated pull request.");
+      if (!wasClosed) this.ensurePublicationMutable();
       if (this.activeAgentRequest) throw new ReviewError("Wait for the active agent request before refreshing the pull request.");
       const previousContext = structuredClone(this.pullRequest);
       const previousComparison = this.comparison;
+      const previousFullComparison = this.fullComparison;
+      const previousRevisionSummary = structuredClone(this.currentRevisionSummary);
+      const previousSinceFiles = structuredClone(this.currentSinceFiles);
+      const previousStatus = this.status;
       const previousRevision = this.revision;
       const previousGeneration = this.comparisonGeneration;
       const previousMutable = this.captureMutableState();
@@ -1441,20 +1658,21 @@ export class ReviewSession {
       try {
         latest = await updatePullRequestWorkspace(previousContext, this.defaults.githubRunner);
         const refreshed = await loadComparison(latest.workspaceRoot, latest.baseRefOid, this.preferences.contextLines);
+        if (wasClosed && latest.headRefOid === previousContext.headRefOid) throw new ReviewError("The pull request has no new head revision to review.");
+        if (wasClosed) latest.publication = undefined;
         this.pullRequest = latest;
-        this.comparison = refreshed;
+        this.fullComparison = refreshed;
+        await this.updateRevisionSummary(refreshed);
+        this.reconcileRevisionState(refreshed, this.currentSinceFiles);
+        await this.selectComparisonView();
+        if (wasClosed) {
+          this.status = "open";
+          this.closePromise = undefined;
+          this.terminalEpoch += 1;
+          this.agent = this.selection ? this.createAgent(this.agentContinuation) : undefined;
+        }
         this.comparisonGeneration += 1;
         this.revision += 1;
-        const refreshedPaths = new Set(refreshed.files.map((file) => file.path));
-        for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
-        for (const comment of this.comments) {
-          comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
-        }
-        for (const step of tourSteps(this.outline)) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
-        for (const finding of this.outline?.findings ?? []) {
-          const row = this.findRow(finding.path, finding.side, finding.line);
-          finding.outdated = row?.content !== finding.lineContent;
-        }
         await this.persist();
         return this.snapshot();
       } catch (error) {
@@ -1463,6 +1681,10 @@ export class ReviewSession {
         }
         this.pullRequest = previousContext;
         this.comparison = previousComparison;
+        this.fullComparison = previousFullComparison;
+        this.currentRevisionSummary = previousRevisionSummary;
+        this.currentSinceFiles = previousSinceFiles;
+        this.status = previousStatus;
         this.revision = previousRevision;
         this.comparisonGeneration = previousGeneration;
         this.restoreMutableState(previousMutable, this.terminalEpoch, this.revision);
@@ -1476,7 +1698,7 @@ export class ReviewSession {
       throw new ReviewError("Apply or reject every pending agent change before closing the review.");
     }
     if (outcome !== "cancelled" && this.preferences.requireAllFilesReviewed &&
-      this.comparison.files.some((file) => !this.reviewedFiles.has(file.path))) {
+      this.fullComparison.files.some((file) => !this.reviewedFiles.has(file.path))) {
       throw new ReviewError("Mark every changed file as reviewed before completing this review.");
     }
     if (outcome === "accepted" && this.comments.length > 0 && decision !== "approve-with-comments") {
@@ -1535,10 +1757,12 @@ export class ReviewSession {
       const previousRevision = this.revision;
       let transitioned = false;
       let terminal: ReturnType<AttachedAgentBridge["prepareClose"]> | undefined;
+      let createdCheckpoint: SourceCheckpoint | undefined;
       try {
-        const reviewedTree = outcome === "feedback" && this.bridge
-          ? (await captureWorkingTreeSnapshot(this.comparison.repositoryRoot)).tree
-          : undefined;
+        if (outcome !== "cancelled") {
+          createdCheckpoint = await this.createCheckpointRecord("decision", options.decision, outcome);
+        }
+        const reviewedTree = outcome === "feedback" && this.bridge ? createdCheckpoint?.sourceTree : undefined;
         this.terminalEpoch += 1;
         this.status = outcome;
         this.revision += 1;
@@ -1549,6 +1773,10 @@ export class ReviewSession {
         terminal = this.bridge?.prepareClose(outcome, this.comments, reviewedTree, options.decision, options.note);
         await this.persist();
       } catch (error) {
+        if (createdCheckpoint) {
+          this.checkpoints.splice(this.checkpoints.findIndex((checkpoint) => checkpoint.id === createdCheckpoint!.id), 1);
+          await removeCheckpointRef(this.fullComparison.repositoryRoot, createdCheckpoint.ref).catch(() => undefined);
+        }
         if (terminal) this.bridge?.rollbackPreparedClose(terminal.id);
         if (transitioned) {
           this.status = "open";

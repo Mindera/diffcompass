@@ -60,9 +60,10 @@ export function normalizeReviewArchitectureMermaid(source: string): string {
 export function validateReviewArchitecture(value: unknown): ReviewArchitecture {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Architecture must be an object.");
   const architecture = value as Record<string, unknown>;
-  const allowed = ["title", "summary", "mermaid", "dependencyChanges", "affectedFiles"];
+  const allowed = ["title", "summary", "mermaid", "dependencyChanges", "affectedFiles", "outdated"];
   const unknown = Object.keys(architecture).find((key) => !allowed.includes(key));
   if (unknown) throw new Error(`Architecture contains an unsupported field: ${unknown}`);
+  if (architecture.outdated !== undefined && typeof architecture.outdated !== "boolean") throw new Error("Architecture outdated must be a boolean.");
   const text = (field: string, max: number) => {
     const candidate = architecture[field];
     if (typeof candidate !== "string" || !candidate.trim() || candidate.length > max) throw new Error(`Architecture ${field} must be a non-empty string no longer than ${max} characters.`);
@@ -111,5 +112,5 @@ export function validateReviewArchitecture(value: unknown): ReviewArchitecture {
   if (!Array.isArray(affectedFiles) || affectedFiles.length === 0 || affectedFiles.length > 100 || affectedFiles.some((path) => typeof path !== "string" || !path.trim() || path.length > 4_096) || new Set(affectedFiles).size !== affectedFiles.length) {
     throw new Error("Architecture affectedFiles must contain 1-100 unique changed paths.");
   }
-  return { title, summary, mermaid, dependencyChanges: dependencyChanges.map((item) => item.trim()), affectedFiles: affectedFiles.map((path) => path.trim()) };
+  return { title, summary, mermaid, dependencyChanges: dependencyChanges.map((item) => item.trim()), affectedFiles: affectedFiles.map((path) => path.trim()), ...(architecture.outdated === true ? { outdated: true } : {}) };
 }

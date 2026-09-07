@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import type { PersistedReviewSession } from "./types.ts";
+import { basename, dirname } from "node:path";
+import type { PersistedReviewSession, SourceCheckpoint } from "./types.ts";
 import { normalizeSequenceDiagram } from "./flows.ts";
 import { normalizeReviewArchitectureMermaid, validateReviewArchitecture } from "./architecture.ts";
 
@@ -218,6 +218,30 @@ function validContinuation(value: unknown): boolean {
   return record(value) && ["codex", "claude", "gemini", "copilot"].includes(String(value.adapterId)) && nonEmptyString(value.id, 256);
 }
 
+function validRevisionSummary(value: unknown): boolean {
+  if (!record(value) || (value.checkpointId !== undefined && !nonEmptyString(value.checkpointId, 128)) ||
+    (value.checkpointCreatedAt !== undefined && !nonEmptyString(value.checkpointCreatedAt, 64)) ||
+    !Number.isInteger(value.changedFiles) || Number(value.changedFiles) < 0 ||
+    !Number.isInteger(value.additions) || Number(value.additions) < 0 ||
+    !Number.isInteger(value.deletions) || Number(value.deletions) < 0 || !nonEmptyString(value.text, 2_000)) return false;
+  return ["newFiles", "changedAgainFiles", "resolvedFiles", "unchangedFiles"].every((field) =>
+    Array.isArray(value[field]) && value[field].length <= 10_000 && value[field].every((path) => nonEmptyString(path, 4_096)) &&
+    new Set(value[field]).size === value[field].length);
+}
+
+function validCheckpoint(value: unknown): value is SourceCheckpoint {
+  if (!record(value)) return false;
+  const validOid = (candidate: unknown) => typeof candidate === "string" && /^[0-9a-f]{40,64}$/.test(candidate);
+  return /^[0-9a-f-]{36}$/.test(String(value.id)) && ["manual", "decision"].includes(String(value.kind)) &&
+    /^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}\/[0-9a-f-]{36}$/.test(String(value.ref)) &&
+    validOid(value.sourceTree) && validOid(value.sourceHead) && nonEmptyString(value.base, 4_096) && validOid(value.baseTree) &&
+    Array.isArray(value.reviewedFiles) && value.reviewedFiles.length <= 10_000 && value.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) &&
+    new Set(value.reviewedFiles).size === value.reviewedFiles.length &&
+    (value.outcome === undefined || ["accepted", "feedback"].includes(String(value.outcome))) &&
+    (value.decision === undefined || ["approve", "approve-with-comments", "request-changes"].includes(String(value.decision))) &&
+    validRevisionSummary(value.summary) && nonEmptyString(value.createdAt, 64);
+}
+
 function validPreferences(value: unknown): boolean {
   return record(value) && ["unified", "split"].includes(String(value.diffLayout)) &&
     typeof value.changedFilesOnly === "boolean" && Number.isInteger(value.contextLines) &&
@@ -281,6 +305,12 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     delete value.outline.steps;
     value.schemaVersion = 2;
   }
+  if (value.schemaVersion === 2 && Array.isArray(value.checkpoints)) {
+    value.schemaVersion = 3;
+    value.checkpointRefNamespace ??= typeof value.checkpoints[0] === "object" && value.checkpoints[0] && "ref" in value.checkpoints[0]
+      ? String(value.checkpoints[0].ref).replace(/\/[^/]+$/, "")
+      : `refs/code-review-tour/checkpoints/${basename(path, ".json").replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128) || "migrated"}`;
+  }
   if (value.schemaVersion === 2 && record(value.outline)) {
     value.outline.callFlows ??= [];
     value.outline.flows ??= [];
@@ -310,7 +340,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
   if (value.schemaVersion === 2 && record(value.preferences)) value.preferences.prefetchSteps ??= 2;
   const session = value as Partial<PersistedReviewSession>;
   if (
-    session.schemaVersion !== 2 ||
+    ![2, 3].includes(Number(session.schemaVersion)) ||
     (session.name !== undefined && !nonEmptyString(session.name, 200)) ||
     (session.archived !== undefined && typeof session.archived !== "boolean") ||
     !nonEmptyString(session.repositoryRoot, 16_384) ||
@@ -329,6 +359,12 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.activities !== undefined && (!Array.isArray(session.activities) || session.activities.length > 2_000 || !session.activities.every(validActivity))) ||
     (session.reviewedFiles !== undefined && (!Array.isArray(session.reviewedFiles) || session.reviewedFiles.length > 10_000 ||
       !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
+    (session.schemaVersion === 3 && (!Array.isArray(session.checkpoints) || session.checkpoints.length > 100 || !session.checkpoints.every(validCheckpoint) ||
+      !nonEmptyString(session.checkpointRefNamespace, 256) || !/^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}$/.test(session.checkpointRefNamespace))) ||
+    (session.schemaVersion === 2 && session.checkpointRefNamespace !== undefined) ||
+    (session.schemaVersion === 2 && session.checkpoints !== undefined) ||
+    (session.comparisonView !== undefined && !["full", "since-last-review"].includes(String(session.comparisonView))) ||
+    (session.selectedCheckpointId !== undefined && !/^[0-9a-f-]{36}$/.test(session.selectedCheckpointId)) ||
     (session.preferences !== undefined && !validPreferences(session.preferences)) ||
     (session.reviewPolicy !== undefined && !validReviewPolicy(session.reviewPolicy)) ||
     (session.findingGenerationEnabled !== undefined && typeof session.findingGenerationEnabled !== "boolean") ||
@@ -374,7 +410,9 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (terminal !== undefined && (
       session.bridgeToken === undefined || session.bridgeSequence === undefined || terminal.sequence > session.bridgeSequence ||
       terminal.outcome !== session.status
-    ))
+    )) ||
+    (session.schemaVersion === 3 && session.checkpoints!.some((checkpoint) => !session.checkpointRefNamespace || !checkpoint.ref.startsWith(`${session.checkpointRefNamespace}/`))) ||
+    (session.selectedCheckpointId !== undefined && !session.checkpoints?.some((checkpoint) => checkpoint.id === session.selectedCheckpointId))
   ) throw new Error("The review session file has inconsistent state.");
   return session as PersistedReviewSession;
 }

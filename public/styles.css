@@ -343,6 +343,10 @@ button { color: inherit; }
 .pull-request-content .description-mode { justify-content: flex-start; margin-top: 16px; }
 .diff-toolbar { position: sticky; top: 0; z-index: 7; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 10px 14px 0; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; background: var(--panel); font-size: 10px; }
 .diff-view-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.revision-summary { max-width: 48ch; }
+.revision-history { position: relative; }
+.revision-history summary { cursor: pointer; color: var(--muted); }
+.revision-history ol { position: absolute; right: 0; z-index: 8; min-width: 280px; margin: 6px 0 0; padding: 8px 12px 8px 28px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-raised); box-shadow: var(--shadow); }
 .diff-view-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .diff-view-toggle button { border: 0; padding: 5px 9px; color: var(--muted); background: transparent; font: inherit; cursor: pointer; }
 .diff-view-toggle button[aria-pressed="true"] { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 -2px var(--accent-strong); }

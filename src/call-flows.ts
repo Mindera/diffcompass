@@ -88,8 +88,9 @@ function validateEdge(value: unknown, nodeIds: Set<string>, comparison: GitCompa
 export function validateCallFlow(value: unknown, comparison: GitComparison): CallFlow {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Call flow must be an object.");
   const flow = value as Record<string, unknown>;
-  const unknown = Object.keys(flow).find((key) => !["id", "title", "summary", "entrypointNodeId", "provenance", "nodes", "edges", "affectedFiles"].includes(key));
+  const unknown = Object.keys(flow).find((key) => !["id", "title", "summary", "entrypointNodeId", "provenance", "nodes", "edges", "affectedFiles", "outdated"].includes(key));
   if (unknown) throw new Error(`Call flow contains an unsupported field: ${unknown}`);
+  if (flow.outdated !== undefined && typeof flow.outdated !== "boolean") throw new Error("Call-flow outdated must be a boolean.");
   if (!Array.isArray(flow.nodes) || flow.nodes.length < 2 || flow.nodes.length > 80) throw new Error("Call flow must contain between 2 and 80 nodes.");
   const nodes = flow.nodes.map((node) => validateNode(node, comparison));
   const nodeIds = new Set(nodes.map((node) => node.id));
@@ -128,6 +129,7 @@ export function validateCallFlow(value: unknown, comparison: GitComparison): Cal
     nodes,
     edges,
     affectedFiles,
+    ...(flow.outdated === true ? { outdated: true } : {}),
   };
 }
 

@@ -44,6 +44,27 @@ async function treeExists(cwd: string, ref: string): Promise<boolean> {
   }
 }
 
+async function treeId(cwd: string, ref: string): Promise<string> {
+  return git(cwd, ["rev-parse", "--verify", `${ref}^{tree}`]);
+}
+
+function checkpointRefIsSafe(ref: string): boolean {
+  return /^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}\/[0-9a-f-]{36}$/.test(ref);
+}
+
+/** Keep the tree reachable from a private ref so repository maintenance cannot prune it. */
+export async function writeCheckpointRef(repositoryRoot: string, ref: string, tree: string): Promise<void> {
+  if (!checkpointRefIsSafe(ref)) throw new ReviewError("The checkpoint ref is invalid.");
+  const resolvedTree = await treeId(repositoryRoot, tree).catch(() => "");
+  if (!/^[0-9a-f]{40,64}$/.test(resolvedTree)) throw new ReviewError("The checkpoint source tree is unavailable.");
+  await git(repositoryRoot, ["update-ref", ref, resolvedTree]);
+}
+
+export async function removeCheckpointRef(repositoryRoot: string, ref: string): Promise<void> {
+  if (!checkpointRefIsSafe(ref)) throw new ReviewError("The checkpoint ref is invalid.");
+  await git(repositoryRoot, ["update-ref", "-d", ref]);
+}
+
 export async function resolveRepositoryRoot(cwd: string): Promise<string> {
   return git(cwd, ["rev-parse", "--show-toplevel"]);
 }
@@ -170,18 +191,47 @@ export async function loadComparison(cwd: string, explicitBase?: string, context
     : await git(repositoryRoot, ["rev-parse", "--verify", `${base}^{tree}`]);
   const head = await git(repositoryRoot, ["rev-parse", "HEAD"]);
   const branch = await git(repositoryRoot, ["branch", "--show-current"]);
+  const source = await captureWorkingTreeSnapshot(repositoryRoot);
+  const comparison = await loadComparisonBetweenTrees(repositoryRoot, {
+    repositoryName,
+    branch: branch || undefined,
+    base,
+    mergeBase,
+    head,
+    sourceTree: source.tree,
+    contextLines,
+  });
   const trackedPatch = await git(repositoryRoot, [
+    "diff", "--no-ext-diff", "--no-color", "--find-renames",
+    `--unified=${Math.max(3, Math.min(200, Math.trunc(contextLines)))}`, mergeBase, "--",
+  ]);
+  const patch = [trackedPatch, await untrackedPatch(repositoryRoot, contextLines)].filter(Boolean).join("\n");
+  return { ...comparison, sourceKind: "working-tree", patch, files: parseUnifiedDiff(patch) };
+}
+
+export async function loadComparisonBetweenTrees(
+  cwd: string,
+  input: { base: string; mergeBase: string; head?: string; sourceTree: string; repositoryName?: string; branch?: string; contextLines?: number },
+): Promise<GitComparison> {
+  const repositoryRoot = await resolveRepositoryRoot(cwd);
+  const repositoryName = input.repositoryName ?? await resolveRepositoryName(repositoryRoot);
+  const branch = input.branch ?? await git(repositoryRoot, ["branch", "--show-current"]);
+  const head = input.head ?? await git(repositoryRoot, ["rev-parse", "HEAD"]);
+  const mergeBase = input.mergeBase;
+  const mergeBaseTree = await treeId(repositoryRoot, input.mergeBase);
+  const sourceTree = await treeId(repositoryRoot, input.sourceTree);
+  const contextLines = input.contextLines ?? 3;
+  const patch = await git(repositoryRoot, [
     "diff",
     "--no-ext-diff",
     "--no-color",
     "--find-renames",
     `--unified=${Math.max(3, Math.min(200, Math.trunc(contextLines)))}`,
-    mergeBase,
+    mergeBaseTree,
+    sourceTree,
     "--",
   ]);
-  const extraPatch = await untrackedPatch(repositoryRoot, contextLines);
-  const patch = [trackedPatch, extraPatch].filter(Boolean).join("\n");
-  const repositoryFiles = (await git(repositoryRoot, ["ls-files", "-co", "--exclude-standard", "-z"]))
+  const repositoryFiles = (await git(repositoryRoot, ["ls-tree", "-r", "--name-only", "-z", sourceTree]))
     .split("\0")
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right));
@@ -190,10 +240,12 @@ export async function loadComparison(cwd: string, explicitBase?: string, context
     repositoryRoot,
     repositoryName,
     branch: branch || undefined,
-    base,
+    base: input.base,
     mergeBase,
     head,
     patch,
+    sourceTree,
+    sourceKind: "tree",
     files: parseUnifiedDiff(patch),
     repositoryFiles,
   };
@@ -206,7 +258,7 @@ export async function loadDiffFileWithContext(comparison: GitComparison, path: s
   const paths = [...new Set([existing.oldPath, existing.newPath].filter((candidate): candidate is string => Boolean(candidate)))];
   let patch = await git(comparison.repositoryRoot, [
     "diff", "--no-ext-diff", "--no-color", "--find-renames", `--unified=${boundedContext}`,
-    comparison.mergeBase, "--", ...paths,
+    ...(comparison.sourceKind === "tree" ? [comparison.mergeBase, comparison.sourceTree ?? "HEAD"] : [comparison.mergeBase]), "--", ...paths,
   ]);
   if (!patch && existing.status === "added" && comparison.repositoryFiles.includes(path)) {
     patch = (await runProcess(
@@ -271,6 +323,16 @@ export async function loadDiffImage(comparison: GitComparison, path: string, sid
     return { data: pngBytes(data), mimeType: "image/png" };
   }
 
+  if (comparison.sourceKind === "tree" && comparison.sourceTree) {
+    const object = `${comparison.sourceTree}:${sourcePath}`;
+    const size = Number(await git(comparison.repositoryRoot, ["cat-file", "-s", object]).catch(() => "NaN"));
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_DIFF_IMAGE_BYTES) throw new ReviewError("The changed PNG is unavailable.");
+    const process = Bun.spawn(["git", "cat-file", "blob", object], { cwd: comparison.repositoryRoot, stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+    const [data, exitCode] = await Promise.all([new Response(process.stdout).arrayBuffer(), process.exited]);
+    if (exitCode !== 0) throw new ReviewError("The changed PNG is unavailable.");
+    return { data: pngBytes(data), mimeType: "image/png" };
+  }
+
   const root = await realpath(comparison.repositoryRoot);
   const candidate = resolve(root, sourcePath);
   const relativePath = relative(root, candidate);
@@ -310,6 +372,17 @@ export async function loadDiffText(comparison: GitComparison, path: string, side
     return new TextDecoder().decode(bytes);
   }
 
+  if (comparison.sourceKind === "tree" && comparison.sourceTree) {
+    const object = `${comparison.sourceTree}:${sourcePath}`;
+    const size = Number(await git(comparison.repositoryRoot, ["cat-file", "-s", object]).catch(() => "NaN"));
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_DIFF_TEXT_BYTES) throw new ReviewError("The changed Markdown file is unavailable.");
+    const process = Bun.spawn(["git", "cat-file", "blob", object], { cwd: comparison.repositoryRoot, stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+    const [content, exitCode] = await Promise.all([new Response(process.stdout).arrayBuffer(), process.exited]);
+    if (exitCode !== 0) throw new ReviewError("The changed Markdown file is unavailable.");
+    const bytes = new Uint8Array(content);
+    if (bytes.includes(0)) throw new ReviewError("Binary files cannot be previewed as Markdown.");
+    return new TextDecoder().decode(bytes);
+  }
   return loadRepositoryFile(comparison, sourcePath, MAX_DIFF_TEXT_BYTES);
 }
 

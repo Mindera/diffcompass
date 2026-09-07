@@ -43,9 +43,10 @@ export function inspectSequenceDiagram(source: string): SequenceSyntax {
 export function validateReviewFlow(value: unknown): ReviewFlow {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Flow must be an object.");
   const flow = value as Record<string, unknown>;
-  const allowed = ["id", "title", "summary", "mermaid", "provenance", "blastRadiusSize", "affectedFiles"];
+  const allowed = ["id", "title", "summary", "mermaid", "provenance", "blastRadiusSize", "affectedFiles", "outdated"];
   const unknown = Object.keys(flow).find((key) => !allowed.includes(key));
   if (unknown) throw new Error(`Flow contains an unsupported field: ${unknown}`);
+  if (flow.outdated !== undefined && typeof flow.outdated !== "boolean") throw new Error("Flow outdated must be a boolean.");
   const bounded = (field: string, max: number) => {
     const candidate = flow[field];
     if (typeof candidate !== "string" || !candidate.trim() || candidate.length > max) throw new Error(`Flow ${field} must be a non-empty string no longer than ${max} characters.`);
@@ -68,5 +69,5 @@ export function validateReviewFlow(value: unknown): ReviewFlow {
   const syntax = inspectSequenceDiagram(mermaid);
   if (syntax.unsupported.length > 0) throw new Error(`Flow contains unsupported Mermaid syntax: ${syntax.unsupported[0]}`);
   if (syntax.actors.length === 0 || syntax.actors.length > 12) throw new Error("Flow must reference between 1 and 12 participants.");
-  return { id, title, summary, mermaid, provenance: provenance as ReviewFlow["provenance"], blastRadiusSize: affectedFiles.length || Number(flow.blastRadiusSize), affectedFiles: affectedFiles.map((path) => path.trim()) };
+  return { id, title, summary, mermaid, provenance: provenance as ReviewFlow["provenance"], blastRadiusSize: affectedFiles.length || Number(flow.blastRadiusSize), affectedFiles: affectedFiles.map((path) => path.trim()), ...(flow.outdated === true ? { outdated: true } : {}) };
 }

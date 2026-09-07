@@ -462,6 +462,16 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         await readJsonObject(request);
         return json(await session.refreshComparison({ source: "manual" }));
       }
+      if (request.method === "POST" && url.pathname === "/api/comparison/view") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["view"]);
+        return json(await session.setComparisonView(enumValue(input.view, "view", ["full", "since-last-review"])));
+      }
+      if (request.method === "POST" && url.pathname === "/api/checkpoints") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["label"]);
+        return json(await session.createManualCheckpoint(optionalString(input.label, "label", 500)));
+      }
       if (request.method === "POST" && url.pathname === "/api/github/refresh") {
         await readJsonObject(request);
         return json(await session.refreshPullRequest());

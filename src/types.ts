@@ -34,9 +34,44 @@ export interface GitComparison {
   base: string;
   mergeBase: string;
   head: string;
+  /** The immutable tree used as the new side of this comparison. */
+  sourceTree?: string;
+  sourceKind?: "working-tree" | "tree";
   patch: string;
   files: DiffFile[];
   repositoryFiles: string[];
+}
+
+export type ComparisonView = "full" | "since-last-review";
+export type CheckpointKind = "manual" | "decision";
+export type RevisionFileClassification = "new" | "changed-again" | "resolved" | "unchanged";
+
+export interface RevisionSummary {
+  checkpointId?: string;
+  checkpointCreatedAt?: string;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+  newFiles: string[];
+  changedAgainFiles: string[];
+  resolvedFiles: string[];
+  unchangedFiles: string[];
+  text: string;
+}
+
+export interface SourceCheckpoint {
+  id: string;
+  kind: CheckpointKind;
+  ref: string;
+  sourceTree: string;
+  sourceHead: string;
+  base: string;
+  baseTree: string;
+  reviewedFiles: string[];
+  outcome?: Extract<ReviewOutcome, "accepted" | "feedback">;
+  decision?: Exclude<ReviewDecisionIntent, "cancel">;
+  summary: RevisionSummary;
+  createdAt: string;
 }
 
 export interface TourAnchor {
@@ -115,6 +150,7 @@ export interface CallFlow {
   nodes: CallFlowNode[];
   edges: CallFlowEdge[];
   affectedFiles: string[];
+  outdated?: boolean;
 }
 
 export interface ReviewArchitecture {
@@ -123,6 +159,7 @@ export interface ReviewArchitecture {
   mermaid: string;
   dependencyChanges: string[];
   affectedFiles: string[];
+  outdated?: boolean;
 }
 
 export interface ReviewFlow {
@@ -133,6 +170,7 @@ export interface ReviewFlow {
   provenance: "verified" | "partial" | "unverified";
   blastRadiusSize: number;
   affectedFiles?: string[];
+  outdated?: boolean;
 }
 
 export interface ReviewFinding {
@@ -334,7 +372,7 @@ export interface AgentRunActivity {
 }
 
 export interface PersistedReviewSession {
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   name?: string;
   archived?: boolean;
   repositoryRoot: string;
@@ -374,6 +412,11 @@ export interface PersistedReviewSession {
   messages: ChatMessage[];
   activities?: AgentChangeActivity[];
   reviewedFiles?: string[];
+  /** Added in schema 3. Kept optional so schema 2 callers remain source-compatible. */
+  checkpoints?: SourceCheckpoint[];
+  checkpointRefNamespace?: string;
+  comparisonView?: ComparisonView;
+  selectedCheckpointId?: string;
   preferences?: ReviewPreferences;
   reviewPolicy?: ReviewPolicy;
   findingGenerationEnabled?: boolean;

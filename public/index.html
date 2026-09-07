@@ -76,6 +76,7 @@
           </div>
         </details>
         <button id="refresh-button" class="button secondary">Refresh</button>
+        <button id="checkpoint-button" class="button secondary" type="button">Checkpoint</button>
         <div id="review-actions" class="review-actions">
           <button id="review-actions-toggle" class="button secondary review-actions-toggle" type="button" aria-expanded="false" aria-controls="review-options">Review <span aria-hidden="true">▾</span></button>
           <div id="review-options" class="review-options">
@@ -149,7 +150,10 @@
           </section>
           <div class="diff-toolbar">
             <span id="filter-summary" class="muted"></span>
+            <span id="revision-summary" class="revision-summary" role="status"></span>
+            <details id="revision-history" class="revision-history"><summary>Revision history</summary><ol id="checkpoint-history"></ol></details>
             <div class="diff-view-controls">
+              <label class="comparison-view-control"><span class="sr-only">Comparison range</span><select id="comparison-view" aria-label="Comparison range"><option value="full">Full change</option><option value="since-last-review">Since last review</option></select></label>
               <div class="diff-view-toggle" role="group" aria-label="Diff layout">
                 <button type="button" data-diff-layout="split" aria-pressed="false">Split</button>
                 <button type="button" data-diff-layout="unified" aria-pressed="false">Unified</button>
