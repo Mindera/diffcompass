@@ -662,7 +662,7 @@ export class ReviewSession {
     return { file: structuredClone(file) };
   }
 
-  async proposeInlineEdit(path: string, side: "new", line: number, expectedContent: string, replacement: string) {
+  async proposeInlineEdit(path: string, side: "new", line: number, expectedContent: string, replacement: string, requestedEndLine?: number) {
     return this.serializeMutation(async () => {
       this.ensureOpen();
       if (side !== "new") throw new ReviewError("Only lines on the new side of a changed file can be edited.");
@@ -680,11 +680,12 @@ export class ReviewSession {
         const terminalNewline = normalized.endsWith("\n");
         const lines = normalized.split("\n");
         if (terminalNewline) lines.pop();
-        if (line > lines.length || lines[line - 1] !== expectedContent) {
+        const endLine = requestedEndLine ?? line;
+        if (endLine < line || endLine > lines.length || lines.slice(line - 1, endLine).join("\n") !== expectedContent) {
           throw new ReviewError("This file changed before the edit was submitted. Refresh it and try again.");
         }
         const replacementLines = replacement === "" ? [] : replacement.replaceAll("\r\n", "\n").split("\n");
-        lines.splice(line - 1, 1, ...replacementLines);
+        lines.splice(line - 1, endLine - line + 1, ...replacementLines);
         const nextContent = `${lines.join(newline)}${terminalNewline ? newline : ""}`;
         if (nextContent === content) throw new ReviewError("The proposed edit does not change this file.");
         await writeProposalFile(workspace, path, nextContent);
@@ -704,7 +705,7 @@ export class ReviewSession {
           id: crypto.randomUUID(),
           source: "reviewer",
           requestMessageId: `reviewer-${crypto.randomUUID()}`,
-          request: `Edit ${path}:${line}`,
+          request: `Edit ${path}:${line}${endLine === line ? "" : `-${endLine}`}`,
           adapterId: "reviewer",
           modelId: "inline-edit",
           files,

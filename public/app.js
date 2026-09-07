@@ -10,6 +10,7 @@ const state = {
   session: null,
   apiToken: fragmentToken ?? window.sessionStorage.getItem("review-tour-token"),
   selectedLine: null,
+  codeSelection: null,
   deletingCommentId: null,
   busy: false,
   questionPending: false,
@@ -35,6 +36,7 @@ const state = {
   reviewDiffLoadPromise: null,
   reviewDiffLoadGeneration: 0,
   highlightRequestId: 0,
+  inlineEditHighlightRequestId: 0,
   flowRenderGeneration: 0,
   architectureDiagramViews: new Map(),
   architectureDiagramDrag: null,
@@ -97,7 +99,7 @@ const elements = Object.fromEntries(
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -827,16 +829,6 @@ function findingPins(file, row, side, findings) {
     }).join("");
 }
 
-function lineTools(file, side, line) {
-  if (!line || state.proposalPreview) return "";
-  const askDisabled = !state.session.outline || !reviewIsOpen();
-  return `<span class="line-tools" role="group" aria-label="Actions for ${escapeHtml(`${file.path}, ${side} line ${line}`)}">
-    ${side === "new" && reviewIsOpen() ? '<button type="button" data-line-tool="edit" tabindex="-1">Edit</button>' : ""}
-    <button type="button" data-line-tool="comment" tabindex="-1">Comment</button>
-    <button type="button" data-line-tool="ask" tabindex="-1"${askDisabled ? ' disabled title="Start a tour to ask the agent about this line."' : ""}>Ask agent</button>
-  </span>`;
-}
-
 function whitespaceChangedRows(rows) {
   const marked = new Set();
   for (const [oldRow, newRow] of splitRows(rows)) {
@@ -929,7 +921,7 @@ function renderUnifiedRow(file, row, findings, whitespaceOnly = false, ranges = 
   return `<div class="diff-row ${row.kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-old-line="${row.oldLine ?? ""}" data-new-line="${row.newLine ?? ""}" data-content="${escapeHtml(row.content)}">
     <span class="line-number" title="Old: ${row.oldLine ?? "—"} · New: ${row.newLine ?? "—"}">${line ?? ""}</span>
     <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
-    <span class="finding-markers">${findingPins(file, row, side, findings)}</span><pre class="line-code" data-inline-ranges="${escapeHtml(JSON.stringify(ranges))}"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(row.content, whitespaceOnly, null, ranges)}</pre>${lineTools(file, side, line)}
+    <span class="finding-markers">${findingPins(file, row, side, findings)}</span><pre class="line-code" data-inline-ranges="${escapeHtml(JSON.stringify(ranges))}"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(row.content, whitespaceOnly, null, ranges)}</pre>
   </div>`;
 }
 
@@ -964,7 +956,7 @@ function renderSplitSide(file, row, side, findings, whitespaceOnly = false, rang
   return `<div class="diff-row split-side ${kind}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="${line ?? ""}" data-content="${escapeHtml(content)}">
     <span class="line-number">${line ?? ""}</span>
     <button class="line-prefix line-action" type="button" tabindex="-1"${line && !state.proposalPreview ? ` aria-describedby="diff-instructions" aria-label="${escapeHtml(`Review ${file.path}, ${side} line ${line}`)}"` : " disabled"}><span class="row-prefix">${prefix}</span><span class="review-dot hidden">●</span></button>
-    <span class="finding-markers">${row ? findingPins(file, row, side, findings) : ""}</span><pre class="line-code" data-inline-ranges="${escapeHtml(JSON.stringify(ranges))}"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(content, whitespaceOnly, null, ranges)}</pre>${lineTools(file, side, line)}
+    <span class="finding-markers">${row ? findingPins(file, row, side, findings) : ""}</span><pre class="line-code" data-inline-ranges="${escapeHtml(JSON.stringify(ranges))}"${whitespaceOnly ? ' data-whitespace-only="true" title="Only leading/trailing spaces or tabs differ on this line."' : ""}>${diffCodeHtml(content, whitespaceOnly, null, ranges)}</pre>
   </div>`;
 }
 
@@ -996,7 +988,10 @@ function revealCodeLocation(path, side, line, { smooth = true } = {}) {
   return false;
 }
 
-function renderDiff(files) {
+function renderDiff(files, { proposalActivityId = null } = {}) {
+  if (state.codeSelection) hideCodeSelectionToolbar(true);
+  state.proposalPreview = Boolean(proposalActivityId);
+  state.proposalActivityId = proposalActivityId;
   state.renderedDiffFiles = files;
   syncDiffViewControls();
   const findings = state.proposalPreview ? [] : state.session.outline?.findings ?? [];
@@ -1029,6 +1024,10 @@ function renderDiff(files) {
   void hydrateDiffImages(files);
   if (files.some((file) => /\.md$/i.test(file.path) && state.markdownPreviewPaths?.has(file.path))) void hydrateMarkdownPreviews(files);
   renderConversationBadges();
+}
+
+function currentDiffRenderOptions() {
+  return state.proposalPreview ? { proposalActivityId: state.proposalActivityId } : {};
 }
 
 function syncDiffViewControls() {
@@ -1064,7 +1063,7 @@ function changeDiffView(layout, wrap, persist = true) {
   }
   if (rerender) {
     // Use the currently displayed files, including expanded/proposal diffs.
-    renderDiff(state.renderedDiffFiles);
+    renderDiff(state.renderedDiffFiles, currentDiffRenderOptions());
     renderComments();
     renderFindings();
     renderTourAnnotation();
@@ -1281,7 +1280,7 @@ async function ensureTourPhaseDiffs() {
       const result = await api(`/api/diff?${new URLSearchParams({ path })}`);
       return [path, { ...result.file, _context: result.context, _full: result.full, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } }];
     }));
-    if (requestId !== state.fileRequestId || !state.tourMode || currentPhase()?.id !== phase.id) return;
+    if (requestId !== state.fileRequestId || state.proposalPreview || !state.tourMode || currentPhase()?.id !== phase.id) return;
     let failures = 0;
     for (const result of results) {
       if (result.status === "fulfilled") state.diffCache.set(result.value[0], result.value[1]);
@@ -1320,7 +1319,7 @@ async function ensureReviewDiffs() {
         const result = await api(`/api/diff?${new URLSearchParams({ path })}`);
         return [path, { ...result.file, _context: result.context, _full: result.full, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } }];
       }));
-      if (generation !== state.reviewDiffLoadGeneration || state.tourMode || state.session.revision !== revision) return;
+      if (generation !== state.reviewDiffLoadGeneration || state.proposalPreview || state.tourMode || state.session.revision !== revision) return;
       for (const result of results) {
         if (result.status === "fulfilled") state.diffCache.set(result.value[0], result.value[1]);
         else failures += 1;
@@ -1391,6 +1390,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   state.collapsedFiles.delete(path);
   state.activeTab = "diff";
   state.proposalPreview = false;
+  state.proposalActivityId = null;
   state.visibleFile = path;
   renderActiveTab();
   let files = filteredChangedFiles();
@@ -1439,6 +1439,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
 async function showRepositoryFile(path) {
   state.activeTab = "diff";
   state.proposalPreview = false;
+  state.proposalActivityId = null;
   renderActiveTab();
   const requestId = ++state.fileRequestId;
   elements.diff.innerHTML = '<div class="empty">Loading source…</div>';
@@ -1464,6 +1465,7 @@ function renderRepositoryFile(path, content) {
 
 async function showActivityFile(activityId, path) {
   const requestId = ++state.fileRequestId;
+  state.reviewDiffLoadGeneration += 1;
   state.activeTab = "diff";
   state.proposalPreview = true;
   state.proposalActivityId = activityId;
@@ -1472,8 +1474,8 @@ async function showActivityFile(activityId, path) {
   elements["empty-diff"].classList.add("hidden");
   try {
     const result = await api(`/api/activities/${encodeURIComponent(activityId)}/diff?path=${encodeURIComponent(path)}`);
-    if (requestId !== state.fileRequestId || !state.proposalPreview) return;
-    renderDiff([result.file]);
+    if (requestId !== state.fileRequestId || !state.proposalPreview || state.proposalActivityId !== activityId) return;
+    renderDiff([result.file], { proposalActivityId: activityId });
     document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     if (requestId === state.fileRequestId) toast(error.message);
@@ -2888,9 +2890,8 @@ async function downloadExport(format, options = {}) {
 
 function selectLine(row) {
   document.querySelectorAll(".diff-row.selected, .image-diff-side.selected").forEach((item) => item.classList.remove("selected"));
-  document.querySelectorAll(".line-tools button, .image-review-actions button").forEach((button) => { button.tabIndex = -1; });
   row.classList.add("selected");
-  row.querySelectorAll(".line-tools button:not(:disabled), .image-review-actions button:not(:disabled)").forEach((button) => { button.tabIndex = 0; });
+  row.querySelectorAll(".image-review-actions button:not(:disabled)").forEach((button) => { button.tabIndex = 0; });
   state.selectedLine = {
     path: row.dataset.path,
     side: row.dataset.side,
@@ -2900,7 +2901,7 @@ function selectLine(row) {
   const image = row.classList.contains("image-diff-side");
   elements["selection-pill"].textContent = image
     ? `${state.selectedLine.path} (${state.selectedLine.side} image) selected · comment or ask the agent`
-    : `${state.selectedLine.path}:${state.selectedLine.line} selected · edit, comment, or ask the agent`;
+    : `${state.selectedLine.path}:${state.selectedLine.line} selected · comment or ask the agent`;
   elements["selection-pill"].classList.remove("hidden");
 }
 
@@ -2923,6 +2924,10 @@ function openLineComment(row) {
   openInlineCommentEditor(row, target, existing);
 }
 
+function quotedCode(text) {
+  return `${text.replaceAll("\r\n", "\n").split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
+}
+
 function askAboutLine(row) {
   openConversation(null);
   selectLine(row);
@@ -2941,18 +2946,23 @@ function revealInlineForm(form) {
   if (narrowFilePanelLayout()) form.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-function openInlineEdit(row) {
+function openInlineEdit(row, selection = null) {
   if (!reviewIsOpen() || row.dataset.side !== "new") return;
   closeInlineEdit();
   selectLine(row);
   const target = lineTarget(row);
+  const startLine = selection?.startLine ?? target.line;
+  const endLine = selection?.endLine ?? target.line;
+  const expectedContent = selection?.expectedContent ?? target.content;
   const form = document.createElement("form");
   form.className = "inline-edit-form";
   form.dataset.editPath = target.path;
-  form.dataset.editLine = String(target.line);
-  form.dataset.editExpected = target.content;
-  form.innerHTML = `<header><div><span class="eyebrow">Reviewer suggestion</span><strong>${escapeHtml(`${target.path}:${target.line}`)}</strong></div><button class="text-button" type="button" data-inline-edit-cancel>Cancel</button></header>
-    <textarea name="replacement" aria-label="Replacement code" spellcheck="false">${escapeHtml(target.content)}</textarea>
+  form.dataset.editLine = String(startLine);
+  form.dataset.editEndLine = String(endLine);
+  form.dataset.editExpected = expectedContent;
+  const location = startLine === endLine ? `${target.path}:${startLine}` : `${target.path}:${startLine}-${endLine}`;
+  form.innerHTML = `<header><div><span class="eyebrow">Reviewer suggestion</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-edit-cancel>Cancel</button></header>
+    <div class="inline-edit-editor"><pre class="inline-edit-highlight" aria-hidden="true"><code>${escapeHtml(expectedContent)}</code></pre><textarea name="replacement" aria-label="Replacement code" spellcheck="false">${escapeHtml(expectedContent)}</textarea></div>
     <footer><span>The repository stays untouched until you apply this suggestion.</span><button class="button primary" type="submit">Propose edit</button></footer>`;
   const splitRow = row.closest(".split-row");
   if (splitRow) {
@@ -2965,8 +2975,37 @@ function openInlineEdit(row) {
   }
   revealInlineForm(form);
   const textarea = form.querySelector("textarea");
+  syncInlineEditScroll(textarea);
+  void highlightInlineEdit(form);
   textarea.focus({ preventScroll: true });
   textarea.setSelectionRange(0, textarea.value.length);
+}
+
+function syncInlineEditScroll(textarea) {
+  const highlight = textarea.closest(".inline-edit-editor")?.querySelector(".inline-edit-highlight");
+  if (!highlight) return;
+  highlight.scrollTop = textarea.scrollTop;
+  highlight.scrollLeft = textarea.scrollLeft;
+}
+
+async function highlightInlineEdit(form) {
+  const textarea = form.querySelector('textarea[name="replacement"]');
+  const target = form.querySelector(".inline-edit-highlight code");
+  if (!textarea || !target) return;
+  const requestId = ++state.inlineEditHighlightRequestId;
+  const value = textarea.value;
+  target.innerHTML = escapeHtml(value) || " ";
+  try {
+    const result = await api("/api/highlight", {
+      method: "POST",
+      body: JSON.stringify({ groups: [{ id: "inline-edit", path: form.dataset.editPath, lines: value.split("\n") }], theme: state.syntaxTheme }),
+    });
+    if (requestId !== state.inlineEditHighlightRequestId || !form.isConnected || textarea.value !== value) return;
+    target.innerHTML = result.groups[0].lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n") || " ";
+    syncInlineEditScroll(textarea);
+  } catch {
+    // The raw escaped mirror remains readable beneath the editor.
+  }
 }
 
 async function performActivityAction(activityId, action) {
@@ -2998,7 +3037,17 @@ function closeInlineCommentEditor() {
   elements.diff.querySelectorAll(".inline-comment-editor-lane, .inline-comment-form").forEach((editor) => editor.remove());
 }
 
-function openInlineCommentEditor(row, target, comment) {
+function updateInlineComposerMode(form, mode) {
+  form.dataset.composerMode = mode;
+  form.querySelectorAll("[data-inline-composer-mode]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.inlineComposerMode === mode)));
+  form.querySelector(".inline-comment-label").textContent = mode === "ask" ? "Ask agent" : "New review comment";
+  form.querySelector("textarea").placeholder = mode === "ask" ? "What do you want to understand about this code?" : "What should the agent revisit?";
+  form.querySelector("textarea").setAttribute("aria-label", mode === "ask" ? "Question for agent" : "Review comment");
+  form.querySelector("footer span").textContent = mode === "ask" ? "The selected code is included as context." : "Markdown is supported.";
+  form.querySelector('[type="submit"]').textContent = mode === "ask" ? "Ask agent" : "Add comment";
+}
+
+function openInlineCommentEditor(row, target, comment, { mode = "comment", initialBody = "", endLine = target.line } = {}) {
   if (!reviewIsOpen()) return;
   closeInlineCommentEditor();
   selectLine(row);
@@ -3009,10 +3058,14 @@ function openInlineCommentEditor(row, target, comment) {
   form.dataset.commentLine = String(target.line);
   if (comment) form.dataset.commentId = comment.id;
   const image = row.classList.contains("image-diff-side");
-  const location = image ? `${target.path} · ${target.side} image` : `${target.path}:${target.line}`;
+  const location = image ? `${target.path} · ${target.side} image` : endLine === target.line ? `${target.path}:${target.line}` : `${target.path}:${target.line}-${endLine}`;
+  const askDisabled = !state.session.outline;
   form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? "Edit review comment" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
-    <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? "")}</textarea>
+    ${comment ? "" : `<div class="inline-composer-tabs" role="group" aria-label="Message type"><button type="button" data-inline-composer-mode="comment" aria-pressed="true">Comment</button><button type="button" data-inline-composer-mode="ask" aria-pressed="false"${askDisabled ? ' disabled title="Start a tour to ask the agent."' : ""}>Ask agent</button></div>`}
+    <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? initialBody)}</textarea>
     <footer><span>Markdown is supported.</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;
+  form.dataset.composerMode = "comment";
+  if (!comment && mode === "ask" && !askDisabled) updateInlineComposerMode(form, "ask");
   const splitRow = row.closest(".split-row");
   if (image) {
     row.querySelector("figcaption").insertAdjacentElement("beforebegin", form);
@@ -3041,6 +3094,93 @@ async function openCommentEditor(comment) {
   }
   if (!row) return toast("That comment's location is no longer visible in the current diff.", { tone: "warning", duration: 6_000 });
   openInlineCommentEditor(row, lineTarget(row), comment);
+}
+
+function codeElement(node) {
+  return (node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement)?.closest?.(".line-code");
+}
+
+function textOffsetWithin(element, node, offset) {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.setEnd(node, offset);
+  return range.toString().length;
+}
+
+function readCodeSelection() {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
+  const range = selection.getRangeAt(0);
+  const startCode = codeElement(range.startContainer);
+  const endCode = codeElement(range.endContainer);
+  const startRow = startCode?.closest(".diff-row");
+  const endRow = endCode?.closest(".diff-row");
+  if (!startRow || !endRow || startRow.dataset.path !== endRow.dataset.path || startRow.dataset.side !== endRow.dataset.side) return null;
+  const hunk = startRow.closest(".hunk");
+  if (!hunk || hunk !== endRow.closest(".hunk")) return null;
+  const rows = [...hunk.querySelectorAll(`.diff-row[data-path="${CSS.escape(startRow.dataset.path)}"][data-side="${startRow.dataset.side}"][data-line]:not([data-line=""])`)]
+    .filter((row) => !row.classList.contains("split-empty"));
+  const startIndex = rows.indexOf(startRow);
+  const endIndex = rows.indexOf(endRow);
+  if (startIndex < 0 || endIndex < startIndex) return null;
+  const selectedRows = rows.slice(startIndex, endIndex + 1);
+  const lineNumbers = selectedRows.map((row) => Number(row.dataset.line));
+  if (lineNumbers.some((line, index) => index > 0 && line !== lineNumbers[index - 1] + 1)) return null;
+  const startOffset = textOffsetWithin(startCode, range.startContainer, range.startOffset);
+  const endOffset = textOffsetWithin(endCode, range.endContainer, range.endOffset);
+  const text = selectedRows.map((row, index) => {
+    const content = row.dataset.content;
+    if (selectedRows.length === 1) return content.slice(startOffset, endOffset);
+    if (index === 0) return content.slice(startOffset);
+    if (index === selectedRows.length - 1) return content.slice(0, endOffset);
+    return content;
+  }).join("\n");
+  if (!text.trim()) return null;
+  return {
+    path: startRow.dataset.path,
+    side: startRow.dataset.side,
+    startLine: lineNumbers[0],
+    endLine: lineNumbers.at(-1),
+    text,
+    expectedContent: selectedRows.map((row) => row.dataset.content).join("\n"),
+    startRow,
+    endRow,
+    rect: range.getBoundingClientRect(),
+  };
+}
+
+function hideCodeSelectionToolbar(clearSelection = false) {
+  elements["code-selection-toolbar"].classList.add("hidden");
+  state.codeSelection = null;
+  if (clearSelection) window.getSelection()?.removeAllRanges();
+}
+
+function updateCodeSelectionToolbar() {
+  const selected = readCodeSelection();
+  if (!selected || state.proposalPreview || !reviewIsOpen()) return hideCodeSelectionToolbar();
+  state.codeSelection = selected;
+  const toolbar = elements["code-selection-toolbar"];
+  toolbar.querySelector('[data-selection-tool="edit"]').disabled = selected.side !== "new";
+  toolbar.querySelector('[data-selection-tool="ask"]').disabled = !state.session.outline;
+  toolbar.classList.remove("hidden");
+  const bounds = toolbar.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - bounds.width - 8, selected.rect.left + selected.rect.width / 2 - bounds.width / 2));
+  const preferredTop = selected.rect.top - bounds.height - 7;
+  toolbar.style.left = `${left}px`;
+  toolbar.style.top = `${preferredTop >= 8 ? preferredTop : selected.rect.bottom + 7}px`;
+}
+
+async function submitInlineAsk(form) {
+  const body = form.elements.body.value.trim();
+  if (!body || !state.session.outline) return;
+  const selector = `.diff-row[data-path="${CSS.escape(form.dataset.commentPath)}"][data-side="${form.dataset.commentSide}"][data-line="${form.dataset.commentLine}"]`;
+  const row = elements.diff.querySelector(selector);
+  if (!row) return toast("That code location is no longer visible.", { tone: "warning" });
+  closeInlineCommentEditor();
+  openConversation(null);
+  selectLine(row);
+  elements["chat-input"].value = body;
+  await askAgent({ preventDefault() {} });
 }
 
 async function saveInlineComment(form) {
@@ -3512,6 +3652,23 @@ elements.diff.addEventListener("pointercancel", () => {
   splitResizeStart?.resizer.classList.remove("dragging");
   splitResizeStart = null;
 });
+document.addEventListener("selectionchange", () => window.requestAnimationFrame(updateCodeSelectionToolbar));
+elements["code-selection-toolbar"].addEventListener("pointerdown", (event) => event.preventDefault());
+elements["code-selection-toolbar"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-selection-tool]");
+  const selected = state.codeSelection;
+  if (!button || !selected || button.disabled) return;
+  const tool = button.dataset.selectionTool;
+  if (tool === "copy") {
+    void navigator.clipboard.writeText(selected.text).then(() => toast("Selected code copied"), () => toast("Could not copy the selected code.", { tone: "warning" }));
+  } else if (tool === "edit") {
+    openInlineEdit(selected.endRow, selected);
+  } else {
+    const target = lineTarget(selected.startRow);
+    openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", initialBody: quotedCode(selected.text), endLine: selected.endLine });
+  }
+  hideCodeSelectionToolbar(true);
+});
 elements.diff.addEventListener("dblclick", (event) => {
   if (!event.target.closest?.("[data-split-resizer]")) return;
   setSplitOldWidth(50, true);
@@ -3525,6 +3682,7 @@ elements.diff.addEventListener("keydown", (event) => {
 });
 window.addEventListener("review-tour-theme-change", () => {
   void highlightRenderedCode();
+  elements.diff.querySelectorAll(".inline-edit-form").forEach((form) => void highlightInlineEdit(form));
   if (state.session) renderArchitecture();
   if (state.session && state.activeTab === "call-flows") renderCallFlows();
   if (state.session && state.activeTab === "sequence") renderSequenceDiagrams();
@@ -3765,7 +3923,8 @@ elements.diff.addEventListener("submit", (event) => {
   const commentForm = event.target.closest(".inline-comment-form");
   if (commentForm) {
     event.preventDefault();
-    void saveInlineComment(commentForm);
+    if (commentForm.dataset.composerMode === "ask") void submitInlineAsk(commentForm);
+    else void saveInlineComment(commentForm);
     return;
   }
   const form = event.target.closest(".inline-edit-form");
@@ -3783,6 +3942,7 @@ elements.diff.addEventListener("submit", (event) => {
           path: form.dataset.editPath,
           side: "new",
           line: Number(form.dataset.editLine),
+          endLine: Number(form.dataset.editEndLine),
           expectedContent: form.dataset.editExpected,
           replacement,
         }),
@@ -3799,6 +3959,17 @@ elements.diff.addEventListener("submit", (event) => {
   })();
 });
 
+let inlineEditHighlightTimer = null;
+elements.diff.addEventListener("input", (event) => {
+  const form = event.target.closest?.(".inline-edit-form");
+  if (!form || event.target.name !== "replacement") return;
+  const mirror = form.querySelector(".inline-edit-highlight code");
+  if (mirror) mirror.textContent = event.target.value || " ";
+  syncInlineEditScroll(event.target);
+  window.clearTimeout(inlineEditHighlightTimer);
+  inlineEditHighlightTimer = window.setTimeout(() => void highlightInlineEdit(form), 90);
+});
+
 elements.diff.addEventListener("click", (event) => {
   const sourceView = event.target.closest("[data-source-view]");
   if (sourceView) {
@@ -3811,7 +3982,7 @@ elements.diff.addEventListener("click", (event) => {
     const path = markdownPreview.dataset.markdownPreview;
     if (state.markdownPreviewPaths.has(path)) state.markdownPreviewPaths.delete(path);
     else state.markdownPreviewPaths.add(path);
-    renderDiff(state.renderedDiffFiles);
+    renderDiff(state.renderedDiffFiles, currentDiffRenderOptions());
     renderComments();
     renderFindings();
     renderTourAnnotation();
@@ -3854,7 +4025,8 @@ elements.diff.addEventListener("click", (event) => {
     const path = collapseButton.dataset.collapseFile;
     if (state.collapsedFiles.has(path)) state.collapsedFiles.delete(path);
     else state.collapsedFiles.add(path);
-    renderDiff(visibleDiffFiles());
+    const files = state.proposalPreview ? state.renderedDiffFiles : visibleDiffFiles();
+    renderDiff(files, currentDiffRenderOptions());
     renderTourAnnotation();
     return;
   }
@@ -3886,13 +4058,9 @@ elements.diff.addEventListener("click", (event) => {
     openFindingFromCode(findingPin.dataset.findingId);
     return;
   }
-  const lineTool = event.target.closest("[data-line-tool]");
-  if (lineTool) {
-    const toolRow = lineTool.closest(".diff-row");
-    if (!toolRow?.dataset.line || lineTool.disabled) return;
-    if (lineTool.dataset.lineTool === "edit") openInlineEdit(toolRow);
-    else if (lineTool.dataset.lineTool === "comment") openLineComment(toolRow);
-    else askAboutLine(toolRow);
+  const composerMode = event.target.closest("[data-inline-composer-mode]");
+  if (composerMode) {
+    updateInlineComposerMode(composerMode.closest(".inline-comment-form"), composerMode.dataset.inlineComposerMode);
     return;
   }
   const imageTool = event.target.closest("[data-image-tool]");
@@ -3906,21 +4074,13 @@ elements.diff.addEventListener("click", (event) => {
   if (!reviewIsOpen()) return;
   const row = event.target.closest(".diff-row");
   if (!row || !row.dataset.line) return;
+  const browserSelection = window.getSelection();
+  if (state.codeSelection || (browserSelection && !browserSelection.isCollapsed)) return;
   if (event.target.closest(".line-action")) {
     elements.diff.querySelectorAll(".line-action").forEach((action) => { action.tabIndex = -1; });
     event.target.closest(".line-action").tabIndex = 0;
   }
-  if (
-    state.selectedLine &&
-    state.selectedLine.path === row.dataset.path &&
-    state.selectedLine.side === row.dataset.side &&
-    state.selectedLine.line === Number(row.dataset.line)
-  ) {
-    const selectedRow = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(state.selectedLine.path)}"][data-side="${state.selectedLine.side}"][data-line="${state.selectedLine.line}"]`);
-    if (selectedRow) openInlineCommentEditor(selectedRow, state.selectedLine);
-  } else {
-    selectLine(row);
-  }
+  openLineComment(row);
 });
 let syncingSplitScroll = false;
 function syncSplitScroll(hunk, side, scrollLeft) {
@@ -3932,6 +4092,10 @@ function syncSplitScroll(hunk, side, scrollLeft) {
 }
 
 elements.diff.addEventListener("scroll", (event) => {
+  if (event.target.matches?.('.inline-edit-form textarea[name="replacement"]')) {
+    syncInlineEditScroll(event.target);
+    return;
+  }
   const source = event.target.closest?.(".diff-row.split-side");
   if (!source || syncingSplitScroll) return;
   const hunk = source.closest(".hunk.split-layout");

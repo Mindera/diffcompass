@@ -825,6 +825,27 @@ test("a reviewer inline edit stays isolated until apply and remains undoable", a
   expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
 });
 
+test("a reviewer can propose a validated contiguous multi-line edit", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+
+  const result = await session.proposeInlineEdit(
+    "app.ts",
+    "new",
+    1,
+    "const base = 1;\nconst changed = 2;",
+    "const base = 10;\nconst changed = 20;\nconst added = true;",
+    2,
+  );
+  expect(result.session.activities[0]?.request).toBe("Edit app.ts:1-2");
+  expect(result.session.activities[0]?.changeStatus).toBe("pending");
+  expect(result.session.activities[0]?.files[0]?.path).toBe("app.ts");
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 1;\nconst changed = 2;\n");
+
+  await session.updateActivity(result.activityId, "apply");
+  expect(await readFile(join(repository, "app.ts"), "utf8")).toBe("const base = 10;\nconst changed = 20;\nconst added = true;\n");
+});
+
 test("a reviewer inline edit rejects stale, unavailable, and no-op requests", async () => {
   const { repository, stateFile } = await repositoryFixture();
   const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
@@ -832,6 +853,8 @@ test("a reviewer inline edit rejects stale, unavailable, and no-op requests", as
   await expect(session.proposeInlineEdit("app.ts", "new", 2, "stale content", "const changed = 3;"))
     .rejects.toThrow("changed before the edit");
   await expect(session.proposeInlineEdit("app.ts", "new", 999, "not visible", "const base = 4;"))
+    .rejects.toThrow("changed before the edit");
+  await expect(session.proposeInlineEdit("app.ts", "new", 2, "const changed = 2;", "const changed = 3;", 1))
     .rejects.toThrow("changed before the edit");
   await expect(session.proposeInlineEdit("app.ts", "new", 2, "const changed = 2;", "const changed = 2;"))
     .rejects.toThrow("does not change");

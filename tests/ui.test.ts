@@ -684,7 +684,7 @@ test("review comments compose and edit inline with an in-app delete confirmation
   expect(app).toContain('data-inline-comment-action="edit"');
   expect(app).toContain('data-inline-comment-action="delete"');
   expect(app).toContain("async function deleteReviewComment(comment)");
-  expect(app).toContain("function openInlineCommentEditor(row, target, comment)");
+  expect(app).toContain("function openInlineCommentEditor(row, target, comment,");
   expect(app).toContain('className = "inline-comment-form"');
   expect(app).toContain('data-inline-comment-action="confirm-delete"');
   expect(app).not.toContain("Delete feedback at ${comment.path}:${comment.line}");
@@ -701,13 +701,13 @@ test("review comments compose and edit inline with an in-app delete confirmation
   expect(styles).toContain(".comment-status { flex: 0 0 auto;");
 });
 
-test("files expand and collapse in place while line actions expose comment and agent choices", async () => {
+test("files expand and collapse in place while clicks and selections expose scoped review actions", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain("Choose a code line to reveal actions");
+  expect(html).toContain("Choose a code line to comment or ask the agent");
   expect(app).toContain('data-file-expansion="${file._full ? "compact" : "full"}"');
   expect(app).toContain('${file._full ? "Collapse file" : "Expand file"}');
   expect(app).toContain('query.set("full", String(requestedFull))');
@@ -718,17 +718,31 @@ test("files expand and collapse in place while line actions expose comment and a
   expect(app).toContain("next, undefined, contextButton");
   expect(app).toContain("if (!viewportAnchor) {");
   expect(app).toContain("if (viewportAnchor) restoreFileViewport(viewportAnchor)");
-  expect(app).toContain('data-line-tool="comment"');
-  expect(app).toContain('data-line-tool="ask"');
-  expect(app).toContain('data-line-tool="edit"');
+  expect(html).toContain('data-selection-tool="copy"');
+  expect(html).toContain('data-selection-tool="edit"');
+  expect(html).toContain('data-selection-tool="comment"');
+  expect(html).toContain('data-selection-tool="ask"');
   expect(app).toContain("function openLineComment(row)");
   expect(app).toContain("function askAboutLine(row)");
-  expect(app).toContain("function openInlineEdit(row)");
+  expect(app).toContain("function openInlineEdit(row, selection = null)");
+  expect(app).toContain("function readCodeSelection()");
+  expect(app).toContain("function textOffsetWithin(element, node, offset)");
+  expect(app).toContain("function quotedCode(text)");
+  expect(app).toContain('data-inline-composer-mode="comment"');
+  expect(app).toContain('data-inline-composer-mode="ask"');
   expect(app).toContain('api("/api/edits"');
+  expect(app).toContain("endLine: Number(form.dataset.editEndLine)");
   expect(app).toContain("The repository stays untouched until you apply this suggestion.");
-  expect(styles).toContain(".line-tools");
-  expect(styles).toContain(".diff-row:hover .line-tools");
+  expect(app).toContain("function highlightInlineEdit(form)");
+  expect(app).toContain("function syncInlineEditScroll(textarea)");
+  expect(app).toContain('groups: [{ id: "inline-edit", path: form.dataset.editPath, lines: value.split("\\n") }]');
+  expect(styles).toContain(".line-action:not(:disabled)::after");
+  expect(styles).toContain(".line-prefix { position: relative; align-self: stretch; min-height: 18px;");
+  expect(styles).toContain(".code-selection-toolbar");
+  expect(styles).toContain(".inline-composer-tabs");
   expect(styles).toContain(".inline-edit-lane");
+  expect(styles).toContain(".inline-edit-highlight { position: absolute;");
+  expect(styles).toContain("caret-color: var(--text-code)");
 });
 
 test("split diff panes are resizable and synchronize horizontal scrolling per side", async () => {

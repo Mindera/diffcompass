@@ -125,7 +125,13 @@
 
       <section id="diff-panel" class="diff-panel">
         <div id="diff-view" class="review-view" role="tabpanel" aria-labelledby="diff-tab">
-          <p id="diff-instructions" class="sr-only">Choose a code line to reveal actions for commenting or asking the agent. Keyboard users can press Enter or Space, then tab to an action.</p>
+          <p id="diff-instructions" class="sr-only">Choose a code line to comment or ask the agent. Select code to copy, edit, comment, or ask about the selection.</p>
+          <div id="code-selection-toolbar" class="code-selection-toolbar hidden" role="toolbar" aria-label="Actions for selected code">
+            <button type="button" data-selection-tool="copy">Copy</button>
+            <button type="button" data-selection-tool="edit">Edit</button>
+            <button type="button" data-selection-tool="comment">Comment</button>
+            <button type="button" data-selection-tool="ask">Ask agent</button>
+          </div>
           <section id="review-overview" class="review-overview hidden">
             <div id="tour-overview" class="tour-overview hidden">
               <div class="tour-overview-heading"><div class="eyebrow">Guided tour</div><button id="tour-mode-toggle" class="button secondary" type="button">Exit tour</button></div>

@@ -5,8 +5,8 @@ const styles = await Bun.file(new URL("../public/styles.css", import.meta.url)).
 const html = await Bun.file(new URL("../public/index.html", import.meta.url)).text();
 
 test("added files render only the new side while modified files keep split layout", () => {
-  const source = app.slice(app.indexOf("function renderDiff(files)"), app.indexOf("function syncDiffViewControls()"));
-  const state = { collapsedFiles: new Set(), diffLayout: "split", session: {}, splitOldWidth: 50 };
+  const source = app.slice(app.indexOf("function renderDiff(files,"), app.indexOf("function syncDiffViewControls()"));
+  const state = { collapsedFiles: new Set(), diffLayout: "split", session: {}, splitOldWidth: 50, proposalPreview: false, proposalActivityId: null as string | null, renderedDiffFiles: [] as unknown[] };
   const diff = { innerHTML: "", querySelectorAll: () => [] };
   const elements = { diff, "empty-diff": { classList: { toggle() {} } } };
   const render = new Function("state", "elements", "CSS", "syncDiffViewControls", "escapeHtml", "renderDiffFileHeader", "isPngDiff", "whitespaceChangedRows", "inlineChangesForRows", "fileContext", "splitRows", "renderSplitSide", "renderUnifiedRow", "highlightRenderedCode", "hydrateDiffImages", "renderConversationBadges", "SPLIT_PANE_MIN", "SPLIT_PANE_MAX", `${source}; return renderDiff;`)(
@@ -25,7 +25,23 @@ test("added files render only the new side while modified files keep split layou
   expect(diff.innerHTML).toContain('hunk split-layout');
   expect(diff.innerHTML).toContain('data-side="old"');
   expect(state.diffLayout).toBe("split");
+  render([file], { proposalActivityId: "proposal-1" });
+  expect(state.proposalPreview).toBe(true);
+  expect(state.proposalActivityId).toBe("proposal-1");
+  expect(state.renderedDiffFiles).toEqual([file]);
+  render([{ ...file, path: "ordinary.ts" }]);
+  expect(state.proposalPreview).toBe(false);
+  expect(state.proposalActivityId).toBeNull();
   expect(app).toContain('const segments = hunk.classList.contains("split-layout")');
+});
+
+test("pending suggestion mode is explicit and rerenders retain only its exact diff", () => {
+  expect(app).toContain("function renderDiff(files, { proposalActivityId = null } = {})");
+  expect(app).toContain("state.proposalPreview = Boolean(proposalActivityId)");
+  expect(app).toContain("renderDiff([result.file], { proposalActivityId: activityId })");
+  expect(app).toContain("const files = state.proposalPreview ? state.renderedDiffFiles : visibleDiffFiles()");
+  expect(app).toContain("renderDiff(files, currentDiffRenderOptions())");
+  expect(app).toContain("generation !== state.reviewDiffLoadGeneration || state.proposalPreview");
 });
 
 test("line markers opt in without removing line actions or comment indicators", () => {

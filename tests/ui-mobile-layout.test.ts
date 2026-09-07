@@ -50,7 +50,8 @@ test("mobile layout gives paths their own wrapping row and leaves code at its no
 test("inline forms and line actions fit the visible mobile code pane", () => {
   expect(styles).toContain(".diff-file-scroll { container-type: inline-size; }");
   expect(styles).toContain(".inline-edit-form, .inline-comment-form { position: sticky; left: 4px; width: calc(100cqw - 8px)");
-  expect(styles).toContain(".diff-row .line-tools { display: none; grid-column: 1 / -1; grid-row: 2;");
+  expect(styles).toContain(".code-selection-toolbar button { min-height: 38px;");
+  expect(styles).toContain(".inline-edit-form textarea, .inline-edit-highlight { min-width: 0; min-height: 84px; font-size: 16px;");
   expect(styles).toContain(".inline-edit-form footer .button, .inline-comment-form footer .button { min-height: 44px;");
   expect(app.match(/revealInlineForm\(form\);/g)?.length).toBe(2);
 });

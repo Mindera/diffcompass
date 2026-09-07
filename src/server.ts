@@ -350,10 +350,10 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/edits") {
         const input = await readJsonObject(request, 128 * 1024);
-        exactKeys(input, ["path", "side", "line", "expectedContent", "replacement"]);
+        exactKeys(input, ["path", "side", "line", "endLine", "expectedContent", "replacement"]);
         const expectedContent = typeof input.expectedContent === "string" ? input.expectedContent : undefined;
         const replacement = typeof input.replacement === "string" ? input.replacement : undefined;
-        if (expectedContent === undefined || expectedContent.length > 20_000) throw new HttpError(422, "expectedContent must be a string of at most 20,000 characters.");
+        if (expectedContent === undefined || expectedContent.length > 100_000) throw new HttpError(422, "expectedContent must be a string of at most 100,000 characters.");
         if (replacement === undefined || replacement.length > 100_000) throw new HttpError(422, "replacement must be a string of at most 100,000 characters.");
         if (expectedContent.includes("\0") || replacement.includes("\0")) throw new HttpError(422, "Inline edits cannot contain binary data.");
         return json(await session.proposeInlineEdit(
@@ -362,6 +362,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           finitePositiveInteger(input.line, "line"),
           expectedContent,
           replacement,
+          input.endLine === undefined ? undefined : finitePositiveInteger(input.endLine, "endLine"),
         ));
       }
       if (request.method === "POST" && url.pathname === "/api/tour/start") {

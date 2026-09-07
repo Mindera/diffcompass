@@ -404,14 +404,15 @@ button { color: inherit; }
 .diff-row.split-side > .line-code { grid-column: 4; grid-row: 1; }
 .review-file-button { color: var(--success-text); }
 .line-number { color: var(--text-line); text-align: right; padding-right: 8px; user-select: none; border-right: 1px solid var(--line-separator); }
-.line-prefix { border: 0; padding: 0; text-align: center; color: var(--text-prefix); background: transparent; user-select: none; }
+.line-prefix { position: relative; align-self: stretch; min-height: 18px; border: 0; padding: 0; text-align: center; color: var(--text-prefix); background: transparent; user-select: none; }
 .line-action:not(:disabled) { cursor: pointer; }
-.line-tools { position: sticky; left: 50px; z-index: 5; grid-column: 4; grid-row: 1; align-self: center; justify-self: start; display: flex; gap: 4px; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 100ms ease; }
-.split-side .line-tools { left: 50px; grid-column: 4; }
-.diff-row:hover .line-tools, .diff-row:focus-within .line-tools, .diff-row.selected .line-tools { visibility: visible; opacity: 1; pointer-events: auto; }
-.line-tools button { border: 1px solid var(--border-hover); border-radius: 5px; padding: 0 6px; color: var(--text); background: var(--toast-background); box-shadow: 0 3px 10px var(--shadow); font: 600 9px/14px system-ui, sans-serif; cursor: pointer; }
-.line-tools button:hover:not(:disabled), .line-tools button:focus-visible { border-color: var(--accent-strong); color: var(--accent-strong); }
-.line-tools button:disabled { opacity: .55; cursor: default; }
+.line-action:not(:disabled)::after { content: ""; position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; border: 1px solid var(--accent-border); border-radius: 50%; background-color: var(--surface-control); background-image: linear-gradient(var(--accent-strong), var(--accent-strong)), linear-gradient(var(--accent-strong), var(--accent-strong)); background-position: center; background-repeat: no-repeat; background-size: 7px 1.5px, 1.5px 7px; opacity: 0; transform: translate(-50%, -50%) scale(.8); transition: opacity 100ms ease, transform 100ms ease; }
+.diff-row:hover .line-action:not(:disabled)::after, .line-action:focus-visible::after { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.code-selection-toolbar { position: fixed; z-index: 50; display: flex; gap: 3px; border: 1px solid var(--border-hover); border-radius: 7px; padding: 4px; background: var(--toast-background); box-shadow: 0 8px 24px var(--shadow); }
+.code-selection-toolbar.hidden { display: none; }
+.code-selection-toolbar button { border: 0; border-radius: 5px; padding: 5px 8px; color: var(--text); background: transparent; font: 600 10px system-ui, sans-serif; cursor: pointer; }
+.code-selection-toolbar button:hover:not(:disabled), .code-selection-toolbar button:focus-visible { color: var(--accent-strong); background: var(--surface-hover); }
+.code-selection-toolbar button:disabled { opacity: .45; cursor: default; }
 .review-dot { color: var(--warning); font-size: 9px; }
 .has-comment { box-shadow: inset -2px 0 var(--warning); }
 .has-comment .row-prefix { display: none; }
@@ -443,13 +444,22 @@ button { color: inherit; }
 .inline-comment-form header strong { display: block; overflow: hidden; margin-top: 3px; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .inline-comment-form textarea { box-sizing: border-box; width: 100%; min-height: 84px; margin: 10px 0; resize: vertical; border: 1px solid var(--border); border-radius: 7px; padding: 9px 10px; color: var(--text-code); background: var(--surface-code); font: 12px/1.5 system-ui, sans-serif; }
 .inline-comment-form footer span { color: var(--muted); font-size: 10px; }
+.inline-composer-tabs { display: inline-flex; gap: 3px; margin: 10px 0 0; border: 1px solid var(--border); border-radius: 7px; padding: 3px; background: var(--surface-code); }
+.inline-composer-tabs button { border: 0; border-radius: 5px; padding: 4px 9px; color: var(--muted); background: transparent; font: 600 10px system-ui, sans-serif; cursor: pointer; }
+.inline-composer-tabs button[aria-pressed="true"] { color: var(--text); background: var(--surface-control); }
+.inline-composer-tabs button:disabled { opacity: .45; cursor: default; }
 .inline-edit-lane { min-width: 0; display: grid; grid-template-columns: minmax(0, var(--split-old-width, 50%)) minmax(0, 1fr); }
 .inline-edit-lane .inline-edit-form { grid-column: 2; }
 .inline-edit-form { box-sizing: border-box; min-width: 0; margin: 8px; border: 1px solid var(--accent-border); border-left-width: 4px; border-radius: 9px; padding: 11px; background: var(--surface-item); box-shadow: 0 5px 16px var(--shadow); font-family: system-ui, sans-serif; }
 .inline-edit-form header, .inline-edit-form footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .inline-edit-form header > div { min-width: 0; }
 .inline-edit-form header strong { display: block; overflow: hidden; margin-top: 3px; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.inline-edit-form textarea { box-sizing: border-box; width: 100%; min-height: 84px; margin: 10px 0; resize: vertical; border: 1px solid var(--border); border-radius: 7px; padding: 9px 10px; color: var(--text-code); background: var(--surface-code); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+.inline-edit-editor { position: relative; margin: 10px 0; }
+.inline-edit-form textarea, .inline-edit-highlight { box-sizing: border-box; width: 100%; min-height: 84px; margin: 0; border: 1px solid var(--border); border-radius: 7px; padding: 9px 10px; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre; }
+.inline-edit-form textarea { position: relative; z-index: 1; display: block; resize: vertical; overflow: auto; color: transparent; caret-color: var(--text-code); background: transparent; }
+.inline-edit-form textarea::placeholder { color: var(--muted); }
+.inline-edit-highlight { position: absolute; inset: 0; overflow: hidden; color: var(--text-code); background: var(--surface-code); pointer-events: none; }
+.inline-edit-highlight code { font: inherit; }
 .inline-edit-form footer { align-items: flex-end; }
 .inline-edit-form footer span { max-width: 420px; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .finding-markers { position: relative; z-index: 7; display: flex; align-items: center; gap: 3px; padding-left: 3px; }
@@ -1046,12 +1056,11 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   .inline-edit-form header > div, .inline-comment-form header > div { min-width: 0; }
   .inline-edit-form header strong, .inline-comment-form header strong { white-space: normal; overflow-wrap: anywhere; }
   .inline-edit-form header button, .inline-comment-form header button { flex: 0 0 auto; min-width: 44px; min-height: 44px; }
-  .inline-edit-form textarea, .inline-comment-form textarea { display: block; min-width: 0; min-height: 84px; margin: 6px 0; font-size: 16px; }
+  .inline-comment-form textarea { display: block; min-width: 0; min-height: 84px; margin: 6px 0; font-size: 16px; }
+  .inline-edit-form textarea, .inline-edit-highlight { min-width: 0; min-height: 84px; font-size: 16px; }
   .inline-edit-form footer, .inline-comment-form footer { flex-direction: column; align-items: stretch; gap: 6px; }
   .inline-edit-form footer .button, .inline-comment-form footer .button { min-height: 44px; white-space: normal; }
-  .diff-row .line-tools { display: none; grid-column: 1 / -1; grid-row: 2; left: 4px; max-width: calc(100cqw - 8px); flex-wrap: wrap; padding: 4px; }
-  .diff-row.selected .line-tools, .diff-row:focus-within .line-tools { display: flex; }
-  .line-tools button { min-height: 44px; min-width: 44px; padding: 6px 10px; font-size: 12px; }
+  .code-selection-toolbar button { min-height: 38px; padding: 6px 10px; font-size: 12px; }
   .hunk-header > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hunk-header > button { flex-shrink: 0; min-height: 28px; }
   #diff { padding: 8px 4px max(180px, 24vh); }
