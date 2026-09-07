@@ -41,6 +41,22 @@ test("the attached-agent skill keeps reviewer conversations concise, contextual,
   expect(skill).toContain("Do not narrate tool limitations or offer unrelated follow-up work");
 });
 
+test("the attached-agent skill isolates tour framing and requires conceptual phase layers", async () => {
+  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  expect(skill).toContain("fresh first-time reading of the selected base-to-tip or working-tree comparison");
+  expect(skill).toContain("Ignore prior chat, caller implementation history, remembered iterations");
+  expect(skill).toContain('use `fork_turns="none"`');
+  expect(skill).toContain("provide only the authoritative event prompt plus the repository path");
+  expect(skill).toContain("do not let implementation chat or earlier agent");
+  expect(skill).toContain("work become tour evidence");
+  expect(skill).toContain("ordered conceptual layers");
+  expect(skill).toContain("contract or foundation before implementation before integration or effects");
+  expect(skill).toContain("what its layer establishes and how it enables the next layer");
+  expect(skill).toContain("currently supported architecture and sequence diagram kinds");
+  expect(skill).toContain("do not invent state-machine or ER diagram types");
+  expect(skill).toContain("unsupported references to corrections, iterations, follow-ups, or a prior/current state");
+});
+
 test("the attached-agent skill resolves feedback without inventing edits or unrelated fixes", async () => {
   const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
   expect(skill).toContain("comments` together as concerns to resolve");

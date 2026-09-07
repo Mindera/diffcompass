@@ -64,6 +64,12 @@ interface GeminiStreamEvent {
   response?: string;
 }
 
+const TOUR_CONTEXT_BOUNDARY = `Review-context boundary (mandatory for tour generation): Treat this as a fresh, first-time reading of the selected comparison. Ignore prior chat, caller-session context, implementation chronology, earlier iterations, previous tours, and unstated claims about what was changed before. They are not review evidence.
+
+Ground tour framing only in the selected base-to-tip or working-tree comparison and repository files or symbols you explicitly inspect for this comparison. This rule applies to the tour title, summary, phase names and summaries, objectives, architecture titles and summaries, diagrams, and explanations. Do not describe a change as a correction, iteration, follow-up, or current state relative to earlier work unless that relationship is directly supported by the selected comparison or inspected repository evidence. If it is unsupported, use neutral first-read language.
+
+Treat each TourPhase as one ordered conceptual layer in the change. Order phases and stops by causal dependency and derive phase order from behavior and dependency flow, with contract or foundation before implementation before integration or effects when the evidence supports those layers, never from file order or remembered implementation chronology. Every phase summary must concisely state what its layer establishes and how it enables the next layer, or, for the final layer, how it reaches the observable result or verification. Use only the currently supported architecture and sequence diagram kinds when they materially clarify a layer, and do not invent state-machine or ER diagram types. Keep reviewer questions separate: they may use their explicitly scoped conversation normally.`;
+
 function textContent(value: unknown): string {
   if (typeof value === "string") return value;
   if (!Array.isArray(value)) return "";
@@ -698,6 +704,7 @@ export class TourAgent {
   private readonly attached: boolean;
   private readonly abortController = new AbortController();
   private comparisonFingerprint = "unknown";
+  private selectedComparison?: GitComparison;
   private readonly adapterId: AgentSelection["adapterId"];
   private readonly includeArchitecture: boolean;
   private readonly includeCallFlows: boolean;
@@ -805,6 +812,7 @@ export class TourAgent {
   }
 
   useComparison(comparison: GitComparison): void {
+    this.selectedComparison = comparison;
     this.comparisonFingerprint = createHash("sha256").update(comparison.patch).digest("hex");
   }
 
@@ -845,13 +853,14 @@ Both diagrams are architecture maps, not runtime sequences. Use plain-language c
 Return only JSON with this shape:
 {"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"behaviorArchitectureStatus":"implemented|proposed","behaviorArchitecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"architecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"phases":[{"id":"stable-phase-id","title":"logical change","summary":"what this phase establishes","fileChanges":[{"path":"exact/changed/path","summary":"this file's role in the phase"}],"steps":[{"id":"globally-unique-step-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}]}],"callFlows":[{"id":"stable-id","title":"...","summary":"...","entrypointNodeId":"root","provenance":"verified|partial|unverified","nodes":[{"id":"root","label":"Class.method","kind":"function|method|constructor|component|branch|external","change":"added|removed|unchanged|modified","oldLocation":{"path":"changed/path","side":"old","line":1},"newLocation":{"path":"changed/path","side":"new","line":1}}],"edges":[{"id":"root-to-child","from":"root","to":"child","label":"optional call meaning","change":"added|removed|unchanged","oldCallSite":{"path":"changed/path","side":"old","line":1},"newCallSite":{"path":"changed/path","side":"new","line":1}}],"affectedFiles":["exact/changed/path"]}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}],"findings":[{"id":"stable-id","phaseId":"owning-phase-id","stepId":"optional-owning-step-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
 
-Before choosing anchors, identify one primary journey from an input, trigger, or contract to the observable result of the change. Use that journey as the narrative spine of the tour. When the implementation-journey diagram is included, its components and labelled relationships should express the same causal path at system level. Order phases and stops by causal dependency. The first stop establishes the input or prerequisite. Each later stop adds one concrete fact that depends on what the reviewer has already learned. The final stops reach the observable result and its most relevant verification when the diff supports one. Branch only when the change has a genuinely separate behavior that cannot be explained on the primary journey. Do not create a component inventory, repeat the same fact at several anchors, or use a changed file as a stop unless it advances the journey.
+Before choosing anchors, identify one primary journey from an input, trigger, or contract to the observable result of the change. Use that journey as the narrative spine of the tour. When the implementation-journey diagram is included, its components and labelled relationships should express the same causal path at system level. Treat phases as ordered conceptual layers and order them by behavior and dependency flow, not file order or remembered implementation chronology. Put contract or foundation layers before implementation layers, and implementation before integration or effects, when the selected evidence supports those layers. Every phase summary must concisely state what its layer establishes and how it enables the next layer; for the final phase, state how it reaches the observable result or relevant verification. The first stop establishes the input or prerequisite. Each later stop adds one concrete fact that depends on what the reviewer has already learned. The final stops reach the observable result and its most relevant verification when the diff supports one. Branch only when the change has a genuinely separate behavior that cannot be explained on the primary journey. Do not create a component inventory, repeat the same fact at several anchors, or use a changed file as a stop unless it advances the journey.
 
 Every phase is one coherent behavioral or architectural change. Declare every changed file used by that phase exactly once and explain its role; every step anchor must refer to one of those declared files. Step ids are unique across the tour. Every finding must declare its owning phase. Add stepId only when the finding's exact path, side, and line fall inside that step's anchor; otherwise leave it phase-scoped. Every anchor and finding path must be one of the changed files and every line must occur in the diff. Each objective states the one concrete fact established by its anchor, not a generic instruction to inspect, see, or check code. Keep every objective short enough to scan as an annotation beside the code. planningNotes are concise, user-facing decisions about route and scope, never private chain-of-thought. Follow the repository policy's finding enabled flag, category allow-list, and minimum severity exactly. Treat findings in this response as evidence-backed candidates: a separate focused pass will validate them and look for omissions before anything is shown to the reviewer. When findings are omitted above, return an empty findings array and spend no analysis on them. Otherwise, an empty findings array is correct when no candidate is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Call flows describe concrete caller-to-callee structure rooted at changed entrypoints. Use one stable node for the same callable across old and new states, mark it modified when its implementation or outgoing calls changed, and represent rewiring as removed and added edges. Every added edge needs a newCallSite, every removed edge needs an oldCallSite, and every call-site path must be changed so the reviewer can jump to its evidence. affectedFiles must exactly match the changed call-site paths. Include at most 8 entrypoints, 80 nodes and 160 edges per entrypoint. Treat indirect or dynamic dispatch as partial or unverified, never as certain. When call-flow diffs are omitted above, return an empty callFlows array and spend no analysis on them. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When sequence diagrams are omitted above, return an empty flows array and spend no analysis on them. Each included flow's affectedFiles must list every changed path that participates in or is directly affected by that runtime flow, and no unrelated path. Do not use semicolons in Mermaid message or note text; use commas or periods. When diagrams are included and runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only when no goal-critical runtime flow is supported by evidence. Use at most twelve architectural-layer participants and label provenance honestly. Prefer 3-7 phases with 1-4 meaningful stops each.
 
 Write for a reviewer who has not seen this code before. Use short, plain sentences. Avoid jargon unless the code itself uses the term, and explain a necessary term in a few words. Keep the tour summary to at most three short sentences, every phase and file summary to one sentence, and every objective to one direct sentence. Describe concrete behavior before implementation details.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
-    const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
+    const boundedPrompt = `${TOUR_CONTEXT_BOUNDARY}\n\n${prompt}`;
+    const promptWithDiff = needsAttachment ? boundedPrompt : `${boundedPrompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
     const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;
     const generatedResult = await this.send(
       promptWithDiff,
@@ -887,7 +896,9 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       steps: phase.steps.map((step) => ({ id: step.id, anchor: step.anchor })),
     }));
     const changedFiles = comparison.files.map((file) => `- ${file.path} (+${file.additions}/-${file.deletions})`).join("\n");
-    const prompt = `You are the focused findings auditor for an interactive code review. Do not compose or explain the tour. Do not modify files. Inspect the repository and the changed diff, then return the final complete finding set.
+    const prompt = `${TOUR_CONTEXT_BOUNDARY}
+
+You are the focused findings auditor for an interactive code review. Do not compose or explain the tour. Do not modify files. Inspect the repository and the changed diff, then return the final complete finding set.
 
 Comparison fingerprint: ${this.comparisonFingerprint}
 Changed files:
@@ -925,7 +936,9 @@ Evidence must name the decisive repository paths and symbols or line ranges and 
     this.useComparison(comparison);
     const selected = flowId ? currentFlows.find((flow) => flow.id === flowId) : undefined;
     if (flowId && !selected) throw new Error("The flow to regenerate does not exist.");
-    const prompt = `You are updating grounded sequence diagrams for an interactive code review. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Do not modify files.
+    const prompt = `${TOUR_CONTEXT_BOUNDARY}
+
+You are updating grounded sequence diagrams for an interactive code review. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Do not modify files.
 
 Comparison fingerprint: ${this.comparisonFingerprint}
 ${selected ? `Regenerate only this flow, preserving its id: ${JSON.stringify(selected)}` : `Regenerate the complete flow set. Current flows: ${JSON.stringify(currentFlows)}`}
@@ -950,7 +963,9 @@ Return only JSON shaped as {"flows":[{"id":"stable-id","title":"...","summary":"
     this.useComparison(comparison);
     const selected = callFlowId ? currentCallFlows.find((flow) => flow.id === callFlowId) : undefined;
     if (callFlowId && !selected) throw new Error("The call flow to regenerate does not exist.");
-    const prompt = `You are updating grounded call-graph diffs for an interactive code review. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Do not modify files.
+    const prompt = `${TOUR_CONTEXT_BOUNDARY}
+
+You are updating grounded call-graph diffs for an interactive code review. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Do not modify files.
 
 Comparison fingerprint: ${this.comparisonFingerprint}
 ${selected ? `Regenerate only this call flow and preserve its id: ${JSON.stringify(selected)}` : `Regenerate the complete call-flow set. Current call flows: ${JSON.stringify(currentCallFlows)}`}
@@ -975,7 +990,9 @@ Return only {"callFlows":[...]} using bounded nodes and caller-to-callee edges. 
     const orderedSteps = outline.phases.flatMap((phase) => phase.steps);
     const phase = outline.phases.find((candidate) => candidate.steps.some((candidate) => candidate.id === step.id));
     const previousStep = index > 0 ? orderedSteps[index - 1] : undefined;
-    return this.send(`Tour: ${outline.title}
+    const prompt = `${TOUR_CONTEXT_BOUNDARY}
+
+Tour: ${outline.title}
 Tour purpose: ${outline.summary}
 Current phase: ${phase ? `${phase.title} — ${phase.summary}` : "Unknown"}
 ${previousStep ? `Previously established: ${previousStep.title} — ${previousStep.objective}` : "This is the first stop, so establish the input, trigger, or prerequisite."}
@@ -987,7 +1004,11 @@ Comparison fingerprint: ${this.comparisonFingerprint}
 
 Use the narrative context above silently. Explain this anchor as the next link in the tour's causal journey. If this is not the first stop, connect its mechanism to the fact established immediately before it. Introduce one new idea and explain the mechanism visible in the selected code, not only the resulting behavior.
 
-Use plain technical language for a reviewer who knows programming fundamentals. Keep it under 150 words in two or three short paragraphs. Use short active sentences, one idea per sentence, and one consistent term for each concept. Avoid metaphors and idioms. Avoid project-specific jargon unless the code requires it; explain any necessary term in a few words. Say why the mechanism matters and what the reviewer should check. Do not repeat the title, objective, or file path. Do not predict, name, or summarize the next step; the route may change independently of this explanation. End with a short instruction to select Next when ready. Do not modify files.`, "tour.explanation", undefined, { stepNumber: index + 1, totalSteps: total });
+Use plain technical language for a reviewer who knows programming fundamentals. Keep it under 150 words in two or three short paragraphs. Use short active sentences, one idea per sentence, and one consistent term for each concept. Avoid metaphors and idioms. Avoid project-specific jargon unless the code requires it; explain any necessary term in a few words. Say why the mechanism matters and what the reviewer should check. Do not repeat the title, objective, or file path. Do not predict, name, or summarize the next step; the route may change independently of this explanation. End with a short instruction to select Next when ready. Do not modify files. Do not use prior chat or implementation chronology to explain this stop. Use only the selected comparison and repository evidence you explicitly inspect.`;
+    const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
+    const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${this.selectedComparison?.patch ?? ""}\n</diff>`;
+    const attachment = needsAttachment && this.selectedComparison ? { name: "review.diff", content: this.selectedComparison.patch } : undefined;
+    return this.send(promptWithDiff, "tour.explanation", attachment, { stepNumber: index + 1, totalSteps: total });
   }
 
   async answer(question: string, selectedContext?: string, step?: TourStep, proposalRoot?: string): Promise<AgentResult<string>> {

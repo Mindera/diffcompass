@@ -235,6 +235,31 @@ test("asks for short plain-language stop explanations", async () => {
   expect(activities.at(-1)).toMatchObject({ status: "completed" });
 });
 
+test("bounds tour prompts to a first-read comparison and orders phases as conceptual layers", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeFindings: false }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+const changed = true;", repositoryFiles: ["app.ts"],
+    files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, rows: [{ kind: "addition", content: "const changed = true;", oldLine: null, newLine: 1 }] }],
+    }],
+  };
+  const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
+  const [event] = await bridge.eventsAfter(0, 1_000);
+  if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
+  expect(event.prompt).toContain("fresh, first-time reading of the selected comparison");
+  expect(event.prompt).toContain("Ignore prior chat, caller-session context, implementation chronology");
+  expect(event.prompt).toContain("ordered conceptual layers");
+  expect(event.prompt).toContain("not file order or remembered implementation chronology");
+  expect(event.prompt).toContain("what its layer establishes and how it enables the next layer");
+  expect(event.prompt).toContain("Use only the currently supported architecture and sequence diagram kinds");
+  await bridge.respond(event.id, JSON.stringify({
+    title: "First-read review", summary: "The changed value reaches the result.", flows: [],
+    phases: [{ id: "behavior", title: "Changed behavior", summary: "This layer establishes the changed value and enables the result layer.", fileChanges: [{ path: "app.ts", summary: "Defines the changed behavior." }], steps: [{ id: "step", title: "Changed value", objective: "The changed value is produced.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
+  }));
+  await expect(pending).resolves.toMatchObject({ value: { title: "First-read review" } });
+});
+
 test("repository policy is bounded context and findings are enforced after generation", async () => {
   const bridge = new AttachedAgentBridge();
   const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false }, bridge);
