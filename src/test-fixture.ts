@@ -65,6 +65,16 @@ function receiptPng(accent: [number, number, number]): Buffer {
 const baseFiles = {
   "screens/receipt.png": receiptPng([100, 116, 139]),
   "README.md": "# Checkout\n\nThe checkout returns a numeric total.\n",
+  "docs/checkout-guide.md": `# Checkout guide
+
+The checkout calculates a numeric total for the supplied items.
+
+## Supported inputs
+
+| Input | Required |
+| --- | --- |
+| Items | Yes |
+`,
   "src/cart.ts": `export interface Item {
   price: number;
   quantity: number;
@@ -79,6 +89,21 @@ export function total(items: Item[]): number {
 const workingFiles = {
   "screens/receipt.png": receiptPng([22, 163, 74]),
   "README.md": "# Checkout fixture\n\nThis fixture exercises guided tours, findings, comments, flows, and activity.\n",
+  "docs/checkout-guide.md": `# Checkout guide
+
+The checkout calculates a discount-aware total and formats it for a receipt.
+
+## Supported inputs
+
+| Input | Required | Behaviour |
+| --- | --- | --- |
+| Items | Yes | Their prices and quantities form the subtotal. |
+| Discount | No | A fractional percentage reduces the subtotal. |
+
+## Result
+
+The receipt presents the resulting amount with two decimal places.
+`,
   "docs/preview.md": `# Markdown preview
 
 This document exercises the rendered **Markdown preview** in the review UI.
@@ -228,6 +253,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
         fileChanges: [
           { path: "src/receipt.ts", summary: "Adds a user-visible receipt string." },
           { path: "README.md", summary: "Documents what this reusable fixture covers." },
+          { path: "docs/checkout-guide.md", summary: "Updates an existing Markdown guide with the discount-aware receipt behaviour." },
           { path: "docs/preview.md", summary: "Provides rich Markdown content for the rendered preview." },
           { path: "screens/receipt.png", summary: "Exercises before/after PNG previews with a deterministic receipt mockup." },
         ],

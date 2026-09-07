@@ -46,7 +46,8 @@ review. Questions remain available, and you can resume the tour later.
 - declares each phase's changed files and their role in a collapsed-on-entry section, with Git-derived additions and deletions;
 - separates stop-scoped and phase-scoped P0–P3 findings, with collapsed phase summaries matching the in-code pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
 - syntax-highlights loaded diffs locally in both light and dark themes;
-- previews changed PNGs directly in the diff with Before/After images, single-sided additions/deletions, and full-size links (up to 20 MiB per image; live review only);
+- previews changed Markdown as rendered Before/After documents while retaining addition/deletion highlights and line-anchored tour stops, including in self-contained HTML exports;
+- previews changed PNGs directly in the diff with Before/After images, accurate Added/Removed captions, full-size links, and image-level Comment and Ask agent actions (up to 20 MiB per image; live review only);
 - traces changed caller-to-callee edges from concrete entrypoints, compares their Before and After trees, and links every added or removed call back to its diff evidence;
 - renders Mermaid sequence diagrams as strict local SVG for goal-critical flows, with exact expandable affected-file lists, explicit fully traced, partly inferred, or unverified provenance wording, validated editing, source fallback, and agent regeneration;
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
@@ -280,6 +281,8 @@ The fixture contains two phases, four stops, inline feedback, findings, a
 component diagram, a sequence diagram, chat history, and an agent activity
 entry, plus a tiny changed PNG for before/after preview checks. Sending a new
 question invokes the selected agent; the fixture does not fake new answers.
+It also includes both modified and newly added Markdown documents for checking
+the rendered before/after and added-file preview states.
 Use `bun run fixture --prepare-only` when a test only needs fresh
 repository and session files.
 

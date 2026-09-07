@@ -52,6 +52,28 @@ test("line conversations persist and follow-ups retain their original phase cont
   } finally { await session.dispose(); }
 });
 
+test("image comments and questions use a stable image-level anchor", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await writeFile(join(repository, "screen.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const commented = await session.addComment({ path: "screen.png", side: "new", line: 1, body: "This copy is incorrect." });
+    expect(commented.comments[0]).toMatchObject({ path: "screen.png", side: "new", line: 1, lineContent: "[PNG image · new]", status: "active", publishToGitHub: false });
+
+    const anchor = { path: "screen.png", side: "new" as const, line: 1, content: "[PNG image · new]" };
+    const asking = session.ask("Is this error copy accurate?", undefined, { anchor });
+    const events = await session.bridge!.eventsAfter(7, 1000);
+    const prompt = events.find((event) => event.type === "agent.prompt" && event.kind === "review.question");
+    if (!prompt || prompt.type !== "agent.prompt") throw new Error("Expected image question");
+    expect(prompt.prompt).toContain("Captured code: [PNG image · new]");
+    await session.bridge!.respond(prompt.id, "The image copy should be corrected.");
+    await session.bridge!.ack(prompt.id);
+    const answered = await asking;
+    expect(answered.messages[0]?.anchor).toEqual(anchor);
+  } finally { await session.dispose(); }
+});
+
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });

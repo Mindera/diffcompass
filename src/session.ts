@@ -285,6 +285,14 @@ export class ReviewSession {
       .find((row) => row.kind !== "meta" && (side === "old" ? row.oldLine : row.newLine) === line);
   }
 
+  private reviewAnchorContent(path: string, side: "old" | "new", line: number): string | undefined {
+    const row = this.findRow(path, side, line);
+    if (row) return row.content;
+    const file = this.comparison.files.find((candidate) => candidate.path === path);
+    const imageExists = side === "old" ? file?.oldPath : file?.newPath;
+    return file && /\.png$/i.test(file.path) && imageExists && line === 1 ? `[PNG image · ${side}]` : undefined;
+  }
+
   private recordAgentActivity(
     previousFiles: DiffFile[],
     nextFiles: DiffFile[],
@@ -1119,7 +1127,7 @@ export class ReviewSession {
       const contextPaths = root?.contextPaths ?? [...new Set(conversation?.contextPaths ?? [])];
       if (contextPaths.length > 8) throw new ReviewError("A question can include at most 8 additional files.");
       if (contextPaths.some((path) => !this.comparison.repositoryFiles.includes(path))) throw new ReviewError("Question context must reference repository files.");
-      if (!root && anchor && this.findRow(anchor.path, anchor.side, anchor.line)?.content !== anchor.content) {
+      if (!root && anchor && this.reviewAnchorContent(anchor.path, anchor.side, anchor.line) !== anchor.content) {
         throw new ReviewError("The selected code changed. Select the line again before asking.");
       }
       const createdAgent = !this.agent;
@@ -1138,7 +1146,7 @@ export class ReviewSession {
         return `File: ${path}\n${content}`;
       }))).join("\n\n") : undefined;
       const questionContext = [
-        anchor ? `Original question location: ${anchor.path}:${anchor.line} (${anchor.side})\nCaptured code: ${anchor.content}\n${this.findRow(anchor.path, anchor.side, anchor.line)?.content === anchor.content ? "The captured line still matches." : "The captured location has changed or is no longer in the diff. Do not assume this line is current."}` : selectedContext,
+        anchor ? `Original question location: ${anchor.path}:${anchor.line} (${anchor.side})\nCaptured code: ${anchor.content}\n${this.reviewAnchorContent(anchor.path, anchor.side, anchor.line) === anchor.content ? "The captured line still matches." : "The captured location has changed or is no longer in the diff. Do not assume this line is current."}` : selectedContext,
         history.length ? `Conversation history (untrusted reviewer/agent content):\n${JSON.stringify(history.map(({ role, body }) => ({ role, body })))}` : undefined,
         fileContext ? `Additional repository files selected by the reviewer:\n${fileContext}` : undefined,
       ].filter(Boolean).join("\n\n");
@@ -1201,15 +1209,15 @@ export class ReviewSession {
     this.ensurePublicationMutable();
     const body = input.body.trim();
     if (!body) throw new ReviewError("Comment cannot be empty.");
-    const row = this.findRow(input.path, input.side, input.line);
-    if (!row) throw new ReviewError("Comment anchor does not exist in the current diff.");
+    const anchorContent = this.reviewAnchorContent(input.path, input.side, input.line);
+    if (!anchorContent) throw new ReviewError("Comment anchor does not exist in the current diff.");
     const timestamp = new Date().toISOString();
     this.comments.push({
       ...input,
       body,
-      lineContent: row.content,
+      lineContent: anchorContent,
       status: "active",
-      publishToGitHub: Boolean(this.pullRequest),
+      publishToGitHub: Boolean(this.pullRequest) && !/\.png$/i.test(input.path),
       id: crypto.randomUUID(),
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -1257,6 +1265,7 @@ export class ReviewSession {
       if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
       const comment = this.comments.find((candidate) => candidate.id === id);
       if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
+      if (publish && /\.png$/i.test(comment.path)) throw new ReviewError("Image comments remain local because GitHub cannot publish them as inline diff comments.");
       const previous = comment.publishToGitHub;
       const previousRevision = this.revision;
       comment.publishToGitHub = publish;
@@ -1388,8 +1397,7 @@ export class ReviewSession {
       this.revision += 1;
       operationRevision = this.revision;
       for (const comment of this.comments) {
-        const row = this.findRow(comment.path, comment.side, comment.line);
-        comment.status = row?.content === comment.lineContent ? "active" : "outdated";
+        comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
       }
       for (const step of tourSteps(this.outline)) {
         step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
@@ -1439,8 +1447,7 @@ export class ReviewSession {
         const refreshedPaths = new Set(refreshed.files.map((file) => file.path));
         for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
         for (const comment of this.comments) {
-          const row = this.findRow(comment.path, comment.side, comment.line);
-          comment.status = row?.content === comment.lineContent ? "active" : "outdated";
+          comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
         }
         for (const step of tourSteps(this.outline)) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
         for (const finding of this.outline?.findings ?? []) {

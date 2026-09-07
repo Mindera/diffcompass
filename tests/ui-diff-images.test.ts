@@ -21,8 +21,15 @@ test("PNG diff markup labels both sides, supports missing sides, and omits text 
   const h = harness();
   expect(h.renderPngDiff(file)).toContain('data-diff-image-side="old"');
   expect(h.renderPngDiff(file)).toContain('<figcaption>After</figcaption>');
-  expect(h.renderPngDiff({ ...file, oldPath: null, status: "added" })).not.toContain('data-diff-image-side="old"');
-  expect(h.renderPngDiff({ ...file, newPath: null, status: "deleted" })).not.toContain('data-diff-image-side="new"');
+  const added = h.renderPngDiff({ ...file, oldPath: null, status: "added" });
+  expect(added).not.toContain('data-diff-image-side="old"');
+  expect(added).toContain("<figcaption>Added</figcaption>");
+  const deleted = h.renderPngDiff({ ...file, newPath: null, status: "deleted" });
+  expect(deleted).not.toContain('data-diff-image-side="new"');
+  expect(deleted).toContain("<figcaption>Removed</figcaption>");
+  expect(added).toContain('data-image-tool="comment"');
+  expect(added).toContain('data-image-tool="ask"');
+  expect(added).toContain('data-content="[PNG image · new]"');
   const html = h.renderDiffFileHeader(file, false);
   expect(html).toContain("PNG image");
   expect(html).toContain("Mark reviewed");

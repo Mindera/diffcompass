@@ -122,10 +122,35 @@ function findingSummary(finding) {
   return compactText(finding.message, 220);
 }
 
-function renderInlineMarkdown(value) {
-  return escapeHtml(value)
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+function renderInlineChangeText(value, ranges = [], baseOffset = 0) {
+  let html = "";
+  let inChange = false;
+  let offset = 0;
+  for (const character of String(value)) {
+    const sourceOffset = baseOffset + offset;
+    const changed = ranges.some(([start, end]) => start <= sourceOffset && sourceOffset < end);
+    if (changed !== inChange) html += changed ? '<span class="inline-change">' : "</span>";
+    inChange = changed;
+    html += escapeHtml(character);
+    offset += character.length;
+  }
+  if (inChange) html += "</span>";
+  return html;
+}
+
+function renderInlineMarkdown(value, ranges = [], baseOffset = 0) {
+  const text = String(value);
+  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  let html = "";
+  let cursor = 0;
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index;
+    html += renderInlineChangeText(text.slice(cursor, index), ranges, baseOffset + cursor);
+    if (match[1] !== undefined) html += `<code>${renderInlineChangeText(match[1], ranges, baseOffset + index + 1)}</code>`;
+    else html += `<strong>${renderInlineChangeText(match[2], ranges, baseOffset + index + 2)}</strong>`;
+    cursor = index + match[0].length;
+  }
+  return html + renderInlineChangeText(text.slice(cursor), ranges, baseOffset + cursor);
 }
 
 function markdownTableCells(line) {
@@ -175,20 +200,36 @@ function markdownCodeBlock(fence) {
   return `<pre><code${language}>${escapeHtml(fence.lines.join("\n"))}</code></pre>`;
 }
 
-function renderMarkdown(value, headingOffset = 1) {
+function markdownSourceBlock(html, startLine, endLine, source) {
+  if (!source) return html;
+  const changed = [...source.changedLines].some((line) => line >= startLine && line <= endLine);
+  return `<section class="markdown-source-block${changed ? ` ${source.side === "old" ? "deletion" : "addition"}` : ""}" data-markdown-path="${escapeHtml(source.path)}" data-markdown-side="${source.side}" data-source-start="${startLine}" data-source-end="${endLine}">${html}</section>`;
+}
+
+function markdownInlineSource(value, line, source, sourceLine) {
+  if (!source) return renderInlineMarkdown(value);
+  const offset = sourceLine.indexOf(value);
+  return renderInlineMarkdown(value, source.changedRanges.get(line) ?? [], Math.max(0, offset));
+}
+
+function renderMarkdown(value, headingOffset = 1, source = null) {
   const output = [];
   let listType = null;
+  let listItems = [];
+  let listStart = null;
   let fence = null;
   const closeList = () => {
-    if (listType) output.push(`</${listType}>`);
+    if (listType) output.push(markdownSourceBlock(`<${listType}>${listItems.map((item) => item.html).join("")}</${listType}>`, listStart, listItems.at(-1)?.line ?? listStart, source));
     listType = null;
+    listItems = [];
+    listStart = null;
   };
   const lines = String(value).split("\n");
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (fence) {
       if (markdownFenceEnd(line, fence)) {
-        output.push(markdownCodeBlock(fence));
+        output.push(markdownSourceBlock(markdownCodeBlock(fence), fence.startLine, index + 1, source));
         fence = null;
       } else {
         fence.lines.push(line);
@@ -198,30 +239,31 @@ function renderMarkdown(value, headingOffset = 1) {
     const fenceStart = markdownFenceStart(line);
     if (fenceStart) {
       closeList();
-      fence = fenceStart;
+      fence = { ...fenceStart, startLine: index + 1 };
       continue;
     }
     const headers = markdownTableCells(line);
     const alignments = headers && markdownTableAlignments(lines[index + 1] ?? "", headers.length);
     if (headers && alignments) {
       closeList();
+      const startLine = index + 1;
       const tableRows = [];
       index += 2;
       while (index < lines.length) {
         const cells = markdownTableCells(lines[index]);
         if (!cells) break;
-        tableRows.push(headers.map((_header, cellIndex) => cells[cellIndex] ?? ""));
+        tableRows.push({ line: index + 1, sourceLine: lines[index], cells: headers.map((_header, cellIndex) => cells[cellIndex] ?? "") });
         index += 1;
       }
       index -= 1;
-      output.push(`<div class="markdown-table-wrap"><table><thead><tr>${headers.map((header, cellIndex) => `<th class="align-${alignments[cellIndex]}">${renderInlineMarkdown(header)}</th>`).join("")}</tr></thead><tbody>${tableRows.map((cells) => `<tr>${cells.map((cell, cellIndex) => `<td class="align-${alignments[cellIndex]}">${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      output.push(markdownSourceBlock(`<div class="markdown-table-wrap"><table><thead><tr>${headers.map((header, cellIndex) => `<th class="align-${alignments[cellIndex]}">${markdownInlineSource(header, startLine, source, line)}</th>`).join("")}</tr></thead><tbody>${tableRows.map((row) => `<tr>${row.cells.map((cell, cellIndex) => `<td class="align-${alignments[cellIndex]}">${markdownInlineSource(cell, row.line, source, row.sourceLine)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`, startLine, index + 1, source));
       continue;
     }
     const heading = /^\s*(#{1,6})\s+(.+?)\s*$/.exec(line);
     if (heading) {
       closeList();
       const level = Math.min(6, heading[1].length + headingOffset);
-      output.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      output.push(markdownSourceBlock(`<h${level}>${markdownInlineSource(heading[2], index + 1, source, line)}</h${level}>`, index + 1, index + 1, source));
       continue;
     }
     const item = /^\s*([-*]|\d+[.)])\s+(.+)$/.exec(line);
@@ -229,17 +271,17 @@ function renderMarkdown(value, headingOffset = 1) {
       const nextListType = /^\d/.test(item[1]) ? "ol" : "ul";
       if (listType !== nextListType) {
         closeList();
-        output.push(`<${nextListType}>`);
         listType = nextListType;
+        listStart = index + 1;
       }
-      output.push(`<li>${renderInlineMarkdown(item[2])}</li>`);
+      listItems.push({ line: index + 1, html: `<li>${markdownInlineSource(item[2], index + 1, source, line)}</li>` });
       continue;
     }
     closeList();
-    if (line.trim()) output.push(`<p>${renderInlineMarkdown(line)}</p>`);
+    if (line.trim()) output.push(markdownSourceBlock(`<p>${markdownInlineSource(line, index + 1, source, line)}</p>`, index + 1, index + 1, source));
   }
   closeList();
-  if (fence) output.push(markdownCodeBlock(fence));
+  if (fence) output.push(markdownSourceBlock(markdownCodeBlock(fence), fence.startLine, lines.length, source));
   return output.join("");
 }
 
@@ -1058,9 +1100,32 @@ function isMarkdownFile(file) {
   return /\.md$/i.test(file.path);
 }
 
+function markdownSides(file) {
+  return [file.oldPath ? ["old", "Before"] : null, file.newPath ? ["new", "After"] : null].filter(Boolean);
+}
+
+function markdownChangedLines(file, side) {
+  const kind = side === "old" ? "deletion" : "addition";
+  const key = side === "old" ? "oldLine" : "newLine";
+  return new Set(file.hunks.flatMap((hunk) => hunk.rows.filter((row) => row.kind === kind && row[key] !== null).map((row) => row[key])));
+}
+
+function markdownChangedRanges(file, side) {
+  const kind = side === "old" ? "deletion" : "addition";
+  const key = side === "old" ? "oldLine" : "newLine";
+  const ranges = new Map();
+  for (const hunk of file.hunks) {
+    const inlineChanges = inlineChangesForRows(hunk.rows);
+    for (const row of hunk.rows) {
+      if (row.kind === kind && row[key] !== null) ranges.set(row[key], inlineChanges.get(row) ?? []);
+    }
+  }
+  return ranges;
+}
+
 function renderMarkdownDiff(file) {
-  const side = file.newPath ? "new" : "old";
-  return `<article class="markdown-preview rendered-markdown" data-markdown-path="${escapeHtml(file.path)}" data-markdown-side="${side}"><p class="muted">Loading Markdown preview…</p></article>`;
+  const sides = markdownSides(file);
+  return `<div class="markdown-diff${sides.length === 1 ? " single" : ""}">${sides.map(([side, label]) => `<section class="markdown-diff-side ${side}"><header>${label}</header><article class="markdown-preview rendered-markdown" data-markdown-path="${escapeHtml(file.path)}" data-markdown-side="${side}"><p class="muted">Loading Markdown preview…</p></article></section>`).join("")}</div>`;
 }
 
 async function hydrateMarkdownPreviews(files) {
@@ -1068,32 +1133,36 @@ async function hydrateMarkdownPreviews(files) {
   const revision = state.session.revision;
   const previews = files.filter((file) => isMarkdownFile(file) && state.markdownPreviewPaths.has(file.path));
   for (const file of previews) {
-    const side = file.newPath ? "new" : "old";
-    const target = elements.diff.querySelector(`[data-markdown-path="${CSS.escape(file.path)}"][data-markdown-side="${side}"]`);
-    if (!target) continue;
-    const key = `${revision}:${file.path}:${side}`;
-    try {
-      let content = state.markdownPreviewCache.get(key);
-      if (content === undefined) {
-        const result = await api(`/api/diff/markdown?${new URLSearchParams({ path: file.path, side })}`);
-        if (requestId !== state.markdownPreviewRequestId || !target.isConnected) return;
-        content = result.content;
-        state.markdownPreviewCache.set(key, content);
+    for (const [side] of markdownSides(file)) {
+      const target = elements.diff.querySelector(`[data-markdown-path="${CSS.escape(file.path)}"][data-markdown-side="${side}"]`);
+      if (!target) continue;
+      const key = `${revision}:${file.path}:${side}`;
+      try {
+        let content = state.markdownPreviewCache.get(key);
+        if (content === undefined) {
+          const result = await api(`/api/diff/markdown?${new URLSearchParams({ path: file.path, side })}`);
+          if (requestId !== state.markdownPreviewRequestId || !target.isConnected) return;
+          content = result.content;
+          state.markdownPreviewCache.set(key, content);
+        }
+        target.innerHTML = renderMarkdown(content, 0, { path: file.path, side, changedLines: markdownChangedLines(file, side), changedRanges: markdownChangedRanges(file, side) }) || '<p class="muted">This Markdown file is empty.</p>';
+      } catch (error) {
+        if (requestId === state.markdownPreviewRequestId && target.isConnected) target.innerHTML = `<p class="markdown-preview-error">${escapeHtml(error.message)}</p>`;
       }
-      target.innerHTML = renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>';
-    } catch (error) {
-      if (requestId === state.markdownPreviewRequestId && target.isConnected) target.innerHTML = `<p class="markdown-preview-error">${escapeHtml(error.message)}</p>`;
     }
   }
+  if (requestId === state.markdownPreviewRequestId) renderTourAnnotation();
 }
 
 function renderPngDiff(file) {
   if (state.proposalPreview) return '<p class="image-diff-loading">Image preview is unavailable for this pending suggestion.</p>';
+  const singleLabel = file.status === "added" ? "Added" : file.status === "deleted" ? "Removed" : null;
   const sides = [
-    file.oldPath ? ["old", "Before"] : null,
-    file.newPath ? ["new", "After"] : null,
+    file.oldPath ? ["old", singleLabel ?? "Before"] : null,
+    file.newPath ? ["new", singleLabel ?? "After"] : null,
   ].filter(Boolean);
-  return `<div class="image-diff ${escapeHtml(file.status)}${sides.length === 1 ? " single" : ""}">${sides.map(([side, label]) => `<figure class="image-diff-side ${side}" data-diff-image-path="${escapeHtml(file.path)}" data-diff-image-side="${side}"><div class="image-diff-loading">Loading ${label.toLowerCase()} image…</div><figcaption>${label}</figcaption></figure>`).join("")}</div>`;
+  const askDisabled = !state.session.outline || !reviewIsOpen();
+  return `<div class="image-diff ${escapeHtml(file.status)}${sides.length === 1 ? " single" : ""}">${sides.map(([side, label]) => `<figure class="image-diff-side ${side}" data-diff-image-path="${escapeHtml(file.path)}" data-diff-image-side="${side}" data-path="${escapeHtml(file.path)}" data-side="${side}" data-line="1" data-content="${escapeHtml(`[PNG image · ${side}]`)}"><div class="image-review-actions" role="group" aria-label="Actions for ${escapeHtml(`${file.path}, ${label.toLowerCase()} image`)}"><button type="button" data-image-tool="comment"${reviewIsOpen() ? "" : " disabled"}>Comment</button><button type="button" data-image-tool="ask"${askDisabled ? ' disabled title="Start a tour to ask the agent about this image."' : ""}>Ask agent</button></div><div class="image-diff-loading">Loading ${label.toLowerCase()} image…</div><figcaption>${label}</figcaption></figure>`).join("")}</div>`;
 }
 
 async function hydrateDiffImages(files) {
@@ -1487,9 +1556,14 @@ function renderComments() {
     action?.setAttribute("aria-label", `Review ${row.dataset.path}, ${row.dataset.side} line ${row.dataset.line}`);
     row.removeAttribute("title");
   });
+  document.querySelectorAll(".image-diff-side.has-comment").forEach((image) => {
+    image.classList.remove("has-comment");
+    image.removeAttribute("title");
+  });
   for (const comment of state.session.comments) {
     const selector = `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`;
-    const row = document.querySelector(selector);
+    const imageSelector = `.image-diff-side[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"]`;
+    const row = document.querySelector(selector) ?? (/\.png$/i.test(comment.path) ? document.querySelector(imageSelector) : null);
     if (!row) continue;
     row.classList.add("has-comment");
     row.title = comment.body;
@@ -1506,7 +1580,9 @@ function renderComments() {
       ? `<span>Delete this comment?</span><button type="button" data-inline-comment-action="cancel-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Cancel</button><button class="danger confirm" type="button" data-inline-comment-action="confirm-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`
       : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>`;
     const splitRow = row.closest(".split-row");
-    if (splitRow) {
+    if (row.classList.contains("image-diff-side")) {
+      row.querySelector("figcaption").insertAdjacentElement("beforebegin", inline);
+    } else if (splitRow) {
       const lane = document.createElement("div");
       lane.className = `split-inline-comment ${comment.side}-side`;
       lane.append(inline);
@@ -1520,11 +1596,11 @@ function renderComments() {
   const closed = !reviewIsOpen();
   const disabled = closed ? " disabled" : "";
   elements["comment-list"].innerHTML = state.session.comments.length === 0
-    ? '<p class="comment-empty">Select a changed line, then select it again to add feedback.</p>'
+    ? '<p class="comment-empty">Choose Comment on a changed line or image to add feedback.</p>'
     : state.session.comments.map((comment) => `<article class="comment-item ${escapeHtml(comment.status)}" data-comment-id="${escapeHtml(comment.id)}">
-      <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(comment.path)}:${comment.line}</button><span class="comment-status">${escapeHtml(comment.status)}</span></div>
+      <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(/\.png$/i.test(comment.path) ? `${comment.path} · ${comment.side} image` : `${comment.path}:${comment.line}`)}</button><span class="comment-status">${escapeHtml(comment.status)}</span></div>
       <p>${renderInlineMarkdown(comment.body)}</p>
-      ${state.session.pullRequest ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
+      ${state.session.pullRequest && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
         ${state.deletingCommentId === comment.id
           ? `<span class="delete-confirmation">Delete this comment?</span><button class="text-button" data-action="cancel-delete" type="button">Cancel</button><button class="text-button danger" data-action="confirm-delete" type="button">Delete</button>`
@@ -2069,7 +2145,7 @@ function updateCurrentStepReturnVisibility() {
   }
   const panel = elements["diff-panel"];
   const target = elements.diff.querySelector(".tour-code-note.active")
-    ?? elements.diff.querySelector(".diff-row.tour-anchor");
+    ?? elements.diff.querySelector(".diff-row.tour-anchor, .markdown-source-block.tour-anchor");
   const panelBounds = panel.getBoundingClientRect();
   button.style.right = `${Math.max(12, window.innerWidth - panelBounds.right + 14)}px`;
   button.style.bottom = `${Math.max(12, window.innerHeight - Math.min(window.innerHeight, panelBounds.bottom) + 14)}px`;
@@ -2108,20 +2184,23 @@ function renderTourAnnotation() {
     const { path, side, startLine, endLine } = step.anchor;
     const rows = [...document.querySelectorAll(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"]`)]
       .filter((row) => Number(row.dataset.line) >= startLine && Number(row.dataset.line) <= endLine);
-    if (step.id === activeStep.id && rows.length > 0) {
-      rows.forEach((row) => row.classList.add("tour-anchor"));
-      rows[0].classList.add("tour-anchor-start");
-      rows.at(-1).classList.add("tour-anchor-end");
+    const markdownBlocks = [...document.querySelectorAll(`.markdown-source-block[data-markdown-path="${CSS.escape(path)}"][data-markdown-side="${side}"]`)]
+      .filter((block) => Number(block.dataset.sourceEnd) >= startLine && Number(block.dataset.sourceStart) <= endLine);
+    const anchors = rows.length > 0 ? rows : markdownBlocks;
+    if (step.id === activeStep.id && anchors.length > 0) {
+      anchors.forEach((anchor) => anchor.classList.add("tour-anchor"));
+      anchors[0].classList.add("tour-anchor-start");
+      anchors.at(-1).classList.add("tour-anchor-end");
     }
-    const firstRow = rows[0];
-    if (!firstRow) continue;
+    const firstAnchor = anchors[0];
+    if (!firstAnchor) continue;
     const isCurrent = step.id === activeStep.id;
     const isNext = index === activeStepIndex + 1;
     const note = document.createElement("aside");
     note.className = `tour-code-note${isCurrent ? " active" : isNext ? " next" : ""}`;
     note.setAttribute("aria-label", `${isCurrent ? "Current" : isNext ? "Next" : "Tour"} stop: ${step.title}`);
     note.innerHTML = `<span>${isCurrent ? "Current stop" : isNext ? "Next stop" : `Stop ${index + 1}`}</span><strong>${escapeHtml(compactText(step.title, 100))}</strong><p>${escapeHtml(compactText(step.objective, 180))}</p>`;
-    (firstRow.closest(".split-row") ?? firstRow).insertAdjacentElement("beforebegin", note);
+    (firstAnchor.closest(".split-row") ?? firstAnchor).insertAdjacentElement("beforebegin", note);
   }
 }
 
@@ -2135,6 +2214,7 @@ async function focusCurrentStep() {
   renderTourAnnotation();
   const target = document.querySelector(".tour-code-note.active")
     ?? document.querySelector(`.diff-row[data-path="${CSS.escape(step.anchor.path)}"][data-side="${step.anchor.side}"][data-line="${step.anchor.startLine}"]`)
+    ?? document.querySelector(`.markdown-source-block[data-markdown-path="${CSS.escape(step.anchor.path)}"][data-markdown-side="${step.anchor.side}"][data-source-start="${step.anchor.startLine}"]`)
     ?? document.querySelector(`.diff-file[data-path="${CSS.escape(step.anchor.path)}"]`);
   target?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -2189,13 +2269,20 @@ function openConversation(id = null) {
   renderAgentActivity();
 }
 
+function reviewAnchorLabel(anchor) {
+  return /^\[PNG image · (old|new)\]$/.test(anchor.content)
+    ? `${anchor.path} · ${anchor.side} image`
+    : `${anchor.path}:${anchor.line} (${anchor.side})`;
+}
+
 function renderConversationBadges() {
   elements.diff.querySelectorAll(".conversation-badge").forEach((badge) => badge.remove());
   if (state.proposalPreview) return;
   for (const thread of conversationThreads()) {
     const anchor = thread.root.anchor;
     if (!anchor) continue;
-    const row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"][data-line="${anchor.line}"]`);
+    const row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"][data-line="${anchor.line}"]`)
+      ?? elements.diff.querySelector(`.image-diff-side[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"]`);
     // Never attach an old conversation to different code at the same line.
     if (!row || row.dataset.content !== anchor.content) continue;
     const badge = document.createElement("button");
@@ -2205,7 +2292,7 @@ function renderConversationBadges() {
     badge.title = compactText(thread.root.body, 160);
     badge.setAttribute("aria-label", `Open conversation: ${compactText(thread.root.body, 100)}`);
     badge.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h14v10H8l-5 4V3Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
-    row.querySelector(".finding-markers")?.append(badge);
+    (row.querySelector(".finding-markers") ?? row.querySelector(".image-review-actions"))?.append(badge);
   }
 }
 
@@ -2218,15 +2305,15 @@ function renderMessages() {
     .join("");
   if (elements["chat-messages"].innerHTML !== content) elements["chat-messages"].innerHTML = content;
   const anchor = thread?.root.anchor;
-  elements["conversation-context"].textContent = anchor ? `Conversation at ${anchor.path}:${anchor.line} (${anchor.side}). Location captured when asked; later edits may move it.` : thread ? "Review conversation" : "Ask a question here, or choose Ask agent on a code line.";
+  elements["conversation-context"].textContent = anchor ? `Conversation at ${reviewAnchorLabel(anchor)}. Location captured when asked; later edits may move it.` : thread ? "Review conversation" : "Ask a question here, or choose Ask agent on a changed line or image.";
   const options = '<option value="">New question</option>' + threads.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 80))}</option>`).join("");
   if (elements["conversation-select"].innerHTML !== options) elements["conversation-select"].innerHTML = options;
   elements["conversation-select"].value = state.activeThreadId ?? "";
-  elements["conversation-list"].innerHTML = threads.length ? threads.map((item) => `<article class="conversation-card"><button type="button" class="conversation-title" data-conversation="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 180))}</button><p class="muted">${item.root.anchor ? escapeHtml(`${item.root.anchor.path}:${item.root.anchor.line} (${item.root.anchor.side})`) : "Review question"} · ${item.messages.length} messages</p>${item.root.anchor ? `<button type="button" class="text-button" data-conversation-code="${escapeHtml(item.id)}">Show code</button>` : ""}</article>`).join("") : '<p class="empty">No conversations yet. Ask a question from a code line or the Questions pane.</p>';
+  elements["conversation-list"].innerHTML = threads.length ? threads.map((item) => `<article class="conversation-card"><button type="button" class="conversation-title" data-conversation="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 180))}</button><p class="muted">${item.root.anchor ? escapeHtml(reviewAnchorLabel(item.root.anchor)) : "Review question"} · ${item.messages.length} messages</p>${item.root.anchor ? `<button type="button" class="text-button" data-conversation-code="${escapeHtml(item.id)}">Show context</button>` : ""}</article>`).join("") : '<p class="empty">No conversations yet. Ask a question from a changed line, image, or the Questions pane.</p>';
   const starting = !thread && !state.questionPending;
   elements["selection-pill"].classList.toggle("hidden", !starting || !state.selectedLine);
   elements["selection-pill"].innerHTML = starting && state.selectedLine
-    ? `<span>${escapeHtml(`${state.selectedLine.path}:${state.selectedLine.line} selected`)}</span><button type="button" data-remove-line-context aria-label="Remove selected line from question context">×</button>`
+    ? `<span>${escapeHtml(`${reviewAnchorLabel(state.selectedLine)} selected`)}</span><button type="button" data-remove-line-context aria-label="Remove selected context from question">×</button>`
     : "";
   elements["question-file-context"].innerHTML = starting ? [...state.questionContextPaths].map((path) => `<span class="question-context-chip"><span>${escapeHtml(path)}</span><button type="button" data-remove-question-file="${escapeHtml(path)}" aria-label="Remove ${escapeHtml(path)} from question context">×</button></span>`).join("") : "";
   elements["add-question-files"].classList.toggle("hidden", !starting);
@@ -2800,17 +2887,20 @@ async function downloadExport(format, options = {}) {
 }
 
 function selectLine(row) {
-  document.querySelectorAll(".diff-row.selected").forEach((item) => item.classList.remove("selected"));
-  document.querySelectorAll(".line-tools button").forEach((button) => { button.tabIndex = -1; });
+  document.querySelectorAll(".diff-row.selected, .image-diff-side.selected").forEach((item) => item.classList.remove("selected"));
+  document.querySelectorAll(".line-tools button, .image-review-actions button").forEach((button) => { button.tabIndex = -1; });
   row.classList.add("selected");
-  row.querySelectorAll(".line-tools button:not(:disabled)").forEach((button) => { button.tabIndex = 0; });
+  row.querySelectorAll(".line-tools button:not(:disabled), .image-review-actions button:not(:disabled)").forEach((button) => { button.tabIndex = 0; });
   state.selectedLine = {
     path: row.dataset.path,
     side: row.dataset.side,
     line: Number(row.dataset.line),
     content: row.dataset.content,
   };
-  elements["selection-pill"].textContent = `${state.selectedLine.path}:${state.selectedLine.line} selected · edit, comment, or ask the agent`;
+  const image = row.classList.contains("image-diff-side");
+  elements["selection-pill"].textContent = image
+    ? `${state.selectedLine.path} (${state.selectedLine.side} image) selected · comment or ask the agent`
+    : `${state.selectedLine.path}:${state.selectedLine.line} selected · edit, comment, or ask the agent`;
   elements["selection-pill"].classList.remove("hidden");
 }
 
@@ -2836,7 +2926,9 @@ function openLineComment(row) {
 function askAboutLine(row) {
   openConversation(null);
   selectLine(row);
-  elements["chat-input"].placeholder = `Ask about ${row.dataset.path}:${row.dataset.line}…`;
+  elements["chat-input"].placeholder = row.classList.contains("image-diff-side")
+    ? `Ask about the ${row.dataset.side} image in ${row.dataset.path}…`
+    : `Ask about ${row.dataset.path}:${row.dataset.line}…`;
   elements["chat-input"].focus({ preventScroll: true });
   elements["chat-input"].scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -2916,11 +3008,15 @@ function openInlineCommentEditor(row, target, comment) {
   form.dataset.commentSide = target.side;
   form.dataset.commentLine = String(target.line);
   if (comment) form.dataset.commentId = comment.id;
-  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? "Edit review comment" : "New review comment"}</span><strong>${escapeHtml(`${target.path}:${target.line}`)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
+  const image = row.classList.contains("image-diff-side");
+  const location = image ? `${target.path} · ${target.side} image` : `${target.path}:${target.line}`;
+  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? "Edit review comment" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
     <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? "")}</textarea>
     <footer><span>Markdown is supported.</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;
   const splitRow = row.closest(".split-row");
-  if (splitRow) {
+  if (image) {
+    row.querySelector("figcaption").insertAdjacentElement("beforebegin", form);
+  } else if (splitRow) {
     const lane = document.createElement("div");
     lane.className = `inline-comment-editor-lane ${target.side}-side`;
     lane.append(form);
@@ -2935,12 +3031,15 @@ function openInlineCommentEditor(row, target, comment) {
 }
 
 async function openCommentEditor(comment) {
-  let row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`);
+  const selector = /\.png$/i.test(comment.path)
+    ? `.image-diff-side[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"]`
+    : `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`;
+  let row = elements.diff.querySelector(selector);
   if (!row) {
     await showChangedFile(comment.path, comment.line, comment.side);
-    row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`);
+    row = elements.diff.querySelector(selector);
   }
-  if (!row) return toast("That comment's line is no longer visible in the current diff.", { tone: "warning", duration: 6_000 });
+  if (!row) return toast("That comment's location is no longer visible in the current diff.", { tone: "warning", duration: 6_000 });
   openInlineCommentEditor(row, lineTarget(row), comment);
 }
 
@@ -3794,6 +3893,14 @@ elements.diff.addEventListener("click", (event) => {
     if (lineTool.dataset.lineTool === "edit") openInlineEdit(toolRow);
     else if (lineTool.dataset.lineTool === "comment") openLineComment(toolRow);
     else askAboutLine(toolRow);
+    return;
+  }
+  const imageTool = event.target.closest("[data-image-tool]");
+  if (imageTool) {
+    const image = imageTool.closest(".image-diff-side");
+    if (!image || imageTool.disabled) return;
+    if (imageTool.dataset.imageTool === "comment") openLineComment(image);
+    else askAboutLine(image);
     return;
   }
   if (!reviewIsOpen()) return;

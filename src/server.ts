@@ -200,16 +200,22 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         if (input.diffWrap !== undefined && input.diffWrap !== "scroll" && input.diffWrap !== "wrap") throw new HttpError(422, "diffWrap must be scroll or wrap.");
         if (format === "html" && input.prepareMissingSteps === true) await session.prepareTourForExport();
         const highlightedGroups = format === "html" ? await highlightGroups(htmlHighlightGroups(session), "review-tour") : undefined;
-        const markdownPreviews = format === "html" ? (await Promise.all(session.comparison.files
-          .filter((file) => /\.md$/i.test(file.path))
-          .map(async (file) => {
-            const side = file.newPath ? "new" as const : "old" as const;
-            try {
-              return { path: file.path, side, content: await session.diffText(file.path, side) };
-            } catch {
-              return undefined;
-            }
-          }))).filter((preview): preview is NonNullable<typeof preview> => preview !== undefined) : undefined;
+        const markdownPreviews = format === "html"
+          ? (await Promise.all(session.comparison.files
+            .filter((file) => /\.md$/i.test(file.path))
+            .flatMap((file) => {
+              const sides: Array<"old" | "new"> = [];
+              if (file.oldPath) sides.push("old");
+              if (file.newPath) sides.push("new");
+              return sides.map(async (side) => {
+                try {
+                  return { path: file.path, side, content: await session.diffText(file.path, side) };
+                } catch {
+                  return undefined;
+                }
+              });
+            }))).filter((preview): preview is NonNullable<typeof preview> => preview !== undefined)
+          : undefined;
         const artifact = exportReview(session, format, {
           includeFindings: input.includeFindings !== false,
           includeCallFlows: input.includeCallFlows !== false,

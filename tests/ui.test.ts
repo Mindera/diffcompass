@@ -136,8 +136,9 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(app).toContain('note.className = `tour-code-note${isCurrent ? " active" : isNext ? " next" : ""}`');
   expect(app).toContain('isNext ? "Next stop"');
   expect(app).toContain("compactText(step.objective, 180)");
-  expect(app).toContain('rows[0].classList.add("tour-anchor-start")');
-  expect(app).toContain('rows.at(-1).classList.add("tour-anchor-end")');
+  expect(app).toContain('anchors[0].classList.add("tour-anchor-start")');
+  expect(app).toContain('anchors.at(-1).classList.add("tour-anchor-end")');
+  expect(app).toContain("const anchors = rows.length > 0 ? rows : markdownBlocks");
   expect(styles).toContain(".diff-row.tour-anchor-start");
   expect(styles).toContain(".tour-code-note.next {");
   expect(app).toContain("const phase = currentPhase()");
@@ -361,7 +362,7 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(app).toContain("pullRequestDescription(pullRequest.body)");
   expect(app).toContain('data-pr-description-mode="rendered"');
   expect(app).toContain('data-pr-description-mode="source"');
-  expect(app).toContain('output.push(`<h${level}>');
+  expect(app).toContain('markdownSourceBlock(`<h${level}>');
   expect(app).toContain('const nextListType = /^\\d/.test(item[1]) ? "ol" : "ul"');
   expect(app).toContain('elements["review-overview-title"].textContent = outline.title');
   expect(app).toContain('label: `${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`');
