@@ -1974,6 +1974,7 @@ function renderTourIntro() {
   renderTourAttention();
   elements["tour-intro-architecture-section"].classList.toggle("hidden", architectures.length === 0);
   elements["tour-intro-architecture"].innerHTML = `${architectureLegend()}${architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("")}`;
+  elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0;
 }
 
 function maybeShowTourIntro() {
@@ -1981,6 +1982,7 @@ function maybeShowTourIntro() {
   renderTourIntro();
   state.tourIntroShown = true;
   elements["tour-intro-dialog"].showModal();
+  window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
 }
 
 function renderArchitecture() {

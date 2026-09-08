@@ -470,6 +470,7 @@ test("the pre-tour briefing is evidence-labelled, linked, responsive, and export
   expect(html).toContain('id="tour-intro-estimate-factors"');
   expect(html.indexOf('id="tour-intro-architecture-section"')).toBeLessThan(html.indexOf('id="tour-intro-attention"'));
   expect(app).toContain("function renderTourAttention()");
+  expect(app).toContain('querySelector(".tour-intro-scroll").scrollTop = 0');
   expect(app).toContain("Bounded heuristic");
   expect(app).toContain('data-attention-kind');
   expect(app).toContain("review cue");
