@@ -382,6 +382,8 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(app).toContain('data-tooltip="${escapeHtml(summary)}"');
   expect(app).toContain("evidence.open = true");
   expect(app).toContain('const findingDispositionLabels = {');
+  expect(app).toContain('accepted: "Risk accepted"');
+  expect(app).toContain('fixed: "Fixed (verified)"');
   expect(app).toContain('"false-positive": "False positive"');
   expect(app).toContain('data-finding-disposition');
   expect(app).toContain('data-finding-note');

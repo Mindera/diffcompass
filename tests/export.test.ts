@@ -101,6 +101,64 @@ test("exports finding dispositions and reviewer notes in Markdown and self-conta
   expect(html.content).toContain("The surrounding validation makes this safe.");
 });
 
+test("exports accepted findings as risk accepted", () => {
+  const session = fixture();
+  session.outline!.findings = [{
+    id: "finding",
+    phaseId: "behavior",
+    stepId: "one",
+    path: "app.ts",
+    side: "new",
+    line: 2,
+    lineContent: "const changed = 2;",
+    message: "Validate the changed value.",
+    category: "correctness",
+    severity: "medium",
+    confidence: "high",
+    evidence: "The new branch has no guard.",
+    priority: "P2",
+    introduced: true,
+    recallGuard: false,
+    blastRadiusSize: 1,
+    tested: false,
+    pinScope: "line",
+    status: "accepted",
+    disposition: "accepted",
+  }];
+
+  expect(exportReview(session, "markdown").content).toContain("disposition: Risk accepted");
+  expect(exportReview(session, "html").content).toContain("Disposition: Risk accepted");
+});
+
+test("exports fixed findings as fixed verified", () => {
+  const session = fixture();
+  session.outline!.findings = [{
+    id: "finding",
+    phaseId: "behavior",
+    stepId: "one",
+    path: "app.ts",
+    side: "new",
+    line: 2,
+    lineContent: "const changed = 2;",
+    message: "Validate the changed value.",
+    category: "correctness",
+    severity: "medium",
+    confidence: "high",
+    evidence: "The new branch has no guard.",
+    priority: "P2",
+    introduced: true,
+    recallGuard: false,
+    blastRadiusSize: 1,
+    tested: false,
+    pinScope: "line",
+    status: "fixed",
+    disposition: "fixed",
+  }];
+
+  expect(exportReview(session, "markdown").content).toContain("disposition: Fixed (verified)");
+  expect(exportReview(session, "html").content).toContain("Disposition: Fixed (verified)");
+});
+
 test("HTML export is a self-contained interactive copy of the review tour", () => {
   const artifact = exportReview(fixture(), "html");
   expect(artifact).toMatchObject({ contentType: "text/html; charset=utf-8", extension: "html" });

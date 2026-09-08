@@ -127,11 +127,11 @@ function findingSummary(finding) {
 }
 
 const findingDispositionLabels = {
-  accepted: "Accepted",
+  accepted: "Risk accepted",
   "false-positive": "False positive",
   intentional: "Intentional",
   deferred: "Deferred",
-  fixed: "Fixed",
+  fixed: "Fixed (verified)",
   "obsolete-after-refresh": "Obsolete after refresh",
 };
 
