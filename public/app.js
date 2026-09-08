@@ -1960,7 +1960,7 @@ function renderTourAttention() {
   elements["tour-intro-attention"].classList.toggle("hidden", signals.length === 0);
   elements["tour-intro-attention-list"].innerHTML = signals.map((signal) => `<article class="tour-intro-attention-item ${signal.kind}" role="listitem"><div class="tour-intro-attention-heading"><strong>${escapeHtml(signal.title)}</strong><span class="attention-basis">${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</span></div><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details><button type="button" class="text-button" ${attentionSignalTarget(signal.target)}>${escapeHtml(attentionTargetLabel(signal.target))}</button></article>`).join("");
   const estimate = briefing?.estimate;
-  elements["tour-intro-estimate-summary"].textContent = estimate ? `About ${estimate.minutes} minutes, based on the visible factors below. This is a planning aid, not a score.` : "Estimate unavailable.";
+  elements["tour-intro-estimate-summary"].textContent = estimate ? `About ${estimate.minutes} minutes for a first pass, based on the visible diff and review signals. It is a rough planning aid, not a risk score or quality rating.` : "Estimate unavailable.";
   elements["tour-intro-estimate-factors"].innerHTML = (estimate?.factors ?? []).map((factor) => `<div class="tour-intro-estimate-factor"><span>${escapeHtml(factor.label)}</span><strong>+${factor.minutes} min</strong><small>${escapeHtml(factor.detail)} · ${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"}</small></div>`).join("");
 }
 

@@ -55,7 +55,7 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   const artifact = exportReview(fixture(), "markdown");
   expect(artifact).toMatchObject({ contentType: "text/markdown; charset=utf-8", extension: "md" });
   expect(artifact.content).toContain("## Tour");
-  expect(artifact.content).toContain("## Review-time estimate");
+  expect(artifact.content).toContain("## First-pass review time");
   expect(artifact.content).toContain("## Architecture");
   expect(artifact.content).toContain("### Proposed behaviour: Behavior");
   expect(artifact.content).toContain("### Implementation journey: Components");
@@ -171,7 +171,7 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain("&lt;script&gt;comment()");
   expect(artifact.content).toContain("&lt;/style&gt;&lt;script&gt;alert(1)");
   expect(artifact.content).toContain('<main class="workspace">');
-  expect(artifact.content).toContain("Reasoned review-time estimate");
+  expect(artifact.content).toContain("How much time might this review take?");
   expect(artifact.content).toContain("Bounded heuristic");
   expect(artifact.content).toContain('<aside class="file-panel">');
   expect(artifact.content).toContain('<aside class="agent-panel">');
