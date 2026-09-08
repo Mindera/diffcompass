@@ -74,6 +74,52 @@ test("image comments and questions use a stable image-level anchor", async () =>
   } finally { await session.dispose(); }
 });
 
+test("range and stop discussions retain exact anchors, scope prompts, and reject invalid client anchors", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const context = "const base = 1;\nconst changed = 2;";
+    const range = await session.addComment({
+      scope: "range",
+      path: "app.ts",
+      side: "new",
+      line: 1,
+      endLine: 2,
+      selectedText: "const changed = 2;",
+      context,
+      body: "These two lines establish the new value.",
+    });
+    expect(range.comments[0]).toMatchObject({ scope: "range", path: "app.ts", side: "new", line: 1, endLine: 2, selectedText: "const changed = 2;", context, publishToGitHub: false });
+
+    const stop = await session.addComment({ scope: "stop", stepId: "first-step", body: "Remember this behavior at the first stop." });
+    expect(stop.comments[1]).toMatchObject({ scope: "stop", stepId: "first-step", path: "app.ts", side: "new", line: 2, endLine: 2, context: "const changed = 2;", publishToGitHub: false });
+    expect((await loadPersistedSession(stateFile)).comments).toEqual(stop.comments);
+
+    await expect(session.addComment({ scope: "range", path: "../outside.ts", side: "new", line: 1, endLine: 1, selectedText: "x", body: "bad" })).rejects.toThrow("changed file");
+    await expect(session.addComment({ scope: "range", path: "app.ts", side: "new", line: 2, endLine: 4, selectedText: "const changed = 2;", body: "bad" })).rejects.toThrow("consecutive");
+    await expect(session.addComment({ scope: "range", path: "app.ts", side: "new", line: 1, endLine: 2, selectedText: "not present", context, body: "bad" })).rejects.toThrow("Selected quotation");
+    await expect(session.addComment({ scope: "stop", stepId: "missing-stop", body: "bad" })).rejects.toThrow("does not exist");
+
+    const asking = session.ask("Why is this selected range important?", undefined, {
+      anchor: { path: "app.ts", side: "new", line: 1, endLine: 2, content: "const base = 1;", selectedText: "const changed = 2;", context },
+    });
+    const [prompt] = await session.bridge!.eventsAfter(7, 1_000);
+    if (!prompt || prompt.type !== "agent.prompt") throw new Error("Expected scoped question");
+    expect(prompt.prompt).toContain("Discussion scope: Current tour stop Second step [second-step]");
+    expect(prompt.prompt).toContain("Exact selected quotation:\nconst changed = 2;");
+    expect(prompt.prompt).toContain("Exact selected context:\nconst base = 1;\nconst changed = 2;");
+    await session.bridge!.respond(prompt.id, "The selected range introduces the value used by the next stop.");
+    await session.bridge!.ack(prompt.id);
+    const answered = await asking;
+    expect(answered.messages[0]?.anchor).toEqual({ path: "app.ts", side: "new", line: 1, endLine: 2, content: "const base = 1;", selectedText: "const changed = 2;", context });
+
+    await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changed = 3;\n");
+    const refreshed = await session.refreshComparison();
+    expect(refreshed.comments[0]?.status).toBe("outdated");
+  } finally { await session.dispose(); }
+});
+
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });

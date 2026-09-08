@@ -215,6 +215,15 @@ export interface ReviewComment {
   path: string;
   side: "old" | "new";
   line: number;
+  /** The discussion scope. Missing means the legacy line-level scope. */
+  scope?: "line" | "range" | "stop";
+  endLine?: number;
+  /** Exact reviewer-selected quotation, when a range was selected. */
+  selectedText?: string;
+  /** Exact complete diff-row context used to validate the quotation. */
+  context?: string;
+  /** Stable tour stop id for stop-level discussions. */
+  stepId?: string;
   body: string;
   lineContent: string;
   status: "active" | "outdated";
@@ -356,7 +365,17 @@ export interface ChatMessage {
   /** Root user message ID; independent of the currently selected tour step. */
   threadId?: string;
   /** Captured source, retained even if the reviewed code later changes. */
-  anchor?: { path: string; side: "old" | "new"; line: number; content: string };
+  anchor?: {
+    path: string;
+    side: "old" | "new";
+    line: number;
+    content: string;
+    endLine?: number;
+    /** Exact reviewer-selected quotation, when a range was selected. */
+    selectedText?: string;
+    /** Exact complete diff-row context used to validate the quotation. */
+    context?: string;
+  };
   /** Extra repository files explicitly added when this conversation started. */
   contextPaths?: string[];
   createdAt: string;

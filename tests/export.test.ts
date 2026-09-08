@@ -315,3 +315,21 @@ test("HTML export can omit findings, call flows, and diagrams", () => {
   expect(artifact.content).toContain("Reviewer feedback");
   expect(artifact.content).toContain('class="tour-step" data-step="0"');
 });
+
+test("exports preserve range, stop, and question anchors", () => {
+  const session = fixture() as unknown as { comments: unknown[]; messages: unknown[] };
+  session.comments.push({ id: "range", path: "app.ts", side: "new", line: 1, endLine: 2, scope: "range", selectedText: "const fence = ```;", context: "const fence = ```;\nconst payload = 'safe';", body: "Review both lines.", lineContent: "const fence = ```;", status: "active", createdAt: "now", updatedAt: "now" });
+  session.comments.push({ id: "stop", path: "app.ts", side: "new", line: 1, endLine: 1, scope: "stop", stepId: "one", context: "const fence = ```;", body: "This stop matters.", lineContent: "const fence = ```;", status: "active", createdAt: "now", updatedAt: "now" });
+  session.messages = [
+    { id: "question", role: "user", threadId: "question", stepId: "one", body: "Why this range?", anchor: { path: "app.ts", side: "new", line: 1, endLine: 2, content: "const fence = ```;", selectedText: "const fence = ```;", context: "const fence = ```;\nconst payload = 'safe';", }, createdAt: "now" },
+    { id: "answer", role: "agent", threadId: "question", stepId: "one", body: "It establishes the payload.", createdAt: "now" },
+  ];
+  const markdownArtifact = exportReview(session as unknown as ReviewSession, "markdown");
+  expect(markdownArtifact.content).toContain("Selected quotation:");
+  expect(markdownArtifact.content).toContain("## Questions");
+  expect(markdownArtifact.content).toContain("Tour stop: Step");
+  const htmlArtifact = exportReview(session as unknown as ReviewSession, "html");
+  expect(htmlArtifact.content).toContain("Selected range");
+  expect(htmlArtifact.content).toContain("Tour stop: Step");
+  expect(htmlArtifact.content).toContain('data-view-panel="questions"');
+});

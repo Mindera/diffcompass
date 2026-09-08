@@ -19,6 +19,20 @@ import { revisionSummary } from "./revision.ts";
 import { diffPreferenceStoreDirectory, loadGlobalBriefingPreferences, loadGlobalDiffPreferences, restoreGlobalBriefingPreferences, restoreGlobalDiffPreferences, updateGlobalBriefingPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
 import { buildNeedsAttention } from "./attention.ts";
 
+type DiscussionScope = "line" | "range" | "stop";
+
+interface AddCommentInput {
+  scope?: DiscussionScope;
+  path?: string;
+  side?: "old" | "new";
+  line?: number;
+  endLine?: number;
+  selectedText?: string;
+  context?: string;
+  stepId?: string;
+  body: string;
+}
+
 interface AgentDefaults {
   adapterId?: string;
   modelId?: string;
@@ -348,6 +362,48 @@ export class ReviewSession {
       const outdated = row?.content !== finding.lineContent;
       finding.outdated = outdated;
     }
+  }
+
+  private discussionRange(path: string, side: "old" | "new", startLine: number, endLine = startLine): { lineContent: string; context: string } {
+    if (!this.comparison.files.some((file) => file.path === path)) {
+      throw new ReviewError("Discussion anchor path must reference a changed file in this comparison.");
+    }
+    if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine) {
+      throw new ReviewError("Discussion anchor lines must be positive and ordered.");
+    }
+    if (endLine - startLine > 99) throw new ReviewError("Discussion ranges cannot exceed 100 lines.");
+    const file = this.comparison.files.find((candidate) => candidate.path === path);
+    const imageExists = side === "old" ? file?.oldPath : file?.newPath;
+    if (file && /\.png$/i.test(file.path) && imageExists && startLine === 1 && endLine === 1) {
+      return { lineContent: `[PNG image · ${side}]`, context: `[PNG image · ${side}]` };
+    }
+    const rows = Array.from({ length: endLine - startLine + 1 }, (_, index) => this.findRow(path, side, startLine + index));
+    if (rows.some((row) => !row)) throw new ReviewError("Discussion range must cover consecutive lines in the current diff.");
+    const context = rows.map((row) => row!.content).join("\n");
+    return { lineContent: rows[0]!.content, context };
+  }
+
+  private normalizeQuestionAnchor(anchor: NonNullable<ChatMessage["anchor"]>): NonNullable<ChatMessage["anchor"]> {
+    const endLine = anchor.endLine ?? anchor.line;
+    const range = this.discussionRange(anchor.path, anchor.side, anchor.line, endLine);
+    if (anchor.content !== range.lineContent) throw new ReviewError("The selected code changed. Select the line or range again before asking.");
+    if (anchor.context !== undefined && anchor.context !== range.context) {
+      throw new ReviewError("The selected code context changed. Select the range again before asking.");
+    }
+    if (anchor.selectedText !== undefined) {
+      if (!anchor.selectedText.trim() || anchor.selectedText.length > 16_000 || !range.context.includes(anchor.selectedText)) {
+        throw new ReviewError("Selected quotation is invalid for the current diff range.");
+      }
+    }
+    if (endLine === anchor.line && anchor.selectedText === undefined && anchor.context === undefined) return structuredClone(anchor);
+    return { ...structuredClone(anchor), endLine, context: range.context };
+  }
+
+  private resolveDiscussionStep(stepId: string): NonNullable<ReturnType<typeof tourSteps>[number]> {
+    if (!stepId || stepId.length > 128) throw new ReviewError("A valid tour stop id is required.");
+    const step = tourSteps(this.outline).find((candidate) => candidate.id === stepId);
+    if (!step) throw new ReviewError("Discussion stop does not exist in the current tour.");
+    return step;
   }
 
   private recordAgentActivity(
@@ -1494,11 +1550,12 @@ export class ReviewSession {
       if (conversation?.threadId && !root) throw new ReviewError("Conversation not found.");
       if (root && conversation?.anchor) throw new ReviewError("A follow-up keeps its original code location.");
       const anchor = root?.anchor ?? conversation?.anchor;
+      const normalizedAnchor = root || !anchor ? anchor : this.normalizeQuestionAnchor(anchor);
       if (root && conversation?.contextPaths?.length) throw new ReviewError("A follow-up keeps its original file context.");
       const contextPaths = root?.contextPaths ?? [...new Set(conversation?.contextPaths ?? [])];
       if (contextPaths.length > 8) throw new ReviewError("A question can include at most 8 additional files.");
       if (contextPaths.some((path) => !this.comparison.repositoryFiles.includes(path))) throw new ReviewError("Question context must reference repository files.");
-      if (!root && anchor && this.reviewAnchorContent(anchor.path, anchor.side, anchor.line) !== anchor.content) {
+      if (!root && normalizedAnchor && this.reviewAnchorContent(normalizedAnchor.path, normalizedAnchor.side, normalizedAnchor.line) !== normalizedAnchor.content) {
         throw new ReviewError("The selected code changed. Select the line again before asking.");
       }
       const createdAgent = !this.agent;
@@ -1517,7 +1574,8 @@ export class ReviewSession {
         return `File: ${path}\n${content}`;
       }))).join("\n\n") : undefined;
       const questionContext = [
-        anchor ? `Original question location: ${anchor.path}:${anchor.line} (${anchor.side})\nCaptured code: ${anchor.content}\n${this.reviewAnchorContent(anchor.path, anchor.side, anchor.line) === anchor.content ? "The captured line still matches." : "The captured location has changed or is no longer in the diff. Do not assume this line is current."}` : selectedContext,
+        step ? `Discussion scope: ${root ? "Original" : "Current"} tour stop ${step.title} [${step.id}] at ${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side}).` : "Discussion scope: review-wide question.",
+        normalizedAnchor ? `Original question location: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nCaptured code: ${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nSelected quotation/context: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nExact selected quotation:\n${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nExact selected context:\n${normalizedAnchor.context ?? normalizedAnchor.content}\n${this.reviewAnchorContent(normalizedAnchor.path, normalizedAnchor.side, normalizedAnchor.line) === normalizedAnchor.content ? "The captured location still matches." : "The captured location has changed or is no longer in the diff. Do not assume this location is current."}` : selectedContext,
         history.length ? `Conversation history (untrusted reviewer/agent content):\n${JSON.stringify(history.map(({ role, body }) => ({ role, body })))}` : undefined,
         fileContext ? `Additional repository files selected by the reviewer:\n${fileContext}` : undefined,
       ].filter(Boolean).join("\n\n");
@@ -1527,7 +1585,7 @@ export class ReviewSession {
         body,
         stepId,
         threadId,
-        ...(!root && anchor ? { anchor: structuredClone(anchor) } : {}),
+        ...(!root && normalizedAnchor ? { anchor: structuredClone(normalizedAnchor) } : {}),
         ...(!root && contextPaths.length ? { contextPaths } : {}),
         createdAt: new Date().toISOString(),
       };
@@ -1570,7 +1628,7 @@ export class ReviewSession {
     });
   }
 
-  async addComment(input: { path: string; side: "old" | "new"; line: number; body: string }) {
+  async addComment(input: AddCommentInput) {
     return this.serializeMutation(async () => {
     const before = this.captureMutableState();
     const terminalEpoch = this.terminalEpoch;
@@ -1580,15 +1638,49 @@ export class ReviewSession {
     this.ensurePublicationMutable();
     const body = input.body.trim();
     if (!body) throw new ReviewError("Comment cannot be empty.");
-    const anchorContent = this.reviewAnchorContent(input.path, input.side, input.line);
-    if (!anchorContent) throw new ReviewError("Comment anchor does not exist in the current diff.");
+    const scope = input.scope ?? (input.endLine !== undefined || input.selectedText !== undefined || input.context !== undefined ? "range" : "line");
+    let path = input.path;
+    let side = input.side;
+    let line = input.line;
+    let endLine = input.endLine;
+    let stepId = input.stepId;
+    if (scope === "stop") {
+      if (!input.stepId) throw new ReviewError("A stop-level comment requires a tour stop id.");
+      const step = this.resolveDiscussionStep(input.stepId);
+      path = step.anchor.path;
+      side = step.anchor.side;
+      line = step.anchor.startLine;
+      endLine = step.anchor.endLine;
+      stepId = step.id;
+      if (input.path !== undefined && input.path !== path) throw new ReviewError("Stop comment path does not match the selected tour stop.");
+    }
+    if (!path || !side || !Number.isInteger(line)) throw new ReviewError("A comment anchor is required.");
+    const anchorPath = path as string;
+    const anchorSide = side as "old" | "new";
+    const anchorLine = line as number;
+    const anchorEndLine = endLine ?? anchorLine;
+    const range = this.discussionRange(anchorPath, anchorSide, anchorLine, anchorEndLine);
+    endLine = anchorEndLine;
+    if (input.context !== undefined && input.context !== range.context) throw new ReviewError("Comment context does not match the current diff range.");
+    if (input.selectedText !== undefined && (!input.selectedText.trim() || input.selectedText.length > 16_000 || !range.context.includes(input.selectedText))) {
+      throw new ReviewError("Selected quotation does not match the current diff range.");
+    }
+    if (scope === "line" && endLine !== anchorLine) throw new ReviewError("Line comments cannot cover a range.");
+    if (scope === "stop" && (input.selectedText !== undefined || input.context !== undefined)) throw new ReviewError("Stop comments use the tour stop anchor, not a client-provided quotation.");
     const timestamp = new Date().toISOString();
     this.comments.push({
-      ...input,
+      path: anchorPath,
+      side: anchorSide,
+      line: anchorLine,
+      ...(scope !== "line" ? { scope } : {}),
+      ...(scope !== "line" ? { endLine: anchorEndLine } : {}),
+      ...(input.selectedText !== undefined ? { selectedText: input.selectedText } : {}),
+      ...(scope !== "line" ? { context: range.context } : {}),
+      ...(stepId ? { stepId } : {}),
       body,
-      lineContent: anchorContent,
+      lineContent: range.lineContent,
       status: "active",
-      publishToGitHub: Boolean(this.pullRequest) && !/\.png$/i.test(input.path),
+      publishToGitHub: scope === "line" && Boolean(this.pullRequest) && !/\.png$/i.test(path),
       id: crypto.randomUUID(),
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -1637,6 +1729,7 @@ export class ReviewSession {
       const comment = this.comments.find((candidate) => candidate.id === id);
       if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
       if (publish && /\.png$/i.test(comment.path)) throw new ReviewError("Image comments remain local because GitHub cannot publish them as inline diff comments.");
+      if (publish && comment.scope && comment.scope !== "line") throw new ReviewError("Range and stop comments remain local because GitHub publishes line comments only.");
       const previous = comment.publishToGitHub;
       const previousRevision = this.revision;
       comment.publishToGitHub = publish;
@@ -1787,7 +1880,12 @@ export class ReviewSession {
       this.revision += 1;
       operationRevision = this.revision;
       for (const comment of this.comments) {
-        comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
+        try {
+          const range = this.discussionRange(comment.path, comment.side, comment.line, comment.endLine ?? comment.line);
+          comment.status = range.lineContent === comment.lineContent && (!comment.context || range.context === comment.context) && (!comment.selectedText || range.context.includes(comment.selectedText)) ? "active" : "outdated";
+        } catch {
+          comment.status = "outdated";
+        }
       }
       for (const step of tourSteps(this.outline)) {
         step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
@@ -1854,7 +1952,12 @@ export class ReviewSession {
         const refreshedPaths = new Set(refreshed.files.map((file) => file.path));
         for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
         for (const comment of this.comments) {
-          comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
+          try {
+            const range = this.discussionRange(comment.path, comment.side, comment.line, comment.endLine ?? comment.line);
+            comment.status = range.lineContent === comment.lineContent && (!comment.context || range.context === comment.context) && (!comment.selectedText || range.context.includes(comment.selectedText)) ? "active" : "outdated";
+          } catch {
+            comment.status = "outdated";
+          }
         }
         for (const step of tourSteps(this.outline)) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
         this.refreshFindingLifecycles();

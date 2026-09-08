@@ -255,6 +255,26 @@ test("questions support removable line and file context while review decisions a
   expect(app).toContain('void close("cancelled", "cancel")');
 });
 
+test("scoped discussion exposes stop and range anchors in the composer and prompt context", async () => {
+  const [html, app, styles, agent] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+    readFile(join(root, "src/agent.ts"), "utf8"),
+  ]);
+  expect(html).toContain('id="comment-stop"');
+  expect(html).toContain('id="step-comment-form"');
+  expect(app).toContain('scope: "stop", stepId: step.id');
+  expect(app).toContain('scope: "range"');
+  expect(app).toContain("form.dataset.commentSelectedText");
+  expect(app).toContain("Exact selected quotation");
+  expect(app).toContain("Exact selected context");
+  expect(agent).toContain("Current tour stop id:");
+  expect(app).toContain("function commentScope(comment)");
+  expect(styles).toContain(".step-discussion");
+  expect(styles).toContain(".comment-quote");
+});
+
 test("closing a review shows a five-second self-close countdown", async () => {
   const [html, app] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),

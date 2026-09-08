@@ -108,7 +108,7 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
-    "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
+    "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
@@ -1784,6 +1784,25 @@ function renderAgentOptions() {
   renderModelOptions();
 }
 
+function commentScope(comment) {
+  const scope = comment.scope ?? "line";
+  if (scope === "stop") {
+    const step = state.session.outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === comment.stepId);
+    return step ? `Tour stop · ${step.title}` : "Tour stop";
+  }
+  return scope === "range" ? "Selected range" : "Line";
+}
+
+function commentLocation(comment) {
+  const endLine = comment.endLine ?? comment.line;
+  if (/\.png$/i.test(comment.path)) return `${comment.path} · ${comment.side} image`;
+  return `${comment.path}:${comment.line}${endLine !== comment.line ? `-${endLine}` : ""} · ${comment.side}`;
+}
+
+function commentRowSelector(comment, line = comment.line) {
+  return `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${line}"]`;
+}
+
 function renderComments() {
   document.querySelectorAll(".split-inline-comment").forEach((comment) => comment.remove());
   document.querySelectorAll(".inline-comment").forEach((comment) => comment.remove());
@@ -1800,10 +1819,12 @@ function renderComments() {
     image.removeAttribute("title");
   });
   for (const comment of state.session.comments) {
-    const selector = `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`;
+    const selector = commentRowSelector(comment);
     const imageSelector = `.image-diff-side[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"]`;
     const row = document.querySelector(selector) ?? (/\.png$/i.test(comment.path) ? document.querySelector(imageSelector) : null);
     if (!row) continue;
+    const endLine = comment.endLine ?? comment.line;
+    for (let line = comment.line; line <= endLine; line += 1) document.querySelector(commentRowSelector(comment, line))?.classList.add("has-comment");
     row.classList.add("has-comment");
     row.title = comment.body;
     row.querySelector(".review-dot")?.classList.remove("hidden");
@@ -1815,9 +1836,9 @@ function renderComments() {
     const inline = document.createElement("article");
     inline.className = `inline-comment ${comment.status}`;
     const confirmingDelete = state.deletingCommentId === comment.id;
-    inline.innerHTML = `<header class="inline-comment-header${confirmingDelete ? " confirming-delete" : ""}"><span class="inline-comment-label">Review comment</span><span class="inline-comment-actions${confirmingDelete ? " confirming" : ""}">${confirmingDelete
+    inline.innerHTML = `<header class="inline-comment-header${confirmingDelete ? " confirming-delete" : ""}"><span class="inline-comment-label">${escapeHtml(commentScope(comment))}</span><span class="inline-comment-actions${confirmingDelete ? " confirming" : ""}">${confirmingDelete
       ? `<span>Delete this comment?</span><button type="button" data-inline-comment-action="cancel-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Cancel</button><button class="danger confirm" type="button" data-inline-comment-action="confirm-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`
-      : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>`;
+      : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${commentLocation(comment)}`)}"><p>${renderInlineMarkdown(comment.body)}</p>${comment.selectedText ? `<blockquote class="comment-quote">${escapeHtml(comment.selectedText)}</blockquote>` : ""}</button>`;
     const splitRow = row.closest(".split-row");
     if (row.classList.contains("image-diff-side")) {
       row.querySelector("figcaption").insertAdjacentElement("beforebegin", inline);
@@ -1837,15 +1858,18 @@ function renderComments() {
   elements["comment-list"].innerHTML = state.session.comments.length === 0
     ? '<p class="comment-empty">Choose Comment on a changed line or image to add feedback.</p>'
     : state.session.comments.map((comment) => `<article class="comment-item ${escapeHtml(comment.status)}" data-comment-id="${escapeHtml(comment.id)}">
-      <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(/\.png$/i.test(comment.path) ? `${comment.path} · ${comment.side} image` : `${comment.path}:${comment.line}`)}</button><span class="comment-status">${escapeHtml(comment.status)}</span></div>
+      <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(commentLocation(comment))}</button><span class="comment-status">${escapeHtml(commentScope(comment))} · ${escapeHtml(comment.status)}</span></div>
+      ${comment.selectedText ? `<blockquote class="comment-quote">${escapeHtml(comment.selectedText)}</blockquote>` : ""}
+      ${comment.scope === "stop" ? `<div class="comment-anchor-context">Scoped to stop <strong>${escapeHtml(commentScope(comment).replace("Tour stop · ", ""))}</strong></div>` : ""}
       <p>${renderInlineMarkdown(comment.body)}</p>
-      ${state.session.pullRequest && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
+      ${state.session.pullRequest && (comment.scope ?? "line") === "line" && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
         ${state.deletingCommentId === comment.id
           ? `<span class="delete-confirmation">Delete this comment?</span><button class="text-button" data-action="cancel-delete" type="button">Cancel</button><button class="text-button danger" data-action="confirm-delete" type="button">Delete</button>`
           : `<button class="text-button" data-action="edit" type="button"${disabled}>Edit</button><button class="text-button danger" data-action="delete" type="button"${disabled}>Delete</button>`}
       </div>
     </article>`).join("");
+  renderStepDiscussion();
 }
 
 function renderPullRequest() {
@@ -2716,9 +2740,11 @@ function openConversation(id = null) {
 }
 
 function reviewAnchorLabel(anchor) {
+  if (anchor.scope === "stop") return `Tour stop: ${anchor.stepTitle ?? anchor.stepId ?? "current stop"}`;
+  const endLine = anchor.endLine ?? anchor.line;
   return /^\[PNG image · (old|new)\]$/.test(anchor.content)
     ? `${anchor.path} · ${anchor.side} image`
-    : `${anchor.path}:${anchor.line} (${anchor.side})`;
+    : `${anchor.path}:${anchor.line}${endLine !== anchor.line ? `-${endLine}` : ""} (${anchor.side})`;
 }
 
 function renderConversationBadges() {
@@ -2742,6 +2768,18 @@ function renderConversationBadges() {
   }
 }
 
+function renderStepDiscussion() {
+  const step = currentStep();
+  const comments = step ? state.session.comments.filter((comment) => comment.scope === "stop" && comment.stepId === step.id) : [];
+  elements["step-discussion"].classList.toggle("hidden", !step);
+  if (!step) return;
+  elements["step-discussion-scope"].textContent = `Comments are attached to “${step.title}” and stay with this stop if the diff moves.`;
+  elements["comment-stop"].disabled = !reviewIsOpen() || state.busy;
+  elements["step-comment-list"].innerHTML = comments.length
+    ? comments.map((comment) => `<article class="step-comment" data-comment-id="${escapeHtml(comment.id)}"><span class="comment-status">${escapeHtml(comment.status)}</span><p>${renderInlineMarkdown(comment.body)}</p><div class="comment-actions"><button class="text-button" data-step-comment-action="edit" type="button">Edit</button><button class="text-button danger" data-step-comment-action="delete" type="button">Delete</button></div></article>`).join("")
+    : '<p class="comment-empty">No comments on this stop yet.</p>';
+}
+
 function renderMessages() {
   const threads = conversationThreads();
   const thread = threads.find((item) => item.id === state.activeThreadId);
@@ -2751,7 +2789,13 @@ function renderMessages() {
     .join("");
   if (elements["chat-messages"].innerHTML !== content) elements["chat-messages"].innerHTML = content;
   const anchor = thread?.root.anchor;
-  elements["conversation-context"].textContent = anchor ? `Conversation at ${reviewAnchorLabel(anchor)}. Location captured when asked; later edits may move it.` : thread ? "Review conversation" : "Ask a question here, or choose Ask agent on a changed line or image.";
+  const scopeStep = thread?.root.stepId
+    ? state.session.outline?.phases.flatMap((phase) => phase.steps).find((step) => step.id === thread.root.stepId)
+    : currentStep();
+  const scope = scopeStep ? `${thread ? "Original" : "Current"} tour stop: ${scopeStep.title}` : "Review-wide question";
+  elements["conversation-context"].textContent = anchor
+    ? `${scope} · selected ${reviewAnchorLabel(anchor)}. Exact quotation/context is retained; later edits may mark it outdated.`
+    : `${scope}. Ask about this stop or choose Ask agent on a changed line, image, or selected range.`;
   const options = '<option value="">New question</option>' + threads.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 80))}</option>`).join("");
   if (elements["conversation-select"].innerHTML !== options) elements["conversation-select"].innerHTML = options;
   elements["conversation-select"].value = state.activeThreadId ?? "";
@@ -2826,6 +2870,7 @@ function renderTour() {
   elements["step-title"].textContent = step.title;
   elements["step-objective"].textContent = step.objective;
   elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
+  renderStepDiscussion();
   renderAgentActivity();
   const planningNotes = outline.planningNotes ?? [];
   elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
@@ -3379,7 +3424,7 @@ async function downloadExport(format, options = {}) {
   }
 }
 
-function selectLine(row) {
+function selectLine(row, discussion = null) {
   document.querySelectorAll(".diff-row.selected, .image-diff-side.selected").forEach((item) => item.classList.remove("selected"));
   row.classList.add("selected");
   row.querySelectorAll(".image-review-actions button:not(:disabled)").forEach((button) => { button.tabIndex = 0; });
@@ -3388,6 +3433,9 @@ function selectLine(row) {
     side: row.dataset.side,
     line: Number(row.dataset.line),
     content: row.dataset.content,
+    ...(discussion?.endLine && discussion.endLine !== Number(row.dataset.line) ? { endLine: discussion.endLine } : {}),
+    ...(discussion?.selectedText ? { selectedText: discussion.selectedText } : {}),
+    ...(discussion?.context ? { context: discussion.context } : {}),
   };
   const image = row.classList.contains("image-diff-side");
   elements["selection-pill"].textContent = image
@@ -3538,7 +3586,7 @@ function updateInlineComposerMode(form, mode) {
   form.querySelector('[type="submit"]').textContent = mode === "ask" ? "Ask agent" : "Add comment";
 }
 
-function openInlineCommentEditor(row, target, comment, { mode = "comment", initialBody = "", endLine = target.line } = {}) {
+function openInlineCommentEditor(row, target, comment, { mode = "comment", initialBody = "", endLine = target.line, selection = null } = {}) {
   if (!reviewIsOpen()) return;
   closeInlineCommentEditor();
   selectLine(row);
@@ -3547,14 +3595,19 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
   form.dataset.commentPath = target.path;
   form.dataset.commentSide = target.side;
   form.dataset.commentLine = String(target.line);
+  if (selection) {
+    if (endLine !== target.line) form.dataset.commentEndLine = String(endLine);
+    form.dataset.commentSelectedText = selection.text;
+    form.dataset.commentContext = selection.expectedContent;
+  }
   if (comment) form.dataset.commentId = comment.id;
   const image = row.classList.contains("image-diff-side");
   const location = image ? `${target.path} · ${target.side} image` : endLine === target.line ? `${target.path}:${target.line}` : `${target.path}:${target.line}-${endLine}`;
   const askDisabled = !state.session.outline;
-  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? "Edit review comment" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
+  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? escapeHtml(commentScope(comment)) : selection ? "Selected range" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
     ${comment ? "" : `<div class="inline-composer-tabs" role="group" aria-label="Message type"><button type="button" data-inline-composer-mode="comment" aria-pressed="true">Comment</button><button type="button" data-inline-composer-mode="ask" aria-pressed="false"${askDisabled ? ' disabled title="Start a tour to ask the agent."' : ""}>Ask agent</button></div>`}
     <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? initialBody)}</textarea>
-    <footer><span>Markdown is supported.</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;
+    <footer><span>${selection ? "The exact quotation and diff context are retained." : "Markdown is supported."}</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;
   form.dataset.composerMode = "comment";
   if (!comment && mode === "ask" && !askDisabled) updateInlineComposerMode(form, "ask");
   const splitRow = row.closest(".split-row");
@@ -3575,6 +3628,7 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
 }
 
 async function openCommentEditor(comment) {
+  if (comment.scope === "stop") return openStepCommentEditor(comment);
   const selector = /\.png$/i.test(comment.path)
     ? `.image-diff-side[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"]`
     : `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`;
@@ -3674,7 +3728,11 @@ async function submitInlineAsk(form) {
   if (!row) return toast("That code location is no longer visible.", { tone: "warning" });
   closeInlineCommentEditor();
   openConversation(null);
-  selectLine(row);
+  selectLine(row, {
+    endLine: form.dataset.commentEndLine ? Number(form.dataset.commentEndLine) : Number(form.dataset.commentLine),
+    selectedText: form.dataset.commentSelectedText,
+    context: form.dataset.commentContext,
+  });
   elements["chat-input"].value = body;
   await askAgent({ preventDefault() {} });
 }
@@ -3689,11 +3747,52 @@ async function saveInlineComment(form) {
     const commentId = form.dataset.commentId;
     const latest = commentId
       ? await api(`/api/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
-      : await api("/api/comments", { method: "POST", body: JSON.stringify({ path: form.dataset.commentPath, side: form.dataset.commentSide, line: Number(form.dataset.commentLine), body }) });
+      : await api("/api/comments", { method: "POST", body: JSON.stringify({
+        ...(form.dataset.commentSelectedText ? { scope: "range", selectedText: form.dataset.commentSelectedText, context: form.dataset.commentContext } : {}),
+        path: form.dataset.commentPath,
+        side: form.dataset.commentSide,
+        line: Number(form.dataset.commentLine),
+        ...(form.dataset.commentEndLine ? { endLine: Number(form.dataset.commentEndLine) } : {}),
+        body,
+      }) });
     const previous = state.session;
     state.session = latest;
     renderSessionUpdate(previous, { closeCommentEditor: true });
     toast(commentId ? "Review comment updated" : "Review comment added");
+  } catch (error) {
+    toast(error.message);
+    submit.disabled = false;
+  }
+}
+
+function openStepCommentEditor(comment = null) {
+  if (!reviewIsOpen() || !currentStep()) return;
+  elements["step-comment-form"].classList.remove("hidden");
+  elements["step-comment-form"].dataset.commentId = comment?.id ?? "";
+  elements["step-comment-input"].value = comment?.body ?? "";
+  elements["step-comment-form"].querySelector('[type="submit"]').textContent = comment ? "Save stop comment" : "Add stop comment";
+  elements["step-comment-input"].focus({ preventScroll: true });
+}
+
+async function saveStepComment(event) {
+  event.preventDefault();
+  if (!reviewIsOpen()) return;
+  const body = elements["step-comment-input"].value.trim();
+  const step = currentStep();
+  if (!body || !step) return;
+  const commentId = elements["step-comment-form"].dataset.commentId;
+  const submit = elements["step-comment-form"].querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const latest = commentId
+      ? await api(`/api/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
+      : await api("/api/comments", { method: "POST", body: JSON.stringify({ scope: "stop", stepId: step.id, body }) });
+    const previous = state.session;
+    state.session = latest;
+    elements["step-comment-form"].classList.add("hidden");
+    elements["step-comment-input"].value = "";
+    renderSessionUpdate(previous, { closeCommentEditor: true });
+    toast(commentId ? "Stop comment updated" : "Stop comment added");
   } catch (error) {
     toast(error.message);
     submit.disabled = false;
@@ -3720,7 +3819,7 @@ async function askAgent(event) {
   if (!body || state.busy || state.questionPending || !reviewIsOpen()) return;
   elements["chat-input"].value = "";
   const selectedContext = state.selectedLine
-    ? `${state.selectedLine.path}:${state.selectedLine.line} (${state.selectedLine.side})\n${state.selectedLine.content}`
+    ? `${state.selectedLine.path}:${state.selectedLine.line}${state.selectedLine.endLine && state.selectedLine.endLine !== state.selectedLine.line ? `-${state.selectedLine.endLine}` : ""} (${state.selectedLine.side})\n${state.selectedLine.selectedText ? `Exact selected quotation:\n${state.selectedLine.selectedText}\nExact selected context:\n${state.selectedLine.context ?? state.selectedLine.content}` : state.selectedLine.content}`
     : undefined;
   const originalThreadId = state.activeThreadId;
   const requestThreadId = originalThreadId?.startsWith("local-question-") ? null : originalThreadId;
@@ -3962,6 +4061,20 @@ elements["questions-toggle"].addEventListener("click", () => {
 });
 elements["new-question"].addEventListener("click", () => { openConversation(); elements["chat-input"].focus({ preventScroll: true }); });
 elements["conversation-select"].addEventListener("change", (event) => openConversation(event.target.value || null));
+elements["comment-stop"].addEventListener("click", () => openStepCommentEditor());
+elements["cancel-step-comment"].addEventListener("click", () => {
+  elements["step-comment-form"].classList.add("hidden");
+  elements["step-comment-input"].value = "";
+});
+elements["step-comment-form"].addEventListener("submit", saveStepComment);
+elements["step-comment-list"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-step-comment-action]");
+  const item = event.target.closest("[data-comment-id]");
+  const comment = item && state.session.comments.find((candidate) => candidate.id === item.dataset.commentId);
+  if (!button || !comment) return;
+  if (button.dataset.stepCommentAction === "edit") void openStepCommentEditor(comment);
+  if (button.dataset.stepCommentAction === "delete") void deleteReviewComment(comment);
+});
 elements["selection-pill"].addEventListener("click", (event) => {
   if (!event.target.closest("[data-remove-line-context]")) return;
   state.selectedLine = null;
@@ -4445,7 +4558,7 @@ elements["code-selection-toolbar"].addEventListener("click", (event) => {
     void resolvePeekSymbol(symbolForCodeSelection(selected).symbol, { path: selected.path, line: selected.startLine, side: selected.side });
   } else {
     const target = lineTarget(selected.startRow);
-    openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", initialBody: quotedCode(selected.text), endLine: selected.endLine });
+    openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", initialBody: quotedCode(selected.text), endLine: selected.endLine, selection: selected });
   }
   hideCodeSelectionToolbar(true);
 });
