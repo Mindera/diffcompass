@@ -388,10 +388,16 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(app).toContain('data-action="save-disposition"');
   expect(app).toContain('action: "set-disposition"');
   expect(app).toContain('Finding marked ${findingDispositionLabel(disposition).toLowerCase()}');
+  expect(app).toContain('class="finding-disposition ${escapeHtml(disposition)}"');
   expect(app).toContain("finding.outdated ? '<span class=\"finding-reassessment\">Needs reassessment</span>' : \"\"");
   expect(app).toContain('finding.outdated ? "Revalidate" : "Add as feedback"');
   expect(app).not.toContain('finding.outdated ? " disabled" : ""');
   expect(styles).toContain(".finding-badges .finding-reassessment");
+  expect(styles).toContain(".finding-badges .finding-disposition.accepted");
+  expect(styles).toContain(".finding-badges .finding-disposition.false-positive");
+  expect(styles).toContain(".finding-badges .finding-disposition.intentional");
+  expect(styles).toContain(".finding-badges .finding-disposition.deferred");
+  expect(styles).toContain(".finding-badges .finding-disposition.obsolete-after-refresh");
   expect(styles).toContain(".finding-item.obsolete-after-refresh");
 });
 

@@ -709,7 +709,12 @@ button { color: inherit; }
 .compact-finding-actions .text-button { font-size: 10px; }
 .finding-badges { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0; }
 .finding-badges span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 5px; color: var(--muted); font-size: 9px; }
-.finding-badges .finding-disposition { border-color: var(--accent-strong); color: var(--accent-strong); font-weight: 700; }
+.finding-badges .finding-disposition { background: var(--surface-control); font-weight: 700; }
+.finding-badges .finding-disposition.accepted, .finding-badges .finding-disposition.fixed { border-color: var(--success-border); color: var(--success-text); background: color-mix(in srgb, var(--success-text) 12%, var(--surface-control)); }
+.finding-badges .finding-disposition.false-positive { border-color: var(--notice-border); color: var(--notice-text); background: var(--notice-background); }
+.finding-badges .finding-disposition.intentional { border-color: var(--accent-border); color: var(--accent-strong); background: var(--accent-soft); }
+.finding-badges .finding-disposition.deferred { border-color: var(--warning-border); color: var(--warning); background: var(--warning-background); }
+.finding-badges .finding-disposition.obsolete-after-refresh { border-color: var(--priority-p3); color: var(--priority-p3); background: var(--surface-control); }
 .finding-badges .finding-reassessment { border-color: var(--warning-border); color: var(--warning); background: var(--warning-background); font-weight: 700; }
 .finding-note { margin: 8px 0; border-left: 2px solid var(--accent-strong); padding-left: 8px; color: var(--text-soft); font-size: 11px; }
 .finding-note strong { color: var(--muted); font-size: 9px; text-transform: uppercase; }
