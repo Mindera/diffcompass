@@ -97,12 +97,17 @@ const state = {
   repositoryFilePath: null,
   repositoryFileContent: "",
   filePanelOpen: false,
+  symbolPeek: { history: [], current: null, requestId: 0 },
 };
 
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
+    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
+    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
@@ -1527,6 +1532,88 @@ function renderRepositoryFile(path, content) {
   const preview = markdown && state.repositoryFileView === "preview";
   elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">unchanged</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
   if (!preview) void highlightRenderedCode();
+}
+
+function symbolPeekContext() {
+  if (state.codeSelection) return { path: state.codeSelection.path, line: state.codeSelection.startLine, side: state.codeSelection.side };
+  if (state.selectedLine) return { path: state.selectedLine.path, line: state.selectedLine.line, side: state.selectedLine.side };
+  const step = currentStep();
+  return step ? { path: step.anchor.path, line: step.anchor.startLine, side: step.anchor.side } : {};
+}
+
+function symbolFromText(value) {
+  return String(value ?? "").match(/[\p{L}_$][\p{L}\p{N}_$]*/gu)?.at(-1) ?? "";
+}
+
+function symbolPeekLocationHtml(location) {
+  const label = `${location.path}:${location.line}`;
+  return `<article class="symbol-peek-location"><header><span class="symbol-peek-kind">${escapeHtml(location.kind)}</span><strong>${escapeHtml(label)}</strong><button class="text-button" type="button" data-symbol-location="${escapeHtml(location.path)}" data-symbol-line="${location.line}" data-symbol-side="new">Open in code</button></header><pre>${escapeHtml(location.excerpt.join("\n"))}</pre></article>`;
+}
+
+function renderSymbolPeek() {
+  const peek = state.symbolPeek;
+  const result = peek.result;
+  elements["symbol-peek-panel"].classList.toggle("hidden", !peek.open);
+  if (!peek.open) return;
+  elements["symbol-peek-input"].value = peek.current?.symbol ?? "";
+  const trail = [{ label: "Current stop", index: -1 }, ...peek.history.map((entry, index) => ({ label: entry.symbol, index }))];
+  elements["symbol-peek-trail"].innerHTML = trail.map((entry, index) => `${index ? '<span aria-hidden="true">›</span>' : ""}<button type="button" class="text-button" data-symbol-trail-index="${entry.index}">${escapeHtml(entry.label)}</button>`).join("");
+  if (!peek.current) {
+    elements["symbol-peek-status"].textContent = "Choose a symbol from the code or enter one above.";
+    elements["symbol-peek-result"].innerHTML = "";
+    return;
+  }
+  if (peek.loading) {
+    elements["symbol-peek-status"].textContent = `Resolving ${peek.current.symbol}…`;
+    elements["symbol-peek-result"].innerHTML = "";
+    return;
+  }
+  if (!result) return;
+  elements["symbol-peek-title"].textContent = result.symbol;
+  elements["symbol-peek-status"].textContent = `${result.sourceLabel}: ${result.notice}${result.truncated ? " Some results were truncated to keep this review responsive." : ""}`;
+  const definitions = result.definitions.length ? `<section><h3>Definitions (${result.definitions.length})</h3>${result.definitions.map(symbolPeekLocationHtml).join("")}</section>` : '<p class="muted">No definition locations found.</p>';
+  const usages = result.usages.length ? `<section><h3>Usages (${result.usages.length})</h3>${result.usages.map(symbolPeekLocationHtml).join("")}</section>` : '<p class="muted">No usage locations found.</p>';
+  const raw = result.raw ? `<details class="symbol-peek-raw"><summary>Raw ${escapeHtml(result.sourceLabel)} response</summary><pre>${escapeHtml(result.raw)}</pre></details>` : "";
+  elements["symbol-peek-result"].innerHTML = `${definitions}${usages}${raw}`;
+}
+
+async function resolvePeekSymbol(symbol, context = symbolPeekContext(), pushHistory = true) {
+  const normalized = symbolFromText(symbol);
+  if (!normalized) {
+    elements["symbol-peek-input"].focus();
+    return toast("Enter a symbol name to peek.", { tone: "warning" });
+  }
+  const peek = state.symbolPeek;
+  if (pushHistory && peek.current) peek.history.push({ ...peek.current });
+  peek.open = true;
+  peek.current = { symbol: normalized, ...context };
+  peek.result = null;
+  peek.loading = true;
+  const requestId = ++peek.requestId;
+  renderSymbolPeek();
+  try {
+    const result = await api("/api/symbol-peek", {
+      method: "POST",
+      body: JSON.stringify({ symbol: normalized, ...(context.path ? { path: context.path } : {}), ...(context.line ? { line: context.line } : {}), ...(context.side ? { side: context.side } : {}) }),
+    });
+    if (requestId !== peek.requestId) return;
+    peek.result = result;
+  } catch (error) {
+    if (requestId === peek.requestId) toast(error.message, { tone: "warning", duration: 6_000 });
+  } finally {
+    if (requestId === peek.requestId) {
+      peek.loading = false;
+      renderSymbolPeek();
+    }
+  }
+}
+
+function closeSymbolPeek() {
+  state.symbolPeek.open = false;
+  state.symbolPeek.loading = false;
+  state.symbolPeek.result = null;
+  renderSymbolPeek();
+  void focusCurrentStep();
 }
 
 async function showActivityFile(activityId, path) {
@@ -3832,6 +3919,40 @@ elements["review-decision-form"].addEventListener("submit", (event) => {
   elements["review-decision-dialog"].close();
   void close(decision === "request-changes" ? "feedback" : "accepted", decision, note);
 });
+elements["symbol-peek-open"]?.addEventListener("click", () => {
+  const symbol = symbolFromText(state.codeSelection?.text ?? state.selectedLine?.content ?? "");
+  if (symbol) void resolvePeekSymbol(symbol);
+  else {
+    state.symbolPeek.open = true;
+    state.symbolPeek.current = null;
+    state.symbolPeek.result = null;
+    renderSymbolPeek();
+    elements["symbol-peek-input"].focus();
+  }
+});
+elements["symbol-peek-close"]?.addEventListener("click", closeSymbolPeek);
+elements["symbol-peek-form"]?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void resolvePeekSymbol(elements["symbol-peek-input"].value);
+});
+elements["symbol-peek-panel"]?.addEventListener("click", (event) => {
+  const trail = event.target.closest("[data-symbol-trail-index]");
+  if (trail) {
+    const index = Number(trail.dataset.symbolTrailIndex);
+    if (index < 0) return closeSymbolPeek();
+    const entry = state.symbolPeek.history[index];
+    if (!entry) return;
+    state.symbolPeek.history = state.symbolPeek.history.slice(0, index);
+    void resolvePeekSymbol(entry.symbol, entry, false);
+    return;
+  }
+  const location = event.target.closest("[data-symbol-location]");
+  if (!location) return;
+  const path = location.dataset.symbolLocation;
+  const line = Number(location.dataset.symbolLine);
+  if (state.session.comparison.files.some((file) => file.path === path)) void showChangedFile(path, line, location.dataset.symbolSide);
+  else void showRepositoryFile(path);
+});
 elements["refresh-button"].addEventListener("click", refresh);
 elements["comparison-view"].addEventListener("change", () => void switchComparisonView(elements["comparison-view"].value));
 elements["checkpoint-button"].addEventListener("click", () => void createCheckpoint());
@@ -4173,6 +4294,8 @@ elements["code-selection-toolbar"].addEventListener("click", (event) => {
     void navigator.clipboard.writeText(selected.text).then(() => toast("Selected code copied"), () => toast("Could not copy the selected code.", { tone: "warning" }));
   } else if (tool === "edit") {
     openInlineEdit(selected.endRow, selected);
+  } else if (tool === "peek") {
+    void resolvePeekSymbol(symbolFromText(selected.text), { path: selected.path, line: selected.startLine, side: selected.side });
   } else {
     const target = lineTarget(selected.startRow);
     openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", initialBody: quotedCode(selected.text), endLine: selected.endLine });

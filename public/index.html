@@ -158,6 +158,7 @@
             <button type="button" data-selection-tool="edit">Edit</button>
             <button type="button" data-selection-tool="comment">Comment</button>
             <button type="button" data-selection-tool="ask">Ask agent</button>
+            <button type="button" data-selection-tool="peek">Peek symbol</button>
           </div>
           <section id="review-overview" class="review-overview hidden">
             <div id="tour-overview" class="tour-overview hidden">
@@ -188,8 +189,25 @@
                 <button type="button" data-diff-wrap="scroll" aria-pressed="true">Scroll</button>
                 <button type="button" data-diff-wrap="wrap" aria-pressed="false">Wrap</button>
               </div>
+              <button id="symbol-peek-open" class="text-button" type="button">Peek symbol</button>
             </div>
           </div>
+          <section id="symbol-peek-panel" class="symbol-peek-panel hidden" role="dialog" aria-modal="false" aria-labelledby="symbol-peek-title" aria-describedby="symbol-peek-status">
+            <header class="symbol-peek-heading">
+              <div>
+                <div class="eyebrow">Symbol context</div>
+                <h2 id="symbol-peek-title">Peek a symbol</h2>
+              </div>
+              <button id="symbol-peek-close" class="button secondary" type="button">Back to code</button>
+            </header>
+            <nav id="symbol-peek-trail" class="symbol-peek-trail" aria-label="Symbol peek back trail"></nav>
+            <form id="symbol-peek-form" class="symbol-peek-form">
+              <label><span class="sr-only">Symbol name</span><input id="symbol-peek-input" maxlength="200" placeholder="Symbol name, e.g. resolveReview" autocomplete="off" required /></label>
+              <button class="button primary" type="submit">Resolve</button>
+            </form>
+            <p id="symbol-peek-status" class="symbol-peek-status" role="status" aria-live="polite">Choose a symbol from the code or enter one above.</p>
+            <div id="symbol-peek-result" class="symbol-peek-result" aria-live="polite"></div>
+          </section>
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>
         </div>

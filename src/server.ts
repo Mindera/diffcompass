@@ -15,6 +15,7 @@ import { ReviewError } from "./errors.ts";
 import { exportReview, htmlHighlightGroups, type ExportFormat } from "./export.ts";
 import { loadRepositoryFile } from "./git.ts";
 import { highlightGroups, SYNTAX_THEMES, type HighlightGroup, type SyntaxTheme } from "./highlight.ts";
+import { resolveSymbolPeek } from "./symbol-peek.ts";
 import { ReviewSession } from "./session.ts";
 import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
 import { createUpdateService, type UpdateService } from "./update.ts";
@@ -289,6 +290,17 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "GET" && url.pathname === "/api/files") {
         const path = requiredString(url.searchParams.get("path"), "path", 4_096);
         return json({ path, content: await loadRepositoryFile(session.comparison, path) });
+      }
+      if (request.method === "POST" && url.pathname === "/api/symbol-peek") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["symbol", "path", "line", "side"]);
+        const line = input.line === undefined ? undefined : finitePositiveInteger(input.line, "line");
+        return json(await resolveSymbolPeek(session.comparison, {
+          symbol: requiredString(input.symbol, "symbol", 200),
+          path: input.path === undefined ? undefined : requiredString(input.path, "path", 4_096),
+          line,
+          side: input.side === undefined ? undefined : enumValue(input.side, "side", ["old", "new"]),
+        }));
       }
       if (request.method === "POST" && url.pathname === "/api/files/reviewed") {
         const input = await readJsonObject(request);

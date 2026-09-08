@@ -280,7 +280,7 @@ export async function loadRepositoryFile(comparison: GitComparison, path: string
   }
   try {
     const metadata = await lstat(candidate);
-    if (!metadata.isFile()) throw new ReviewError("Only regular repository files can be opened.");
+    if (!metadata.isFile() || metadata.isSymbolicLink()) throw new ReviewError("Only regular repository files can be opened.");
     if (metadata.size > maxBytes) throw new ReviewError("Repository file is too large to display.");
     const content = await readFile(candidate);
     if (content.includes(0)) throw new ReviewError("Binary repository files cannot be displayed.");
