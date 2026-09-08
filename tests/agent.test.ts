@@ -495,7 +495,7 @@ test("fails closed instead of showing candidates when the finding audit is malfo
 test("skips optional findings and diagrams at generation time", async () => {
   const bridge = new AttachedAgentBridge();
   const agent = new TourAgent("/tmp/repository", {
-    adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeCallFlows: false, includeFlows: false, includeFindings: false,
+    adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeCallFlows: false, includeFlows: false, includeFindings: false, includeAdaptiveDiagrams: false,
   }, bridge);
   const comparison: GitComparison = {
     repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+changed", repositoryFiles: ["app.ts"],
@@ -512,6 +512,7 @@ test("skips optional findings and diagrams at generation time", async () => {
   expect(event.prompt).toContain("never use Mermaid keywords");
   expect(event.prompt).toContain("Call-flow diffs: omit");
   expect(event.prompt).toContain("Sequence diagrams: omit");
+  expect(event.prompt).toContain("Adaptive diagrams: omit");
   expect(event.prompt).toContain("Findings: omit");
   await bridge.respond(event.id, JSON.stringify({
     title: "Review", summary: "Summary",

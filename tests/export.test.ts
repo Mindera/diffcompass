@@ -40,6 +40,7 @@ function fixture(): ReviewSession {
       behaviorArchitectureStatus: "proposed",
       behaviorArchitecture: { title: "Behavior", summary: "Proposed structure", mermaid: "flowchart LR\n  user[\"User\"]:::external\n  app[\"App\"]:::new\n  user -->|uses| app", dependencyChanges: ["Added User → App: uses"], affectedFiles: ["app.ts"] },
       architecture: { title: "Components", summary: "Changed structure", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },
+      stateDiagram: { kind: "state-machine", title: "App lifecycle", summary: "A grounded lifecycle.", mermaid: "stateDiagram-v2\n  [*] --> ready\n  ready --> done", evidence: ["app.ts handles the lifecycle"], materiallyImprovesUnderstanding: "The lifecycle is easier to follow as states.", affectedFiles: ["app.ts"] },
       phases: [{ id: "behavior", title: "Behavior", summary: "Review behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "one", title: "Step", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 }, explanation: "**Explanation** with `code`." }] }],
       callFlows: [],
       flows: [{ id: "flow", title: "Flow", summary: "Summary", mermaid: "sequenceDiagram\n  A->>B: call", provenance: "verified", blastRadiusSize: 1, affectedFiles: ["app.ts"] }],
@@ -60,6 +61,8 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   expect(artifact.content).toContain("### Proposed behaviour: Behavior");
   expect(artifact.content).toContain("### Implementation journey: Components");
   expect(artifact.content).toContain("## Sequence diagrams");
+  expect(artifact.content).toContain("## Adaptive diagrams");
+  expect(artifact.content).toContain("### State machine: App lifecycle");
   expect(artifact.content).toContain("## Reviewer feedback");
   expect(artifact.content).toContain("diff --git a/app.ts b/app.ts");
   expect(artifact.content).toContain("````diff");
@@ -254,6 +257,10 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain('<div class="diff-row">');
   expect(artifact.content).toContain('class="architecture-legend"');
   expect(artifact.content).toContain('data-diagram-expand="behavior"');
+  expect(artifact.content).toContain("App lifecycle");
+  expect(artifact.content).toContain('data-view="adaptive"');
+  expect(artifact.content).toContain('data-view-panel="adaptive"');
+  expect(artifact.content).toContain('class="adaptive-legend"');
   expect(artifact.content).toContain('id="architecture-viewer"');
   expect(artifact.content).toContain('id="focus-mode-toggle"');
   expect(artifact.content).toContain('id="shortcuts-button"');

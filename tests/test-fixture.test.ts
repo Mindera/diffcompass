@@ -26,6 +26,8 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   expect(persisted.outline?.architecture?.dependencyChanges).toHaveLength(2);
   expect(persisted.outline?.behaviorArchitectureStatus).toBe("implemented");
   expect(persisted.outline?.behaviorArchitecture?.dependencyChanges).toHaveLength(2);
+  expect(persisted.outline?.stateDiagram?.kind).toBe("state-machine");
+  expect(persisted.outline?.dataModel?.kind).toBe("data-model");
   expect(persisted.outline?.callFlows).toHaveLength(1);
   expect(persisted.outline?.callFlows[0]?.edges).toHaveLength(2);
   expect(persisted.outline?.flows).toHaveLength(1);

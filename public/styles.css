@@ -850,6 +850,19 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .architecture-legend i.touched { border-color: var(--architecture-touched); }
 .architecture-legend i.removed { border-color: var(--architecture-removed); border-style: dashed; }
 .architecture-legend i.external { border-color: var(--architecture-external); border-width: 1px; border-style: dashed; }
+.adaptive-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 16px; color: var(--text-soft); font-size: 10px; font-weight: 650; }
+.adaptive-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.adaptive-legend i { box-sizing: border-box; width: 18px; height: 12px; border: 2px solid var(--accent); border-radius: 3px; background: var(--surface-card); }
+.adaptive-legend i.state-start { border-radius: 50%; border-color: var(--green); }
+.adaptive-legend i.state-transition { border-color: var(--amber); border-width: 1px; }
+.adaptive-legend i.state-end { border-color: var(--red); border-style: dashed; }
+.adaptive-legend i.entity { border-color: var(--accent); }
+.adaptive-legend i.relationship { border-color: var(--amber); border-style: dashed; }
+.adaptive-legend i.attribute { border-color: var(--muted); border-width: 1px; }
+.adaptive-evidence { margin-top: 14px; border-left: 3px solid var(--accent); padding: 9px 11px; color: var(--text-soft); background: var(--surface-control); font-size: 11px; line-height: 1.45; }
+.adaptive-evidence p { margin: 4px 0 8px; }
+.adaptive-evidence details { font-size: 10px; }
+.adaptive-evidence ul { margin: 6px 0 0; padding-left: 18px; }
 .architecture-diagram-shell { margin-top: 16px; }
 .diagram-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
 .diagram-control-label { margin: 0 3px 0 7px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }

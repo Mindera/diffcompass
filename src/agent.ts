@@ -5,8 +5,9 @@ import { dirname, join, relative, sep } from "node:path";
 import { runProcess } from "./process.ts";
 import { validateReviewFlow } from "./flows.ts";
 import { validateReviewArchitecture } from "./architecture.ts";
+import { validateReviewAdaptiveDiagram } from "./adaptive-diagrams.ts";
 import { validateCallFlow, validateCallFlows } from "./call-flows.ts";
-import type { AcceptanceCriterion, AgentRunActivity, AgentSelection, GitComparison, IssueAssessment, IssueAssessmentItem, LinkedIssueContext, ReasoningEffort, ReviewerTaskContext, ReviewArchitecture, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
+import type { AcceptanceCriterion, AgentRunActivity, AgentSelection, GitComparison, IssueAssessment, IssueAssessmentItem, LinkedIssueContext, ReasoningEffort, ReviewerTaskContext, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
 
 interface CodexJsonEvent {
   type?: string;
@@ -150,6 +151,8 @@ function parseOutline(message: string): TourOutline {
     behaviorArchitecture: value.behaviorArchitecture,
     behaviorArchitectureStatus: value.behaviorArchitectureStatus,
     architecture: value.architecture,
+    stateDiagram: value.stateDiagram,
+    dataModel: value.dataModel,
     callFlows: Array.isArray(value.callFlows) ? value.callFlows : [],
     flows: Array.isArray(value.flows) ? value.flows : [],
     findings: Array.isArray(value.findings) ? value.findings : [],
@@ -182,6 +185,16 @@ function requiredArchitectures(outline: TourOutline, comparison: GitComparison) 
 
 function validFlow(flow: ReviewFlow): boolean {
   try { validateReviewFlow(flow); return true; } catch { return false; }
+}
+
+function validAdaptiveDiagram(value: unknown, kind: ReviewAdaptiveDiagram["kind"], comparison: GitComparison): ReviewAdaptiveDiagram | undefined {
+  try {
+    const diagram = validateReviewAdaptiveDiagram(value);
+    if (diagram.kind !== kind || diagram.affectedFiles.some((path) => !comparison.files.some((file) => file.path === path))) return undefined;
+    return diagram;
+  } catch {
+    return undefined;
+  }
 }
 
 function validOptionalCallFlows(value: unknown, comparison: GitComparison) {
@@ -398,7 +411,7 @@ function issueAssessmentPromptContext(issue: LinkedIssueContext | undefined): st
   ].join("\n");
 }
 
-function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy, includeArchitecture: boolean, issue?: LinkedIssueContext): TourOutline {
+function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy, includeArchitecture: boolean, includeAdaptiveDiagrams: boolean, issue?: LinkedIssueContext): TourOutline {
   const phaseIds = new Set<string>();
   const stepIds = new Set<string>();
   let totalSteps = 0;
@@ -437,11 +450,17 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
   const callFlows = validOptionalCallFlows(outline.callFlows, comparison);
   const findings = validateFindings(outline.findings, phases, comparison, policy);
   const diagrams: Pick<TourOutline, "architecture" | "behaviorArchitecture" | "behaviorArchitectureStatus"> = includeArchitecture ? requiredArchitectures(outline, comparison) : {};
+  const adaptive = includeAdaptiveDiagrams ? {
+    stateDiagram: validAdaptiveDiagram(outline.stateDiagram, "state-machine", comparison),
+    dataModel: validAdaptiveDiagram(outline.dataModel, "data-model", comparison),
+  } : {};
   return {
     ...outline,
     behaviorArchitecture: diagrams.behaviorArchitecture,
     behaviorArchitectureStatus: diagrams.behaviorArchitectureStatus,
     architecture: diagrams.architecture,
+    stateDiagram: adaptive.stateDiagram,
+    dataModel: adaptive.dataModel,
     phases,
     callFlows,
     flows,
@@ -833,6 +852,7 @@ export class TourAgent {
   private readonly includeCallFlows: boolean;
   private readonly includeFlows: boolean;
   private readonly includeFindings: boolean;
+  private readonly includeAdaptiveDiagrams: boolean;
   private readonly activity?: (activity: AgentRunActivity) => void;
 
   constructor(
@@ -848,6 +868,7 @@ export class TourAgent {
     this.includeCallFlows = selection.includeCallFlows !== false;
     this.includeFlows = selection.includeFlows !== false;
     this.includeFindings = selection.includeFindings !== false;
+    this.includeAdaptiveDiagrams = selection.includeAdaptiveDiagrams !== false;
     this.activity = activity;
     this.attached = selection.adapterId === "attached";
     if (selection.adapterId === "attached") {
@@ -968,6 +989,7 @@ Reviewer-selected optional outputs:
 - Call-flow diffs: ${this.includeCallFlows ? "include" : "omit"}
 - Sequence diagrams: ${this.includeFlows ? "include" : "omit"}
 - Findings: ${this.includeFindings && policy.findings.enabled ? "include" : "omit"}
+- Adaptive diagrams: ${this.includeAdaptiveDiagrams ? "consider state-machine or data-model views only when evidence supports them and they materially improve understanding" : "omit"}
 
 When included, return two complementary architecture diagrams beside phases. Both use this shape: {"title":"...","summary":"...","mermaid":"flowchart LR\\n  client[\\\"Client\\\"]:::touched\\n  service[\\\"Service\\\"]:::new\\n  client -->|calls| service\\n  classDef new stroke:#2e7d32,stroke-width:3px\\n  classDef touched stroke:#f9a825,stroke-width:3px\\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\\n  classDef external stroke:#888888,stroke-dasharray:3 3","dependencyChanges":["Added Client → Service: calls"],"affectedFiles":["exact/changed/path"]}.
 
@@ -978,6 +1000,8 @@ Add "architecture": the implementation journey, answering how this PR's concrete
 Both diagrams are architecture maps, not runtime sequences. Use plain-language component names rather than build-module labels. Use flowchart LR, declare each node on its own line with a quoted label, and label every subject-to-object edge. Use neutral node IDs such as component1; never use Mermaid keywords such as graph, flowchart, subgraph, end, class, classDef, style, or click as node IDs. Mark every component with :::new, :::touched, :::removed, or :::external and include the exact four classDef lines shown in the example without fills. Edges touching removed components describe the old state; all other edges describe the target state. dependencyChanges explicitly lists every added, removed, or reversed relationship, or one item saying there are no dependency-direction changes. affectedFiles lists only changed paths that support that specific map. When architecture is omitted above, omit behaviorArchitectureStatus, behaviorArchitecture, and architecture, and spend no analysis on them.
 
 Return only JSON with this shape:
+The optional adaptive fields use these shapes:
+{"stateDiagram":{"kind":"state-machine","title":"...","summary":"...","mermaid":"stateDiagram-v2...","evidence":["specific changed path or symbol observation"],"materiallyImprovesUnderstanding":"why this lifecycle view explains the change better than existing views","affectedFiles":["exact/changed/path"]},"dataModel":{"kind":"data-model","title":"...","summary":"...","mermaid":"erDiagram...","evidence":["specific changed path or symbol observation"],"materiallyImprovesUnderstanding":"why this relationship view explains the change better than existing views","affectedFiles":["exact/changed/path"]}}
 {"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"behaviorArchitectureStatus":"implemented|proposed","behaviorArchitecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"architecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"phases":[{"id":"stable-phase-id","title":"logical change","summary":"what this phase establishes","fileChanges":[{"path":"exact/changed/path","summary":"this file's role in the phase"}],"steps":[{"id":"globally-unique-step-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}]}],"callFlows":[{"id":"stable-id","title":"...","summary":"...","entrypointNodeId":"root","provenance":"verified|partial|unverified","nodes":[{"id":"root","label":"Class.method","kind":"function|method|constructor|component|branch|external","change":"added|removed|unchanged|modified","oldLocation":{"path":"changed/path","side":"old","line":1},"newLocation":{"path":"changed/path","side":"new","line":1}}],"edges":[{"id":"root-to-child","from":"root","to":"child","label":"optional call meaning","change":"added|removed|unchanged","oldCallSite":{"path":"changed/path","side":"old","line":1},"newCallSite":{"path":"changed/path","side":"new","line":1}}],"affectedFiles":["exact/changed/path"]}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}],"findings":[{"id":"stable-id","phaseId":"owning-phase-id","stepId":"optional-owning-step-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","status":"open"}]}
 
 Before choosing anchors, identify one primary journey from an input, trigger, or contract to the observable result of the change. Use that journey as the narrative spine of the tour. When the implementation-journey diagram is included, its components and labelled relationships should express the same causal path at system level. Treat phases as ordered conceptual layers and order them by behavior and dependency flow, not file order or remembered implementation chronology. Put contract or foundation layers before implementation layers, and implementation before integration or effects, when the selected evidence supports those layers. Every phase summary must concisely state what its layer establishes and how it enables the next layer; for the final phase, state how it reaches the observable result or relevant verification. The first stop establishes the input or prerequisite. Each later stop adds one concrete fact that depends on what the reviewer has already learned. The final stops reach the observable result and its most relevant verification when the diff supports one. Branch only when the change has a genuinely separate behavior that cannot be explained on the primary journey. Do not create a component inventory, repeat the same fact at several anchors, or use a changed file as a stop unless it advances the journey.
@@ -994,7 +1018,7 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       "tour.outline",
       attachment,
       undefined,
-      (message) => validateOutline(parseOutline(message), comparison, policy, this.includeArchitecture, issue),
+      (message) => validateOutline(parseOutline(message), comparison, policy, this.includeArchitecture, this.includeAdaptiveDiagrams, issue),
     );
     const generated = generatedResult.value;
     const outline = {
@@ -1002,6 +1026,8 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       behaviorArchitecture: this.includeArchitecture ? generated.behaviorArchitecture : undefined,
       behaviorArchitectureStatus: this.includeArchitecture ? generated.behaviorArchitectureStatus : undefined,
       architecture: this.includeArchitecture ? generated.architecture : undefined,
+      stateDiagram: this.includeAdaptiveDiagrams ? generated.stateDiagram : undefined,
+      dataModel: this.includeAdaptiveDiagrams ? generated.dataModel : undefined,
       callFlows: this.includeCallFlows ? generated.callFlows : [],
       flows: this.includeFlows ? generated.flows : [],
       findings: this.includeFindings ? generated.findings : [],

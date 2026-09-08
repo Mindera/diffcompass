@@ -121,6 +121,7 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "shortcut-help-dialog", "shortcut-help-title", "shortcuts-button", "close-shortcut-help", "focus-mode-toggle",
+    "adaptive-view", "adaptive-diagrams", "adaptive-empty", "adaptive-tab", "include-adaptive-diagrams",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "reviewer-task-assessment-status", "reviewer-task-assessment-status-title", "reviewer-task-assessment-status-body", "view-reviewer-task-assessment", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
@@ -2959,6 +2960,30 @@ function architectureLegend() {
   </div>`;
 }
 
+function adaptiveEntries() {
+  const outline = state.session.outline;
+  return [
+    outline?.stateDiagram ? { key: "state", label: "State machine", value: outline.stateDiagram } : null,
+    outline?.dataModel ? { key: "data-model", label: "Data model / ER", value: outline.dataModel } : null,
+  ].filter(Boolean);
+}
+
+function adaptiveLegend(kind) {
+  return kind === "state-machine"
+    ? '<div class="adaptive-legend" role="list" aria-label="State-machine legend"><span role="listitem"><i class="state-start" aria-hidden="true"></i>Start</span><span role="listitem"><i class="state-transition" aria-hidden="true"></i>Transition</span><span role="listitem"><i class="state-end" aria-hidden="true"></i>Terminal</span></div>'
+    : '<div class="adaptive-legend" role="list" aria-label="Data-model legend"><span role="listitem"><i class="entity" aria-hidden="true"></i>Entity</span><span role="listitem"><i class="relationship" aria-hidden="true"></i>Relationship</span><span role="listitem"><i class="attribute" aria-hidden="true"></i>Attribute</span></div>';
+}
+
+function adaptiveCard(diagram, label, key) {
+  const affected = diagram.affectedFiles.map((path) => '<button class="flow-affected-file" type="button" data-flow-file="' + escapeHtml(path) + '">' + escapeHtml(path) + '</button>').join("");
+  const evidence = diagram.evidence.map((item) => '<li>' + escapeHtml(item) + '</li>').join("");
+  return '<article class="flow-card architecture-card adaptive-card">' +
+    '<header class="architecture-card-heading"><div><span class="architecture-label">' + escapeHtml(label) + '</span><h2>' + escapeHtml(diagram.title) + '</h2></div><button class="diagram-expand-button" type="button" data-diagram-expand="' + escapeHtml(key) + '" aria-label="Expand ' + escapeHtml(label) + ' diagram" title="Open diagram viewer"><span aria-hidden="true">⛶</span> Expand</button></header>' +
+    '<p>' + escapeHtml(diagram.summary) + '</p><div class="adaptive-evidence"><strong>Why this view is included</strong><p>' + escapeHtml(diagram.materiallyImprovesUnderstanding) + '</p><details><summary>Repository evidence</summary><ul>' + evidence + '</ul></details></div>' +
+    '<div class="architecture-diagram-shell" data-architecture-key="' + escapeHtml(key) + '">' + architectureDiagramControls(label) + '<div class="sequence-diagram architecture-diagram mermaid-render" data-adaptive-diagram="' + escapeHtml(key) + '" role="img" tabindex="0" aria-label="' + escapeHtml(label + ': ' + diagram.title + '. Drag to move; use arrow keys to move and plus or minus to zoom.') + '"><span class="loading">Rendering diagram…</span></div><p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p></div>' +
+    '<div class="flow-warning hidden" data-adaptive-error="' + escapeHtml(key) + '">The adaptive diagram source is invalid or unsupported. The saved evidence remains available below.</div><details class="flow-impact architecture-impact"><summary class="blast">affects ' + diagram.affectedFiles.length + '</summary><div class="flow-impact-list"><strong>Affected changed files</strong>' + affected + '</div></details><details class="mermaid-source"><summary>Mermaid source</summary><pre>' + escapeHtml(diagram.mermaid) + '</pre></details></article>';
+}
+
 function tourIntroArchitectureCard(architecture, label, key) {
   return `<article class="tour-intro-chart">
     <div class="tour-intro-chart-heading"><div><span class="architecture-label">${escapeHtml(label)}</span><h4>${escapeHtml(architecture.title)}</h4></div>${architectureDiagramExpandButton(label, key)}</div>
@@ -2988,11 +3013,12 @@ function tourIntroCallFlowCard(flow) {
 }
 
 function openArchitectureDiagramViewer(key) {
-  const architecture = architectureEntries().find((entry) => entry.key === key);
+  const architecture = [...architectureEntries(), ...adaptiveEntries()].find((entry) => entry.key === key);
   const source = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${CSS.escape(key)}"]`)
-    ?? elements["architecture-content"].querySelector(`[data-architecture-diagram="${CSS.escape(key)}"]`);
+    ?? elements["architecture-content"].querySelector(`[data-architecture-diagram="${CSS.escape(key)}"]`)
+    ?? elements["adaptive-diagrams"].querySelector(`[data-adaptive-diagram="${CSS.escape(key)}"]`);
   if (!architecture || !source?.querySelector("svg")) {
-    toast("The component diagram is not ready yet.");
+    toast("This diagram is not ready yet.");
     return;
   }
   const viewerKey = `viewer-${key}`;
@@ -3000,7 +3026,7 @@ function openArchitectureDiagramViewer(key) {
   elements["architecture-viewer-eyebrow"].textContent = "Component diagram";
   elements["architecture-viewer-title"].textContent = architecture.value.title;
   elements["architecture-viewer-controls"].innerHTML = architectureDiagramControls(architecture.label);
-  elements["architecture-viewer-legend"].innerHTML = architectureLegend();
+  elements["architecture-viewer-legend"].innerHTML = architecture.value.kind ? adaptiveLegend(architecture.value.kind) : architectureLegend();
   elements["architecture-viewer-shell"].dataset.architectureKey = viewerKey;
   elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
   delete elements["architecture-viewer-diagram"].dataset.callFlowId;
@@ -3193,6 +3219,15 @@ function renderArchitecture() {
   void renderFlowDiagrams(architectures, [], generation);
 }
 
+function renderAdaptiveDiagrams() {
+  const diagrams = adaptiveEntries();
+  elements["adaptive-tab"].classList.toggle("hidden", diagrams.length === 0);
+  elements["adaptive-empty"].classList.toggle("hidden", diagrams.length > 0);
+  elements["adaptive-diagrams"].innerHTML = diagrams.map(({ label, value, key }) => adaptiveLegend(value.kind) + adaptiveCard(value, label, key)).join("");
+  const generation = state.flowRenderGeneration;
+  void renderFlowDiagrams([], [], generation, diagrams);
+}
+
 function renderCallFlows() {
   const callFlows = state.session.outline?.callFlows ?? [];
   elements["regenerate-call-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
@@ -3228,8 +3263,8 @@ function renderSequenceDiagrams() {
   void renderFlowDiagrams(architectureEntries(), flows, generation);
 }
 
-async function renderFlowDiagrams(architectures, flows, generation) {
-  if (!window.mermaid || (architectures.length === 0 && flows.length === 0)) return;
+async function renderFlowDiagrams(architectures, flows, generation, adaptive = []) {
+  if (!window.mermaid || (architectures.length === 0 && flows.length === 0 && adaptive.length === 0)) return;
   const theme = document.documentElement.dataset.theme === "light" ? "default" : "dark";
   window.mermaid.initialize({
     startOnLoad: false,
@@ -3265,6 +3300,20 @@ async function renderFlowDiagrams(architectures, flows, generation) {
         introTarget.innerHTML = '<span class="muted">Diagram unavailable</span>';
         elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-error="${architecture.key}"]`)?.classList.remove("hidden");
       }
+    }
+  }
+  for (const diagram of adaptive) {
+    if (generation !== state.flowRenderGeneration) return;
+    const target = elements["adaptive-diagrams"].querySelector(`[data-adaptive-diagram="${CSS.escape(diagram.key)}"]`);
+    try {
+      const result = await window.mermaid.render(`review-tour-adaptive-${diagram.key}-${generation}`, diagram.value.mermaid);
+      if (generation !== state.flowRenderGeneration || !target?.isConnected) return;
+      target.innerHTML = result.svg;
+      target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      applyArchitectureDiagramView(diagram.key);
+    } catch {
+      if (target) target.innerHTML = '<span class="muted">Diagram unavailable</span>';
+      elements["adaptive-diagrams"].querySelector(`[data-adaptive-error="${CSS.escape(diagram.key)}"]`)?.classList.remove("hidden");
     }
   }
   for (let index = 0; index < flows.length; index += 1) {
@@ -3334,11 +3383,11 @@ function changedImageMedia() {
 }
 
 function availableTabs() {
-  return ["diff", "call-flows", "sequence", "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "call-flows", "sequence", ...(state.session?.outline?.stateDiagram || state.session?.outline?.dataModel ? ["adaptive"] : []), "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "call-flows", "sequence", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
+  for (const tabName of ["diff", "call-flows", "sequence", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -4029,8 +4078,10 @@ function renderSession() {
   renderFindings();
   renderReviewOverview();
   renderArchitecture();
+  renderAdaptiveDiagrams();
   if (state.activeTab === "call-flows") renderCallFlows();
   if (state.activeTab === "sequence") renderSequenceDiagrams();
+  if (state.activeTab === "adaptive") renderAdaptiveDiagrams();
   renderActivities();
   renderPullRequest();
   if (briefingWasOpen) {
@@ -4108,6 +4159,7 @@ async function startTour() {
         includeCallFlows: elements["include-call-flows"].checked,
         includeFlows: elements["include-flows"].checked,
         includeFindings: elements["include-findings"].checked,
+        includeAdaptiveDiagrams: elements["include-adaptive-diagrams"].checked,
       }),
     });
     state.tourMode = true;
@@ -5731,6 +5783,7 @@ new ResizeObserver(([entry]) => {
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
 elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequence", renderSequenceDiagrams));
+elements["adaptive-tab"].addEventListener("click", () => activateReviewTab("adaptive", renderAdaptiveDiagrams));
 elements["findings-tab"].addEventListener("click", () => activateReviewTab("findings", renderFindings));
 elements["findings-back"].addEventListener("click", returnToFindingCode);
 elements["activity-tab"].addEventListener("click", () => activateReviewTab("activity", renderActivities));
@@ -5852,6 +5905,7 @@ registerArchitectureDiagramInteractions(elements["tour-intro-architecture"]);
 registerArchitectureDiagramInteractions(elements["tour-intro-sequence"]);
 registerArchitectureDiagramInteractions(elements["tour-intro-call-flows"]);
 registerArchitectureDiagramInteractions(elements.architecture);
+registerArchitectureDiagramInteractions(elements["adaptive-view"]);
 registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"]);
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -5863,6 +5917,7 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
   const nextTab = tabs[nextIndex];
   const render = nextTab === "call-flows" ? renderCallFlows
     : nextTab === "sequence" ? renderSequenceDiagrams
+      : nextTab === "adaptive" ? renderAdaptiveDiagrams
       : nextTab === "findings" ? renderFindings
       : nextTab === "activity" ? renderActivities
         : nextTab === "conversations" ? renderMessages

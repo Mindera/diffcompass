@@ -49,7 +49,7 @@ test("readJsonObject requires JSON objects and enforces the byte limit", async (
 });
 
 test("selection parsing accepts optional tour outputs and rejects malformed values", () => {
-  expect(parseAgentSelection({ adapterId: "codex", modelId: "gpt-test", reasoningEffort: "high", includeArchitecture: false, includeCallFlows: true, includeFlows: false, includeFindings: true })).toEqual({
+  expect(parseAgentSelection({ adapterId: "codex", modelId: "gpt-test", reasoningEffort: "high", includeArchitecture: false, includeCallFlows: true, includeFlows: false, includeFindings: true, includeAdaptiveDiagrams: true })).toEqual({
     adapterId: "codex",
     modelId: "gpt-test",
     reasoningEffort: "high",
@@ -57,6 +57,7 @@ test("selection parsing accepts optional tour outputs and rejects malformed valu
     includeCallFlows: true,
     includeFlows: false,
     includeFindings: true,
+    includeAdaptiveDiagrams: true,
   });
   expectHttpError(() => parseAgentSelection({ adapterId: "codex", unexpected: true }), 422, "Unexpected field");
   expectHttpError(() => parseAgentSelection({ reasoningEffort: "turbo" }), 422, "reasoningEffort");

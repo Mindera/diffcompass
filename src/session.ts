@@ -202,7 +202,7 @@ export class ReviewSession {
     this.fullComparison = comparison;
     this.currentRevisionSummary = { changedFiles: 0, additions: 0, deletions: 0, newFiles: [], changedAgainFiles: [], resolvedFiles: [], unchangedFiles: [], text: "No review checkpoint yet. Create one before refreshing to preserve reviewed files." };
     this.selection = persisted?.selection
-      ? { ...structuredClone(persisted.selection), includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings }
+      ? { ...structuredClone(persisted.selection), includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings, includeAdaptiveDiagrams: persisted.selection.includeAdaptiveDiagrams ?? true }
       : undefined;
     this.agentContinuation = structuredClone(persisted?.agentContinuation);
     if (this.status === "open" && this.selection) {
@@ -795,6 +795,7 @@ export class ReviewSession {
       includeCallFlows: input.includeCallFlows ?? true,
       includeFlows: input.includeFlows ?? true,
       includeFindings: this.defaults.includeFindings === false ? false : input.includeFindings ?? true,
+      includeAdaptiveDiagrams: input.includeAdaptiveDiagrams ?? true,
     };
   }
 
@@ -822,6 +823,7 @@ export class ReviewSession {
       includeCallFlows: this.selection.includeCallFlows,
       includeFlows: this.selection.includeFlows,
       includeFindings: this.selection.includeFindings,
+      includeAdaptiveDiagrams: this.selection.includeAdaptiveDiagrams,
     };
   }
 
@@ -1348,7 +1350,8 @@ export class ReviewSession {
         (selection.includeArchitecture !== undefined && selection.includeArchitecture !== this.selection?.includeArchitecture) ||
         (selection.includeCallFlows !== undefined && selection.includeCallFlows !== this.selection?.includeCallFlows) ||
         (selection.includeFlows !== undefined && selection.includeFlows !== this.selection?.includeFlows) ||
-        (selection.includeFindings !== undefined && selection.includeFindings !== this.selection?.includeFindings)
+        (selection.includeFindings !== undefined && selection.includeFindings !== this.selection?.includeFindings) ||
+        (selection.includeAdaptiveDiagrams !== undefined && selection.includeAdaptiveDiagrams !== this.selection?.includeAdaptiveDiagrams)
       )) {
         throw new ReviewError("The agent and model cannot be changed after the tour starts.");
       }

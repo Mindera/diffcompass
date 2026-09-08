@@ -21,6 +21,7 @@
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
         <button id="call-flows-tab" class="tab" data-tab="call-flows" role="tab" aria-selected="false" aria-controls="call-flows-view" tabindex="-1">Call flows</button>
         <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
+        <button id="adaptive-tab" class="tab" data-tab="adaptive" role="tab" aria-selected="false" aria-controls="adaptive-view" tabindex="-1">Adaptive diagrams</button>
         <button id="findings-tab" class="tab" data-tab="findings" role="tab" aria-selected="false" aria-controls="findings-view" tabindex="-1">Findings <span id="findings-tab-count" class="tab-count hidden">0</span></button>
         <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
         <button id="conversations-tab" class="tab" data-tab="conversations" role="tab" aria-selected="false" aria-controls="conversations-view" tabindex="-1">Conversations</button>
@@ -225,6 +226,11 @@
           <div id="flows-empty" class="empty">Start the tour to generate grounded sequence diagrams.</div>
           <div id="flows" class="flows"></div>
         </div>
+        <div id="adaptive-view" class="review-view hidden" role="tabpanel" aria-labelledby="adaptive-tab">
+          <div class="flows-toolbar"><div><strong>Adaptive diagrams</strong><span class="muted">Evidence-gated lifecycle and data relationships. Empty is an honest result.</span></div></div>
+          <div id="adaptive-empty" class="empty">No supported state-machine or data-model view was identified for this change.</div>
+          <div id="adaptive-diagrams" class="flows"></div>
+        </div>
         <div id="findings-view" class="review-view hidden" role="tabpanel" aria-labelledby="findings-tab">
           <div class="flows-toolbar"><div><strong>All findings</strong><span class="muted">Evidence-backed analysis across the complete tour</span></div><button id="findings-back" class="button secondary hidden" type="button">← Back to code</button></div>
           <div id="all-findings-empty" class="empty">No evidence-backed findings were generated.</div>
@@ -275,6 +281,7 @@
               <label><input id="include-architecture" type="checkbox" checked /> Architecture</label>
               <label><input id="include-call-flows" type="checkbox" checked /> Call flows</label>
               <label><input id="include-flows" type="checkbox" checked /> Sequence diagrams</label>
+              <label><input id="include-adaptive-diagrams" type="checkbox" checked /> Adaptive diagrams</label>
               <label><input id="include-findings" type="checkbox" checked /> Findings</label>
             </fieldset>
             <div id="agent-note" class="agent-note"></div>

@@ -3,6 +3,7 @@ import { basename, dirname } from "node:path";
 import { isBriefingSectionOrder, type PersistedReviewSession, type SourceCheckpoint } from "./types.ts";
 import { normalizeSequenceDiagram } from "./flows.ts";
 import { normalizeReviewArchitectureMermaid, validateReviewArchitecture } from "./architecture.ts";
+import { normalizeReviewAdaptiveDiagram, validateReviewAdaptiveDiagram } from "./adaptive-diagrams.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -71,6 +72,11 @@ function validOutline(value: unknown): boolean {
     try { validateReviewArchitecture(value.behaviorArchitecture); } catch { return false; }
   } else if (value.behaviorArchitectureStatus !== undefined) return false;
   if (value.issueAssessment !== undefined && !validIssueAssessment(value.issueAssessment)) return false;
+  for (const field of ["stateDiagram", "dataModel"] as const) {
+    if (value[field] !== undefined) {
+      try { validateReviewAdaptiveDiagram(value[field]); } catch { return false; }
+    }
+  }
   const callFlowIds = new Set<string>();
   const validCallFlows = value.callFlows.every((flow) => {
     if (!record(flow) || !nonEmptyString(flow.id, 128) || callFlowIds.has(flow.id) ||
@@ -284,7 +290,8 @@ function validSelection(value: unknown): boolean {
     (value.includeArchitecture === undefined || typeof value.includeArchitecture === "boolean") &&
     (value.includeCallFlows === undefined || typeof value.includeCallFlows === "boolean") &&
     (value.includeFlows === undefined || typeof value.includeFlows === "boolean") &&
-    (value.includeFindings === undefined || typeof value.includeFindings === "boolean");
+    (value.includeFindings === undefined || typeof value.includeFindings === "boolean") &&
+    (value.includeAdaptiveDiagrams === undefined || typeof value.includeAdaptiveDiagrams === "boolean");
 }
 
 function validContinuation(value: unknown): boolean {
@@ -407,6 +414,10 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       if (record(diagram) && typeof diagram.mermaid === "string") {
         diagram.mermaid = normalizeReviewArchitectureMermaid(diagram.mermaid);
       }
+    }
+    for (const field of ["stateDiagram", "dataModel"] as const) {
+      const diagram = value.outline[field];
+      if (record(diagram)) normalizeReviewAdaptiveDiagram(diagram);
     }
     if (Array.isArray(value.outline.flows)) {
       for (const flow of value.outline.flows) {

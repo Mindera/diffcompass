@@ -111,6 +111,8 @@ export interface TourOutline {
   behaviorArchitecture?: ReviewArchitecture;
   behaviorArchitectureStatus?: "implemented" | "proposed";
   architecture?: ReviewArchitecture;
+  stateDiagram?: ReviewAdaptiveDiagram;
+  dataModel?: ReviewAdaptiveDiagram;
   phases: TourPhase[];
   callFlows: CallFlow[];
   flows: ReviewFlow[];
@@ -209,6 +211,18 @@ export interface ReviewArchitecture {
   dependencyChanges: string[];
   affectedFiles: string[];
   outdated?: boolean;
+}
+
+export type ReviewAdaptiveDiagramKind = "state-machine" | "data-model";
+
+export interface ReviewAdaptiveDiagram {
+  kind: ReviewAdaptiveDiagramKind;
+  title: string;
+  summary: string;
+  mermaid: string;
+  evidence: string[];
+  materiallyImprovesUnderstanding: string;
+  affectedFiles: string[];
 }
 
 export interface ReviewFlow {
@@ -503,6 +517,7 @@ export interface AgentSelection {
   includeCallFlows?: boolean;
   includeFlows?: boolean;
   includeFindings?: boolean;
+  includeAdaptiveDiagrams?: boolean;
 }
 
 export interface AgentRunActivity {

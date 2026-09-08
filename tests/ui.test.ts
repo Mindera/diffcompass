@@ -1117,7 +1117,7 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain("function architectureDiagramControls(label)");
   expect(app).toContain("function architectureDiagramExpandButton(label, key)");
   expect(app).toContain("function openArchitectureDiagramViewer(key)");
-  expect(app).toContain('elements["architecture-viewer-legend"].innerHTML = architectureLegend()');
+  expect(app).toContain('elements["architecture-viewer-legend"].innerHTML = architecture.value.kind ? adaptiveLegend(architecture.value.kind) : architectureLegend()');
   expect(app).toContain('<header class="architecture-card-heading"><div>');
   expect(app).toContain('${architectureDiagramExpandButton(label, key)}</header>');
   expect(app).toContain('data-diagram-expand="${escapeHtml(key)}"');
@@ -1130,6 +1130,7 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain("openArchitectureDiagramViewer(expandButton.dataset.diagramExpand)");
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["tour-intro-architecture"])');
   expect(app).toContain("registerArchitectureDiagramInteractions(elements.architecture)");
+  expect(app).toContain('registerArchitectureDiagramInteractions(elements["adaptive-view"])');
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"])');
   expect(app).toContain('aria-label="Architecture diagram legend"');
   expect(app).toContain('`${architectureLegend()}${architectures.map');
