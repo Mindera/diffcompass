@@ -937,6 +937,7 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .tour-intro-attention-item details p { margin: 4px 0 7px; color: var(--text-soft); overflow-wrap: anywhere; }
 .tour-intro-attention-item .text-button { margin-top: 4px; padding: 2px 0; font-size: 10px; }
 .tour-intro-estimate-factors { display: grid; gap: 5px; margin-top: 8px; }
+.tour-intro-estimate details { margin-top: 12px; }
 .tour-intro-estimate-factor { display: grid; grid-template-columns: minmax(100px, auto) auto minmax(0, 1fr); gap: 8px; align-items: baseline; color: var(--text-soft); font-size: 10px; }
 .tour-intro-estimate-factor strong { color: var(--accent-strong); font-size: 10px; }
 .tour-intro-estimate-factor small { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
