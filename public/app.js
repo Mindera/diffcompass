@@ -70,6 +70,8 @@ const state = {
   tourStarted: false,
   focusedStepId: null,
   tourIntroReturn: false,
+  focusMode: false,
+  shortcutHelpReturnTarget: null,
   tourIntroPending: launchTourIntro,
   tourIntroShown: false,
   focusedFindingId: null,
@@ -109,6 +111,7 @@ const elements = Object.fromEntries(
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
+    "shortcut-help-dialog", "shortcut-help-title", "shortcuts-button", "close-shortcut-help", "focus-mode-toggle",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
@@ -609,6 +612,52 @@ async function updateLibrarySession(id, action, name) {
 
 function reviewIsOpen() {
   return state.session?.status === "open";
+}
+
+function shortcutTargetIsEditable(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true'], [role='textbox']"));
+}
+
+function modalDialogIsOpen() {
+  return Boolean(document.querySelector("dialog[open]"));
+}
+
+function renderFocusMode() {
+  document.body.classList.toggle("focus-mode", state.focusMode);
+  const button = elements["focus-mode-toggle"];
+  button.setAttribute("aria-pressed", String(state.focusMode));
+  button.setAttribute("aria-label", state.focusMode ? "Exit focus mode" : "Enter focus mode");
+  button.title = state.focusMode ? "Exit focus mode (Z)" : "Enter focus mode (Z)";
+  button.textContent = state.focusMode ? "Exit focus" : "Focus mode";
+}
+
+async function toggleFocusMode() {
+  state.focusMode = !state.focusMode;
+  renderFocusMode();
+  if (state.focusMode && state.tourMode) await focusCurrentStep();
+  else elements["focus-mode-toggle"].focus({ preventScroll: true });
+}
+
+function openShortcutHelp() {
+  if (elements["shortcut-help-dialog"].open) return;
+  state.shortcutHelpReturnTarget = document.activeElement instanceof HTMLElement ? document.activeElement : elements["shortcuts-button"];
+  elements["shortcut-help-dialog"].showModal();
+  elements["close-shortcut-help"].focus();
+}
+
+function restoreShortcutHelpFocus() {
+  const target = state.shortcutHelpReturnTarget;
+  state.shortcutHelpReturnTarget = null;
+  (target?.isConnected ? target : elements["shortcuts-button"])?.focus({ preventScroll: true });
+}
+
+async function handleNextStep() {
+  const steps = state.session.outline?.phases.flatMap((phase) => phase.steps) ?? [];
+  if (!steps.length || !state.tourMode || !reviewIsOpen()) return;
+  if (state.session.currentStepIndex === steps.length - 1) {
+    state.questionsOpen = true;
+    await toggleTourMode();
+  } else await navigate("next");
 }
 
 function narrowFilePanelLayout() {
@@ -4183,13 +4232,7 @@ elements["architecture-viewer-diagram"].addEventListener("click", (event) => {
 });
 elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
-elements["next-step"].addEventListener("click", () => {
-  const steps = state.session.outline?.phases.flatMap((phase) => phase.steps) ?? [];
-  if (steps.length && state.session.currentStepIndex === steps.length - 1) {
-    state.questionsOpen = true;
-    void toggleTourMode();
-  } else void navigate("next");
-});
+elements["next-step"].addEventListener("click", () => void handleNextStep());
 elements["questions-toggle"].addEventListener("click", () => {
   state.questionsOpen = !state.questionsOpen;
   renderQuestionLayout();
@@ -4398,6 +4441,27 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && reviewActions.classList.contains("open")) {
     setReviewActionsOpen(false);
     reviewActionsToggle.focus();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.defaultPrevented || event.repeat || shortcutTargetIsEditable(event.target) || modalDialogIsOpen()) return;
+  const systemModifier = event.ctrlKey || event.metaKey || event.altKey;
+  if (event.key === "?" && event.shiftKey && !systemModifier) {
+    event.preventDefault();
+    openShortcutHelp();
+    return;
+  }
+  if (systemModifier || event.shiftKey) return;
+  const key = event.key.toLowerCase();
+  if (key === "j" && state.tourMode && reviewIsOpen()) {
+    event.preventDefault();
+    void handleNextStep();
+  } else if (key === "k" && state.tourMode && reviewIsOpen()) {
+    event.preventDefault();
+    void navigate("previous");
+  } else if (key === "z") {
+    event.preventDefault();
+    void toggleFocusMode();
   }
 });
 document.addEventListener("pointerdown", (event) => {
@@ -4736,6 +4800,10 @@ elements["close-sessions"].addEventListener("click", () => elements["sessions-di
 elements["show-archived-sessions"].addEventListener("change", loadSessions);
 elements["about-button"].addEventListener("click", () => void openAboutDialog());
 elements["close-about"].addEventListener("click", () => elements["about-dialog"].close());
+elements["focus-mode-toggle"].addEventListener("click", () => void toggleFocusMode());
+elements["shortcuts-button"].addEventListener("click", openShortcutHelp);
+elements["close-shortcut-help"].addEventListener("click", () => elements["shortcut-help-dialog"].close());
+elements["shortcut-help-dialog"].addEventListener("close", restoreShortcutHelpFocus);
 elements["sessions-list"].addEventListener("click", async (event) => {
   const button = event.target.closest("[data-session-action]");
   const item = event.target.closest("[data-session-id]");
@@ -5295,6 +5363,7 @@ elements["comment-list"].addEventListener("change", async (event) => {
 elements["update-button"].addEventListener("click", installUpdate);
 elements["current-step-return"].addEventListener("click", () => void focusCurrentStep());
 setFilePanelOpen(false);
+renderFocusMode();
 
 try {
   state.session = await api("/api/session");

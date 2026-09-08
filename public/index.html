@@ -103,6 +103,8 @@
         </details>
         <button id="refresh-button" class="button secondary">Refresh</button>
         <button id="checkpoint-button" class="button secondary" type="button">Checkpoint</button>
+        <button id="focus-mode-toggle" class="button secondary" type="button" aria-pressed="false" title="Enter focus mode (Z)">Focus mode</button>
+        <button id="shortcuts-button" class="button secondary" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">? Shortcuts</button>
         <div id="review-actions" class="review-actions">
           <button id="review-actions-toggle" class="button secondary review-actions-toggle" type="button" aria-expanded="false" aria-controls="review-options">Review <span aria-hidden="true">▾</span></button>
           <div id="review-options" class="review-options">
@@ -522,6 +524,26 @@
       </div>
       <dl id="about-details" class="about-details"><div><dt>Status</dt><dd>Loading…</dd></div></dl>
       <p class="dialog-description">A local, agent-guided workspace for understanding, discussing, and reviewing changes.</p>
+    </dialog>
+
+    <dialog id="shortcut-help-dialog" class="shortcut-help-dialog" aria-labelledby="shortcut-help-title" aria-describedby="shortcut-help-description">
+      <div class="dialog-heading">
+        <div>
+          <div class="eyebrow">Keyboard help</div>
+          <h2 id="shortcut-help-title">Review shortcuts</h2>
+        </div>
+        <button id="close-shortcut-help" type="button" class="button secondary">Close</button>
+      </div>
+      <p id="shortcut-help-description" class="dialog-description">Shortcuts are available when you are reviewing. They pause while you type or edit, and existing buttons remain available.</p>
+      <table class="shortcut-table">
+        <tbody>
+          <tr><th scope="row"><kbd>J</kbd></th><td>Next tour stop</td></tr>
+          <tr><th scope="row"><kbd>K</kbd></th><td>Previous tour stop</td></tr>
+          <tr><th scope="row"><kbd>Z</kbd></th><td>Toggle focus mode</td></tr>
+          <tr><th scope="row"><kbd>?</kbd></th><td>Show this help</td></tr>
+        </tbody>
+      </table>
+      <p class="dialog-description shortcut-help-note">Focus mode widens the diff and hides secondary review chrome. Use the visible <strong>Exit focus</strong> button or press <kbd>Z</kbd> to return.</p>
     </dialog>
 
     <dialog id="flow-dialog">

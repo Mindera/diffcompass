@@ -188,6 +188,11 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain('class="architecture-legend"');
   expect(artifact.content).toContain('data-diagram-expand="behavior"');
   expect(artifact.content).toContain('id="architecture-viewer"');
+  expect(artifact.content).toContain('id="focus-mode-toggle"');
+  expect(artifact.content).toContain('id="shortcuts-button"');
+  expect(artifact.content).toContain('id="shortcut-help-dialog"');
+  expect(artifact.content).toContain("event.repeat");
+  expect(artifact.content).toContain("DOMContentLoaded");
   expect(artifact.content).toContain("className='tour-code-note'");
   expect(artifact.content).toContain('<div class="mermaid sequence-diagram">sequenceDiagram');
   expect(artifact.content).toContain("mermaid.initialize");

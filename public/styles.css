@@ -251,6 +251,17 @@ button { color: inherit; }
 .button.secondary { background: var(--panel-raised); }
 .button.wide { width: 100%; padding: 11px; }
 .topbar .button { padding: 6px 9px; border-radius: 7px; font-size: 11px; }
+.focus-mode .file-panel { display: none; }
+.focus-mode .workspace { grid-template-columns: minmax(420px, 1fr) var(--agent-panel-width); }
+.focus-mode .topbar .tabs, .focus-mode .settings-menu, .focus-mode #update-button, .focus-mode #refresh-button, .focus-mode #review-actions { display: none; }
+.focus-mode .questions-pane, .focus-mode .persistent-comment-drawer { display: none; }
+.focus-mode .topbar { grid-template-columns: minmax(0, 1fr) auto; }
+.shortcut-help-dialog { width: min(560px, calc(100vw - 30px)); }
+.shortcut-table { width: 100%; margin-top: 18px; border-collapse: collapse; font-size: 12px; }
+.shortcut-table th, .shortcut-table td { border-bottom: 1px solid var(--border-soft); padding: 10px 8px; text-align: left; }
+.shortcut-table th { width: 86px; color: var(--text); }
+kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-hover); border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; color: var(--text); background: var(--surface-control); font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
+.shortcut-help-note { margin-bottom: 0; }
 .hidden { display: none !important; }
 
 .workspace {
@@ -1205,6 +1216,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   .diff-panel { grid-column: 1; grid-row: 1; }
   .agent-panel { grid-column: 1 / -1; grid-row: 2; min-height: 520px; border-top: 1px solid var(--border); border-left: 0; }
   .agent-resizer { display: none; }
+  .focus-mode .workspace { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 620px) {
