@@ -83,6 +83,12 @@ test("refresh expands files that changed since the review checkpoint", async () 
   expect([...state.collapsedFiles]).toEqual(["README.md"]);
 });
 
+test("comparison view switching reopens the changed-since-checkpoint files", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("async function switchComparisonView"), app.indexOf("async function createCheckpoint"));
+  expect(source).toContain("expandFilesChangedByRefresh(state.session)");
+});
+
 test("the tour file filter combines reviewed and unreviewed files from every phase", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
   const source = app.slice(app.indexOf("function filteredChangedFiles()"), app.indexOf("function renderFileTree()"));

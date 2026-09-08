@@ -3386,6 +3386,7 @@ async function switchComparisonView(view) {
   try {
     const previous = state.session;
     state.session = await api("/api/comparison/view", { method: "POST", body: JSON.stringify({ view }) });
+    expandFilesChangedByRefresh(state.session);
     renderSessionUpdate(previous, { closeCommentEditor: true });
   } catch (error) {
     toast(error.message);
