@@ -845,8 +845,9 @@ function findingPins(file, row, side, findings) {
   return findings
     .filter((finding) => finding.path === file.path && finding.side === side && finding.line === line && finding.status === "open")
     .map((finding) => {
-      const summary = findingSummary(finding);
-      return `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" data-tooltip="${escapeHtml(summary)}" aria-label="${escapeHtml(`${finding.priority} finding: ${summary}`)}" aria-describedby="finding-tooltip">${finding.priority}</button>`;
+      const summary = `${finding.outdated ? "(needs reassessment) " : ""}${findingSummary(finding)}`;
+      const reassessmentClass = finding.outdated ? " needs-reassessment" : "";
+      return `<button class="finding-pin ${finding.priority.toLowerCase()}${reassessmentClass}" data-finding-id="${escapeHtml(finding.id)}" data-tooltip="${escapeHtml(summary)}" aria-label="${escapeHtml(`${finding.priority} finding: ${summary}`)}" aria-describedby="finding-tooltip">${finding.priority}</button>`;
     }).join("");
 }
 

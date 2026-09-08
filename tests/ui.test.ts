@@ -380,6 +380,8 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(app).toContain("openFindingFromCode(findingPin.dataset.findingId)");
   expect(app).toContain('classList.toggle("hidden", !state.findingReturn)');
   expect(app).toContain('data-tooltip="${escapeHtml(summary)}"');
+  expect(app).toContain('finding.outdated ? "(needs reassessment) " : ""');
+  expect(app).toContain('finding.outdated ? " needs-reassessment" : ""');
   expect(app).toContain("evidence.open = true");
   expect(app).toContain('const findingDispositionLabels = {');
   expect(app).toContain('accepted: "Risk accepted"');
@@ -395,6 +397,7 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(app).toContain('finding.outdated ? "Revalidate" : "Add as feedback"');
   expect(app).not.toContain('finding.outdated ? " disabled" : ""');
   expect(styles).toContain(".finding-badges .finding-reassessment");
+  expect(styles).toContain(".finding-pin.needs-reassessment");
   expect(styles).toContain(".finding-badges .finding-disposition.accepted");
   expect(styles).toContain(".finding-badges .finding-disposition.false-positive");
   expect(styles).toContain(".finding-badges .finding-disposition.intentional");

@@ -478,6 +478,7 @@ button { color: inherit; }
 .finding-pin.p1 { background: var(--priority-p1); }
 .finding-pin.p2 { background: var(--priority-p2); }
 .finding-pin.p3 { background: var(--priority-p3); }
+.finding-pin.needs-reassessment { background: var(--warning); outline: 1px solid var(--warning-border); outline-offset: 1px; }
 .has-finding { box-shadow: inset -2px 0 var(--priority-p1); }
 .line-code { min-width: 0; margin: 0; padding: 0 8px; white-space: pre; }
 .addition .inline-change { background: color-mix(in srgb, var(--addition-line) 28%, transparent); border-radius: 2px; }
