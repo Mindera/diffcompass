@@ -1677,7 +1677,8 @@ function renderReviewOverview() {
   const pullRequest = state.session.pullRequest;
   elements["review-overview"].classList.toggle("hidden", !outline && !pullRequest);
   elements["tour-overview"].classList.toggle("hidden", !outline);
-  elements["tour-intro-return"].classList.toggle("hidden", !state.tourIntroReturn);
+  elements["tour-intro-return"].classList.toggle("hidden", !outline || !state.tourIntroShown);
+  elements["tour-intro-return"].textContent = state.tourIntroReturn ? "↩ Back to briefing" : "View briefing";
   if (outline) {
     elements["review-overview-title"].textContent = outline.title;
     elements["review-overview-summary"].textContent = outline.summary;
@@ -1991,6 +1992,7 @@ function reopenTourIntro() {
   state.tourIntroReturn = false;
   state.tourIntroPending = true;
   state.tourIntroShown = true;
+  renderReviewOverview();
   renderTourIntro();
   elements["tour-intro-dialog"].showModal();
   window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
@@ -2762,6 +2764,7 @@ async function beginPreparedTour() {
   state.tourIntroReturn = false;
   state.tourMode = true;
   elements["tour-intro-dialog"].close();
+  renderReviewOverview();
   await focusCurrentStep();
 }
 
@@ -3530,6 +3533,7 @@ elements["tour-intro-dialog"].addEventListener("click", (event) => {
   state.tourIntroPending = false;
   state.tourIntroShown = true;
   state.tourIntroReturn = true;
+  renderReviewOverview();
   elements["tour-intro-dialog"].close();
   if (kind === "finding") return openFindingFromCode(target.dataset.attentionId);
   state.tourMode = false;
