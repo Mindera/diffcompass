@@ -920,7 +920,8 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .question-files-tree details > summary { border-radius: 6px; padding: 7px 8px; color: var(--text-soft); font: 700 10px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
 .question-files-tree details > summary:hover { background: var(--surface-hover); }
 .question-files-tree details > div { margin-left: 16px; border-left: 1px solid var(--border-soft); padding-left: 4px; }
-.tour-intro-dialog { width: min(960px, calc(100vw - 30px)); height: min(820px, calc(100vh - 30px)); max-height: none; display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 0; overflow: hidden; }
+.tour-intro-dialog { width: min(960px, calc(100vw - 30px)); height: min(820px, calc(100vh - 30px)); max-height: none; grid-template-rows: minmax(0, 1fr) auto; padding: 0; overflow: hidden; }
+.tour-intro-dialog[open] { display: grid; }
 .tour-intro-scroll { min-height: 0; max-height: none; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 24px 26px 18px; }
 .tour-intro-dialog h2 { max-width: 760px; font-size: 24px; line-height: 1.2; }
 .tour-intro-summary { max-width: 780px; margin: 10px 0 0; color: var(--text-soft); font-size: 13px; line-height: 1.55; }
