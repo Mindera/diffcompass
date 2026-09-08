@@ -174,6 +174,14 @@ export interface ReviewFlow {
   outdated?: boolean;
 }
 
+export type FindingDisposition =
+  | "accepted"
+  | "false-positive"
+  | "intentional"
+  | "deferred"
+  | "fixed"
+  | "obsolete-after-refresh";
+
 export interface ReviewFinding {
   id: string;
   phaseId?: string;
@@ -193,7 +201,11 @@ export interface ReviewFinding {
   blastRadiusSize: number;
   tested: boolean;
   pinScope: "line" | "symbol" | "file";
-  status: "open" | "dismissed" | "converted-to-feedback";
+  /** Operational state. `dismissed` is accepted only while migrating old sessions. */
+  status: "open" | FindingDisposition | "dismissed" | "converted-to-feedback";
+  /** Reviewer-owned resolution preserved when the finding is refreshed or regenerated. */
+  disposition?: FindingDisposition;
+  reviewerNote?: string;
   commentId?: string;
   outdated?: boolean;
 }

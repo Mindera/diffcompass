@@ -1,5 +1,5 @@
 import type { ReviewSession } from "./session.ts";
-import type { CallFlow, DiffFile, DiffRow, ReviewArchitecture, ReviewFinding } from "./types.ts";
+import type { CallFlow, DiffFile, DiffRow, FindingDisposition, ReviewArchitecture, ReviewFinding } from "./types.ts";
 import type { HighlightGroup, HighlightToken } from "./highlight.ts";
 // @ts-expect-error Bun's text loader embeds Mermaid in the self-contained HTML export.
 import mermaidScript from "mermaid/dist/mermaid.min.js" with { type: "text" };
@@ -12,6 +12,25 @@ export interface HtmlExportOptions {
   diffWrap?: "scroll" | "wrap";
   highlightedGroups?: Array<{ id: string; lines: HighlightToken[][] }>;
   markdownPreviews?: Array<{ path: string; side: "old" | "new"; content: string }>;
+}
+
+const findingDispositionLabels: Record<FindingDisposition, string> = {
+  accepted: "Accepted",
+  "false-positive": "False positive",
+  intentional: "Intentional",
+  deferred: "Deferred",
+  fixed: "Fixed",
+  "obsolete-after-refresh": "Obsolete after refresh",
+};
+
+function findingDisposition(finding: ReviewFinding): string {
+  return finding.disposition
+    ? findingDispositionLabels[finding.disposition]
+    : finding.status === "dismissed"
+      ? "Deferred"
+      : finding.status === "converted-to-feedback"
+        ? "Added to feedback"
+        : "Open";
 }
 
 function markdownFence(language: string, content: string): string {
@@ -86,7 +105,7 @@ function markdown(session: ReviewSession): string {
   if (outline?.findings.length) {
     lines.push("## Findings", "");
     for (const finding of outline.findings) {
-      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Scope: ${markdownText(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${markdownText(finding.stepId)}` : ""}; status: ${finding.status}; severity: ${finding.severity}; confidence: ${finding.confidence}`, "", markdownText(finding.message), "", `Evidence: ${markdownText(finding.evidence)}`, "");
+      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Scope: ${markdownText(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${markdownText(finding.stepId)}` : ""}; disposition: ${findingDisposition(finding)}; severity: ${finding.severity}; confidence: ${finding.confidence}`, "", markdownText(finding.message), "", `Evidence: ${markdownText(finding.evidence)}`, ...(finding.reviewerNote ? ["", `Reviewer note: ${markdownText(finding.reviewerNote)}`] : []), "");
     }
   }
   if (session.comments.length) {
@@ -398,7 +417,7 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   }
   const filesByPath = new Map(session.comparison.files.map((file) => [file.path, file]));
   let stopNumber = 0;
-  const findingCard = (finding: ReviewFinding) => `<article class="finding ${finding.priority.toLowerCase()}"><header><span>${finding.priority}</span><strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong></header><code>${escapeHtml(finding.path)}:${finding.line}</code><p>${inlineHtml(finding.message)}</p><details><summary>Evidence · ${escapeHtml(finding.confidence)} confidence</summary><p>${inlineHtml(finding.evidence)}</p></details></article>`;
+  const findingCard = (finding: ReviewFinding) => `<article class="finding ${finding.priority.toLowerCase()} ${finding.disposition ? escapeHtml(finding.disposition) : ""}"><header><span>${finding.priority}</span><strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong></header><code>${escapeHtml(finding.path)}:${finding.line}</code><p>${inlineHtml(finding.message)}</p><div class="finding-disposition">Disposition: ${escapeHtml(findingDisposition(finding))}</div>${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${inlineHtml(finding.reviewerNote)}</p></div>` : ""}<details><summary>Evidence · ${escapeHtml(finding.confidence)} confidence</summary><p>${inlineHtml(finding.evidence)}</p></details></article>`;
   const architectureLegend = '<div class="architecture-legend" aria-label="Diagram colour legend"><span><i class="new"></i>New</span><span><i class="changed"></i>Changed</span><span><i class="removed"></i>Removed</span><span><i class="external"></i>Outside this change</span></div>';
   const diagramControls = '<div class="diagram-controls"><span>Move</span><button type="button" data-diagram-action="move-left" aria-label="Move diagram left">←</button><button type="button" data-diagram-action="move-up" aria-label="Move diagram up">↑</button><button type="button" data-diagram-action="move-down" aria-label="Move diagram down">↓</button><button type="button" data-diagram-action="move-right" aria-label="Move diagram right">→</button><span>Zoom</span><button type="button" data-diagram-action="zoom-out" aria-label="Zoom out">−</button><button type="button" class="diagram-zoom" data-diagram-action="reset">100%</button><button type="button" data-diagram-action="zoom-in" aria-label="Zoom in">+</button></div>';
   const architectureSection = (key: string, label: string, architecture: ReviewArchitecture) => `<article class="diagram-card architecture-card"><header><div><span class="eyebrow">${escapeHtml(label)}</span><h3>${escapeHtml(architecture.title)}</h3></div><button class="expand-diagram" type="button" data-diagram-expand="${key}">⛶ Expand</button></header><p>${escapeHtml(architecture.summary)}</p><div class="diagram-shell" data-diagram-key="${key}">${diagramControls}<div class="mermaid architecture-diagram" tabindex="0">${escapeHtml(architecture.mermaid)}</div><small>Drag to move · Arrow keys move · +/− zoom · 0 resets</small></div><h4>Relationship changes</h4><ul>${architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul></article>`;

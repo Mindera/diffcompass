@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { loadComparison } from "../src/git.ts";
 import { runProcess } from "../src/process.ts";
-import { startServer } from "../src/server.ts";
+import { createRequestHandler, startServer } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
 import type { ReviewFinding, ReviewPreferences, TourOutline } from "../src/types.ts";
 
@@ -122,6 +122,78 @@ test("refresh marks a finding outdated when its anchored line content changes an
   expect(snapshot.outline?.findings[0]).toMatchObject({
     lineContent: "const changed = 2;",
     outdated: true,
+    status: "obsolete-after-refresh",
+    disposition: "obsolete-after-refresh",
+  });
+});
+
+test("explicit finding dispositions and reviewer notes survive refreshes", async () => {
+  const dispositions = ["accepted", "false-positive", "intentional", "deferred", "fixed"] as const;
+  for (const disposition of dispositions) {
+    const { repository, session } = await reviewFixture();
+    session.outline = outline(finding());
+
+    const saved = await session.updateFinding("finding-1", disposition, `Reviewed as ${disposition}.`);
+    expect(saved.outline?.findings[0]).toMatchObject({
+      status: disposition,
+      disposition,
+      reviewerNote: `Reviewed as ${disposition}.`,
+    });
+
+    await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changed = 3;\n");
+    const refreshed = await session.refreshComparison();
+    expect(refreshed.outline?.findings[0]).toMatchObject({
+      status: disposition,
+      disposition,
+      reviewerNote: `Reviewed as ${disposition}.`,
+      outdated: true,
+    });
+  }
+});
+
+test("reopening clears a finding disposition and its note, while legacy dismiss remains deferred", async () => {
+  const { session } = await reviewFixture();
+  session.outline = outline(finding());
+
+  const deferred = await session.updateFinding("finding-1", "dismiss", "Revisit after the next pass.");
+  expect(deferred.outline?.findings[0]).toMatchObject({ status: "deferred", disposition: "deferred", reviewerNote: "Revisit after the next pass." });
+
+  const reopened = await session.updateFinding("finding-1", "reopen");
+  expect(reopened.outline?.findings[0]).toMatchObject({ status: "open", disposition: undefined, reviewerNote: undefined });
+});
+
+test("an explicit obsolete-after-refresh disposition can retain context on an already refreshed finding", async () => {
+  const { repository, session } = await reviewFixture();
+  session.outline = outline(finding());
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changed = 3;\n");
+  await session.refreshComparison();
+
+  const saved = await session.updateFinding("finding-1", "obsolete-after-refresh", "The issue disappeared in the refreshed source.");
+  expect(saved.outline?.findings[0]).toMatchObject({
+    status: "obsolete-after-refresh",
+    disposition: "obsolete-after-refresh",
+    reviewerNote: "The issue disappeared in the refreshed source.",
+    outdated: true,
+  });
+});
+
+test("finding lifecycle API accepts explicit dispositions and notes", async () => {
+  const { session } = await reviewFixture();
+  session.outline = outline(finding());
+  const url = "http://review.test";
+  const handler = createRequestHandler(session);
+
+  const response = await handler(new Request(`${url}/api/findings/finding-1`, {
+    method: "PATCH",
+    headers: browserHeaders(url, session.browserToken),
+    body: JSON.stringify({ action: "set-disposition", disposition: "intentional", note: "This branch is required by the contract." }),
+  }));
+  const body = await response.json() as { outline?: TourOutline };
+  expect(response.status).toBe(200);
+  expect(body.outline?.findings[0]).toMatchObject({
+    status: "intentional",
+    disposition: "intentional",
+    reviewerNote: "This branch is required by the contract.",
   });
 });
 

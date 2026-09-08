@@ -688,6 +688,7 @@ button { color: inherit; }
 .finding-item.p2 { border-left-color: var(--priority-p2); }
 .finding-item.focused { border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--accent-soft), 0 10px 28px var(--shadow); }
 .finding-item.dismissed { opacity: .55; }
+.finding-item.obsolete-after-refresh { border-left-color: var(--amber); }
 .finding-item.outdated { opacity: .65; border-left-style: dashed; }
 .finding-heading { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .finding-priority { border-radius: 4px; padding: 2px 5px; background: var(--surface-priority); font-size: 10px; font-weight: 900; }
@@ -708,6 +709,15 @@ button { color: inherit; }
 .compact-finding-actions .text-button { font-size: 10px; }
 .finding-badges { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0; }
 .finding-badges span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 5px; color: var(--muted); font-size: 9px; }
+.finding-badges .finding-disposition { border-color: var(--accent-strong); color: var(--accent-strong); font-weight: 700; }
+.finding-note { margin: 8px 0; border-left: 2px solid var(--accent-strong); padding-left: 8px; color: var(--text-soft); font-size: 11px; }
+.finding-note strong { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.finding-note p { margin: 3px 0 0; }
+.finding-disposition-control { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; }
+.finding-disposition-control select, .comment-actions textarea { min-width: 0; border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; color: var(--text); background: var(--panel); font: inherit; }
+.comment-actions textarea { width: 100%; resize: vertical; }
+.finding-item .comment-actions { flex-wrap: wrap; }
+.finding-item .comment-actions textarea { flex: 1 1 100%; }
 .flows { max-width: 1050px; margin: 0 auto; padding: 24px; }
 .flows-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 1002px; margin: 0 auto; padding: 18px 24px 0; }
 .flows-toolbar strong, .flows-toolbar span { display: block; }

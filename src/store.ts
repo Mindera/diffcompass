@@ -116,7 +116,10 @@ function validOutline(value: unknown): boolean {
       (finding.introduced === null || typeof finding.introduced === "boolean") && typeof finding.recallGuard === "boolean" &&
       Number.isInteger(finding.blastRadiusSize) && Number(finding.blastRadiusSize) >= 0 &&
       typeof finding.tested === "boolean" && ["line", "symbol", "file"].includes(String(finding.pinScope)) &&
-      ["open", "dismissed", "converted-to-feedback"].includes(String(finding.status)) &&
+      ["open", "dismissed", "accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh", "converted-to-feedback"].includes(String(finding.status)) &&
+      (finding.disposition === undefined || ["accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh"].includes(String(finding.disposition))) &&
+      (finding.disposition === undefined || finding.status === finding.disposition) &&
+      (finding.reviewerNote === undefined || nonEmptyString(finding.reviewerNote, 8_000)) &&
       (finding.commentId === undefined || nonEmptyString(finding.commentId, 128)) &&
       (finding.outdated === undefined || typeof finding.outdated === "boolean"));
 }
@@ -346,6 +349,14 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
         finding.blastRadiusSize ??= 0;
         finding.tested ??= false;
         finding.pinScope ??= "line";
+        // v2 only had a generic dismissed state. Keep it readable and give it
+        // the least committal explicit meaning when the session is resumed.
+        if (finding.status === "dismissed") {
+          finding.disposition ??= "deferred";
+          finding.status = finding.disposition;
+        } else if (finding.disposition === undefined && ["accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh"].includes(String(finding.status))) {
+          finding.disposition = finding.status;
+        }
       }
     }
   }

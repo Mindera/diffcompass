@@ -206,6 +206,72 @@ test("migrates legacy v1 finding metadata without discarding the session", async
   });
 });
 
+test("migrates the legacy generic finding dismissal to an explicit deferred disposition", async () => {
+  const path = await temporaryStateFile();
+  const legacy = persistedSession();
+  legacy.outline!.findings = [{
+    id: "dismissed-finding",
+    phaseId: "behavior",
+    stepId: "entrypoint",
+    path: "src/app.ts",
+    side: "new",
+    line: 2,
+    lineContent: "return result;",
+    message: "Review this result.",
+    category: "correctness",
+    severity: "medium",
+    confidence: "medium",
+    evidence: "The changed line returns directly.",
+    priority: "P2",
+    introduced: true,
+    recallGuard: false,
+    blastRadiusSize: 1,
+    tested: false,
+    pinScope: "line",
+    status: "dismissed",
+  } as unknown as ReviewFinding];
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, JSON.stringify(legacy));
+
+  const migrated = await loadPersistedSession(path);
+  expect(migrated.outline?.findings[0]).toMatchObject({ status: "deferred", disposition: "deferred" });
+});
+
+test("persists explicit finding dispositions and bounded reviewer notes", async () => {
+  const path = await temporaryStateFile();
+  const session = persistedSession();
+  session.outline!.findings = [{
+    id: "finding-1",
+    phaseId: "behavior",
+    stepId: "entrypoint",
+    path: "src/app.ts",
+    side: "new",
+    line: 2,
+    lineContent: "return result;",
+    message: "Review this result.",
+    category: "correctness",
+    severity: "medium",
+    confidence: "medium",
+    evidence: "The changed line returns directly.",
+    priority: "P2",
+    introduced: true,
+    recallGuard: false,
+    blastRadiusSize: 1,
+    tested: false,
+    pinScope: "line",
+    status: "false-positive",
+    disposition: "false-positive",
+    reviewerNote: "The caller validates this value before reaching the changed line.",
+  }];
+  await savePersistedSession(path, session);
+  await expect(loadPersistedSession(path)).resolves.toEqual(session);
+
+  const malformed = structuredClone(session);
+  malformed.outline!.findings[0]!.reviewerNote = "x".repeat(8_001);
+  await writeFile(path, JSON.stringify(malformed));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+});
+
 test("rejects duplicate tour identities and finding scopes that do not match their anchors", async () => {
   const path = await temporaryStateFile();
   await mkdir(join(path, ".."), { recursive: true });

@@ -11,6 +11,7 @@ import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorks
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
+import type { FindingDisposition } from "./types.ts";
 import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
@@ -39,6 +40,14 @@ interface RefreshContext {
   source: "manual" | "watcher" | "agent";
   eventId?: string;
   verification?: string;
+}
+
+const FINDING_DISPOSITIONS: FindingDisposition[] = ["accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh"];
+
+type FindingUpdate = "dismiss" | "reopen" | "convert" | FindingDisposition;
+
+function isFindingDisposition(value: string): value is FindingDisposition {
+  return FINDING_DISPOSITIONS.includes(value as FindingDisposition);
 }
 
 function fileFingerprint(file: DiffFile): string {
@@ -325,6 +334,18 @@ export class ReviewSession {
     const file = this.comparison.files.find((candidate) => candidate.path === path);
     const imageExists = side === "old" ? file?.oldPath : file?.newPath;
     return file && /\.png$/i.test(file.path) && imageExists && line === 1 ? `[PNG image · ${side}]` : undefined;
+  }
+
+  private refreshFindingLifecycles(): void {
+    for (const finding of this.outline?.findings ?? []) {
+      const row = this.findRow(finding.path, finding.side, finding.line);
+      const outdated = row?.content !== finding.lineContent;
+      finding.outdated = outdated;
+      if (outdated && finding.status === "open" && finding.disposition === undefined) {
+        finding.status = "obsolete-after-refresh";
+        finding.disposition = "obsolete-after-refresh";
+      }
+    }
   }
 
   private recordAgentActivity(
@@ -1618,7 +1639,7 @@ export class ReviewSession {
     });
   }
 
-  async updateFinding(id: string, action: "dismiss" | "reopen" | "convert") {
+  async updateFinding(id: string, action: FindingUpdate, reviewerNote?: string) {
     return this.serializeMutation(async () => {
     const before = this.captureMutableState();
     const terminalEpoch = this.terminalEpoch;
@@ -1630,10 +1651,23 @@ export class ReviewSession {
     if (finding.status === "converted-to-feedback" && action !== "convert") {
       throw new ReviewError("A finding already converted to feedback cannot change state.");
     }
-    if (action === "dismiss") finding.status = "dismissed";
+    const note = reviewerNote?.trim();
+    if (note && note.length > 8_000) throw new ReviewError("Reviewer note must be 8,000 characters or fewer.");
+    if (action === "dismiss") {
+      finding.status = "deferred";
+      finding.disposition = "deferred";
+      finding.reviewerNote = note || undefined;
+    }
+    if (isFindingDisposition(action)) {
+      finding.status = action;
+      finding.disposition = action;
+      finding.reviewerNote = note || undefined;
+    }
     if (action === "reopen") {
-      if (finding.status !== "dismissed") throw new ReviewError("Only a dismissed finding can be reopened.");
+      if (finding.status !== "dismissed" && !isFindingDisposition(finding.status) && finding.disposition === undefined) throw new ReviewError("Only a finding with a disposition can be reopened.");
       finding.status = "open";
+      finding.disposition = undefined;
+      finding.reviewerNote = undefined;
     }
     if (action === "convert") {
       if (finding.outdated) throw new ReviewError("Refresh or re-anchor this outdated finding before converting it to feedback.");
@@ -1654,6 +1688,8 @@ export class ReviewSession {
           updatedAt: timestamp,
         });
         finding.status = "converted-to-feedback";
+        finding.disposition = undefined;
+        finding.reviewerNote = undefined;
         finding.commentId = commentId;
       }
     }
@@ -1712,6 +1748,13 @@ export class ReviewSession {
       this.comparisonGeneration += 1;
       this.revision += 1;
       operationRevision = this.revision;
+      for (const comment of this.comments) {
+        comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
+      }
+      for (const step of tourSteps(this.outline)) {
+        step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
+      }
+      this.refreshFindingLifecycles();
       if (proposal && proposed && activeRequest) {
         this.recordAgentActivity(activeRequest.baselineComparison.files, proposed.files, context, proposal);
       }
@@ -1770,6 +1813,13 @@ export class ReviewSession {
         }
         this.comparisonGeneration += 1;
         this.revision += 1;
+        const refreshedPaths = new Set(refreshed.files.map((file) => file.path));
+        for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
+        for (const comment of this.comments) {
+          comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
+        }
+        for (const step of tourSteps(this.outline)) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
+        this.refreshFindingLifecycles();
         await this.persist();
         return this.snapshot();
       } catch (error) {

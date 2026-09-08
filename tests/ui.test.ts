@@ -347,9 +347,10 @@ test("syntax highlighting is local and Mermaid diagrams render as strict SVG wit
 });
 
 test("phase files start collapsed and scoped findings are separated from the complete findings view", async () => {
-  const [html, app] = await Promise.all([
+  const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).toContain('id="findings-tab"');
   expect(html).toContain('id="phase-files"');
@@ -380,6 +381,14 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(app).toContain('classList.toggle("hidden", !state.findingReturn)');
   expect(app).toContain('data-tooltip="${escapeHtml(summary)}"');
   expect(app).toContain("evidence.open = true");
+  expect(app).toContain('const findingDispositionLabels = {');
+  expect(app).toContain('"false-positive": "False positive"');
+  expect(app).toContain('data-finding-disposition');
+  expect(app).toContain('data-finding-note');
+  expect(app).toContain('data-action="save-disposition"');
+  expect(app).toContain('action: "set-disposition"');
+  expect(app).toContain('Finding marked ${findingDispositionLabel(disposition).toLowerCase()}');
+  expect(styles).toContain(".finding-item.obsolete-after-refresh");
 });
 
 test("stable tour and pull request context render above the diff instead of inside the agent scroll", async () => {

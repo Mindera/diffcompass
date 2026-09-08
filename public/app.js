@@ -126,6 +126,19 @@ function findingSummary(finding) {
   return compactText(finding.message, 220);
 }
 
+const findingDispositionLabels = {
+  accepted: "Accepted",
+  "false-positive": "False positive",
+  intentional: "Intentional",
+  deferred: "Deferred",
+  fixed: "Fixed",
+  "obsolete-after-refresh": "Obsolete after refresh",
+};
+
+function findingDispositionLabel(disposition) {
+  return findingDispositionLabels[disposition] || "Open";
+}
+
 function renderInlineChangeText(value, ranges = [], baseOffset = 0) {
   let html = "";
   let inChange = false;
@@ -830,7 +843,7 @@ function rowSide(row) {
 function findingPins(file, row, side, findings) {
   const line = side === "old" ? row?.oldLine : row?.newLine;
   return findings
-    .filter((finding) => finding.path === file.path && finding.side === side && finding.line === line && finding.status !== "dismissed")
+    .filter((finding) => finding.path === file.path && finding.side === side && finding.line === line && finding.status === "open")
     .map((finding) => {
       const summary = findingSummary(finding);
       return `<button class="finding-pin ${finding.priority.toLowerCase()}" data-finding-id="${escapeHtml(finding.id)}" data-tooltip="${escapeHtml(summary)}" aria-label="${escapeHtml(`${finding.priority} finding: ${summary}`)}" aria-describedby="finding-tooltip">${finding.priority}</button>`;
@@ -1680,14 +1693,16 @@ function findingCards(findings, compact = false) {
     ? '<p class="comment-empty">No findings in this scope.</p>'
     : ordered.map((finding) => {
       const focused = finding.id === state.focusedFindingId;
-      const classes = `finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${finding.outdated ? " outdated" : ""}${focused ? " focused" : ""}`;
+      const disposition = finding.disposition || (finding.status === "dismissed" ? "deferred" : "");
+      const classes = `finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${disposition ? ` ${escapeHtml(disposition)}` : ""}${finding.outdated ? " outdated" : ""}${focused ? " focused" : ""}`;
       const body = `<div class="finding-heading"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(finding.path)}:${finding.line}</button><span class="finding-priority">${finding.priority}</span></div>
       <strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong>
       <p>${renderInlineMarkdown(finding.message)}</p>
       <details><summary>Evidence · ${escapeHtml(finding.confidence)} confidence</summary><p>${renderInlineMarkdown(finding.evidence)}</p></details>
-      <div class="finding-badges"><span>${finding.introduced === true ? "introduced" : finding.introduced === false ? "pre-existing" : "attribution unknown"}</span><span>${finding.tested ? "tested" : "untested"}</span><span>blast ${finding.blastRadiusSize}</span><span>${escapeHtml(finding.pinScope)} pin</span>${finding.recallGuard ? "<span>recall-protected</span>" : ""}${finding.outdated ? "<span>outdated</span>" : ""}</div>
+      <div class="finding-badges"><span>${finding.introduced === true ? "introduced" : finding.introduced === false ? "pre-existing" : "attribution unknown"}</span><span>${finding.tested ? "tested" : "untested"}</span><span>blast ${finding.blastRadiusSize}</span><span>${escapeHtml(finding.pinScope)} pin</span>${finding.recallGuard ? "<span>recall-protected</span>" : ""}${disposition ? `<span class="finding-disposition">${escapeHtml(findingDispositionLabel(disposition))}</span>` : ""}${finding.outdated ? "<span>outdated</span>" : ""}</div>
+      ${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${renderInlineMarkdown(finding.reviewerNote)}</p></div>` : ""}
       <div class="comment-actions">
-        ${finding.status === "open" ? `<button class="text-button" data-action="convert" type="button"${disabled}${finding.outdated ? " disabled" : ""}>Add as feedback</button><button class="text-button" data-action="dismiss" type="button"${disabled}>Dismiss</button>` : finding.status === "dismissed" ? `<button class="text-button" data-action="reopen" type="button"${disabled}>Reopen</button>` : '<span class="muted">Added to feedback</span>'}
+        ${finding.status === "converted-to-feedback" ? '<span class="muted">Added to feedback</span>' : `<label class="finding-disposition-control"><span>Disposition</span><select data-finding-disposition${disabled}><option value=""${!disposition ? " selected" : ""}>Open</option>${Object.entries(findingDispositionLabels).map(([value, label]) => `<option value="${value}"${disposition === value ? " selected" : ""}>${label}</option>`).join("")}</select></label><textarea data-finding-note rows="2" maxlength="8000" placeholder="Optional reviewer note"${disabled}>${escapeHtml(finding.reviewerNote || "")}</textarea><button class="text-button" data-action="save-disposition" type="button"${disabled}>Save disposition</button>${finding.status === "open" ? `<button class="text-button" data-action="convert" type="button"${disabled}${finding.outdated ? " disabled" : ""}>Add as feedback</button>` : `<button class="text-button" data-action="reopen" type="button"${disabled}>Reopen</button>`}`}
       </div>`;
       if (compact) {
         const fileName = finding.path.split("/").at(-1) || finding.path;
@@ -4304,6 +4319,21 @@ async function handleFindingClick(event) {
     state.focusedFindingId = null;
     return showChangedFile(finding.path, finding.line, finding.side);
   }
+  if (action === "save-disposition") {
+    const disposition = item.querySelector("[data-finding-disposition]")?.value;
+    const note = item.querySelector("[data-finding-note]")?.value.trim();
+    try {
+      state.session = await api(`/api/findings/${encodeURIComponent(finding.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(disposition ? { action: "set-disposition", disposition, note: note || undefined } : { action: "reopen" }),
+      });
+      renderSession();
+      toast(disposition ? `Finding marked ${findingDispositionLabel(disposition).toLowerCase()}` : "Finding reopened");
+    } catch (error) {
+      toast(error.message);
+    }
+    return;
+  }
   if (!reviewIsOpen()) return;
   try {
     state.session = await api(`/api/findings/${encodeURIComponent(finding.id)}`, {
@@ -4311,7 +4341,7 @@ async function handleFindingClick(event) {
       body: JSON.stringify({ action }),
     });
     renderSession();
-    toast(action === "convert" ? "Finding added to review feedback" : `Finding ${action === "dismiss" ? "dismissed" : "reopened"}`);
+    toast(action === "convert" ? "Finding added to review feedback" : action === "dismiss" ? "Finding deferred" : "Finding reopened");
   } catch (error) {
     toast(error.message);
   }

@@ -66,6 +66,41 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   expect(artifact.content).toContain("# &lt;/title&gt;&lt;script&gt;bad()");
 });
 
+test("exports finding dispositions and reviewer notes in Markdown and self-contained HTML", () => {
+  const session = fixture();
+  session.outline!.findings = [{
+    id: "finding",
+    phaseId: "behavior",
+    stepId: "one",
+    path: "app.ts",
+    side: "new",
+    line: 1,
+    lineContent: "code",
+    message: "Static finding",
+    category: "correctness",
+    severity: "high",
+    confidence: "high",
+    evidence: "Evidence",
+    priority: "P1",
+    introduced: true,
+    recallGuard: false,
+    blastRadiusSize: 1,
+    tested: false,
+    pinScope: "line",
+    status: "false-positive",
+    disposition: "false-positive",
+    reviewerNote: "The surrounding validation makes this safe.",
+  }];
+
+  const markdown = exportReview(session, "markdown");
+  expect(markdown.content).toContain("disposition: False positive");
+  expect(markdown.content).toContain("Reviewer note: The surrounding validation makes this safe.");
+
+  const html = exportReview(session, "html");
+  expect(html.content).toContain("Disposition: False positive");
+  expect(html.content).toContain("The surrounding validation makes this safe.");
+});
+
 test("HTML export is a self-contained interactive copy of the review tour", () => {
   const artifact = exportReview(fixture(), "html");
   expect(artifact).toMatchObject({ contentType: "text/html; charset=utf-8", extension: "html" });

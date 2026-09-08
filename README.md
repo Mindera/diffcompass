@@ -45,6 +45,7 @@ review. Questions remain available, and you can resume the tour later.
 - keeps diff navigation reviewer-controlled, with a `Current step` shortcut when you scroll away from the active stop;
 - declares each phase's changed files and their role in a collapsed-on-entry section, with Git-derived additions and deletions;
 - separates stop-scoped and phase-scoped P0–P3 findings, with collapsed phase summaries matching the in-code pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
+- gives findings explicit Accepted, False positive, Intentional, Deferred, Fixed, and Obsolete after refresh dispositions, with optional reviewer notes preserved across refreshes;
 - syntax-highlights loaded diffs locally in both light and dark themes;
 - previews changed Markdown as rendered Before/After documents while retaining addition/deletion highlights and line-anchored tour stops, including in self-contained HTML exports;
 - previews changed PNGs directly in the diff with Before/After images, accurate Added/Removed captions, full-size links, and image-level Comment and Ask agent actions (up to 20 MiB per image; live review only);

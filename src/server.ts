@@ -461,12 +461,16 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       const findingMatch = /^\/api\/findings\/([^/]+)$/.exec(url.pathname);
       if (findingMatch && request.method === "PATCH") {
-        const input = await readJsonObject(request);
-        exactKeys(input, ["action"]);
-        return json(await session.updateFinding(
-          decodeURIComponent(findingMatch[1]),
-          enumValue(input.action, "action", ["dismiss", "reopen", "convert"]),
-        ));
+        const input = await readJsonObject(request, 16 * 1024);
+        exactKeys(input, ["action", "disposition", "note"]);
+        const action = enumValue(input.action, "action", ["dismiss", "reopen", "convert", "set-disposition", "accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh"] as const);
+        const disposition = input.disposition === undefined
+          ? undefined
+          : enumValue(input.disposition, "disposition", ["accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh"] as const);
+        if (action === "set-disposition" && disposition === undefined) throw new HttpError(422, "disposition is required when setting a finding disposition.");
+        if (action !== "set-disposition" && disposition !== undefined && action !== disposition) throw new HttpError(422, "disposition must match action.");
+        const update = action === "set-disposition" ? disposition! : action;
+        return json(await session.updateFinding(decodeURIComponent(findingMatch[1]), update, optionalString(input.note, "note", 8_000)));
       }
       if (request.method === "POST" && url.pathname === "/api/refresh") {
         await readJsonObject(request);
