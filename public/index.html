@@ -350,6 +350,16 @@
       </form>
     </dialog>
 
+    <dialog id="checkpoint-dialog" class="checkpoint-dialog" aria-labelledby="checkpoint-title" aria-describedby="checkpoint-description">
+      <form id="checkpoint-form">
+        <div class="eyebrow">Review checkpoint</div>
+        <h2 id="checkpoint-title">Save this review pass</h2>
+        <p id="checkpoint-description" class="dialog-description">Capture the current source so the next refresh can keep unchanged reviewed files marked as reviewed.</p>
+        <label class="dialog-field">Checkpoint label <span class="field-hint">optional</span><input id="checkpoint-label" maxlength="500" autocomplete="off" placeholder="e.g. Before local edits" /></label>
+        <div class="dialog-actions"><button id="cancel-checkpoint" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Save checkpoint</button></div>
+      </form>
+    </dialog>
+
     <dialog id="tour-intro-dialog" class="tour-intro-dialog" aria-labelledby="tour-intro-title" aria-describedby="tour-intro-summary">
       <div class="tour-intro-scroll">
         <div class="eyebrow">Before the tour</div>

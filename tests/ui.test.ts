@@ -48,6 +48,21 @@ test("the file pane starts on unreviewed files and has clearer hierarchy control
   expect(styles).toContain('.tree-children { margin-left: 10px; border-left: 1px solid var(--border-soft);');
 });
 
+test("checkpoints use an in-app themed dialog instead of a browser prompt", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('<dialog id="checkpoint-dialog" class="checkpoint-dialog"');
+  expect(html).toContain('id="checkpoint-label"');
+  expect(html).toContain("Save checkpoint");
+  expect(app).toContain('elements["checkpoint-dialog"].showModal()');
+  expect(app).toContain("async function saveCheckpoint()");
+  expect(app).not.toContain('window.prompt("Checkpoint label');
+  expect(styles).toContain(".checkpoint-dialog");
+});
+
 test("the tour file filter combines reviewed and unreviewed files from every phase", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
   const source = app.slice(app.indexOf("function filteredChangedFiles()"), app.indexOf("function renderFileTree()"));

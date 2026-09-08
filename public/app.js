@@ -95,7 +95,7 @@ const state = {
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
-    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
@@ -3383,7 +3383,15 @@ async function switchComparisonView(view) {
 
 async function createCheckpoint() {
   if (!reviewIsOpen() || state.busy || state.session.pullRequest) return;
-  const label = window.prompt("Checkpoint label (optional):", "") ?? "";
+  elements["checkpoint-label"].value = "";
+  elements["checkpoint-dialog"].showModal();
+  elements["checkpoint-label"].focus();
+}
+
+async function saveCheckpoint() {
+  if (!reviewIsOpen() || state.busy || state.session.pullRequest) return;
+  const label = elements["checkpoint-label"].value.trim();
+  elements["checkpoint-dialog"].close();
   setBusy(true, "Saving review checkpoint…");
   try {
     state.session = await api("/api/checkpoints", { method: "POST", body: JSON.stringify({ label }) });
@@ -3513,6 +3521,11 @@ elements["review-decision-form"].addEventListener("submit", (event) => {
 elements["refresh-button"].addEventListener("click", refresh);
 elements["comparison-view"].addEventListener("change", () => void switchComparisonView(elements["comparison-view"].value));
 elements["checkpoint-button"].addEventListener("click", () => void createCheckpoint());
+elements["cancel-checkpoint"].addEventListener("click", () => elements["checkpoint-dialog"].close());
+elements["checkpoint-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveCheckpoint();
+});
 const reviewActions = document.getElementById("review-actions");
 const reviewActionsToggle = document.getElementById("review-actions-toggle");
 function setReviewActionsOpen(open) {
