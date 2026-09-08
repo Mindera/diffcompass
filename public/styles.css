@@ -710,6 +710,7 @@ button { color: inherit; }
 .finding-badges { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0; }
 .finding-badges span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 5px; color: var(--muted); font-size: 9px; }
 .finding-badges .finding-disposition { border-color: var(--accent-strong); color: var(--accent-strong); font-weight: 700; }
+.finding-badges .finding-reassessment { border-color: var(--warning-border); color: var(--warning); background: var(--warning-background); font-weight: 700; }
 .finding-note { margin: 8px 0; border-left: 2px solid var(--accent-strong); padding-left: 8px; color: var(--text-soft); font-size: 11px; }
 .finding-note strong { color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .finding-note p { margin: 3px 0 0; }

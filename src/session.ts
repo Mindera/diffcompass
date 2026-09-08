@@ -1666,18 +1666,18 @@ export class ReviewSession {
       finding.reviewerNote = undefined;
     }
     if (action === "convert") {
-      if (finding.outdated) throw new ReviewError("Refresh or re-anchor this outdated finding before converting it to feedback.");
       if (finding.status !== "converted-to-feedback") {
         const row = this.findRow(finding.path, finding.side, finding.line);
         if (!row) throw new ReviewError("Finding anchor does not exist in the current diff.");
         const timestamp = new Date().toISOString();
         const commentId = crypto.randomUUID();
+        const body = `[${finding.priority}] ${finding.message}${finding.outdated ? "\n\nAssess if this is still valid after refresh." : ""}`;
         this.comments.push({
           id: commentId,
           path: finding.path,
           side: finding.side,
           line: finding.line,
-          body: `[${finding.priority}] ${finding.message}`,
+          body,
           lineContent: row.content,
           status: "active",
           createdAt: timestamp,

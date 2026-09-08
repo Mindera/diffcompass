@@ -205,6 +205,17 @@ test("finding lifecycle API accepts explicit dispositions and notes", async () =
   });
 });
 
+test("an outdated finding can be revalidated as feedback with a reassessment prompt", async () => {
+  const { repository, session } = await reviewFixture();
+  session.outline = outline(finding());
+  await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changed = 3;\n");
+  await session.refreshComparison();
+
+  const converted = await session.updateFinding("finding-1", "convert");
+  expect(converted.outline?.findings[0]?.status).toBe("converted-to-feedback");
+  expect(converted.comments[0]?.body).toBe("[P2] Validate the changed value.\n\nAssess if this is still valid after refresh.");
+});
+
 test("converting a finding creates feedback once and makes that finding terminal", async () => {
   const { session } = await reviewFixture();
   session.outline = outline(finding());
