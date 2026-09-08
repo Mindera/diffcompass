@@ -66,6 +66,7 @@ const state = {
   renderedPhaseId: null,
   tourMode: null,
   focusedStepId: null,
+  tourIntroReturn: false,
   tourIntroPending: launchTourIntro,
   tourIntroShown: false,
   focusedFindingId: null,
@@ -96,7 +97,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
@@ -1676,6 +1677,7 @@ function renderReviewOverview() {
   const pullRequest = state.session.pullRequest;
   elements["review-overview"].classList.toggle("hidden", !outline && !pullRequest);
   elements["tour-overview"].classList.toggle("hidden", !outline);
+  elements["tour-intro-return"].classList.toggle("hidden", !state.tourIntroReturn);
   if (outline) {
     elements["review-overview-title"].textContent = outline.title;
     elements["review-overview-summary"].textContent = outline.summary;
@@ -1981,6 +1983,15 @@ function maybeShowTourIntro() {
   if (!state.tourIntroPending || state.tourIntroShown || !state.session.outline || elements["tour-intro-dialog"].open) return;
   renderTourIntro();
   state.tourIntroShown = true;
+  elements["tour-intro-dialog"].showModal();
+  window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
+}
+
+function reopenTourIntro() {
+  state.tourIntroReturn = false;
+  state.tourIntroPending = true;
+  state.tourIntroShown = true;
+  renderTourIntro();
   elements["tour-intro-dialog"].showModal();
   window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
 }
@@ -2748,12 +2759,15 @@ function renderSession() {
 
 async function beginPreparedTour() {
   state.tourIntroPending = false;
+  state.tourIntroReturn = false;
+  state.tourMode = true;
   elements["tour-intro-dialog"].close();
   await focusCurrentStep();
 }
 
 async function startTour() {
   if (!reviewIsOpen()) return;
+  state.tourIntroReturn = false;
   setBusy(true);
   elements["planning-activity"].classList.remove("hidden");
   elements["planning-activity-body"].innerHTML = `<p>Inspecting ${state.session.comparison.files.length.toLocaleString()} changed files and ${state.session.comparison.diffRowCount.toLocaleString()} diff rows.</p><p class="planning-live">Waiting for the agent to return a grounded route…</p>`;
@@ -3507,6 +3521,7 @@ async function deleteCheckpoint(checkpoint) {
 
 elements["start-tour"].addEventListener("click", startTour);
 elements["begin-tour"].addEventListener("click", () => void beginPreparedTour());
+elements["tour-intro-return"].addEventListener("click", reopenTourIntro);
 elements["tour-intro-dialog"].addEventListener("cancel", (event) => event.preventDefault());
 elements["tour-intro-dialog"].addEventListener("click", (event) => {
   const target = event.target.closest("[data-attention-kind]");
@@ -3514,6 +3529,7 @@ elements["tour-intro-dialog"].addEventListener("click", (event) => {
   const kind = target.dataset.attentionKind;
   state.tourIntroPending = false;
   state.tourIntroShown = true;
+  state.tourIntroReturn = true;
   elements["tour-intro-dialog"].close();
   if (kind === "finding") return openFindingFromCode(target.dataset.attentionId);
   state.tourMode = false;
