@@ -3354,11 +3354,20 @@ function openReviewDecision(decision) {
   elements["review-decision-note"].focus();
 }
 
+function expandFilesChangedByRefresh(session) {
+  const summary = session.revisionSummary;
+  for (const path of [...(summary?.newFiles ?? []), ...(summary?.changedAgainFiles ?? [])]) {
+    state.collapsedFiles.delete(path);
+  }
+}
+
 async function refresh() {
   if ((!reviewIsOpen() && !state.session.pullRequest) || state.busy) return;
   setBusy(true, "Refreshing the comparison…");
   try {
-    state.session = await api(state.session.pullRequest ? "/api/github/refresh" : "/api/refresh", { method: "POST", body: "{}" });
+    const refreshed = await api(state.session.pullRequest ? "/api/github/refresh" : "/api/refresh", { method: "POST", body: "{}" });
+    expandFilesChangedByRefresh(refreshed);
+    state.session = refreshed;
     state.selectedLine = null;
     elements["selection-pill"].classList.add("hidden");
     renderSession();

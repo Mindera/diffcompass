@@ -74,6 +74,15 @@ test("revision history exposes labelled checkpoint deletion with outside-click d
   expect(styles).toContain(".checkpoint-history-actions");
 });
 
+test("refresh expands files that changed since the review checkpoint", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function expandFilesChangedByRefresh"), app.indexOf("async function refresh()"));
+  const state = { collapsedFiles: new Set(["src/cart.ts", "README.md"]) };
+  const expandFilesChangedByRefresh = new Function("state", `${source}; return expandFilesChangedByRefresh;`)(state) as (session: unknown) => void;
+  expandFilesChangedByRefresh({ revisionSummary: { newFiles: ["new.ts"], changedAgainFiles: ["src/cart.ts"] } });
+  expect([...state.collapsedFiles]).toEqual(["README.md"]);
+});
+
 test("the tour file filter combines reviewed and unreviewed files from every phase", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
   const source = app.slice(app.indexOf("function filteredChangedFiles()"), app.indexOf("function renderFileTree()"));
