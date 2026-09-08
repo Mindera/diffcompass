@@ -90,3 +90,36 @@ test("manual checkpoints preserve unchanged reviewed files and reset changed fil
   expect(closed.status).toBe("accepted");
   expect(session.snapshot().checkpoints.at(-1)).toMatchObject({ kind: "decision", outcome: "accepted", decision: "approve" });
 });
+
+test("deleting checkpoints removes their refs and falls back to the remaining comparison", async () => {
+  const repository = await mkdtemp(join(tmpdir(), "review-tour-delete-checkpoint-"));
+  directories.push(repository);
+  await git(repository, "init", "-b", "main");
+  await git(repository, "config", "user.name", "Review Tour Test");
+  await git(repository, "config", "user.email", "review-tour@example.test");
+  await writeFile(join(repository, "base.ts"), "base\n");
+  await git(repository, "add", "base.ts");
+  await git(repository, "commit", "-m", "base");
+  const base = await git(repository, "rev-parse", "HEAD");
+  await git(repository, "update-ref", "refs/remotes/origin/main", base);
+  await git(repository, "switch", "-c", "feature");
+  await writeFile(join(repository, "app.ts"), "reviewed\n");
+  const session = await ReviewSession.create(repository, undefined, { agentAdapters: [] });
+  const first = await session.createManualCheckpoint("first pass");
+  const firstRecord = first.checkpoints[0];
+  const second = await session.createManualCheckpoint("second pass");
+  const secondRecord = second.checkpoints[1];
+  expect(firstRecord).toMatchObject({ label: "first pass" });
+  expect(secondRecord).toMatchObject({ label: "second pass" });
+
+  await session.setComparisonView("since-last-review");
+  const afterSecondDelete = await session.deleteCheckpoint(secondRecord.id);
+  expect(afterSecondDelete.checkpoints).toHaveLength(1);
+  expect(afterSecondDelete.selectedCheckpointId).toBe(firstRecord.id);
+  await expect(git(repository, "rev-parse", secondRecord.ref)).rejects.toThrow();
+
+  const afterFirstDelete = await session.deleteCheckpoint(firstRecord.id);
+  expect(afterFirstDelete.checkpoints).toEqual([]);
+  expect(afterFirstDelete.comparisonView).toBe("full");
+  await expect(git(repository, "rev-parse", firstRecord.ref)).rejects.toThrow();
+});

@@ -530,7 +530,10 @@ export class ReviewSession {
       const previousRevisionSummary = structuredClone(this.currentRevisionSummary);
       const previousSinceFiles = structuredClone(this.currentSinceFiles);
       const checkpoint = await this.createCheckpointRecord("manual");
-      if (label?.trim()) checkpoint.summary.text = `Manual checkpoint: ${label.trim()}`.slice(0, 2_000);
+      if (label?.trim()) {
+        checkpoint.label = label.trim().slice(0, 500);
+        checkpoint.summary.text = `Manual checkpoint: ${checkpoint.label}`.slice(0, 2_000);
+      }
       await this.selectComparisonView();
       this.revision += 1;
       try {
@@ -546,6 +549,58 @@ export class ReviewSession {
         throw error;
       }
       return this.snapshot();
+    });
+  }
+
+  async deleteCheckpoint(id: string) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      const index = this.checkpoints.findIndex((checkpoint) => checkpoint.id === id);
+      if (index < 0) throw new ReviewError("The review checkpoint does not exist.");
+      const checkpoint = this.checkpoints[index];
+      const previousCheckpoints = structuredClone(this.checkpoints);
+      const previousSelectedCheckpointId = this.selectedCheckpointId;
+      const previousComparison = this.comparison;
+      const previousComparisonView = this.comparisonView;
+      const previousSummary = structuredClone(this.currentRevisionSummary);
+      const previousSinceFiles = structuredClone(this.currentSinceFiles);
+      const previousGeneration = this.comparisonGeneration;
+      const previousRevision = this.revision;
+      const previousMutable = this.captureMutableState();
+      let refRemoved = false;
+      try {
+        await removeCheckpointRef(this.fullComparison.repositoryRoot, checkpoint.ref);
+        refRemoved = true;
+        this.checkpoints.splice(index, 1);
+        if (this.selectedCheckpointId === id) this.selectedCheckpointId = undefined;
+        if (!this.latestCheckpoint() && this.comparisonView === "since-last-review") this.comparisonView = "full";
+        await this.updateRevisionSummary(this.fullComparison);
+        this.reconcileRevisionState(this.fullComparison, this.currentSinceFiles);
+        await this.selectComparisonView();
+        this.comparisonGeneration += 1;
+        this.revision += 1;
+        await this.persist();
+        return this.snapshot();
+      } catch (error) {
+        if (refRemoved) await writeCheckpointRef(this.fullComparison.repositoryRoot, checkpoint.ref, checkpoint.sourceTree).catch(() => undefined);
+        this.checkpoints.splice(0, this.checkpoints.length, ...previousCheckpoints);
+        this.selectedCheckpointId = previousSelectedCheckpointId;
+        this.comparison = previousComparison;
+        this.comparisonView = previousComparisonView;
+        this.currentRevisionSummary = previousSummary;
+        this.currentSinceFiles = previousSinceFiles;
+        this.comparisonGeneration = previousGeneration;
+        this.outline = previousMutable.outline;
+        this.currentStepIndex = previousMutable.currentStepIndex;
+        this.comments.splice(0, this.comments.length, ...previousMutable.comments);
+        this.messages.splice(0, this.messages.length, ...previousMutable.messages);
+        this.reviewedFiles.clear();
+        for (const path of previousMutable.reviewedFiles) this.reviewedFiles.add(path);
+        this.selection = previousMutable.selection;
+        this.agentContinuation = previousMutable.agentContinuation;
+        this.revision = previousRevision;
+        throw error;
+      }
     });
   }
 

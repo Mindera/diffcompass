@@ -472,6 +472,10 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         exactKeys(input, ["label"]);
         return json(await session.createManualCheckpoint(optionalString(input.label, "label", 500)));
       }
+      const checkpointMatch = /^\/api\/checkpoints\/([^/]+)$/.exec(url.pathname);
+      if (checkpointMatch && request.method === "DELETE") {
+        return json(await session.deleteCheckpoint(decodeURIComponent(checkpointMatch[1])));
+      }
       if (request.method === "POST" && url.pathname === "/api/github/refresh") {
         await readJsonObject(request);
         return json(await session.refreshPullRequest());

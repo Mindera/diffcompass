@@ -63,6 +63,17 @@ test("checkpoints use an in-app themed dialog instead of a browser prompt", asyn
   expect(styles).toContain(".checkpoint-dialog");
 });
 
+test("revision history exposes labelled checkpoint deletion with outside-click dismissal", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(app).toContain('data-checkpoint-action="delete"');
+  expect(app).toContain('method: "DELETE"');
+  expect(app).toContain('elements["revision-history"].open = false');
+  expect(styles).toContain(".checkpoint-history-actions");
+});
+
 test("the tour file filter combines reviewed and unreviewed files from every phase", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
   const source = app.slice(app.indexOf("function filteredChangedFiles()"), app.indexOf("function renderFileTree()"));

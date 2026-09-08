@@ -62,6 +62,7 @@ export interface RevisionSummary {
 export interface SourceCheckpoint {
   id: string;
   kind: CheckpointKind;
+  label?: string;
   ref: string;
   sourceTree: string;
   sourceHead: string;

@@ -347,6 +347,12 @@ button { color: inherit; }
 .revision-history { position: relative; }
 .revision-history summary { cursor: pointer; color: var(--muted); }
 .revision-history ol { position: absolute; right: 0; z-index: 8; min-width: 280px; margin: 6px 0 0; padding: 8px 12px 8px 28px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-raised); box-shadow: var(--shadow); }
+.revision-history li { display: flex; align-items: flex-start; gap: 10px; min-width: 330px; padding: 3px 0; }
+.checkpoint-history-entry { min-width: 0; flex: 1; }
+.checkpoint-history-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; white-space: nowrap; }
+.checkpoint-history-actions button { border: 0; padding: 0; color: var(--accent-strong); background: transparent; font: 600 10px system-ui, sans-serif; cursor: pointer; }
+.checkpoint-history-actions button.danger { color: var(--danger); }
+.checkpoint-delete-confirmation { color: var(--muted); }
 .diff-view-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .diff-view-toggle button { border: 0; padding: 5px 9px; color: var(--muted); background: transparent; font: inherit; cursor: pointer; }
 .diff-view-toggle button[aria-pressed="true"] { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 -2px var(--accent-strong); }

@@ -12,6 +12,7 @@ const state = {
   selectedLine: null,
   codeSelection: null,
   deletingCommentId: null,
+  deletingCheckpointId: null,
   busy: false,
   questionPending: false,
   pendingQuestion: null,
@@ -2604,9 +2605,14 @@ function renderSession() {
   elements["comparison-view"].value = state.session.comparisonView ?? "full";
   elements["comparison-view"].disabled = !state.session.checkpoints?.length || Boolean(state.tourMode);
   elements["revision-summary"].textContent = state.session.revisionSummary?.text ?? "";
-  elements["checkpoint-history"].innerHTML = (state.session.checkpoints ?? []).slice().reverse().map((checkpoint, index) =>
-    `<li><strong>${escapeHtml(checkpoint.kind === "decision" ? (checkpoint.decision ?? checkpoint.outcome ?? "Decision") : "Manual checkpoint")}</strong> · ${escapeHtml(new Date(checkpoint.createdAt).toLocaleString())}${index === 0 ? " · latest" : ""}</li>`
-  ).join("");
+  elements["checkpoint-history"].innerHTML = (state.session.checkpoints ?? []).slice().reverse().map((checkpoint, index) => {
+    const title = checkpoint.label ?? (checkpoint.kind === "decision" ? (checkpoint.decision ?? checkpoint.outcome ?? "Decision") : "Manual checkpoint");
+    const confirmingDelete = state.deletingCheckpointId === checkpoint.id;
+    const actions = confirmingDelete
+      ? `<span class="checkpoint-delete-confirmation">Delete this checkpoint?</span><button type="button" data-checkpoint-action="cancel-delete" data-checkpoint-id="${escapeHtml(checkpoint.id)}">Cancel</button><button type="button" class="danger confirm" data-checkpoint-action="confirm-delete" data-checkpoint-id="${escapeHtml(checkpoint.id)}">Delete</button>`
+      : `<button type="button" class="danger" data-checkpoint-action="delete" data-checkpoint-id="${escapeHtml(checkpoint.id)}" aria-label="Delete ${escapeHtml(title)}">Delete</button>`;
+    return `<li><span class="checkpoint-history-entry"><strong>${escapeHtml(title)}</strong> · ${escapeHtml(new Date(checkpoint.createdAt).toLocaleString())}${index === 0 ? " · latest" : ""}</span><span class="checkpoint-history-actions">${actions}</span></li>`;
+  }).join("");
   elements["revision-history"].classList.toggle("hidden", !(state.session.checkpoints ?? []).length);
   elements["checkpoint-button"].classList.toggle("hidden", Boolean(state.session.pullRequest));
   elements["diff-search"].value = state.searchQuery;
@@ -3405,6 +3411,23 @@ async function saveCheckpoint() {
   }
 }
 
+async function deleteCheckpoint(checkpoint) {
+  if (!reviewIsOpen() || state.busy) return;
+  setBusy(true, "Deleting review checkpoint…");
+  try {
+    const previous = state.session;
+    state.session = await api(`/api/checkpoints/${encodeURIComponent(checkpoint.id)}`, { method: "DELETE" });
+    state.deletingCheckpointId = null;
+    renderSessionUpdate(previous, { closeCommentEditor: true });
+    toast("Review checkpoint deleted");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
 elements["start-tour"].addEventListener("click", startTour);
 elements["begin-tour"].addEventListener("click", () => void beginPreparedTour());
 elements["tour-intro-dialog"].addEventListener("cancel", (event) => event.preventDefault());
@@ -3526,6 +3549,21 @@ elements["checkpoint-form"].addEventListener("submit", (event) => {
   event.preventDefault();
   void saveCheckpoint();
 });
+elements["revision-history"].addEventListener("click", (event) => {
+  const action = event.target.closest("[data-checkpoint-action]");
+  if (!action) return;
+  const checkpoint = state.session?.checkpoints?.find((candidate) => candidate.id === action.dataset.checkpointId);
+  if (!checkpoint) return;
+  if (action.dataset.checkpointAction === "delete") {
+    state.deletingCheckpointId = checkpoint.id;
+    renderSession();
+  } else if (action.dataset.checkpointAction === "cancel-delete") {
+    state.deletingCheckpointId = null;
+    renderSession();
+  } else if (action.dataset.checkpointAction === "confirm-delete") {
+    void deleteCheckpoint(checkpoint);
+  }
+});
 const reviewActions = document.getElementById("review-actions");
 const reviewActionsToggle = document.getElementById("review-actions-toggle");
 function setReviewActionsOpen(open) {
@@ -3546,6 +3584,9 @@ document.addEventListener("pointerdown", (event) => {
   if (!reviewActions.contains(event.target)) setReviewActionsOpen(false);
   if (elements["settings-menu"].open && !elements["settings-menu"].contains(event.target)) {
     elements["settings-menu"].open = false;
+  }
+  if (elements["revision-history"].open && !elements["revision-history"].contains(event.target)) {
+    elements["revision-history"].open = false;
   }
 });
 elements["file-panel-toggle"].addEventListener("click", () => setFilePanelOpen(!state.filePanelOpen));

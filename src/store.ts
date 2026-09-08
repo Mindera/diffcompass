@@ -233,6 +233,7 @@ function validCheckpoint(value: unknown): value is SourceCheckpoint {
   if (!record(value)) return false;
   const validOid = (candidate: unknown) => typeof candidate === "string" && /^[0-9a-f]{40,64}$/.test(candidate);
   return /^[0-9a-f-]{36}$/.test(String(value.id)) && ["manual", "decision"].includes(String(value.kind)) &&
+    (value.label === undefined || nonEmptyString(value.label, 500)) &&
     /^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}\/[0-9a-f-]{36}$/.test(String(value.ref)) &&
     validOid(value.sourceTree) && validOid(value.sourceHead) && nonEmptyString(value.base, 4_096) && validOid(value.baseTree) &&
     Array.isArray(value.reviewedFiles) && value.reviewedFiles.length <= 10_000 && value.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) &&
