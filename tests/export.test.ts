@@ -206,6 +206,7 @@ test("HTML and Markdown exports include the evidence briefing when signals exist
   expect(exportReview(session, "markdown").content).toContain("## Needs your attention");
   const html = exportReview(session, "html").content;
   expect(html).toContain('class="attention-briefing"');
+  expect(html).toContain("review cues shown");
   expect(html).toContain('data-view="findings"');
   expect(html).toContain("The changed line is the evidence.");
 });

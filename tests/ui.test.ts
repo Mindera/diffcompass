@@ -466,11 +466,13 @@ test("the pre-tour briefing is evidence-labelled, linked, responsive, and export
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).toContain('id="tour-intro-attention"');
+  expect(html).toContain('id="tour-intro-attention-note"');
   expect(html).toContain('id="tour-intro-estimate-factors"');
   expect(html.indexOf('id="tour-intro-architecture-section"')).toBeLessThan(html.indexOf('id="tour-intro-attention"'));
   expect(app).toContain("function renderTourAttention()");
   expect(app).toContain("Bounded heuristic");
   expect(app).toContain('data-attention-kind');
+  expect(app).toContain("review cue");
   expect(app).toContain('openFindingFromCode(target.dataset.attentionId)');
   expect(app).toContain('activateReviewTab("call-flows", renderCallFlows)');
   expect(styles).toContain(".tour-intro-attention-item");
