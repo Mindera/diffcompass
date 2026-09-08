@@ -581,6 +581,21 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(app).toContain('label: "Implementation journey"');
 });
 
+test("GitHub issue assessment discloses its bounded provider scope and model basis", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  expect(app).toContain("Issue-to-implementation assessment");
+  expect(app).toContain("related issues and earlier pull requests: not requested");
+  expect(app).toContain("Only issue metadata and explicit criteria are retained");
+  expect(app).toContain("statuses are not verified test results");
+  expect(app).toContain("issue.access !== \"available\"");
+  expect(styles).toContain(".issue-criterion.implemented");
+  expect(styles).toContain(".issue-criterion.missing");
+  expect(styles).toContain(".issue-criterion.unclear");
+});
+
 test("agent-launched tours introduce the change before navigating to the first stop", async () => {
   const [html, app, cli, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),

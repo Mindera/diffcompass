@@ -1360,6 +1360,7 @@ export class ReviewSession {
             this.comparison,
             this.reviewPolicy,
             () => this.ensureComparisonCurrent(comparisonGeneration),
+            this.pullRequest?.linkedIssue,
           );
           receipts.push(...generated.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);

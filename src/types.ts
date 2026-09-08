@@ -115,6 +115,37 @@ export interface TourOutline {
   callFlows: CallFlow[];
   flows: ReviewFlow[];
   findings: ReviewFinding[];
+  issueAssessment?: IssueAssessment;
+}
+
+export type IssueAccess = "available" | "inaccessible" | "unavailable";
+export type IssueCriteriaStatus = "found" | "not-found" | "malformed" | "unavailable";
+
+export interface LinkedIssueContext {
+  repository: string;
+  number: number;
+  url: string;
+  title: string;
+  author?: string;
+  state?: string;
+  access: IssueAccess;
+  criteriaStatus: IssueCriteriaStatus;
+  acceptanceCriteria: Array<{ id: string; text: string }>;
+}
+
+export interface IssueAssessmentItem {
+  criterionId: string;
+  criterion: string;
+  status: "implemented" | "missing" | "unclear";
+  evidence: string;
+  evidencePaths: string[];
+  basis: "model-assessment";
+}
+
+export interface IssueAssessment {
+  issueNumber: number;
+  issueUrl: string;
+  items: IssueAssessmentItem[];
 }
 
 export interface CallFlowLocation {
@@ -313,6 +344,11 @@ export interface PullRequestContext {
     comments: Array<{ id: string; author: string; body: string; url: string }>;
   }>;
   threadsTruncated: boolean;
+  linkedIssue?: LinkedIssueContext;
+  providerScope?: {
+    linkedIssue: "same-repository-closing-issue" | "none" | "inaccessible" | "unavailable";
+    relatedResources: "not-requested";
+  };
   publication?: {
     intentId: string;
     outcome: Extract<ReviewOutcome, "accepted" | "feedback">;

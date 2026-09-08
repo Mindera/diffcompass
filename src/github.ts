@@ -2,12 +2,97 @@ import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { ReviewError } from "./errors.ts";
 import { runProcess } from "./process.ts";
-import type { PullRequestContext, ReviewComment, ReviewOutcome } from "./types.ts";
+import type { LinkedIssueContext, PullRequestContext, ReviewComment, ReviewOutcome } from "./types.ts";
 
 export type GitHubRunner = typeof runProcess;
 type Runner = GitHubRunner;
 
 interface PullRequestIdentifier { repository?: string; number: number }
+
+const ISSUE_BODY_LIMIT = 100_000;
+
+/** Extract only explicit, checklist-like acceptance criteria from an issue body. */
+export function extractAcceptanceCriteria(body: string): LinkedIssueContext["acceptanceCriteria"] {
+  if (body.length > ISSUE_BODY_LIMIT || body.includes("\u0000")) return [];
+  const lines = body.split(/\r?\n/).map((line) => line.trim());
+  const criteria: Array<{ id: string; text: string }> = [];
+  const section = lines.findIndex((line) => /^(?:#{1,6}\s*)?acceptance criteria\s*:?\s*$/i.test(line));
+  const sectionLines = section >= 0
+    ? lines.slice(section + 1, (() => { const next = lines.slice(section + 1).findIndex((line) => /^#{1,6}\s+/.test(line)); return next < 0 ? undefined : section + 1 + next; })())
+    : lines;
+  const candidates = section >= 0
+    ? (() => {
+      const result: string[] = [];
+      let started = false;
+      for (const line of sectionLines) {
+        const match = /^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?(.+)$/.exec(line)?.[1] ?? /^(?:\[[ xX]\]\s+)(.+)$/.exec(line)?.[1];
+        if (match) { result.push(match); started = true; continue; }
+        if (started && line) break;
+      }
+      return result;
+    })()
+    : lines.map((line) => /^(?:[-*+]\s+)?\[[ xX]\]\s+(.+)$/.exec(line)?.[1] ?? /^(?:AC|criterion)\s*\d+\s*[:.)-]\s*(.+)$/i.exec(line)?.[1]).filter((line): line is string => Boolean(line));
+  for (const text of candidates) {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized || normalized.length > 4_000 || criteria.some((candidate) => candidate.text === normalized)) continue;
+    criteria.push({ id: `criterion-${criteria.length + 1}`, text: normalized });
+    if (criteria.length >= 20) break;
+  }
+  return criteria;
+}
+
+function issueAccessError(error: unknown): "inaccessible" | "unavailable" {
+  const message = error instanceof Error ? error.message.toLocaleLowerCase() : String(error).toLocaleLowerCase();
+  return /not found|could not resolve|permission|forbidden|authentication|unauthorized|resource not accessible/.test(message) ? "inaccessible" : "unavailable";
+}
+
+function issueFallback(repository: string, number: number, title: string, access: LinkedIssueContext["access"]): LinkedIssueContext {
+  return {
+    repository,
+    number,
+    url: `https://github.com/${repository}/issues/${number}`,
+    title: title || `Linked issue #${number}`,
+    access,
+    criteriaStatus: "unavailable",
+    acceptanceCriteria: [],
+  };
+}
+
+async function loadLinkedIssue(
+  runner: Runner,
+  cwd: string,
+  repository: string,
+  reference: Record<string, unknown>,
+): Promise<LinkedIssueContext> {
+  const number = typeof reference.number === "number" ? reference.number : 0;
+  const title = typeof reference.title === "string" && reference.title.length <= 8_000 ? reference.title : "";
+  if (!Number.isInteger(number) || Number(number) <= 0) return issueFallback(repository, 1, title, "unavailable");
+  try {
+    const raw = await jsonCommand(runner, ["gh", "issue", "view", String(number), "--repo", repository, "--json", "number,title,body,url,state,author"], cwd);
+    if (raw.number !== number || (raw.url !== undefined && (typeof raw.url !== "string" || raw.url.length > 4_096))) {
+      return issueFallback(repository, number, title, "unavailable");
+    }
+    const body = raw.body;
+    const bodyMalformed = typeof body !== "string" || body.length > ISSUE_BODY_LIMIT || body.includes("\u0000");
+    const issueTitle = typeof raw.title === "string" && raw.title.length > 0 && raw.title.length <= 8_000 ? raw.title : title || `Linked issue #${number}`;
+    const author = raw.author && typeof raw.author === "object" && !Array.isArray(raw.author) && typeof (raw.author as Record<string, unknown>).login === "string"
+      ? (raw.author as Record<string, unknown>).login as string : undefined;
+    const state = typeof raw.state === "string" && raw.state.length <= 500 ? raw.state : undefined;
+    return {
+      repository,
+      number,
+      url: `https://github.com/${repository}/issues/${number}`,
+      title: issueTitle,
+      ...(author ? { author } : {}),
+      ...(state ? { state } : {}),
+      access: "available",
+      criteriaStatus: bodyMalformed ? "malformed" : extractAcceptanceCriteria(body as string).length ? "found" : "not-found",
+      acceptanceCriteria: bodyMalformed ? [] : extractAcceptanceCriteria(body as string),
+    };
+  } catch (error) {
+    return issueFallback(repository, number, title, issueAccessError(error));
+  }
+}
 
 export function parsePullRequestIdentifier(value: string): PullRequestIdentifier {
   if (/^[1-9]\d{0,9}$/.test(value)) return { number: Number(value) };
@@ -54,7 +139,7 @@ export async function loadPullRequestContext(
   if (repository.toLocaleLowerCase() !== localRepository.toLocaleLowerCase()) {
     throw new ReviewError(`The pull request belongs to ${repository}, but this checkout belongs to ${localRepository || "an unknown repository"}.`);
   }
-  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus";
+  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,closingIssuesReferences";
   const raw = await jsonCommand(runner, ["gh", "pr", "view", String(parsed.number), "--repo", repository, "--json", fields], sourceRepositoryRoot);
   const [owner, name] = repository.split("/");
   const threadRaw = await jsonCommand(runner, [
@@ -140,6 +225,28 @@ export async function loadPullRequestContext(
       }) : [],
     };
   });
+  const issueReferences = raw.closingIssuesReferences;
+  let linkedIssue: LinkedIssueContext | undefined;
+  let linkedIssueScope: NonNullable<PullRequestContext["providerScope"]>["linkedIssue"] = "none";
+  if (issueReferences !== undefined) {
+    const references = Array.isArray(issueReferences)
+      ? issueReferences.slice(0, 20)
+      : issueReferences && typeof issueReferences === "object" && !Array.isArray(issueReferences) && Array.isArray((issueReferences as Record<string, unknown>).nodes)
+        ? ((issueReferences as Record<string, unknown>).nodes as unknown[]).slice(0, 20)
+        : [];
+    const reference = references.find((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+      const item = candidate as Record<string, unknown>;
+      const referenceRepository = item.repository && typeof item.repository === "object" && !Array.isArray(item.repository)
+        ? (item.repository as Record<string, unknown>).nameWithOwner : undefined;
+      return Number.isInteger(item.number) && Number(item.number) > 0 && (referenceRepository === undefined || referenceRepository === repository);
+    }) as Record<string, unknown> | undefined;
+    if (reference) {
+      linkedIssueScope = "same-repository-closing-issue";
+      linkedIssue = await loadLinkedIssue(runner, sourceRepositoryRoot, repository, reference);
+      if (linkedIssue.access !== "available") linkedIssueScope = linkedIssue.access;
+    }
+  }
   return {
     repository,
     number: Number(raw.number ?? parsed.number),
@@ -161,6 +268,8 @@ export async function loadPullRequestContext(
     checks,
     threads,
     threadsTruncated: (pageInfo as Record<string, unknown>).hasNextPage as boolean,
+    ...(linkedIssue ? { linkedIssue } : {}),
+    providerScope: { linkedIssue: linkedIssueScope, relatedResources: "not-requested" },
     updatedAt: new Date().toISOString(),
   };
 }

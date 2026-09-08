@@ -1,5 +1,5 @@
 import type { ReviewSession } from "./session.ts";
-import type { CallFlow, DiffFile, DiffRow, FindingDisposition, ReviewArchitecture, ReviewComment, ReviewFinding } from "./types.ts";
+import type { CallFlow, DiffFile, DiffRow, FindingDisposition, IssueAssessment, LinkedIssueContext, ReviewArchitecture, ReviewComment, ReviewFinding } from "./types.ts";
 import type { HighlightGroup, HighlightToken } from "./highlight.ts";
 import { buildNeedsAttention } from "./attention.ts";
 // @ts-expect-error Bun's text loader embeds Mermaid in the self-contained HTML export.
@@ -90,6 +90,20 @@ function markdownArchitecture(label: string, architecture: ReviewArchitecture): 
   return [`### ${label}: ${markdownText(architecture.title)}`, "", markdownText(architecture.summary), "", "Relationship changes:", "", ...architecture.dependencyChanges.map((change) => `- ${markdownText(change)}`), "", "Affected changed files:", "", ...architecture.affectedFiles.map((path) => `- ${markdownText(path)}`), "", markdownFence("mermaid", architecture.mermaid), ""];
 }
 
+function markdownIssueAssessment(issue: LinkedIssueContext | undefined, assessment: IssueAssessment | undefined): string[] {
+  if (!issue) return ["## Issue-to-implementation assessment", "", "No linked issue was reported for this pull request. No issue or related provider resources were fetched.", "", "Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.", ""];
+  const lines = ["## Issue-to-implementation assessment", "", `Source: [#${issue.number} ${markdownText(issue.title)}](${issue.url})`, "", "Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.", ""];
+  if (issue.access !== "available") return [...lines, `The linked issue is ${issue.access}; its content was not included.`, ""];
+  if (issue.criteriaStatus === "malformed") return [...lines, "The linked issue body was malformed or exceeded the safe limit; no criteria were assessed.", ""];
+  if (issue.criteriaStatus === "not-found") return [...lines, "No explicit acceptance criteria were found in the issue body.", ""];
+  if (!assessment) return [...lines, "Start the tour to map the explicit acceptance criteria to repository evidence.", ""];
+  lines.push("Model assessment based on cited repository paths; statuses are not verified test results.", "");
+  for (const item of assessment.items) {
+    lines.push(`### ${markdownText(item.status)}: ${markdownText(item.criterion)}`, "", markdownText(item.evidence), "", `Repository evidence: ${item.evidencePaths.length ? item.evidencePaths.map(markdownText).join(", ") : "none cited"}`, "");
+  }
+  return lines;
+}
+
 function markdown(session: ReviewSession): string {
   const outline = session.outline;
   const briefing = buildNeedsAttention(session.comparison, outline, session.pullRequest);
@@ -117,6 +131,7 @@ function markdown(session: ReviewSession): string {
     lines.push("");
   }
   lines.push("## First-pass review time", "", `About ${briefing.estimate.minutes} minutes for a first pass, based on the visible diff and review signals. This is a rough planning aid, not a risk score or quality rating.`, "", "Contributing factors:", "", ...briefing.estimate.factors.map((factor) => `- ${markdownText(factor.label)}: +${factor.minutes} min — ${markdownText(factor.detail)} (${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"})`), "");
+  if (session.pullRequest) lines.push(...markdownIssueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment));
   if (outline?.phases.length) {
     lines.push("## Tour", "");
     let stopNumber = 0;
@@ -548,11 +563,20 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   const questions = messages.filter((message) => message.role === "user" && (!message.threadId || message.threadId === message.id)).map((root) => {
     const threadId = root.threadId ?? root.id;
     const replies = messages.filter((message) => message.threadId === threadId || message.id === threadId).filter((message) => message.id !== root.id);
-    const step = root.stepId ? outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === root.stepId) : undefined;
-    const anchor = root.anchor ? `<code>${escapeHtml(commentLocation({ id: "export", path: root.anchor.path, side: root.anchor.side, line: root.anchor.line, endLine: root.anchor.endLine, body: "", lineContent: root.anchor.content, status: "active", createdAt: "", updatedAt: "" }))}</code>${root.anchor.selectedText ? `<blockquote>${escapeHtml(root.anchor.selectedText)}</blockquote>` : ""}` : "";
-    return `<article class="comment"><strong>${escapeHtml(step ? `Tour stop: ${step.title}` : "Review-wide question")}</strong>${anchor}<p>${inlineHtml(root.body)}</p>${replies.map((reply) => `<p><strong>${reply.role === "agent" ? "Agent" : "Reviewer"}:</strong> ${inlineHtml(reply.body)}</p>`).join("")}</article>`;
+  const step = root.stepId ? outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === root.stepId) : undefined;
+  const anchor = root.anchor ? `<code>${escapeHtml(commentLocation({ id: "export", path: root.anchor.path, side: root.anchor.side, line: root.anchor.line, endLine: root.anchor.endLine, body: "", lineContent: root.anchor.content, status: "active", createdAt: "", updatedAt: "" }))}</code>${root.anchor.selectedText ? `<blockquote>${escapeHtml(root.anchor.selectedText)}</blockquote>` : ""}` : "";
+  return `<article class="comment"><strong>${escapeHtml(step ? `Tour stop: ${step.title}` : "Review-wide question")}</strong>${anchor}<p>${inlineHtml(root.body)}</p>${replies.map((reply) => `<p><strong>${reply.role === "agent" ? "Agent" : "Reviewer"}:</strong> ${inlineHtml(reply.body)}</p>`).join("")}</article>`;
   }).join("");
-  const pr = session.pullRequest ? `<section id="pull-request-metadata" class="pr-description"><span class="eyebrow">Pull request #${session.pullRequest.number} · ${escapeHtml(session.pullRequest.author)}</span><h2>${escapeHtml(session.pullRequest.title)}</h2><div class="prose">${renderedMarkdown(session.pullRequest.body || "No pull request description was provided.")}</div><h3>Checks</h3><ul>${session.pullRequest.checks.map((check) => `<li>${escapeHtml(check.name)} — ${escapeHtml(check.state)}</li>`).join("") || "<li>No checks reported.</li>"}</ul>${session.pullRequest.mergeable || session.pullRequest.mergeStateStatus ? `<p>Mergeability: ${escapeHtml(session.pullRequest.mergeable ?? "unknown")}${session.pullRequest.mergeStateStatus ? ` · ${escapeHtml(session.pullRequest.mergeStateStatus)}` : ""}</p>` : ""}</section>` : "";
+  const issueAssessment = (issue: LinkedIssueContext | undefined, assessment: IssueAssessment | undefined) => {
+    if (!issue) return `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3><p>No linked issue was reported. No issue or related provider resources were fetched.</p><p>Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.</p></section>`;
+    const intro = `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3><p><a href="${escapeHtml(issue.url)}" rel="noreferrer">#${issue.number} ${escapeHtml(issue.title)}</a></p><p>Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.</p>`;
+    if (issue.access !== "available") return `${intro}<p>The linked issue is ${escapeHtml(issue.access)}; its content was not included.</p></section>`;
+    if (issue.criteriaStatus === "malformed") return `${intro}<p>The linked issue body was malformed or exceeded the safe limit; no criteria were assessed.</p></section>`;
+    if (issue.criteriaStatus === "not-found") return `${intro}<p>No explicit acceptance criteria were found in the issue body.</p></section>`;
+    if (!assessment) return `${intro}<p>Start the tour to map the explicit acceptance criteria to repository evidence.</p></section>`;
+    return `${intro}<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p>${assessment.items.map((item) => `<article class="issue-criterion ${escapeHtml(item.status)}"><strong>${escapeHtml(item.criterion)}</strong><span class="issue-status">${escapeHtml(item.status)}</span><p>${inlineHtml(item.evidence)}</p><small>Repository evidence: ${item.evidencePaths.map(escapeHtml).join(", ") || "none cited"}</small></article>`).join("")}</section>`;
+  };
+  const pr = session.pullRequest ? `<section id="pull-request-metadata" class="pr-description"><span class="eyebrow">Pull request #${session.pullRequest.number} · ${escapeHtml(session.pullRequest.author)}</span><h2>${escapeHtml(session.pullRequest.title)}</h2><div class="prose">${renderedMarkdown(session.pullRequest.body || "No pull request description was provided.")}</div><h3>Checks</h3><ul>${session.pullRequest.checks.map((check) => `<li>${escapeHtml(check.name)} — ${escapeHtml(check.state)}</li>`).join("") || "<li>No checks reported.</li>"}</ul>${session.pullRequest.mergeable || session.pullRequest.mergeStateStatus ? `<p>Mergeability: ${escapeHtml(session.pullRequest.mergeable ?? "unknown")}${session.pullRequest.mergeStateStatus ? ` · ${escapeHtml(session.pullRequest.mergeStateStatus)}` : ""}</p>` : ""}${issueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment)}</section>` : "";
   const fileButtons = session.comparison.files.map((file) => `<button type="button" class="file-button" data-file="${escapeHtml(file.path)}"><span class="status ${escapeHtml(file.status)}">${escapeHtml(file.status.slice(0, 1).toUpperCase())}</span><span><strong>${escapeHtml(file.path)}</strong><small>${escapeHtml(file.status)}</small></span><span class="file-stats"><b>+${file.additions}</b> <i>−${file.deletions}</i></span></button>`).join("");
   const diffs = `${briefingSection}${estimateSection}${session.comparison.files.map((file, index) => `<section class="exported-diff" data-diff-file="${escapeHtml(file.path)}" hidden>${fileDiff(file, findings, session, index, highlighted, markdownPreviews.get(file.path))}</section>`).join("")}` + (questions ? `</section><section class="view comments" data-view-panel="questions" hidden><h2>Questions</h2>${questions}` : "");
   const allFindings = findings.map(findingCard).join("");

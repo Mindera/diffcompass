@@ -70,6 +70,7 @@ function validOutline(value: unknown): boolean {
     if (!["implemented", "proposed"].includes(String(value.behaviorArchitectureStatus))) return false;
     try { validateReviewArchitecture(value.behaviorArchitecture); } catch { return false; }
   } else if (value.behaviorArchitectureStatus !== undefined) return false;
+  if (value.issueAssessment !== undefined && !validIssueAssessment(value.issueAssessment)) return false;
   const callFlowIds = new Set<string>();
   const validCallFlows = value.callFlows.every((flow) => {
     if (!record(flow) || !nonEmptyString(flow.id, 128) || callFlowIds.has(flow.id) ||
@@ -146,6 +147,15 @@ function validComment(value: unknown): boolean {
     nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
 }
 
+function validIssueAssessment(value: unknown): boolean {
+  if (!record(value) || !Number.isInteger(value.issueNumber) || Number(value.issueNumber) <= 0 || !nonEmptyString(value.issueUrl, 4_096) || !Array.isArray(value.items) || value.items.length > 20) return false;
+  const ids = new Set<string>();
+  return value.items.every((item) => record(item) && nonEmptyString(item.criterionId, 128) && !ids.has(item.criterionId) && Boolean(ids.add(item.criterionId)) &&
+    nonEmptyString(item.criterion, 4_000) && ["implemented", "missing", "unclear"].includes(String(item.status)) && nonEmptyString(item.evidence, 12_000) &&
+    Array.isArray(item.evidencePaths) && item.evidencePaths.length <= 8 && item.evidencePaths.every((path) => nonEmptyString(path, 4_096)) &&
+    (item.status === "unclear" || item.evidencePaths.length > 0) && item.basis === "model-assessment");
+}
+
 function validPullRequest(value: unknown): boolean {
   if (!record(value)) return false;
   const validOid = (candidate: unknown) => typeof candidate === "string" && /^[0-9a-f]{40,64}$/.test(candidate);
@@ -167,7 +177,15 @@ function validPullRequest(value: unknown): boolean {
       (thread.side === undefined || ["old", "new"].includes(String(thread.side))) && typeof thread.resolved === "boolean" &&
       Array.isArray(thread.comments) && thread.comments.length <= 50 && thread.comments.every((comment) => record(comment) && nonEmptyString(comment.id, 500) &&
         nonEmptyString(comment.author, 500) && boundedString(comment.body, 100_000) && nonEmptyString(comment.url, 4_096))) &&
-    typeof value.threadsTruncated === "boolean" && nonEmptyString(value.updatedAt, 64) &&
+    typeof value.threadsTruncated === "boolean" &&
+    (value.linkedIssue === undefined || (record(value.linkedIssue) && nonEmptyString(value.linkedIssue.repository, 500) && value.linkedIssue.repository === value.repository &&
+      Number.isInteger(value.linkedIssue.number) && Number(value.linkedIssue.number) > 0 && value.linkedIssue.url === `https://github.com/${value.repository}/issues/${value.linkedIssue.number}` && nonEmptyString(value.linkedIssue.title, 8_000) &&
+      (value.linkedIssue.author === undefined || nonEmptyString(value.linkedIssue.author, 500)) &&
+      (value.linkedIssue.state === undefined || nonEmptyString(value.linkedIssue.state, 500)) && ["available", "inaccessible", "unavailable"].includes(String(value.linkedIssue.access)) &&
+      ["found", "not-found", "malformed", "unavailable"].includes(String(value.linkedIssue.criteriaStatus)) && Array.isArray(value.linkedIssue.acceptanceCriteria) &&
+      value.linkedIssue.acceptanceCriteria.length <= 20 && value.linkedIssue.acceptanceCriteria.every((criterion: unknown) => record(criterion) && nonEmptyString(criterion.id, 128) && nonEmptyString(criterion.text, 4_000)))) &&
+    (value.providerScope === undefined || (record(value.providerScope) && ["same-repository-closing-issue", "none", "inaccessible", "unavailable"].includes(String(value.providerScope.linkedIssue)) && value.providerScope.relatedResources === "not-requested")) &&
+    nonEmptyString(value.updatedAt, 64) &&
     (publication === undefined || (record(publication) && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(publication.intentId)) &&
       ["accepted", "feedback"].includes(String(publication.outcome)) && Array.isArray(publication.commentIds) && publication.commentIds.length <= 10_000 &&
       (publication.decision === undefined || ["approve", "approve-with-comments", "request-changes", "cancel"].includes(String(publication.decision))) &&
@@ -448,6 +466,10 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       (["accepted", "feedback"].includes(session.status ?? "") &&
         (session.pullRequest.publication?.status !== "published" || session.pullRequest.publication.outcome !== session.status))
     )) ||
+    (session.outline?.issueAssessment !== undefined && (!session.pullRequest?.linkedIssue || session.pullRequest.linkedIssue.access !== "available" ||
+      session.outline.issueAssessment.issueNumber !== session.pullRequest.linkedIssue.number || session.outline.issueAssessment.issueUrl !== session.pullRequest.linkedIssue.url ||
+      session.outline.issueAssessment.items.length !== session.pullRequest.linkedIssue.acceptanceCriteria.length ||
+      session.outline.issueAssessment.items.some((item) => session.pullRequest!.linkedIssue!.acceptanceCriteria.find((criterion) => criterion.id === item.criterionId)?.text !== item.criterion))) ||
     (terminal !== undefined && (
       session.bridgeToken === undefined || session.bridgeSequence === undefined || terminal.sequence > session.bridgeSequence ||
       terminal.outcome !== session.status

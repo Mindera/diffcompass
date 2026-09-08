@@ -915,6 +915,18 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .pull-request-content h2 { margin: 4px 0; font-size: 22px; }
 .pull-request-content h3 { margin: 24px 0 8px; font-size: 13px; }
 .pull-request-content ul { padding-left: 22px; }
+.issue-assessment { margin-top: 24px; border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px; background: var(--panel-raised); }
+.issue-assessment h3 { margin-top: 0; }
+.provider-boundary,.assessment-disclaimer { color: var(--text-soft); font-size: 11px; }
+.issue-criteria { display: grid; gap: 8px; margin-top: 12px; }
+.issue-criterion { border-left: 3px solid var(--text-soft); padding: 8px 10px; background: var(--surface-card); }
+.issue-criterion.implemented { border-color: var(--success-text); }
+.issue-criterion.missing { border-color: var(--danger); }
+.issue-criterion.unclear { border-color: var(--warning); }
+.issue-criterion div { display: flex; justify-content: space-between; gap: 10px; }
+.issue-status { font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.issue-criterion p { margin: 6px 0 2px; }
+.issue-criterion small { color: var(--text-soft); }
 .activity-card h2 { display: inline; margin: 0 0 0 8px; font-size: 15px; line-height: 1.4; }
 .activity-card time, .activity-agent { color: var(--muted); font-size: 10px; }
 .activity-card time { white-space: nowrap; }

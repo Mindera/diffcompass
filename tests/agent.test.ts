@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { buildCopilotArgs, buildGeminiArgs, parseClaudeJson, parseCodexJsonLines, parseGeminiStreamJson, TourAgent, type AgentTransport } from "../src/agent.ts";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { DEFAULT_REVIEW_POLICY } from "../src/config.ts";
-import type { AgentRunActivity, GitComparison } from "../src/types.ts";
+import type { AgentRunActivity, GitComparison, LinkedIssueContext } from "../src/types.ts";
 
 test("extracts the thread and final agent messages from Codex JSONL", () => {
   const parsed = parseCodexJsonLines([
@@ -258,6 +258,35 @@ test("bounds tour prompts to a first-read comparison and orders phases as concep
     phases: [{ id: "behavior", title: "Changed behavior", summary: "This layer establishes the changed value and enables the result layer.", fileChanges: [{ path: "app.ts", summary: "Defines the changed behavior." }], steps: [{ id: "step", title: "Changed value", objective: "The changed value is produced.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
   }));
   await expect(pending).resolves.toMatchObject({ value: { title: "First-read review" } });
+});
+
+test("maps supplied issue criteria with an explicit model-assessment boundary", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeFindings: false }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+const retry = true;", repositoryFiles: ["app.ts"],
+    files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, rows: [{ kind: "addition", content: "const retry = true;", oldLine: null, newLine: 1 }] }],
+    }],
+  };
+  const issue: LinkedIssueContext = {
+    repository: "repository", number: 12, url: "https://github.com/repository/issues/12", title: "Retry", access: "available", criteriaStatus: "found",
+    acceptanceCriteria: [{ id: "criterion-1", text: "A request can be retried" }],
+  };
+  const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY, undefined, issue);
+  const [event] = await bridge.eventsAfter(0, 1_000);
+  if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
+  expect(event.prompt).toContain("exactly one same-repository closing issue");
+  expect(event.prompt).toContain("related issues, earlier pull requests");
+  expect(event.prompt).toContain('"basis":"model-assessment"');
+  await bridge.respond(event.id, JSON.stringify({
+    title: "Retry review", summary: "The retry flag is introduced.",
+    phases: [{ id: "behavior", title: "Retry", summary: "The flag enables the retry path.", fileChanges: [{ path: "app.ts", summary: "Adds the retry flag." }], steps: [{ id: "retry", title: "Retry flag", objective: "The changed flag enables retry behavior.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
+    callFlows: [], flows: [], findings: [],
+    issueAssessment: { issueNumber: 12, issueUrl: issue.url, items: [{ criterionId: "criterion-1", criterion: "A request can be retried", status: "implemented", evidence: "app.ts defines the retry flag.", evidencePaths: ["app.ts"], basis: "model-assessment" }],
+  }}));
+  const outline = (await pending).value;
+  expect(outline.issueAssessment).toEqual(expect.objectContaining({ items: [expect.objectContaining({ status: "implemented", basis: "model-assessment" })] }));
 });
 
 test("repository policy is bounded context and findings are enforced after generation", async () => {
