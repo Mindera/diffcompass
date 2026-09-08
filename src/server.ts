@@ -178,11 +178,21 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/preferences") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["prefetchSteps"]);
-        if (!Number.isInteger(input.prefetchSteps) || Number(input.prefetchSteps) < 0 || Number(input.prefetchSteps) > 5) {
-          throw new HttpError(422, "Prepare ahead must be between 0 and 5 steps.");
+        exactKeys(input, ["prefetchSteps", "diffLayout", "diffWrap", "mobile"]);
+        if (input.prefetchSteps !== undefined) {
+          if (Object.keys(input).length !== 1 || !Number.isInteger(input.prefetchSteps) || Number(input.prefetchSteps) < 0 || Number(input.prefetchSteps) > 5) {
+            throw new HttpError(422, "Prepare ahead must be between 0 and 5 steps.");
+          }
+          return json(await session.setPrefetchSteps(Number(input.prefetchSteps)));
         }
-        return json(await session.setPrefetchSteps(Number(input.prefetchSteps)));
+        if (input.diffLayout === undefined || input.diffWrap === undefined || typeof input.mobile !== "boolean" ||
+          !["unified", "split"].includes(String(input.diffLayout)) || !["scroll", "wrap"].includes(String(input.diffWrap))) {
+          throw new HttpError(422, "Diff preferences must include a valid layout, wrap mode, and device scope.");
+        }
+        return json(await session.setDiffPreferences(input.mobile ? "mobile" : "desktop", {
+          layout: input.diffLayout as "unified" | "split",
+          wrap: input.diffWrap as "scroll" | "wrap",
+        }));
       }
       if (request.method === "GET" && url.pathname === "/api/update") return json(await updateService.status());
       if (request.method === "POST" && url.pathname === "/api/update") {

@@ -215,6 +215,16 @@ export type ReviewOutcome = "accepted" | "feedback" | "cancelled";
 export type ReviewDecisionIntent = "approve" | "approve-with-comments" | "request-changes" | "cancel";
 export type ReviewStatus = "open" | ReviewOutcome;
 
+export interface DiffViewPreferences {
+  layout: "unified" | "split";
+  wrap: "scroll" | "wrap";
+}
+
+export interface SessionDiffPreferences {
+  desktop?: DiffViewPreferences;
+  mobile?: DiffViewPreferences;
+}
+
 export interface ReviewPreferences {
   diffLayout: "unified" | "split";
   changedFilesOnly: boolean;
@@ -418,6 +428,7 @@ export interface PersistedReviewSession {
   checkpointRefNamespace?: string;
   comparisonView?: ComparisonView;
   selectedCheckpointId?: string;
+  diffPreferences?: SessionDiffPreferences;
   preferences?: ReviewPreferences;
   reviewPolicy?: ReviewPolicy;
   findingGenerationEnabled?: boolean;

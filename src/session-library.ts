@@ -213,7 +213,7 @@ export async function listReviewSessions(
   const metadata = await loadLibraryMetadata(directory);
   const sessions: SessionSummary[] = [];
   const invalid: string[] = [];
-  for (const entry of entries.filter((candidate) => candidate.endsWith(".json") && candidate !== ".library.json").sort()) {
+  for (const entry of entries.filter((candidate) => candidate.endsWith(".json") && ![".library.json", ".diff-preferences.json"].includes(candidate)).sort()) {
     const path = join(directory, entry);
     try {
       const session = await loadPersistedSession(path);

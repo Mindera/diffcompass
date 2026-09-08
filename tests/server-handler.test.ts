@@ -60,6 +60,23 @@ test("runtime preferences persist a bounded prepare-ahead window", async () => {
   expect(invalid.status).toBe(422);
 });
 
+test("diff preferences persist independently for desktop and mobile sessions", async () => {
+  const { session, fetch } = fixture();
+  const desktop = await fetch(authorizedRequest(session, "/api/preferences", { diffLayout: "unified", diffWrap: "wrap", mobile: false }));
+  expect(desktop.status).toBe(200);
+  expect((await desktop.json()).diffPreferences).toEqual({ desktop: { layout: "unified", wrap: "wrap" } });
+
+  const mobile = await fetch(authorizedRequest(session, "/api/preferences", { diffLayout: "split", diffWrap: "scroll", mobile: true }));
+  expect(mobile.status).toBe(200);
+  expect((await mobile.json()).diffPreferences).toEqual({
+    desktop: { layout: "unified", wrap: "wrap" },
+    mobile: { layout: "split", wrap: "scroll" },
+  });
+
+  const invalid = await fetch(authorizedRequest(session, "/api/preferences", { diffLayout: "unified", mobile: false }));
+  expect(invalid.status).toBe(422);
+});
+
 test("inline edit requests accept only the editable new side", async () => {
   const { session, fetch } = fixture();
   const response = await fetch(authorizedRequest(session, "/api/edits", {

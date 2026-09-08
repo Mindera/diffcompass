@@ -178,6 +178,37 @@ test("startup screenshots are snapshotted, authenticated, and persisted across r
   expect(resumed.snapshot().screenshots).toEqual(session.snapshot().screenshots);
 });
 
+test("selected diff preferences survive an existing session resume", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+  await session.setDiffPreferences("desktop", { layout: "unified", wrap: "wrap" });
+  await session.setDiffPreferences("mobile", { layout: "split", wrap: "scroll" });
+
+  const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  expect(resumed.snapshot().diffPreferences).toEqual({
+    desktop: { layout: "unified", wrap: "wrap" },
+    mobile: { layout: "split", wrap: "scroll" },
+  });
+});
+
+test("new sessions inherit the last repository-scoped diff preferences", async () => {
+  const { directory, repository, stateFile } = await repositoryFixture();
+  const first = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+  const nextStateFile = join(directory, "next-session.json");
+  try {
+    await first.setDiffPreferences("desktop", { layout: "unified", wrap: "wrap" });
+    await first.setDiffPreferences("mobile", { layout: "split", wrap: "scroll" });
+
+    const next = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile: nextStateFile });
+    try {
+      expect(next.snapshot().diffPreferences).toEqual({
+        desktop: { layout: "unified", wrap: "wrap" },
+        mobile: { layout: "split", wrap: "scroll" },
+      });
+    } finally { await next.dispose(); }
+  } finally { await first.dispose(); }
+});
+
 function proposalWorkspace(prompt: { type: string; prompt?: string }): string {
   const match = /isolated proposal workspace ("(?:\\.|[^"])*")/.exec(prompt.prompt ?? "");
   if (!match) throw new Error("Attached prompt did not include a proposal workspace.");

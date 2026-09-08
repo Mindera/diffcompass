@@ -408,8 +408,8 @@ under expanded folder sections. Single-child folder chains are compacted into
 paths such as `.github/workflows`, while real branches remain nested. `Full
 repository` includes unchanged source navigation with the same compact folder
 chains. The sticky diff toolbar offers `Split / Unified` and `Scroll / Wrap`
-controls; layout also remains available in Settings. Choices are remembered
-separately for desktop and mobile. Switching preserves the visible source line
+controls. Choices are remembered separately for desktop and mobile, and become
+the defaults for later review sessions. Switching preserves the visible source line
 and any inline comment or edit draft. Scroll is the default; Wrap fits long lines
 to the available width without changing their source line numbers. Unified uses
 one number gutter: old numbers for deletions, new numbers otherwise, with both

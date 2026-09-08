@@ -489,7 +489,10 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(html).toContain('<details id="settings-menu" class="settings-menu">');
   expect(html).toContain('id="prefetch-steps"');
   expect(html).toContain('id="theme-select"');
-  expect(html).toContain('id="diff-layout"');
+  expect(html).not.toContain('<label><span>Diff view</span>');
+  expect(html).not.toContain('id="diff-layout"');
+  expect(html).toContain('data-diff-layout="split"');
+  expect(html).toContain('data-diff-wrap="wrap"');
   expect(html).toContain('id="tree-mode"');
   expect(html).toContain('data-export-format="markdown">Markdown');
   expect(html).toContain('data-export-format="html">HTML');

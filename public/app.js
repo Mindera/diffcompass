@@ -55,6 +55,7 @@ const state = {
   treeMode: null,
   diffLayout: null,
   diffWrap: "scroll",
+  diffPreferenceSave: Promise.resolve(),
   showDiffMarkers: false,
   renderedDiffFiles: [],
   filePanelWidth: 240,
@@ -95,7 +96,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
@@ -589,6 +590,8 @@ function diffLayoutPreferenceKey() {
 }
 
 function preferredDiffLayout() {
+  const sessionPreference = typeof state !== "undefined" ? state.session?.diffPreferences?.[narrowFilePanelLayout() ? "mobile" : "desktop"]?.layout : undefined;
+  if (["unified", "split"].includes(sessionPreference)) return sessionPreference;
   const saved = window.localStorage.getItem(diffLayoutPreferenceKey());
   if (["unified", "split"].includes(saved)) return saved;
   return narrowFilePanelLayout() ? "unified" : state.session.preferences?.diffLayout ?? "split";
@@ -599,6 +602,8 @@ function diffWrapPreferenceKey() {
 }
 
 function preferredDiffWrap() {
+  const sessionPreference = typeof state !== "undefined" ? state.session?.diffPreferences?.[narrowFilePanelLayout() ? "mobile" : "desktop"]?.wrap : undefined;
+  if (["scroll", "wrap"].includes(sessionPreference)) return sessionPreference;
   const saved = window.localStorage.getItem(diffWrapPreferenceKey());
   return ["scroll", "wrap"].includes(saved) ? saved : "scroll";
 }
@@ -1034,12 +1039,28 @@ function currentDiffRenderOptions() {
 }
 
 function syncDiffViewControls() {
-  elements["diff-layout"].value = state.diffLayout;
   elements.diff.classList.toggle("wrap-code", state.diffWrap === "wrap");
   elements.diff.classList.toggle("show-diff-markers", state.showDiffMarkers);
   document.getElementById("show-diff-markers").checked = state.showDiffMarkers;
   document.querySelectorAll("[data-diff-layout]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.diffLayout === state.diffLayout)));
   document.querySelectorAll("[data-diff-wrap]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.diffWrap === state.diffWrap)));
+}
+
+function persistDiffPreferences() {
+  if (typeof api !== "function" || !state.session) return;
+  const layout = state.diffLayout;
+  const wrap = state.diffWrap;
+  const mobile = narrowFilePanelLayout();
+  state.diffPreferenceSave = (state.diffPreferenceSave ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(async () => {
+      const session = await api("/api/preferences", {
+        method: "POST",
+        body: JSON.stringify({ diffLayout: layout, diffWrap: wrap, mobile }),
+      });
+      if (state.session) state.session.diffPreferences = session.diffPreferences;
+    })
+    .catch((error) => toast(error.message));
 }
 
 function diffViewRow(path, side, line) {
@@ -1063,6 +1084,7 @@ function changeDiffView(layout, wrap, persist = true) {
   if (persist) {
     window.localStorage.setItem(diffLayoutPreferenceKey(), state.diffLayout);
     window.localStorage.setItem(diffWrapPreferenceKey(), state.diffWrap);
+    if (typeof persistDiffPreferences === "function") persistDiffPreferences();
   }
   if (rerender) {
     // Use the currently displayed files, including expanded/proposal diffs.
@@ -2622,7 +2644,6 @@ function renderSession() {
   elements["test-files-filter"].setAttribute("aria-pressed", String(state.testFilesOnly));
   elements["test-files-filter"].classList.toggle("active", state.testFilesOnly);
   elements["tree-mode"].value = state.treeMode;
-  elements["diff-layout"].value = state.diffLayout;
   elements["prefetch-steps"].value = String(state.session.preferences?.prefetchSteps ?? 5);
   elements["diff-search"].disabled = Boolean(state.tourMode);
   elements["status-filter"].disabled = Boolean(state.tourMode);
@@ -3865,9 +3886,6 @@ document.getElementById("show-diff-markers").addEventListener("change", (event) 
   state.showDiffMarkers = event.target.checked;
   window.localStorage.setItem(preferenceKey("show-diff-markers"), String(state.showDiffMarkers));
   syncDiffViewControls();
-});
-elements["diff-layout"].addEventListener("change", () => {
-  changeDiffView(elements["diff-layout"].value, state.diffWrap);
 });
 document.querySelectorAll("[data-diff-layout]").forEach(button => button.addEventListener("click", () => changeDiffView(button.dataset.diffLayout, state.diffWrap)));
 document.querySelectorAll("[data-diff-wrap]").forEach(button => button.addEventListener("click", () => changeDiffView(state.diffLayout, button.dataset.diffWrap)));

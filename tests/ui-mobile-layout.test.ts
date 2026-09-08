@@ -19,7 +19,7 @@ test("mobile starts unified regardless of desktop or server split preference", (
   expect(preferences(true, { "mobile-diff-layout": "invalid" }).preferredDiffLayout()).toBe("unified");
 });
 
-test("explicit layouts persist independently for mobile and desktop", () => {
+test("new sessions use stored browser defaults independently for mobile and desktop", () => {
   expect(preferences(true, { "mobile-diff-layout": "split" }).preferredDiffLayout()).toBe("split");
   expect(preferences(false, { "mobile-diff-layout": "unified" }).preferredDiffLayout()).toBe("split");
   expect(preferences(false, { "diff-layout": "unified" }).preferredDiffLayout()).toBe("unified");
@@ -27,6 +27,16 @@ test("explicit layouts persist independently for mobile and desktop", () => {
   expect(preferences(true).diffLayoutPreferenceKey()).toBe("mobile-diff-layout");
   expect(preferences(false).diffLayoutPreferenceKey()).toBe("diff-layout");
   expect(app).toContain('window.localStorage.setItem(diffLayoutPreferenceKey(), state.diffLayout)');
+});
+
+test("session diff choices override browser defaults for the matching device", () => {
+  const source = app.slice(app.indexOf("function diffLayoutPreferenceKey("), app.indexOf("const FILE_PANEL_MIN"));
+  const load = (mobile: boolean, session: Record<string, unknown>, saved: Record<string, string> = {}) => new Function("window", "state", "narrowFilePanelLayout", "preferenceKey", `${source}; return { layout: preferredDiffLayout(), wrap: preferredDiffWrap() };`)({
+    localStorage: { getItem: (key: string) => saved[key] ?? null },
+  }, { session }, () => mobile, (key: string) => key);
+  expect(load(false, { preferences: { diffLayout: "split" }, diffPreferences: { desktop: { layout: "unified", wrap: "wrap" } } }, { "diff-layout": "split", "diff-wrap": "scroll" })).toEqual({ layout: "unified", wrap: "wrap" });
+  expect(load(true, { preferences: { diffLayout: "split" }, diffPreferences: { desktop: { layout: "split", wrap: "wrap" }, mobile: { layout: "unified", wrap: "scroll" } } }, { "mobile-diff-layout": "split", "mobile-diff-wrap": "wrap" })).toEqual({ layout: "unified", wrap: "scroll" });
+  expect(load(false, { preferences: { diffLayout: "split" } }, { "diff-layout": "unified", "diff-wrap": "wrap" })).toEqual({ layout: "unified", wrap: "wrap" });
 });
 
 test("mobile layout gives paths their own wrapping row and leaves code at its normal size", () => {

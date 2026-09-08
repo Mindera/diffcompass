@@ -9,7 +9,7 @@ import { ReviewSession } from "./session.ts";
 import { startServer } from "./server.ts";
 import packageJson from "../package.json" with { type: "json" };
 import { runDoctor } from "./doctor.ts";
-import { acquireSessionLock, runSessionCommand } from "./session-library.ts";
+import { acquireSessionLock, reviewSessionDirectory, runSessionCommand } from "./session-library.ts";
 import { loadRepositoryConfig } from "./config.ts";
 import { createPullRequestWorkspace, loadPullRequestContext, removePullRequestWorkspace } from "./github.ts";
 import type { PullRequestContext } from "./types.ts";
@@ -231,6 +231,7 @@ try {
     callerReasoningEffort: options.callerReasoning,
     attached: options.attached,
     stateFile: canonicalStatePath,
+    diffPreferenceDirectory: reviewSessionDirectory(),
     resume: Boolean(options.resume),
     preferences: repositoryConfig.preferences,
     reviewPolicy: repositoryConfig.reviewPolicy,

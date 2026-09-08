@@ -82,3 +82,8 @@ test("changing wrapping restores the visible line rather than just the old scrol
   expect(panel.scrollTop).toBe(1000);
   expect(saved.get("wrap")).toBe("wrap");
 });
+
+test("changing diff options persists the current session and browser defaults", () => {
+  expect(app).toContain('body: JSON.stringify({ diffLayout: layout, diffWrap: wrap, mobile })');
+  expect(app).toContain('api("/api/preferences"');
+});

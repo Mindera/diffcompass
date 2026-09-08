@@ -83,6 +83,26 @@ test("persists a complete session atomically and with owner-only permissions whe
   }
 });
 
+test("persists optional diff preferences while accepting older sessions without them", async () => {
+  const path = await temporaryStateFile();
+  const session = persistedSession();
+  session.diffPreferences = {
+    desktop: { layout: "unified", wrap: "wrap" },
+    mobile: { layout: "split", wrap: "scroll" },
+  };
+  await savePersistedSession(path, session);
+  await expect(loadPersistedSession(path)).resolves.toMatchObject({ diffPreferences: session.diffPreferences });
+
+  for (const diffPreferences of [
+    { desktop: { layout: "columns", wrap: "wrap" } },
+    { mobile: { layout: "split", wrap: "fold" } },
+    { tablet: { layout: "split", wrap: "scroll" } },
+  ]) {
+    await writeFile(path, JSON.stringify({ ...session, diffPreferences }));
+    await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+  }
+});
+
 test("repairs Mermaid keyword IDs when loading an older session", async () => {
   const path = await temporaryStateFile();
   const session = persistedSession();

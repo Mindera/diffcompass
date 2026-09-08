@@ -11,9 +11,10 @@ import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorks
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, ComparisonView, DiffFile, DiffRow, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SourceCheckpoint, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
+import { diffPreferenceStoreDirectory, loadGlobalDiffPreferences, restoreGlobalDiffPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -23,6 +24,7 @@ interface AgentDefaults {
   callerReasoningEffort?: ReasoningEffort;
   attached?: boolean;
   stateFile?: string;
+  diffPreferenceDirectory?: string;
   resume?: boolean;
   preferences?: ReviewPreferences;
   reviewPolicy?: ReviewPolicy;
@@ -86,6 +88,7 @@ export class ReviewSession {
   readonly messages: ChatMessage[];
   readonly activities: AgentChangeActivity[];
   readonly reviewedFiles: Set<string>;
+  private diffPreferences?: SessionDiffPreferences;
   readonly browserToken: string;
   readonly preferences: ReviewPreferences;
   readonly reviewPolicy: ReviewPolicy;
@@ -138,9 +141,11 @@ export class ReviewSession {
     private readonly defaults: AgentDefaults,
     readonly bridge?: AttachedAgentBridge,
     persisted?: PersistedReviewSession,
+    initialDiffPreferences?: SessionDiffPreferences,
   ) {
     this.browserToken = persisted?.browserToken ?? crypto.randomUUID();
     this.preferences = structuredClone(persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES);
+    this.diffPreferences = structuredClone(persisted?.diffPreferences ?? initialDiffPreferences);
     this.reviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.screenshots = structuredClone(persisted?.screenshots ?? []);
@@ -227,6 +232,7 @@ export class ReviewSession {
       checkpointRefNamespace: this.checkpointRefNamespace,
       comparisonView: this.comparisonView,
       selectedCheckpointId: this.selectedCheckpointId,
+      diffPreferences: structuredClone(this.diffPreferences),
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
@@ -622,6 +628,8 @@ export class ReviewSession {
       comparison.base !== persisted.base
     )) throw new ReviewError("The persisted review does not match the requested repository comparison.");
     const adapters = structuredClone(defaults.agentAdapters ?? await discoverAgentAdapters(comparison.repositoryRoot));
+    const preferenceRepositoryRoot = persisted?.pullRequest?.sourceRepositoryRoot ?? defaults.pullRequest?.sourceRepositoryRoot ?? comparison.repositoryRoot;
+    const globalDiffPreferences = await loadGlobalDiffPreferences(defaults.diffPreferenceDirectory ?? diffPreferenceStoreDirectory(defaults.stateFile), preferenceRepositoryRoot);
     const attached = defaults.attached || Boolean(persisted?.bridgeToken);
     const bridge = attached ? new AttachedAgentBridge(
       persisted?.bridgeToken,
@@ -650,7 +658,7 @@ export class ReviewSession {
           : `Questions and tour prompts return to the launching agent${callerModel === "current-session" ? "." : ` (${callerModel}).`}`,
       });
     }
-    const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted);
+    const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted, globalDiffPreferences);
     await session.selectComparisonView();
     await session.updateRevisionSummary(session.fullComparison).catch(() => undefined);
     if (defaults.screenshots?.length) {
@@ -794,6 +802,7 @@ export class ReviewSession {
       comparisonView: this.comparisonView,
       selectedCheckpointId: this.selectedCheckpointId ?? this.latestCheckpoint()?.id,
       revisionSummary: structuredClone(this.currentRevisionSummary),
+      diffPreferences: structuredClone(this.diffPreferences),
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
@@ -1164,6 +1173,39 @@ export class ReviewSession {
         throw error;
       }
       this.scheduleNextStepPrefetch();
+      return this.snapshot();
+    });
+  }
+
+  async setDiffPreferences(scope: "desktop" | "mobile", preferences: DiffViewPreferences) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!["unified", "split"].includes(preferences.layout) || !["scroll", "wrap"].includes(preferences.wrap)) {
+        throw new ReviewError("Diff preferences are invalid.");
+      }
+      const previous = structuredClone(this.diffPreferences);
+      const preferenceRepositoryRoot = this.pullRequest?.sourceRepositoryRoot ?? this.comparison.repositoryRoot;
+      const preferenceDirectory = this.defaults.diffPreferenceDirectory ?? diffPreferenceStoreDirectory(this.defaults.stateFile);
+      const current = this.diffPreferences?.[scope];
+      if (current?.layout === preferences.layout && current.wrap === preferences.wrap) return this.snapshot();
+      this.diffPreferences = {
+        ...this.diffPreferences,
+        [scope]: structuredClone(preferences),
+      };
+      const previousRevision = this.revision;
+      this.revision += 1;
+      let globalUpdated = false;
+      let previousGlobal: SessionDiffPreferences | undefined;
+      try {
+        previousGlobal = await updateGlobalDiffPreferences(preferenceDirectory, preferenceRepositoryRoot, scope, preferences);
+        globalUpdated = preferenceDirectory !== undefined;
+        await this.persist();
+      } catch (error) {
+        this.diffPreferences = previous;
+        this.revision = previousRevision;
+        if (globalUpdated) await restoreGlobalDiffPreferences(preferenceDirectory, preferenceRepositoryRoot, previousGlobal).catch(() => undefined);
+        throw error;
+      }
       return this.snapshot();
     });
   }

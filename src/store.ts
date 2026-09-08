@@ -251,6 +251,17 @@ function validPreferences(value: unknown): boolean {
     typeof value.requireAllFilesReviewed === "boolean" && ["accepted", "cancelled"].includes(String(value.closeOutcome));
 }
 
+function validDiffViewPreferences(value: unknown): boolean {
+  return record(value) && Object.keys(value).every((key) => ["layout", "wrap"].includes(key)) &&
+    ["unified", "split"].includes(String(value.layout)) && ["scroll", "wrap"].includes(String(value.wrap));
+}
+
+function validSessionDiffPreferences(value: unknown): boolean {
+  return record(value) && Object.keys(value).every((key) => ["desktop", "mobile"].includes(key)) &&
+    (value.desktop === undefined || validDiffViewPreferences(value.desktop)) &&
+    (value.mobile === undefined || validDiffViewPreferences(value.mobile));
+}
+
 function validReviewPolicy(value: unknown): boolean {
   if (!record(value) || !Array.isArray(value.instructions) || value.instructions.length > 32 ||
     value.instructions.some((instruction) => !nonEmptyString(instruction, 2_000)) ||
@@ -366,6 +377,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.schemaVersion === 2 && session.checkpoints !== undefined) ||
     (session.comparisonView !== undefined && !["full", "since-last-review"].includes(String(session.comparisonView))) ||
     (session.selectedCheckpointId !== undefined && !/^[0-9a-f-]{36}$/.test(session.selectedCheckpointId)) ||
+    (session.diffPreferences !== undefined && !validSessionDiffPreferences(session.diffPreferences)) ||
     (session.preferences !== undefined && !validPreferences(session.preferences)) ||
     (session.reviewPolicy !== undefined && !validReviewPolicy(session.reviewPolicy)) ||
     (session.findingGenerationEnabled !== undefined && typeof session.findingGenerationEnabled !== "boolean") ||

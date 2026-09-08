@@ -49,7 +49,8 @@ test("line markers opt in without removing line actions or comment indicators", 
   expect(app).toContain('state.showDiffMarkers = window.localStorage.getItem(preferenceKey("show-diff-markers")) === "true"');
   expect(html).toContain('<input id="show-diff-markers" type="checkbox" />');
   expect(styles).toContain('#diff:not(.show-diff-markers) .row-prefix { visibility: hidden; }');
-  const source = app.slice(app.indexOf('document.getElementById("show-diff-markers").addEventListener'), app.indexOf('elements["diff-layout"].addEventListener'));
+  const markerStart = app.indexOf('document.getElementById("show-diff-markers").addEventListener');
+  const source = app.slice(markerStart, app.indexOf('document.querySelectorAll("[data-diff-layout]")', markerStart));
   let change!: (event: { target: { checked: boolean } }) => void;
   let syncs = 0;
   const state = { showDiffMarkers: false };
