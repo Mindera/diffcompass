@@ -34,6 +34,17 @@ function authorizedRequest(session: ReviewSession, path: string, body: unknown) 
   });
 }
 
+test("session API exposes the evidence briefing without a second agent pass", async () => {
+  const { session, fetch } = fixture();
+  const response = await fetch(new Request("http://127.0.0.1/api/session", {
+    headers: { "x-review-tour-token": session.browserToken },
+  }));
+  expect(response.status).toBe(200);
+  const payload = await response.json() as { needsAttention: { signals: Array<{ kind: string }>; estimate: { factors: unknown[] } } };
+  expect(payload.needsAttention.signals.map((signal) => signal.kind)).toEqual(["tests"]);
+  expect(payload.needsAttention.estimate.factors.length).toBeGreaterThan(1);
+});
+
 test("update endpoints expose availability and require an authenticated click to install", async () => {
   const { session } = fixture();
   let installs = 0;

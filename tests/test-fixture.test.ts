@@ -38,6 +38,8 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
     resume: true,
     agentAdapters: [],
   });
+  expect(session.snapshot().needsAttention.signals.map((signal) => signal.kind)).toEqual(["finding", "public-contract", "public-contract", "tests"]);
+  expect(session.snapshot().needsAttention.estimate.factors.some((factor) => factor.label === "P0/P1 findings")).toBe(true);
   expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "docs/checkout-guide.md", "screens/receipt.png", "src/cart.ts", "docs/preview.md", "src/receipt.ts"]);
   expect(session.comparison.files.find((file) => file.path === "docs/checkout-guide.md")?.status).toBe("modified");
   expect(session.currentStepIndex).toBe(0);

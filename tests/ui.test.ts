@@ -459,6 +459,23 @@ test("agent-launched tours introduce the change before navigating to the first s
   expect(styles).toContain('.tour-intro-architecture');
 });
 
+test("the pre-tour briefing is evidence-labelled, linked, responsive, and exportable", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="tour-intro-attention"');
+  expect(html).toContain('id="tour-intro-estimate-factors"');
+  expect(app).toContain("function renderTourAttention()");
+  expect(app).toContain("Bounded heuristic");
+  expect(app).toContain('data-attention-kind');
+  expect(app).toContain('openFindingFromCode(target.dataset.attentionId)');
+  expect(app).toContain('activateReviewTab("call-flows", renderCallFlows)');
+  expect(styles).toContain(".tour-intro-attention-item");
+  expect(styles).toContain("@media (max-width: 600px)");
+});
+
 test("each architecture chart has independent movement and zoom controls", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),

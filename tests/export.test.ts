@@ -55,6 +55,7 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   const artifact = exportReview(fixture(), "markdown");
   expect(artifact).toMatchObject({ contentType: "text/markdown; charset=utf-8", extension: "md" });
   expect(artifact.content).toContain("## Tour");
+  expect(artifact.content).toContain("## Review-time estimate");
   expect(artifact.content).toContain("## Architecture");
   expect(artifact.content).toContain("### Proposed behaviour: Behavior");
   expect(artifact.content).toContain("### Implementation journey: Components");
@@ -170,6 +171,8 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain("&lt;script&gt;comment()");
   expect(artifact.content).toContain("&lt;/style&gt;&lt;script&gt;alert(1)");
   expect(artifact.content).toContain('<main class="workspace">');
+  expect(artifact.content).toContain("Reasoned review-time estimate");
+  expect(artifact.content).toContain("Bounded heuristic");
   expect(artifact.content).toContain('<aside class="file-panel">');
   expect(artifact.content).toContain('<aside class="agent-panel">');
   expect(artifact.content).toContain('data-view="diff"');
@@ -195,6 +198,16 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).not.toContain('mermaid.run({querySelector:".mermaid"})');
   expect(artifact.content).toContain(".viewer-body .architecture-diagram svg{width:100%!important;");
   expect(artifact.content).toContain('<html lang="en" data-diff-wrap="scroll">');
+});
+
+test("HTML and Markdown exports include the evidence briefing when signals exist", () => {
+  const session = fixture();
+  session.outline!.findings = [{ id: "briefing-finding", phaseId: "behavior", stepId: "one", path: "app.ts", side: "new", line: 1, lineContent: "const fence = ```;", message: "Important issue", category: "correctness", severity: "critical", confidence: "high", evidence: "The changed line is the evidence.", priority: "P1", introduced: true, recallGuard: true, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" }];
+  expect(exportReview(session, "markdown").content).toContain("## Needs your attention");
+  const html = exportReview(session, "html").content;
+  expect(html).toContain('class="attention-briefing"');
+  expect(html).toContain('data-view="findings"');
+  expect(html).toContain("The changed line is the evidence.");
 });
 
 test("HTML export preserves the selected wrapped diff presentation", () => {

@@ -54,7 +54,7 @@ export async function loadPullRequestContext(
   if (repository.toLocaleLowerCase() !== localRepository.toLocaleLowerCase()) {
     throw new ReviewError(`The pull request belongs to ${repository}, but this checkout belongs to ${localRepository || "an unknown repository"}.`);
   }
-  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision";
+  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus";
   const raw = await jsonCommand(runner, ["gh", "pr", "view", String(parsed.number), "--repo", repository, "--json", fields], sourceRepositoryRoot);
   const [owner, name] = repository.split("/");
   const threadRaw = await jsonCommand(runner, [
@@ -155,6 +155,8 @@ export async function loadPullRequestContext(
     workspaceRoot: "",
     refNamespace,
     reviewDecision: typeof raw.reviewDecision === "string" && raw.reviewDecision ? raw.reviewDecision : undefined,
+    mergeable: raw.mergeable === "MERGEABLE" || raw.mergeable === "CONFLICTING" || raw.mergeable === "UNKNOWN" ? raw.mergeable : undefined,
+    mergeStateStatus: typeof raw.mergeStateStatus === "string" && raw.mergeStateStatus ? raw.mergeStateStatus : undefined,
     commits,
     checks,
     threads,

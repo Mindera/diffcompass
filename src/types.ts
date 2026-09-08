@@ -272,6 +272,9 @@ export interface PullRequestContext {
   workspaceRoot: string;
   refNamespace: string;
   reviewDecision?: string;
+  /** GitHub's mergeability metadata is absent while GitHub is still calculating it. */
+  mergeable?: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+  mergeStateStatus?: string;
   commits: Array<{ oid: string; headline: string; authors: string[] }>;
   checks: Array<{ name: string; state: string; url?: string }>;
   threads: Array<{
@@ -294,6 +297,37 @@ export interface PullRequestContext {
     url?: string;
   };
   updatedAt: string;
+}
+
+export type ReviewBriefingTarget =
+  | { kind: "finding"; findingId: string }
+  | { kind: "file"; path: string; side?: "old" | "new"; line?: number }
+  | { kind: "call-flow"; callFlowId: string }
+  | { kind: "review-section"; section: "findings" | "call-flows" | "pull-request" | "diff" };
+
+export interface ReviewBriefingSignal {
+  id: string;
+  kind: "finding" | "public-contract" | "call-flow" | "tests" | "stale-analysis" | "github-check" | "merge-conflict";
+  title: string;
+  detail: string;
+  evidence: string;
+  basis: "repository-evidence" | "bounded-heuristic";
+  target: ReviewBriefingTarget;
+}
+
+export interface ReviewTimeFactor {
+  label: string;
+  minutes: number;
+  detail: string;
+  basis: "repository-evidence" | "bounded-heuristic";
+}
+
+export interface ReviewBriefing {
+  signals: ReviewBriefingSignal[];
+  estimate: {
+    minutes: number;
+    factors: ReviewTimeFactor[];
+  };
 }
 
 export interface ChatMessage {

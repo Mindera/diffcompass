@@ -16,6 +16,7 @@ import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRun
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
 import { diffPreferenceStoreDirectory, loadGlobalDiffPreferences, restoreGlobalDiffPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
+import { buildNeedsAttention } from "./attention.ts";
 
 interface AgentDefaults {
   adapterId?: string;
@@ -832,6 +833,7 @@ export class ReviewSession {
       agentMode: this.selection ? `${this.selection.adapterId}-read-only` : undefined,
       agentActivity: structuredClone(this.agentActivity),
       tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
+      needsAttention: buildNeedsAttention(this.comparison, this.outline, this.pullRequest),
     };
   }
 

@@ -101,7 +101,7 @@ const elements = Object.fromEntries(
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-list", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -1658,7 +1658,8 @@ function renderPullRequest() {
     elements["pull-request-content"].innerHTML = "";
     return;
   }
-  const checks = pullRequest.checks.length === 0 ? "<li>No checks reported.</li>" : pullRequest.checks.map((check) => `<li><strong>${escapeHtml(check.name)}</strong> — ${escapeHtml(check.state)}</li>`).join("");
+  const mergeability = pullRequest.mergeable || pullRequest.mergeStateStatus ? `<li><strong>Mergeability</strong> — ${escapeHtml(pullRequest.mergeable ?? "unknown")}${pullRequest.mergeStateStatus ? ` · ${escapeHtml(pullRequest.mergeStateStatus)}` : ""}</li>` : "";
+  const checks = `${mergeability}${pullRequest.checks.length === 0 ? "<li>No checks reported.</li>" : pullRequest.checks.map((check) => `<li><strong>${escapeHtml(check.name)}</strong> — ${escapeHtml(check.state)}</li>`).join("")}`;
   const commits = pullRequest.commits.length === 0 ? "<li>No commits reported.</li>" : pullRequest.commits.map((commit) => `<li><code>${escapeHtml(commit.oid.slice(0, 8))}</code> ${escapeHtml(commit.headline)} <span class="muted">${escapeHtml(commit.authors.join(", "))}</span></li>`).join("");
   const threads = pullRequest.threads.length === 0 ? "<p class=\"muted\">No existing review threads.</p>" : pullRequest.threads.map((thread) => `<article class="comment-item"><div class="comment-meta"><span>${escapeHtml(thread.path)}${thread.line ? `:${thread.line}` : ""}</span><span>${thread.resolved ? "resolved" : "open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}</article>`).join("");
   elements["pull-request-content"].innerHTML = `
@@ -1939,11 +1940,36 @@ function openArchitectureDiagramViewer(key) {
   elements["architecture-viewer-diagram"].focus();
 }
 
+function attentionSignalTarget(target) {
+  if (target.kind === "finding") return `data-attention-kind="finding" data-attention-id="${escapeHtml(target.findingId)}"`;
+  if (target.kind === "call-flow") return `data-attention-kind="call-flow" data-attention-id="${escapeHtml(target.callFlowId)}"`;
+  if (target.kind === "file") return `data-attention-kind="file" data-attention-path="${escapeHtml(target.path)}"${target.side ? ` data-attention-side="${target.side}"` : ""}${target.line ? ` data-attention-line="${target.line}"` : ""}`;
+  return `data-attention-kind="section" data-attention-section="${escapeHtml(target.section)}"`;
+}
+
+function attentionTargetLabel(target) {
+  if (target.kind === "finding") return "View finding";
+  if (target.kind === "call-flow") return "Open call flow";
+  if (target.kind === "file") return `Open ${target.path}${target.line ? `:${target.line}` : ""}`;
+  return `Open ${target.section.replaceAll("-", " ")} section`;
+}
+
+function renderTourAttention() {
+  const briefing = state.session.needsAttention;
+  const signals = briefing?.signals ?? [];
+  elements["tour-intro-attention"].classList.toggle("hidden", signals.length === 0);
+  elements["tour-intro-attention-list"].innerHTML = signals.map((signal) => `<article class="tour-intro-attention-item ${signal.kind}" role="listitem"><div class="tour-intro-attention-heading"><strong>${escapeHtml(signal.title)}</strong><span class="attention-basis">${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</span></div><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details><button type="button" class="text-button" ${attentionSignalTarget(signal.target)}>${escapeHtml(attentionTargetLabel(signal.target))}</button></article>`).join("");
+  const estimate = briefing?.estimate;
+  elements["tour-intro-estimate-summary"].textContent = estimate ? `About ${estimate.minutes} minutes, based on the visible factors below. This is a planning aid, not a score.` : "Estimate unavailable.";
+  elements["tour-intro-estimate-factors"].innerHTML = (estimate?.factors ?? []).map((factor) => `<div class="tour-intro-estimate-factor"><span>${escapeHtml(factor.label)}</span><strong>+${factor.minutes} min</strong><small>${escapeHtml(factor.detail)} · ${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"}</small></div>`).join("");
+}
+
 function renderTourIntro() {
   if (!state.session.outline) return;
   const architectures = architectureEntries();
   elements["tour-intro-title"].textContent = state.session.pullRequest?.title ?? state.session.outline.title;
   elements["tour-intro-summary"].textContent = state.session.outline.summary;
+  renderTourAttention();
   elements["tour-intro-architecture-section"].classList.toggle("hidden", architectures.length === 0);
   elements["tour-intro-architecture"].innerHTML = `${architectureLegend()}${architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("")}`;
 }
@@ -3478,6 +3504,29 @@ async function deleteCheckpoint(checkpoint) {
 elements["start-tour"].addEventListener("click", startTour);
 elements["begin-tour"].addEventListener("click", () => void beginPreparedTour());
 elements["tour-intro-dialog"].addEventListener("cancel", (event) => event.preventDefault());
+elements["tour-intro-dialog"].addEventListener("click", (event) => {
+  const target = event.target.closest("[data-attention-kind]");
+  if (!target) return;
+  const kind = target.dataset.attentionKind;
+  state.tourIntroPending = false;
+  state.tourIntroShown = true;
+  elements["tour-intro-dialog"].close();
+  if (kind === "finding") return openFindingFromCode(target.dataset.attentionId);
+  state.tourMode = false;
+  renderSession();
+  if (kind === "file") return void showChangedFile(target.dataset.attentionPath, Number(target.dataset.attentionLine) || undefined, target.dataset.attentionSide);
+  if (kind === "call-flow") {
+    activateReviewTab("call-flows", renderCallFlows);
+    window.requestAnimationFrame(() => document.querySelector(`[data-call-flow-id="${CSS.escape(target.dataset.attentionId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    return;
+  }
+  if (kind === "section") {
+    const section = target.dataset.attentionSection;
+    const tab = section === "findings" ? "findings" : section === "call-flows" ? "call-flows" : section === "pull-request" ? "pull-request" : "diff";
+    const render = tab === "findings" ? renderFindings : tab === "call-flows" ? renderCallFlows : tab === "pull-request" ? renderPullRequest : null;
+    activateReviewTab(tab, render);
+  }
+});
 elements["close-architecture-viewer"].addEventListener("click", () => elements["architecture-viewer-dialog"].close());
 elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));

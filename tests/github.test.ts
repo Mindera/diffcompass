@@ -53,6 +53,20 @@ test("metadata loading fails closed on repository mismatch and invalid JSON", as
   await expect(loadPullRequestContext("/tmp", "7", undefined, missingCommits)).rejects.toThrow("commits or checks");
 });
 
+test("metadata loading preserves mergeability for review briefings", async () => {
+  const context = await loadPullRequestContext("/tmp", "7", undefined, githubRunner());
+  expect(context.mergeable).toBeUndefined();
+  expect(context.mergeStateStatus).toBeUndefined();
+  const runner = githubRunner();
+  const withMergeability = (async (command, cwd, accepted, options) => {
+    const result = await runner(command, cwd, accepted, options);
+    if (command.slice(0, 3).join(" ") === "gh pr view") result.stdout = JSON.stringify({ ...metadata(), mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" });
+    return result;
+  }) as GitHubRunner;
+  const loaded = await loadPullRequestContext("/tmp", "7", undefined, withMergeability);
+  expect(loaded).toMatchObject({ mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" });
+});
+
 async function git(cwd: string, ...args: string[]) { return runProcess(["git", ...args], cwd); }
 
 async function repositoryFixture() {

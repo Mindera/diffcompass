@@ -924,6 +924,22 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .tour-intro-scroll { max-height: calc(100vh - 116px); overflow: auto; padding: 24px 26px 18px; }
 .tour-intro-dialog h2 { max-width: 760px; font-size: 24px; line-height: 1.2; }
 .tour-intro-summary { max-width: 780px; margin: 10px 0 0; color: var(--text-soft); font-size: 13px; line-height: 1.55; }
+.tour-intro-attention, .tour-intro-estimate { margin-top: 22px; border-top: 1px solid var(--border-soft); padding-top: 18px; }
+.tour-intro-briefing-note, .tour-intro-estimate > p { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.tour-intro-attention-list { display: grid; gap: 8px; margin-top: 12px; }
+.tour-intro-attention-item { border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 8px; padding: 10px 11px; background: var(--surface-item); }
+.tour-intro-attention-item.finding, .tour-intro-attention-item.github-check, .tour-intro-attention-item.merge-conflict { border-left-color: var(--danger); }
+.tour-intro-attention-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tour-intro-attention-heading strong { font-size: 11px; }
+.attention-basis { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.tour-intro-attention-item > p { margin: 4px 0; color: var(--text-soft); font-size: 10px; }
+.tour-intro-attention-item details { color: var(--muted); font-size: 9px; }
+.tour-intro-attention-item details p { margin: 4px 0 7px; color: var(--text-soft); overflow-wrap: anywhere; }
+.tour-intro-attention-item .text-button { margin-top: 4px; padding: 2px 0; font-size: 10px; }
+.tour-intro-estimate-factors { display: grid; gap: 5px; margin-top: 8px; }
+.tour-intro-estimate-factor { display: grid; grid-template-columns: minmax(100px, auto) auto minmax(0, 1fr); gap: 8px; align-items: baseline; color: var(--text-soft); font-size: 10px; }
+.tour-intro-estimate-factor strong { color: var(--accent-strong); font-size: 10px; }
+.tour-intro-estimate-factor small { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
 .tour-intro-architecture-section { margin-top: 22px; border-top: 1px solid var(--border-soft); padding-top: 18px; }
 .tour-intro-section-heading h3 { margin: 4px 0 0; color: var(--text); font: 700 15px/1.3 system-ui, sans-serif; }
 .tour-intro-architecture { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; margin-top: 12px; }
@@ -940,6 +956,7 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .tour-intro-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--border); padding: 12px 18px; background: var(--surface-control); }
 .tour-intro-actions span { color: var(--muted); font-size: 10px; }
 .tour-intro-actions .button { min-width: 120px; }
+@media (max-width: 600px) { .tour-intro-estimate-factor { grid-template-columns: 1fr auto; } .tour-intro-estimate-factor small { grid-column: 1 / -1; } .tour-intro-attention-heading { align-items: flex-start; flex-direction: column; gap: 2px; } }
 .architecture-viewer-dialog { width: calc(100vw - 32px); max-width: none; height: calc(100vh - 32px); max-height: none; padding: 0; overflow: hidden; }
 .architecture-viewer-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .architecture-viewer-heading { align-items: center; border-bottom: 1px solid var(--border); padding: 14px 18px; background: var(--surface-control); }

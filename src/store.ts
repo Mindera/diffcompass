@@ -146,6 +146,8 @@ function validPullRequest(value: unknown): boolean {
     nonEmptyString(value.baseRefName, 4_096) && validOid(value.baseRefOid) && nonEmptyString(value.headRefName, 4_096) && validOid(value.headRefOid) &&
     nonEmptyString(value.sourceRepositoryRoot, 4_096) && nonEmptyString(value.workspaceRoot, 4_096) && nonEmptyString(value.refNamespace, 4_096) &&
     (value.reviewDecision === undefined || nonEmptyString(value.reviewDecision, 500)) &&
+    (value.mergeable === undefined || ["MERGEABLE", "CONFLICTING", "UNKNOWN"].includes(String(value.mergeable))) &&
+    (value.mergeStateStatus === undefined || nonEmptyString(value.mergeStateStatus, 500)) &&
     Array.isArray(value.commits) && value.commits.length <= 500 && value.commits.every((commit) => record(commit) && validOid(commit.oid) &&
       boundedString(commit.headline, 8_000) && Array.isArray(commit.authors) && commit.authors.length <= 20 && commit.authors.every((author) => nonEmptyString(author, 500))) &&
     Array.isArray(value.checks) && value.checks.length <= 500 && value.checks.every((check) => record(check) && nonEmptyString(check.name, 8_000) &&
