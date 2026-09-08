@@ -54,7 +54,7 @@ review. Questions remain available, and you can resume the tour later.
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
 - validates findings in a separate repository-aware pass that traces consequential candidates through their actual runtime, build, signing, CI, and delivery consumers and performs a focused recall audit before results are shown;
 - exports the complete tour, call flows, sequence diagrams, findings, reviewer feedback, changed-file state, and diff as Markdown or self-contained HTML;
-- refreshes when repository files change and marks stale annotations as outdated;
+- refreshes when repository files change and marks stale annotations as needing reassessment;
 - records agent-authored file changes, their triggering request, and verification in an Activity timeline;
 - prepares attached-agent edits in isolated worktrees with explicit Apply, Reject, and conflict-safe Undo controls;
 - persists review state atomically so the server can resume it after restart;
@@ -310,7 +310,7 @@ GitHub review. Approving or requesting changes shows a final confirmation bound
 to the current head SHA; the server rechecks that SHA before publishing. A
 durable hidden marker makes a retry reuse the remote review instead of submitting
 a duplicate if the first response was interrupted. Remote updates apply only to
-a clean isolated worktree and stale local annotations are marked outdated.
+a clean isolated worktree and stale local annotations are marked as needing reassessment.
 
 Applying a code suggestion changes only the isolated PR worktree. It does not
 push to the PR branch. Publishing a review sends the selected comments and

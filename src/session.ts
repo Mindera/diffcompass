@@ -341,10 +341,6 @@ export class ReviewSession {
       const row = this.findRow(finding.path, finding.side, finding.line);
       const outdated = row?.content !== finding.lineContent;
       finding.outdated = outdated;
-      if (outdated && finding.status === "open" && finding.disposition === undefined) {
-        finding.status = "obsolete-after-refresh";
-        finding.disposition = "obsolete-after-refresh";
-      }
     }
   }
 

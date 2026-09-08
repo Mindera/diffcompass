@@ -110,7 +110,7 @@ function browserHeaders(url: string, token: string): Headers {
   });
 }
 
-test("refresh marks a finding outdated when its anchored line content changes and advances the revision", async () => {
+test("refresh marks a finding outdated without assuming its issue is obsolete", async () => {
   const { repository, session } = await reviewFixture();
   session.outline = outline(finding());
   const initialRevision = session.revision;
@@ -122,8 +122,16 @@ test("refresh marks a finding outdated when its anchored line content changes an
   expect(snapshot.outline?.findings[0]).toMatchObject({
     lineContent: "const changed = 2;",
     outdated: true,
-    status: "obsolete-after-refresh",
-    disposition: "obsolete-after-refresh",
+    status: "open",
+  });
+  expect(snapshot.outline?.findings[0]?.disposition).toBeUndefined();
+
+  const reassessed = await session.updateFinding("finding-1", "accepted", "The same issue remains in the refreshed line.");
+  expect(reassessed.outline?.findings[0]).toMatchObject({
+    status: "accepted",
+    disposition: "accepted",
+    reviewerNote: "The same issue remains in the refreshed line.",
+    outdated: true,
   });
 });
 
