@@ -473,6 +473,8 @@ test("the pre-tour briefing is evidence-labelled, linked, responsive, and export
   expect(app).toContain('openFindingFromCode(target.dataset.attentionId)');
   expect(app).toContain('activateReviewTab("call-flows", renderCallFlows)');
   expect(styles).toContain(".tour-intro-attention-item");
+  expect(styles).toContain("grid-template-rows: minmax(0, 1fr) auto");
+  expect(styles).toContain(".tour-intro-scroll { min-height: 0");
   expect(styles).toContain("@media (max-width: 600px)");
 });
 
