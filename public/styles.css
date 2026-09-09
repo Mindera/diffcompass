@@ -350,6 +350,7 @@ button { color: inherit; }
 .symbol-peek-trail-current { color: var(--text); font-weight: 700; }
 .symbol-peek-trail-current span { color: var(--muted); font-size: 10px; font-weight: 400; }
 .symbol-peek-form { display: flex; gap: 8px; }
+.symbol-peek-trail.hidden + .symbol-peek-form { margin-top: 12px; }
 .symbol-peek-form label { flex: 1 1 auto; }
 .symbol-peek-form input { width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 9px 10px; color: var(--text); background: var(--surface-control); font: inherit; }
 .symbol-peek-status { margin: 10px 0; color: var(--text-soft); font-size: 11px; line-height: 1.5; }

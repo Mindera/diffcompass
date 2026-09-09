@@ -46,6 +46,7 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(styles).toContain("max-height: min(720px, calc(100dvh - 24px))");
   expect(styles).toContain(".symbol-peek-trail");
   expect(styles).toContain(".symbol-peek-trail-current");
+  expect(styles).toContain(".symbol-peek-trail.hidden + .symbol-peek-form { margin-top: 12px; }");
 });
 
 test("a partial identifier selection explicitly expands the peek action", async () => {
