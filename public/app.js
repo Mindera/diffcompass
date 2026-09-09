@@ -2758,30 +2758,43 @@ function reviewAnchorLabel(anchor) {
     : `${anchor.path}:${anchor.line}${endLine !== anchor.line ? `-${endLine}` : ""} (${anchor.side})`;
 }
 
+function discussionStop(stepId) {
+  if (!stepId) return undefined;
+  const phaseIndex = state.session.outline?.phases.findIndex((phase) => phase.steps.some((step) => step.id === stepId)) ?? -1;
+  const phase = phaseIndex >= 0 ? state.session.outline?.phases[phaseIndex] : undefined;
+  const stopIndex = phase?.steps.findIndex((step) => step.id === stepId) ?? -1;
+  const step = stopIndex >= 0 ? phase?.steps[stopIndex] : undefined;
+  return step && phase ? { step, phase, phaseIndex, stopIndex } : undefined;
+}
+
 function discussionStep(stepId) {
-  return stepId ? state.session.outline?.phases.flatMap((phase) => phase.steps).find((step) => step.id === stepId) : undefined;
+  return discussionStop(stepId)?.step;
+}
+
+function discussionStopLabel(scope) {
+  return scope.step ? `Phase ${scope.phaseIndex + 1} · ${scope.phase.title} — Stop ${scope.stopIndex + 1} · ${scope.step.title}` : "";
 }
 
 function conversationScope(thread = null) {
   const root = thread?.root;
-  const step = root?.stepId ? discussionStep(root.stepId) : currentStep();
+  const stop = discussionStop(root?.stepId ?? currentStep()?.id);
   const anchor = root?.anchor ?? (!thread ? state.selectedLine : undefined);
-  return { step, anchor, original: Boolean(root) };
+  return { ...stop, anchor, original: Boolean(root) };
 }
 
 function conversationScopeLabel(thread = null) {
-  const { step, anchor, original } = conversationScope(thread);
-  const stop = step ? `${original ? "Original" : "Current"} tour stop: ${step.title}` : "Review-wide question";
-  return anchor ? `${stop} · selected ${reviewAnchorLabel(anchor)}` : stop;
+  const scope = conversationScope(thread);
+  const stop = scope.step ? `${scope.original ? "Original" : "Current"} tour stop: ${discussionStopLabel(scope)}` : "Review-wide question";
+  return scope.anchor ? `${stop} · selected ${reviewAnchorLabel(scope.anchor)}` : stop;
 }
 
 function conversationScopeMarkup(thread = null) {
-  const { step, anchor, original } = conversationScope(thread);
-  const heading = step ? `${original ? "Original" : "Current"} tour stop` : "Review-wide question";
-  const stop = step ? escapeHtml(step.title) : "No tour stop is attached.";
-  const selection = anchor
-    ? `Selected code: ${escapeHtml(reviewAnchorLabel(anchor))}. Exact quotation and diff context are retained.`
-    : step ? "No code selection. This question is scoped to this stop." : "No code selection.";
+  const scope = conversationScope(thread);
+  const heading = scope.step ? `${scope.original ? "Original" : "Current"} tour stop` : "Review-wide question";
+  const stop = scope.step ? escapeHtml(discussionStopLabel(scope)) : "No tour stop is attached.";
+  const selection = scope.anchor
+    ? `Selected code: ${escapeHtml(reviewAnchorLabel(scope.anchor))}. Exact quotation and diff context are retained.`
+    : scope.step ? "No code selection. This question is scoped to this stop." : "No code selection.";
   return `<span class="conversation-scope"><strong>${escapeHtml(heading)}</strong><span>${stop}</span></span><span class="conversation-scope-detail">${selection}</span>`;
 }
 

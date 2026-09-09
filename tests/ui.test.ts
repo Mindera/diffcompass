@@ -275,6 +275,8 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(app).toContain("function commentScope(comment)");
   expect(app).toContain("function quotationLabel(text)");
   expect(app).toContain("function conversationScopeMarkup(thread = null)");
+  expect(app).toContain("function discussionStopLabel(scope)");
+  expect(app).toContain("Phase ${scope.phaseIndex + 1} · ${scope.phase.title} — Stop ${scope.stopIndex + 1} · ${scope.step.title}");
   expect(app).toContain("No code selection. This question is scoped to this stop.");
   expect(app).toContain("function anchorBelongsToDiscussionStop(anchor, step)");
   expect(app).toContain("function anchorRowsMatch(anchor)");
@@ -286,6 +288,37 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(styles).toContain(".selection-quote-preview pre { max-height: 160px;");
   expect(styles).toContain(".conversation-scope");
   expect(styles).toContain(".question-scope");
+});
+
+test("question scopes retain phase and stop numbers alongside their names", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("function discussionStop(stepId)"), app.indexOf("function anchorBelongsToDiscussionStop"));
+  const state = {
+    selectedLine: null,
+    session: {
+      outline: {
+        phases: [{
+          title: "Build the receipt",
+          steps: [{ id: "validate", title: "Validate items" }],
+        }, {
+          title: "Format the receipt",
+          steps: [{ id: "format", title: "Format totals" }],
+        }],
+      },
+    },
+  };
+  const helpers = new Function("state", "currentStep", "escapeHtml", "reviewAnchorLabel", `${source}; return { conversationScopeLabel, conversationScopeMarkup };`)(
+    state,
+    () => state.session.outline.phases[1].steps[0],
+    (value: string) => value,
+    () => "selected code",
+  ) as {
+    conversationScopeLabel: (thread: unknown) => string;
+    conversationScopeMarkup: (thread: unknown) => string;
+  };
+  const thread = { root: { stepId: "format" } };
+  expect(helpers.conversationScopeLabel(thread)).toBe("Original tour stop: Phase 2 · Format the receipt — Stop 1 · Format totals");
+  expect(helpers.conversationScopeMarkup(thread)).toContain("Phase 2 · Format the receipt — Stop 1 · Format totals");
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {
