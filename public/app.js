@@ -1693,8 +1693,11 @@ async function openSymbolPeekLocation(path, line, side) {
 function closeSymbolPeek() {
   state.symbolPeek.open = false;
   state.symbolPeek.loading = false;
+  state.symbolPeek.current = null;
   state.symbolPeek.result = null;
+  state.symbolPeek.history = [];
   state.symbolPeek.compact = false;
+  state.symbolPeek.requestId += 1;
   state.symbolPeek.highlightRequestId += 1;
   renderSymbolPeek();
   void focusCurrentStep();
@@ -2041,6 +2044,15 @@ function renderCallTree(flow, mode) {
   return '<p class="call-tree-empty">No calls are available in this view.</p>';
 }
 
+function callFlowCardHtml(flow, { showTitle = true, showRegenerate = true, viewer = false } = {}) {
+  const provenance = flowProvenanceCopy(flow.provenance);
+  const mode = state.callFlowModes.get(flow.id) ?? "changes";
+  const counts = flow.edges.reduce((result, edge) => ({ ...result, [edge.change]: result[edge.change] + 1 }), { added: 0, removed: 0, unchanged: 0 });
+  const heading = showTitle ? `<h2>${escapeHtml(flow.title)}</h2>` : "";
+  const regenerate = showRegenerate ? `<button class="text-button" data-call-flow-regenerate type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button>` : "";
+  return `<article class="flow-card call-flow-card${viewer ? " architecture-viewer-call-flow-card" : ""}" data-call-flow-id="${escapeHtml(flow.id)}"><header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}">${escapeHtml(provenance.label)}</span>${heading}</div>${regenerate}</header><p>${escapeHtml(flow.summary)}</p><div class="call-flow-summary"><span class="plus">+${counts.added} calls</span><span class="minus">−${counts.removed} calls</span></div><details class="flow-impact call-flow-impact"><summary>affects ${flow.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${flow.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details><div class="call-flow-modes" role="group" aria-label="Call-flow version">${["changes", "before", "after"].map((candidate) => `<button type="button" data-call-flow-mode="${candidate}" class="${mode === candidate ? "active" : ""}">${candidate[0].toUpperCase()}${candidate.slice(1)}</button>`).join("")}</div><div class="call-tree-legend" role="list" aria-label="Call-flow legend"><span role="listitem"><i class="entrypoint" aria-hidden="true"></i>Entry point</span><span role="listitem"><i class="added" aria-hidden="true"></i>Added</span><span role="listitem"><i class="modified" aria-hidden="true"></i>Changed callable</span><span role="listitem"><i class="removed" aria-hidden="true"></i>Removed</span><span role="listitem"><i class="unchanged" aria-hidden="true"></i>Unchanged</span></div><p class="call-tree-caption">A changed callable exists before and after this change, but its implementation or outgoing calls changed.</p><div class="call-tree">${renderCallTree(flow, mode)}</div></article>`;
+}
+
 const ARCHITECTURE_ZOOM_MIN = 0.5;
 const ARCHITECTURE_ZOOM_MAX = 3;
 const ARCHITECTURE_ZOOM_STEP = 0.25;
@@ -2171,7 +2183,9 @@ function openArchitectureDiagramViewer(key) {
   elements["architecture-viewer-legend"].innerHTML = architectureLegend();
   elements["architecture-viewer-shell"].dataset.architectureKey = viewerKey;
   elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
+  delete elements["architecture-viewer-diagram"].dataset.callFlowId;
   elements["architecture-viewer-diagram"].className = "sequence-diagram architecture-diagram";
+  elements["architecture-viewer-diagram"].setAttribute("role", "img");
   elements["architecture-viewer-help"].classList.remove("hidden");
   elements["architecture-viewer-diagram"].setAttribute("aria-label", `${architecture.label}: ${architecture.value.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
   elements["architecture-viewer-diagram"].innerHTML = source.innerHTML;
@@ -2186,7 +2200,7 @@ function openBriefingDiagramViewer(kind, id) {
   const source = sequence
     ? elements["tour-intro-sequence"].querySelector(`[data-tour-intro-flow-index="${state.session.outline.flows.indexOf(sequence)}"]`)
     : callFlow ? elements["tour-intro-call-flows"].querySelector(`[data-tour-intro-call-flow="${CSS.escape(id)}"]`) : null;
-  if (!source || (sequence && !source.querySelector("svg"))) {
+  if ((!sequence && !callFlow) || (sequence && (!source || !source.querySelector("svg")))) {
     toast(`The ${sequence ? "sequence diagram" : "call flow"} is not ready yet.`);
     return;
   }
@@ -2194,21 +2208,26 @@ function openBriefingDiagramViewer(kind, id) {
   elements["architecture-viewer-eyebrow"].textContent = sequence ? "Sequence diagram" : "Call flow";
   elements["architecture-viewer-title"].textContent = (sequence ?? callFlow).title;
   elements["architecture-viewer-legend"].innerHTML = "";
-  elements["architecture-viewer-diagram"].innerHTML = source.innerHTML;
   if (sequence) {
+    delete elements["architecture-viewer-diagram"].dataset.callFlowId;
+    elements["architecture-viewer-diagram"].innerHTML = source.innerHTML;
     state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 });
     elements["architecture-viewer-controls"].innerHTML = architectureDiagramControls("Sequence diagram");
     elements["architecture-viewer-shell"].dataset.architectureKey = viewerKey;
     elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
     elements["architecture-viewer-diagram"].className = "sequence-diagram architecture-diagram";
+    elements["architecture-viewer-diagram"].setAttribute("role", "img");
     elements["architecture-viewer-diagram"].setAttribute("aria-label", `Sequence diagram: ${sequence.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
     elements["architecture-viewer-help"].classList.remove("hidden");
   } else {
     elements["architecture-viewer-controls"].innerHTML = "";
     delete elements["architecture-viewer-shell"].dataset.architectureKey;
     delete elements["architecture-viewer-diagram"].dataset.architectureDiagram;
-    elements["architecture-viewer-diagram"].className = "call-tree architecture-viewer-call-flow";
-    elements["architecture-viewer-diagram"].setAttribute("aria-label", `Call flow: ${callFlow.title}`);
+    elements["architecture-viewer-diagram"].dataset.callFlowId = callFlow.id;
+    elements["architecture-viewer-diagram"].className = "architecture-viewer-call-flow";
+    elements["architecture-viewer-diagram"].setAttribute("role", "region");
+    elements["architecture-viewer-diagram"].setAttribute("aria-label", `Call flow details: ${callFlow.title}`);
+    elements["architecture-viewer-diagram"].innerHTML = callFlowCardHtml(callFlow, { showTitle: false, showRegenerate: false, viewer: true });
     elements["architecture-viewer-help"].classList.add("hidden");
   }
   elements["architecture-viewer-dialog"].showModal();
@@ -2360,12 +2379,7 @@ function renderCallFlows() {
   elements["regenerate-call-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["call-flows-empty"].classList.toggle("hidden", callFlows.length > 0);
   elements["call-flows-empty"].textContent = state.session.outline ? "No changed call graph was identified for this comparison." : "Start the tour to trace changed calls from their entrypoints.";
-  elements["call-flows"].innerHTML = callFlows.map((flow) => {
-    const provenance = flowProvenanceCopy(flow.provenance);
-    const mode = state.callFlowModes.get(flow.id) ?? "changes";
-    const counts = flow.edges.reduce((result, edge) => ({ ...result, [edge.change]: result[edge.change] + 1 }), { added: 0, removed: 0, unchanged: 0 });
-    return `<article class="flow-card call-flow-card" data-call-flow-id="${escapeHtml(flow.id)}"><header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><button class="text-button" data-call-flow-regenerate type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></header><p>${escapeHtml(flow.summary)}</p><div class="call-flow-summary"><span class="plus">+${counts.added} calls</span><span class="minus">−${counts.removed} calls</span></div><details class="flow-impact call-flow-impact"><summary>affects ${flow.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${flow.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details><div class="call-flow-modes" role="group" aria-label="Call-flow version">${["changes", "before", "after"].map((candidate) => `<button type="button" data-call-flow-mode="${candidate}" class="${mode === candidate ? "active" : ""}">${candidate[0].toUpperCase()}${candidate.slice(1)}</button>`).join("")}</div><div class="call-tree-legend" role="list" aria-label="Call-flow legend"><span role="listitem"><i class="entrypoint" aria-hidden="true"></i>Entry point</span><span role="listitem"><i class="added" aria-hidden="true"></i>Added</span><span role="listitem"><i class="modified" aria-hidden="true"></i>Changed callable</span><span role="listitem"><i class="removed" aria-hidden="true"></i>Removed</span><span role="listitem"><i class="unchanged" aria-hidden="true"></i>Unchanged</span></div><p class="call-tree-caption">A changed callable exists before and after this change, but its implementation or outgoing calls changed.</p><div class="call-tree">${renderCallTree(flow, mode)}</div></article>`;
-  }).join("");
+  elements["call-flows"].innerHTML = callFlows.map((flow) => callFlowCardHtml(flow)).join("");
 }
 
 function renderSequenceDiagrams() {
@@ -3947,6 +3961,32 @@ elements["tour-intro-dialog"].addEventListener("click", (event) => {
   }
 });
 elements["close-architecture-viewer"].addEventListener("click", () => elements["architecture-viewer-dialog"].close());
+elements["architecture-viewer-diagram"].addEventListener("click", (event) => {
+  const flowId = elements["architecture-viewer-diagram"].dataset.callFlowId;
+  if (!flowId) return;
+  const flow = state.session.outline?.callFlows.find((candidate) => candidate.id === flowId);
+  if (!flow) return;
+  const mode = event.target.closest("[data-call-flow-mode]");
+  if (mode) {
+    state.callFlowModes.set(flow.id, mode.dataset.callFlowMode);
+    elements["architecture-viewer-diagram"].innerHTML = callFlowCardHtml(flow, { showTitle: false, showRegenerate: false, viewer: true });
+    return;
+  }
+  const location = event.target.closest("[data-call-path]");
+  const affected = event.target.closest("[data-flow-file]");
+  if (!location && !affected) return;
+  elements["architecture-viewer-dialog"].close();
+  if (elements["tour-intro-dialog"].open) {
+    state.tourIntroPending = false;
+    state.tourIntroShown = true;
+    state.tourIntroReturn = true;
+    elements["tour-intro-dialog"].close();
+    state.tourMode = false;
+    renderSession();
+  }
+  if (location) void showAnalysisFile(location.dataset.callPath, Number(location.dataset.callLine), location.dataset.callSide);
+  else void showAnalysisFile(affected.dataset.flowFile);
+});
 elements["tour-mode-toggle"].addEventListener("click", toggleTourMode);
 elements["previous-step"].addEventListener("click", () => navigate("previous"));
 elements["next-step"].addEventListener("click", () => {
@@ -4069,6 +4109,9 @@ elements["symbol-peek-open"]?.addEventListener("click", () => {
   }
 });
 elements["symbol-peek-close"]?.addEventListener("click", closeSymbolPeek);
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted && state.symbolPeek.open) closeSymbolPeek();
+});
 elements["symbol-peek-form"]?.addEventListener("submit", (event) => {
   event.preventDefault();
   void resolvePeekSymbol(elements["symbol-peek-input"].value);

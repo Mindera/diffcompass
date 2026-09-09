@@ -411,6 +411,16 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(styles).toContain(".finding-item.obsolete-after-refresh");
 });
 
+test("current stop findings can be collapsed without hiding their count", async () => {
+  const [html, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('<details id="finding-drawer" class="finding-drawer current-step-findings" aria-labelledby="finding-drawer-title" open>');
+  expect(html).toContain('<summary class="comment-drawer-heading">');
+  expect(styles).toContain(".current-step-findings[open] > summary::before");
+});
+
 test("stable tour and pull request context render above the diff instead of inside the agent scroll", async () => {
   const [html, app] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
@@ -502,6 +512,10 @@ test("the pre-tour briefing is evidence-labelled, linked, responsive, and export
   expect(app).toContain("renderTourIntroDiagrams();");
   expect(app).toContain('briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)');
   expect(app).toContain('briefingDiagramExpandButton("call flow", "call-flow", flow.id)');
+  expect(app).toContain('callFlowCardHtml(callFlow, { showTitle: false, showRegenerate: false, viewer: true })');
+  expect(app).toContain('elements["call-flows"].innerHTML = callFlows.map((flow) => callFlowCardHtml(flow)).join("")');
+  expect(app).toContain('elements["architecture-viewer-diagram"].dataset.callFlowId');
+  expect(app).toContain('state.callFlowModes.set(flow.id, mode.dataset.callFlowMode)');
   expect(app).toContain("function openBriefingDiagramViewer(kind, id)");
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["tour-intro-sequence"])');
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["tour-intro-call-flows"])');
@@ -563,6 +577,16 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(styles).toContain(".architecture-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));");
   expect(styles).toContain(".architecture-viewer-dialog .architecture-legend { justify-content: center;");
   expect(styles).toContain("touch-action: none");
+});
+
+test("symbol peek does not retain state after leaving its review page", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const close = app.slice(app.indexOf("function closeSymbolPeek()"), app.indexOf("async function showActivityFile"));
+  expect(close).toContain("state.symbolPeek.current = null");
+  expect(close).toContain("state.symbolPeek.history = []");
+  expect(close).toContain("state.symbolPeek.requestId += 1");
+  expect(app).toContain('window.addEventListener("pageshow", (event) => {');
+  expect(app).toContain("if (event.persisted && state.symbolPeek.open) closeSymbolPeek()");
 });
 
 test("settings consolidate runtime preferences, exports, and sessions", async () => {
