@@ -36,6 +36,10 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(app).toContain('Try a related identifier');
   expect(styles).toContain(".symbol-peek-suggestions");
   expect(styles).toContain(".symbol-peek-panel");
+  expect(styles).toContain(".symbol-peek-panel { position: fixed;");
+  expect(styles).toContain("top: 50%; left: 50%;");
+  expect(styles).toContain("transform: translate(-50%, -50%)");
+  expect(styles).toContain("max-height: min(720px, calc(100dvh - 24px))");
   expect(styles).toContain(".symbol-peek-trail");
 });
 

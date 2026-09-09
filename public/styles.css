@@ -342,7 +342,7 @@ button { color: inherit; }
 .markdown-source { margin: 0; overflow: auto; white-space: pre-wrap; color: var(--text-soft); font: inherit; }
 .pull-request-content .description-mode { justify-content: flex-start; margin-top: 16px; }
 .diff-toolbar { position: sticky; top: 0; z-index: 7; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 10px 14px 0; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; background: var(--panel); font-size: 10px; }
-.symbol-peek-panel { position: absolute; z-index: 12; top: 58px; right: 18px; width: min(680px, calc(100% - 36px)); max-height: calc(100% - 76px); overflow: auto; border: 1px solid var(--accent-border); border-radius: 12px; padding: 14px; background: var(--panel-raised); box-shadow: 0 18px 50px var(--shadow); }
+.symbol-peek-panel { position: fixed; z-index: 40; top: 50%; left: 50%; width: min(680px, calc(100vw - 24px)); max-height: min(720px, calc(100dvh - 24px)); overflow: auto; transform: translate(-50%, -50%); border: 1px solid var(--accent-border); border-radius: 12px; padding: 14px; background: var(--panel-raised); box-shadow: 0 18px 50px var(--shadow); }
 .symbol-peek-heading, .symbol-peek-location header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .symbol-peek-heading h2 { margin: 3px 0 0; font-size: 17px; }
 .symbol-peek-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin: 12px 0 10px; color: var(--muted); }
