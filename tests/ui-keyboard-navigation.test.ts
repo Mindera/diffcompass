@@ -86,3 +86,21 @@ test("self-contained HTML export carries the navigation and focus-mode contract"
   expect(source).toContain("focus-mode");
   expect(source).toContain("exportReview");
 });
+
+test("Escape cancels inline comment and agent-question drafts without reaching global shortcuts", async () => {
+  const [app] = await sourceFiles();
+  const start = app.indexOf("function openInlineCommentEditor");
+  const end = app.indexOf("async function openCommentEditor", start);
+
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const editor = app.slice(start, end);
+  expect(editor).toContain('data-inline-composer-mode="ask"');
+  expect(editor).toContain('const returnFocus = row.querySelector(".line-action:not(:disabled), .image-review-actions button:not(:disabled)")');
+  expect(editor).toContain('form.addEventListener("keydown", (event) => {');
+  expect(editor).toContain('event.key !== "Escape" || event.isComposing');
+  expect(editor).toContain("event.preventDefault();");
+  expect(editor).toContain("event.stopPropagation();");
+  expect(editor).toContain("dismissInlineCommentEditor(form, returnFocus);");
+  expect(app).toContain("function dismissInlineCommentEditor(form, returnFocus)");
+});

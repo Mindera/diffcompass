@@ -3728,6 +3728,12 @@ function closeInlineCommentEditor() {
   elements.diff.querySelectorAll(".inline-comment-editor-lane, .inline-comment-form").forEach((editor) => editor.remove());
 }
 
+function dismissInlineCommentEditor(form, returnFocus) {
+  if (!form.isConnected) return;
+  closeInlineCommentEditor();
+  returnFocus?.focus({ preventScroll: true });
+}
+
 function updateInlineComposerMode(form, mode) {
   form.dataset.composerMode = mode;
   form.querySelectorAll("[data-inline-composer-mode]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.inlineComposerMode === mode)));
@@ -3777,6 +3783,14 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
   }
   revealInlineForm(form);
   const textarea = form.querySelector("textarea");
+  const returnFocus = row.querySelector(".line-action:not(:disabled), .image-review-actions button:not(:disabled)");
+  form.querySelector("[data-inline-comment-cancel]").addEventListener("click", () => dismissInlineCommentEditor(form, returnFocus));
+  form.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dismissInlineCommentEditor(form, returnFocus);
+  });
   textarea.focus({ preventScroll: true });
   textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 }
@@ -5113,10 +5127,6 @@ elements.diff.addEventListener("click", (event) => {
   }
   if (event.target.closest("[data-inline-edit-cancel]")) {
     closeInlineEdit();
-    return;
-  }
-  if (event.target.closest("[data-inline-comment-cancel]")) {
-    closeInlineCommentEditor();
     return;
   }
   const inlineAction = event.target.closest("[data-inline-comment-action]");
