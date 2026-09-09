@@ -20,6 +20,11 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(app).toContain('function closeSymbolPeek()');
   expect(app).toContain('void focusCurrentStep()');
   expect(app).toContain('data-symbol-location');
+  expect(app).toContain('function highlightSymbolPeek()');
+  expect(app).toContain('data-symbol-peek-highlight');
+  expect(app).toContain('api("/api/highlight"');
+  expect(app).toContain('theme: state.syntaxTheme');
+  expect(app).toContain('void highlightSymbolPeek();');
   expect(styles).toContain(".symbol-peek-panel");
   expect(styles).toContain(".symbol-peek-trail");
 });

@@ -97,7 +97,7 @@ const state = {
   repositoryFilePath: null,
   repositoryFileContent: "",
   filePanelOpen: false,
-  symbolPeek: { history: [], current: null, requestId: 0 },
+  symbolPeek: { history: [], current: null, requestId: 0, highlightRequestId: 0 },
 };
 
 const elements = Object.fromEntries(
@@ -1545,9 +1545,37 @@ function symbolFromText(value) {
   return String(value ?? "").match(/[\p{L}_$][\p{L}\p{N}_$]*/gu)?.at(-1) ?? "";
 }
 
-function symbolPeekLocationHtml(location) {
+function symbolPeekLocationHtml(location, highlightId) {
   const label = `${location.path}:${location.line}`;
-  return `<article class="symbol-peek-location"><header><span class="symbol-peek-kind">${escapeHtml(location.kind)}</span><strong>${escapeHtml(label)}</strong><button class="text-button" type="button" data-symbol-location="${escapeHtml(location.path)}" data-symbol-line="${location.line}" data-symbol-side="new">Open in code</button></header><pre>${escapeHtml(location.excerpt.join("\n"))}</pre></article>`;
+  return `<article class="symbol-peek-location"><header><span class="symbol-peek-kind">${escapeHtml(location.kind)}</span><strong>${escapeHtml(label)}</strong><button class="text-button" type="button" data-symbol-location="${escapeHtml(location.path)}" data-symbol-line="${location.line}" data-symbol-side="new">Open in code</button></header><pre><code data-symbol-peek-highlight="${highlightId}" data-symbol-peek-path="${escapeHtml(location.path)}">${escapeHtml(location.excerpt.join("\n"))}</code></pre></article>`;
+}
+
+async function highlightSymbolPeek() {
+  const peek = state.symbolPeek;
+  const result = peek.result;
+  if (!peek.open || peek.loading || !result) return;
+  const targets = [...elements["symbol-peek-result"].querySelectorAll("[data-symbol-peek-highlight]")];
+  const groups = targets.map((target) => ({
+    id: target.dataset.symbolPeekHighlight,
+    path: target.dataset.symbolPeekPath,
+    lines: (target.textContent ?? "").split("\n"),
+  })).filter((group) => group.id && group.path);
+  if (groups.length === 0 || groups.length > 200 || groups.reduce((total, group) => total + group.lines.length, 0) > 12_000) return;
+  const requestId = ++peek.highlightRequestId;
+  try {
+    const response = await api("/api/highlight", {
+      method: "POST",
+      body: JSON.stringify({ groups, theme: state.syntaxTheme }),
+    });
+    if (requestId !== peek.highlightRequestId || !peek.open || peek.result !== result) return;
+    const targetsById = new Map(targets.map((target) => [target.dataset.symbolPeekHighlight, target]));
+    for (const group of response.groups) {
+      const target = targetsById.get(group.id);
+      if (target) target.innerHTML = group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n");
+    }
+  } catch {
+    // Raw escaped source remains readable if highlighting is unavailable.
+  }
 }
 
 function renderSymbolPeek() {
@@ -1571,10 +1599,11 @@ function renderSymbolPeek() {
   if (!result) return;
   elements["symbol-peek-title"].textContent = result.symbol;
   elements["symbol-peek-status"].textContent = `${result.sourceLabel}: ${result.notice}${result.truncated ? " Some results were truncated to keep this review responsive." : ""}`;
-  const definitions = result.definitions.length ? `<section><h3>Definitions (${result.definitions.length})</h3>${result.definitions.map(symbolPeekLocationHtml).join("")}</section>` : '<p class="muted">No definition locations found.</p>';
-  const usages = result.usages.length ? `<section><h3>Usages (${result.usages.length})</h3>${result.usages.map(symbolPeekLocationHtml).join("")}</section>` : '<p class="muted">No usage locations found.</p>';
+  const definitions = result.definitions.length ? `<section><h3>Definitions (${result.definitions.length})</h3>${result.definitions.map((location, index) => symbolPeekLocationHtml(location, `symbol-definition-${index}`)).join("")}</section>` : '<p class="muted">No definition locations found.</p>';
+  const usages = result.usages.length ? `<section><h3>Usages (${result.usages.length})</h3>${result.usages.map((location, index) => symbolPeekLocationHtml(location, `symbol-usage-${index}`)).join("")}</section>` : '<p class="muted">No usage locations found.</p>';
   const raw = result.raw ? `<details class="symbol-peek-raw"><summary>Raw ${escapeHtml(result.sourceLabel)} response</summary><pre>${escapeHtml(result.raw)}</pre></details>` : "";
   elements["symbol-peek-result"].innerHTML = `${definitions}${usages}${raw}`;
+  void highlightSymbolPeek();
 }
 
 async function resolvePeekSymbol(symbol, context = symbolPeekContext(), pushHistory = true) {
@@ -1612,6 +1641,7 @@ function closeSymbolPeek() {
   state.symbolPeek.open = false;
   state.symbolPeek.loading = false;
   state.symbolPeek.result = null;
+  state.symbolPeek.highlightRequestId += 1;
   renderSymbolPeek();
   void focusCurrentStep();
 }
@@ -4050,6 +4080,7 @@ elements["syntax-theme-select"].addEventListener("change", () => {
   window.localStorage.setItem("review-tour-syntax-theme", state.syntaxTheme);
   document.documentElement.dataset.syntaxTheme = state.syntaxTheme;
   void highlightRenderedCode();
+  void highlightSymbolPeek();
 });
 elements["prefetch-steps"].addEventListener("change", async () => {
   const previous = state.session.preferences?.prefetchSteps ?? 5;
@@ -4315,6 +4346,7 @@ elements.diff.addEventListener("keydown", (event) => {
 });
 window.addEventListener("review-tour-theme-change", () => {
   void highlightRenderedCode();
+  void highlightSymbolPeek();
   elements.diff.querySelectorAll(".inline-edit-form").forEach((form) => void highlightInlineEdit(form));
   if (state.session) renderArchitecture();
   if (state.session && state.activeTab === "call-flows") renderCallFlows();
