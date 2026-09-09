@@ -52,6 +52,29 @@ test("line conversations persist and follow-ups retain their original phase cont
   } finally { await session.dispose(); }
 });
 
+test("an unselected question remains visibly scoped to the current tour stop without a code anchor", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const asking = session.ask("What behavior does this stop establish?");
+    const [prompt] = await session.bridge!.eventsAfter(7, 1_000);
+    if (!prompt || prompt.type !== "agent.prompt") throw new Error("Expected an unselected question prompt");
+    expect(prompt.prompt).toContain("Discussion scope: Current tour stop Second step [second-step]");
+    expect(prompt.prompt).not.toContain("Original question location:");
+    await session.bridge!.respond(prompt.id, "It establishes the changed fixture value.");
+    await session.bridge!.ack(prompt.id);
+    const answered = await asking;
+    expect(answered.messages[0]).toMatchObject({
+      role: "user",
+      body: "What behavior does this stop establish?",
+      stepId: "second-step",
+    });
+    expect(answered.messages[0]?.anchor).toBeUndefined();
+    expect((await loadPersistedSession(stateFile)).messages[0]?.anchor).toBeUndefined();
+  } finally { await session.dispose(); }
+});
+
 test("image comments and questions use a stable image-level anchor", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await writeFile(join(repository, "screen.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));

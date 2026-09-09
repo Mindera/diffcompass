@@ -265,6 +265,7 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(html).toContain('id="comment-stop"');
   expect(html).toContain('class="button secondary" type="button">Add stop comment</button>');
   expect(html).toContain('id="step-comment-form"');
+  expect(html).toContain('id="question-scope" class="question-scope"');
   expect(app).toContain('scope: "stop", stepId: step.id');
   expect(app).toContain('scope: "range"');
   expect(app).toContain("form.dataset.commentSelectedText");
@@ -273,11 +274,18 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(agent).toContain("Current tour stop id:");
   expect(app).toContain("function commentScope(comment)");
   expect(app).toContain("function quotationLabel(text)");
+  expect(app).toContain("function conversationScopeMarkup(thread = null)");
+  expect(app).toContain("No code selection. This question is scoped to this stop.");
+  expect(app).toContain("function anchorBelongsToDiscussionStop(anchor, step)");
+  expect(app).toContain("function anchorRowsMatch(anchor)");
+  expect(app).toContain("clearSelectedLine();");
   expect(app).toContain('class="selection-quote-preview" open');
   expect(styles).toContain(".step-discussion");
   expect(styles).toContain(".step-discussion > button { justify-self: start; min-height: 32px; }");
   expect(styles).toContain(".comment-quote");
   expect(styles).toContain(".selection-quote-preview pre { max-height: 160px;");
+  expect(styles).toContain(".conversation-scope");
+  expect(styles).toContain(".question-scope");
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {

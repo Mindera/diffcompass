@@ -916,6 +916,11 @@ button { color: inherit; }
 .tour-controls { flex: 0 0 auto; padding: 10px 12px 12px; border-top: 1px solid var(--border); background: var(--surface-control); }
 .nav-buttons { justify-content: space-between; margin-bottom: 8px; }
 .selection-pill { min-width: 0; max-width: 100%; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; color: var(--text-soft); background: var(--surface-hover); border-radius: 6px; font-size: 10px; line-height: 1.35; padding: 6px 8px; margin-bottom: 7px; white-space: normal; }
+.conversation-scope { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; margin: 0 0 4px; color: var(--text); font-size: 11px; line-height: 1.4; }
+.conversation-scope strong { color: var(--accent-strong); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: .03em; text-transform: uppercase; }
+.conversation-scope-detail { display: block; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.question-scope { margin: 0 0 7px; border-left: 2px solid var(--accent); padding: 5px 7px; background: var(--surface-hover); }
+.question-scope .conversation-scope { margin-bottom: 2px; }
 .selection-pill button, .question-context-chip button { flex: 0 0 auto; width: 20px; height: 20px; display: grid; place-items: center; border: 0; border-radius: 5px; padding: 0; color: var(--muted); background: transparent; cursor: pointer; font-size: 15px; }
 .selection-pill button:hover, .question-context-chip button:hover { color: var(--text); background: var(--surface-control); }
 .question-file-context { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
