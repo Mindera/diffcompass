@@ -1445,7 +1445,7 @@ function restoreFileViewport(anchor) {
 async function showChangedFile(path, line, side, requestedOffset, requestedContext, requestedFull, viewportOrigin) {
   if (state.tourMode && !filteredChangedFiles().some((file) => file.path === path)) {
     toast("That file belongs to another phase. Exit the tour to browse every changed file.", { duration: 9_000, tone: "warning" });
-    return;
+    return false;
   }
   const requestId = ++state.fileRequestId;
   const viewportAnchor = (viewportOrigin || requestedFull !== undefined) ? captureFileViewport(path, viewportOrigin) : null;
@@ -1480,7 +1480,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
         if (requestedFull !== undefined) query.set("full", String(requestedFull));
         if (line && side) { query.set("line", String(line)); query.set("side", side); }
         const result = await api(`/api/diff?${query}`);
-        if (requestId !== state.fileRequestId || state.visibleFile !== path) return;
+        if (requestId !== state.fileRequestId || state.visibleFile !== path) return false;
         file = { ...result.file, _context: result.context, _full: result.full, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } };
         state.diffCache.set(path, file);
       } catch (error) {
@@ -1490,7 +1490,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
           expansionButton.textContent = expansionLabel;
         }
         if (requestId === state.fileRequestId) toast(error.message);
-        return;
+        return false;
       }
     }
     files = visibleDiffFiles();
@@ -1505,6 +1505,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   if (line && side) revealCodeLocation(path, side, line);
   renderTourAnnotation();
   if (viewportAnchor) restoreFileViewport(viewportAnchor);
+  return true;
 }
 
 async function showRepositoryFile(path) {
@@ -1516,14 +1517,16 @@ async function showRepositoryFile(path) {
   elements.diff.innerHTML = '<div class="empty">Loading source…</div>';
   try {
     const file = await api(`/api/files?path=${encodeURIComponent(path)}`);
-    if (requestId !== state.fileRequestId) return;
+    if (requestId !== state.fileRequestId) return false;
     state.repositoryFilePath = path;
     state.repositoryFileContent = file.content;
     state.repositoryFileView = /\.md$/i.test(path) ? "preview" : "source";
     renderRepositoryFile(path, file.content);
     elements["empty-diff"].classList.add("hidden");
+    return true;
   } catch (error) {
     if (requestId === state.fileRequestId) toast(error.message);
+    return false;
   }
 }
 
@@ -1677,6 +1680,14 @@ function expandSymbolPeek() {
   peek.compact = false;
   renderSymbolPeek();
   elements["symbol-peek-panel"].focus({ preventScroll: true });
+}
+
+async function openSymbolPeekLocation(path, line, side) {
+  const isChangedFile = state.session.comparison.files.some((file) => file.path === path);
+  const opened = isChangedFile
+    ? await showChangedFile(path, line, side)
+    : await showRepositoryFile(path);
+  if (opened) compactSymbolPeek();
 }
 
 function closeSymbolPeek() {
@@ -4033,9 +4044,7 @@ elements["symbol-peek-panel"]?.addEventListener("click", (event) => {
   }
   const path = location.dataset.symbolLocation;
   const line = Number(location.dataset.symbolLine);
-  compactSymbolPeek();
-  if (state.session.comparison.files.some((file) => file.path === path)) void showChangedFile(path, line, location.dataset.symbolSide);
-  else void showRepositoryFile(path);
+  void openSymbolPeekLocation(path, line, location.dataset.symbolSide);
 });
 elements["symbol-peek-panel"]?.addEventListener("keydown", (event) => {
   if (!state.symbolPeek.compact || !["Enter", " "].includes(event.key)) return;

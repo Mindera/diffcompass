@@ -33,6 +33,7 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(app).toContain('data-symbol-location');
   expect(app).toContain("function compactSymbolPeek()");
   expect(app).toContain("function expandSymbolPeek()");
+  expect(app).toContain("async function openSymbolPeekLocation(path, line, side)");
   expect(app).toContain("compactSymbolPeek();");
   expect(app).toContain('panel.tabIndex = peek.open && peek.compact ? 0 : -1');
   expect(app).toContain('!["Enter", " "].includes(event.key)');
@@ -47,8 +48,8 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(styles).toContain(".symbol-peek-suggestions");
   expect(styles).toContain(".symbol-peek-panel");
   expect(styles).toContain(".symbol-peek-panel { position: fixed;");
-  expect(styles).toContain(".symbol-peek-panel.symbol-peek-compact { left: 12px;");
-  expect(styles).toContain("transform: translateY(-50%)");
+  expect(styles).toContain(".symbol-peek-panel.symbol-peek-compact { top: auto; right: auto; bottom: 12px; left: 12px;");
+  expect(styles).toContain("transform: none");
   expect(styles).toContain(".symbol-peek-panel.symbol-peek-compact .symbol-peek-result { display: none !important; }");
   expect(styles).toContain("top: 50%; left: 50%;");
   expect(styles).toContain("transform: translate(-50%, -50%)");
@@ -93,4 +94,44 @@ test("opening source compacts Symbol Peek and the compact card restores it", asy
   expect(calls).toBe(2);
   expect(state.symbolPeek.compact).toBe(false);
   expect(focusOptions).toEqual([{ preventScroll: true }]);
+});
+
+test("Symbol Peek stays expanded when its source cannot be opened", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const openSymbolPeekLocation = new Function(
+    "state",
+    "showChangedFile",
+    "showRepositoryFile",
+    "compactSymbolPeek",
+    `${extract(app, "async function openSymbolPeekLocation(", "function closeSymbolPeek()")}; return openSymbolPeekLocation;`,
+  )(
+    { session: { comparison: { files: [{ path: "changed.ts" }] } } },
+    async () => false,
+    async () => false,
+    () => { throw new Error("the panel must remain expanded"); },
+  );
+
+  await openSymbolPeekLocation("changed.ts", 14, "new");
+  await openSymbolPeekLocation("source.ts", 1, "new");
+});
+
+test("Symbol Peek compacts only after its source opens", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  let compacted = 0;
+  const openSymbolPeekLocation = new Function(
+    "state",
+    "showChangedFile",
+    "showRepositoryFile",
+    "compactSymbolPeek",
+    `${extract(app, "async function openSymbolPeekLocation(", "function closeSymbolPeek()")}; return openSymbolPeekLocation;`,
+  )(
+    { session: { comparison: { files: [{ path: "changed.ts" }] } } },
+    async () => true,
+    async () => true,
+    () => { compacted += 1; },
+  );
+
+  await openSymbolPeekLocation("changed.ts", 14, "new");
+  await openSymbolPeekLocation("source.ts", 1, "new");
+  expect(compacted).toBe(2);
 });
