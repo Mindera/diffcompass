@@ -909,7 +909,8 @@ test("files expand and collapse in place while clicks and selections expose scop
   expect(app).toContain("function openInlineEdit(row, selection = null)");
   expect(app).toContain("function readCodeSelection()");
   expect(app).toContain("function textOffsetWithin(element, node, offset)");
-  expect(app).toContain("function quotedCode(text)");
+  expect(app).toContain("function selectedQuotation(comment)");
+  expect(app).not.toContain("initialBody: quotedCode(selected.text)");
   expect(app).toContain('data-inline-composer-mode="comment"');
   expect(app).toContain('data-inline-composer-mode="ask"');
   expect(app).toContain('api("/api/edits"');
@@ -922,6 +923,7 @@ test("files expand and collapse in place while clicks and selections expose scop
   expect(styles).toContain(".line-prefix { position: relative; align-self: stretch; min-height: 18px;");
   expect(styles).toContain(".code-selection-toolbar");
   expect(styles).toContain(".inline-composer-tabs");
+  expect(styles).toContain(".comment-quote-details summary");
   expect(styles).toContain(".inline-edit-lane");
   expect(styles).toContain(".inline-edit-highlight { position: absolute;");
   expect(styles).toContain("caret-color: var(--text-code)");

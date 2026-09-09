@@ -1793,6 +1793,13 @@ function commentScope(comment) {
   return scope === "range" ? "Selected range" : "Line";
 }
 
+function selectedQuotation(comment) {
+  if (!comment.selectedText) return "";
+  const lineCount = comment.selectedText.replaceAll("\r\n", "\n").split("\n").length;
+  const label = `Selected quotation · ${lineCount} ${lineCount === 1 ? "line" : "lines"}`;
+  return `<details class="comment-quote-details"><summary>${escapeHtml(label)}</summary><blockquote class="comment-quote">${escapeHtml(comment.selectedText)}</blockquote></details>`;
+}
+
 function commentLocation(comment) {
   const endLine = comment.endLine ?? comment.line;
   if (/\.png$/i.test(comment.path)) return `${comment.path} · ${comment.side} image`;
@@ -1838,7 +1845,7 @@ function renderComments() {
     const confirmingDelete = state.deletingCommentId === comment.id;
     inline.innerHTML = `<header class="inline-comment-header${confirmingDelete ? " confirming-delete" : ""}"><span class="inline-comment-label">${escapeHtml(commentScope(comment))}</span><span class="inline-comment-actions${confirmingDelete ? " confirming" : ""}">${confirmingDelete
       ? `<span>Delete this comment?</span><button type="button" data-inline-comment-action="cancel-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Cancel</button><button class="danger confirm" type="button" data-inline-comment-action="confirm-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`
-      : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${commentLocation(comment)}`)}"><p>${renderInlineMarkdown(comment.body)}</p>${comment.selectedText ? `<blockquote class="comment-quote">${escapeHtml(comment.selectedText)}</blockquote>` : ""}</button>`;
+      : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${commentLocation(comment)}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>${selectedQuotation(comment)}`;
     const splitRow = row.closest(".split-row");
     if (row.classList.contains("image-diff-side")) {
       row.querySelector("figcaption").insertAdjacentElement("beforebegin", inline);
@@ -1859,7 +1866,7 @@ function renderComments() {
     ? '<p class="comment-empty">Choose Comment on a changed line or image to add feedback.</p>'
     : state.session.comments.map((comment) => `<article class="comment-item ${escapeHtml(comment.status)}" data-comment-id="${escapeHtml(comment.id)}">
       <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(commentLocation(comment))}</button><span class="comment-status">${escapeHtml(commentScope(comment))} · ${escapeHtml(comment.status)}</span></div>
-      ${comment.selectedText ? `<blockquote class="comment-quote">${escapeHtml(comment.selectedText)}</blockquote>` : ""}
+      ${selectedQuotation(comment)}
       ${comment.scope === "stop" ? `<div class="comment-anchor-context">Scoped to stop <strong>${escapeHtml(commentScope(comment).replace("Tour stop · ", ""))}</strong></div>` : ""}
       <p>${renderInlineMarkdown(comment.body)}</p>
       ${state.session.pullRequest && (comment.scope ?? "line") === "line" && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
@@ -3463,10 +3470,6 @@ function openLineComment(row) {
   openInlineCommentEditor(row, target, existing);
 }
 
-function quotedCode(text) {
-  return `${text.replaceAll("\r\n", "\n").split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
-}
-
 function askAboutLine(row) {
   openConversation(null);
   selectLine(row);
@@ -3582,7 +3585,7 @@ function updateInlineComposerMode(form, mode) {
   form.querySelector(".inline-comment-label").textContent = mode === "ask" ? "Ask agent" : "New review comment";
   form.querySelector("textarea").placeholder = mode === "ask" ? "What do you want to understand about this code?" : "What should the agent revisit?";
   form.querySelector("textarea").setAttribute("aria-label", mode === "ask" ? "Question for agent" : "Review comment");
-  form.querySelector("footer span").textContent = mode === "ask" ? "The selected code is included as context." : "Markdown is supported.";
+  form.querySelector("footer span").textContent = mode === "ask" ? "The selected code is included as context." : form.dataset.commentSelectedText ? "The selected quotation is attached separately." : "Markdown is supported.";
   form.querySelector('[type="submit"]').textContent = mode === "ask" ? "Ask agent" : "Add comment";
 }
 
@@ -4558,7 +4561,7 @@ elements["code-selection-toolbar"].addEventListener("click", (event) => {
     void resolvePeekSymbol(symbolForCodeSelection(selected).symbol, { path: selected.path, line: selected.startLine, side: selected.side });
   } else {
     const target = lineTarget(selected.startRow);
-    openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", initialBody: quotedCode(selected.text), endLine: selected.endLine, selection: selected });
+    openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", endLine: selected.endLine, selection: selected });
   }
   hideCodeSelectionToolbar(true);
 });
