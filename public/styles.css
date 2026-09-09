@@ -412,9 +412,9 @@ button { color: inherit; }
 .diff-file-header { position: sticky; top: var(--diff-toolbar-height, 0px); z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--panel-raised); border-bottom: 1px solid var(--border); }
 .diff-file-header > .file-stats { flex-shrink: 0; }
 .mobile-file-status { display: none; }
-.diff-file-toggle { min-width: 0; display: flex; align-items: center; gap: 7px; border: 0; padding: 0 0 0 15px; color: inherit; background: transparent; cursor: pointer; text-align: left; }
-.collapse-caret { position: absolute; left: 12px; top: 50%; flex: 0 0 auto; color: var(--muted); transform: translateY(-50%); transition: transform .15s ease; }
-.diff-file.collapsed .collapse-caret { transform: translateY(-50%) rotate(-90deg); }
+.diff-file-toggle { position: relative; min-width: 0; display: flex; align-items: flex-start; gap: 7px; border: 0; padding: 0 0 0 15px; color: inherit; background: transparent; cursor: pointer; text-align: left; }
+.collapse-caret { position: absolute; left: 1px; top: 2px; width: 7px; height: 7px; flex: 0 0 auto; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); color: transparent; font-size: 0; transform: rotate(45deg); transition: transform .15s ease; }
+.diff-file.collapsed .collapse-caret { transform: rotate(-45deg); }
 .diff-file-title { min-width: 0; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .status { margin-right: 8px; color: var(--accent); text-transform: uppercase; font-size: 10px; }
 .hunk-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; color: var(--text-hunk); background: var(--surface-hunk); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
@@ -1165,8 +1165,6 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   .diff-file > .diff-file-header { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "status actions" "path path"; align-items: center; gap: 0 8px; padding: 4px 8px; }
   .mobile-file-status { display: block; grid-area: status; margin: 0; padding-left: 15px; }
   .diff-file-toggle { grid-area: path; min-height: 32px; padding-left: 15px; }
-  .diff-file-toggle .collapse-caret { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); }
-  .diff-file.collapsed .collapse-caret { transform: translateY(-50%) rotate(-90deg); }
   .diff-file-toggle .status { display: none; }
   .diff-file-header > .file-stats { grid-area: actions; min-width: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; line-height: 32px; }
   .diff-file-header .text-button { min-height: 32px; }

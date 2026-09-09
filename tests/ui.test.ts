@@ -947,8 +947,8 @@ test("marking a file reviewed collapses its diff while keeping the header availa
   expect(app).toContain('aria-expanded="${!collapsed}"');
   expect(app).toContain("state.collapsedFiles.delete(path);");
   expect(styles).toContain(".diff-file.collapsed .diff-file-scroll { display: none; }");
-  expect(styles).toContain(".collapse-caret { position: absolute; left: 12px; top: 50%;");
-  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: translateY(-50%) rotate(-90deg); }");
+  expect(styles).toContain(".collapse-caret { position: absolute; left: 1px; top: 2px;");
+  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: rotate(-45deg); }");
 });
 
 test("file headers stick to the diff viewport while their file is visible", async () => {
