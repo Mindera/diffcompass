@@ -1545,9 +1545,28 @@ function symbolFromText(value) {
   return String(value ?? "").match(/[\p{L}_$][\p{L}\p{N}_$]*/gu)?.at(-1) ?? "";
 }
 
+function symbolForCodeSelection(selection) {
+  const fallback = symbolFromText(selection.text);
+  if (selection.startLine !== selection.endLine) return { symbol: fallback, expanded: false };
+  const content = selection.startRow?.dataset.content ?? "";
+  for (const match of content.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) {
+    const start = match.index ?? 0;
+    const symbol = match[0];
+    const end = start + symbol.length;
+    if (start <= selection.startOffset && selection.endOffset <= end) return { symbol, expanded: content.slice(selection.startOffset, selection.endOffset) !== symbol };
+  }
+  return { symbol: fallback, expanded: false };
+}
+
 function symbolPeekLocationHtml(location, highlightId) {
   const label = `${location.path}:${location.line}`;
   return `<article class="symbol-peek-location"><header><span class="symbol-peek-kind">${escapeHtml(location.kind)}</span><strong>${escapeHtml(label)}</strong><button class="text-button" type="button" data-symbol-location="${escapeHtml(location.path)}" data-symbol-line="${location.line}" data-symbol-side="new">Open in code</button></header><pre><code data-symbol-peek-highlight="${highlightId}" data-symbol-peek-path="${escapeHtml(location.path)}">${escapeHtml(location.excerpt.join("\n"))}</code></pre></article>`;
+}
+
+function symbolPeekSuggestionsHtml(result) {
+  if (!result.suggestions?.length) return "";
+  const choices = result.suggestions.map((suggestion) => `<button class="text-button" type="button" data-symbol-suggestion="${escapeHtml(suggestion.symbol)}" data-symbol-suggestion-path="${escapeHtml(suggestion.path)}" data-symbol-suggestion-line="${suggestion.line}"><code>${escapeHtml(suggestion.symbol)}</code><span>${escapeHtml(`${suggestion.path}:${suggestion.line}`)}</span></button>`).join("");
+  return `<section class="symbol-peek-suggestions"><h3>Try a related identifier</h3><p class="muted">Partial matches from a bounded repository search.</p><div>${choices}</div>${result.suggestionsTruncated ? '<p class="muted">Suggestions were limited to keep this review responsive.</p>' : ""}</section>`;
 }
 
 async function highlightSymbolPeek() {
@@ -1602,7 +1621,7 @@ function renderSymbolPeek() {
   const definitions = result.definitions.length ? `<section><h3>Definitions (${result.definitions.length})</h3>${result.definitions.map((location, index) => symbolPeekLocationHtml(location, `symbol-definition-${index}`)).join("")}</section>` : '<p class="muted">No definition locations found.</p>';
   const usages = result.usages.length ? `<section><h3>Usages (${result.usages.length})</h3>${result.usages.map((location, index) => symbolPeekLocationHtml(location, `symbol-usage-${index}`)).join("")}</section>` : '<p class="muted">No usage locations found.</p>';
   const raw = result.raw ? `<details class="symbol-peek-raw"><summary>Raw ${escapeHtml(result.sourceLabel)} response</summary><pre>${escapeHtml(result.raw)}</pre></details>` : "";
-  elements["symbol-peek-result"].innerHTML = `${definitions}${usages}${raw}`;
+  elements["symbol-peek-result"].innerHTML = `${definitions}${usages}${symbolPeekSuggestionsHtml(result)}${raw}`;
   void highlightSymbolPeek();
 }
 
@@ -3531,6 +3550,8 @@ function readCodeSelection() {
     startLine: lineNumbers[0],
     endLine: lineNumbers.at(-1),
     text,
+    startOffset,
+    endOffset,
     expectedContent: selectedRows.map((row) => row.dataset.content).join("\n"),
     startRow,
     endRow,
@@ -3551,6 +3572,9 @@ function updateCodeSelectionToolbar() {
   const toolbar = elements["code-selection-toolbar"];
   toolbar.querySelector('[data-selection-tool="edit"]').disabled = selected.side !== "new";
   toolbar.querySelector('[data-selection-tool="ask"]').disabled = !state.session.outline;
+  const peek = toolbar.querySelector('[data-selection-tool="peek"]');
+  const candidate = symbolForCodeSelection(selected);
+  peek.textContent = candidate.expanded ? `Peek ${candidate.symbol}` : "Peek symbol";
   toolbar.classList.remove("hidden");
   const bounds = toolbar.getBoundingClientRect();
   const left = Math.max(8, Math.min(window.innerWidth - bounds.width - 8, selected.rect.left + selected.rect.width / 2 - bounds.width / 2));
@@ -3950,7 +3974,7 @@ elements["review-decision-form"].addEventListener("submit", (event) => {
   void close(decision === "request-changes" ? "feedback" : "accepted", decision, note);
 });
 elements["symbol-peek-open"]?.addEventListener("click", () => {
-  const symbol = symbolFromText(state.codeSelection?.text ?? state.selectedLine?.content ?? "");
+  const symbol = state.codeSelection ? symbolForCodeSelection(state.codeSelection).symbol : symbolFromText(state.selectedLine?.content ?? "");
   if (symbol) void resolvePeekSymbol(symbol);
   else {
     state.symbolPeek.open = true;
@@ -3977,7 +4001,11 @@ elements["symbol-peek-panel"]?.addEventListener("click", (event) => {
     return;
   }
   const location = event.target.closest("[data-symbol-location]");
-  if (!location) return;
+  if (!location) {
+    const suggestion = event.target.closest("[data-symbol-suggestion]");
+    if (suggestion) void resolvePeekSymbol(suggestion.dataset.symbolSuggestion, { path: suggestion.dataset.symbolSuggestionPath, line: Number(suggestion.dataset.symbolSuggestionLine), side: "new" });
+    return;
+  }
   const path = location.dataset.symbolLocation;
   const line = Number(location.dataset.symbolLine);
   if (state.session.comparison.files.some((file) => file.path === path)) void showChangedFile(path, line, location.dataset.symbolSide);
@@ -4326,7 +4354,7 @@ elements["code-selection-toolbar"].addEventListener("click", (event) => {
   } else if (tool === "edit") {
     openInlineEdit(selected.endRow, selected);
   } else if (tool === "peek") {
-    void resolvePeekSymbol(symbolFromText(selected.text), { path: selected.path, line: selected.startLine, side: selected.side });
+    void resolvePeekSymbol(symbolForCodeSelection(selected).symbol, { path: selected.path, line: selected.startLine, side: selected.side });
   } else {
     const target = lineTarget(selected.startRow);
     openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", initialBody: quotedCode(selected.text), endLine: selected.endLine });

@@ -73,6 +73,28 @@ test("symbol peek keeps the fallback result bounded", async () => {
   expect(result.definitions).toHaveLength(0);
 });
 
+test("symbol peek offers bounded explicit partial-identifier suggestions after a miss", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "symbol-peek-"));
+  roots.push(root);
+  await writeFile(join(root, "cart.ts"), [
+    "export function subtotal() { return 1; }",
+    "const subtotalForMember = subtotal();",
+    "const subtotalForGuest = subtotal();",
+    "const subtotalForInvoice = subtotal();",
+    "const subtotalForReceipt = subtotal();",
+    "const subtotalForPreview = subtotal();",
+    "const subtotalForExport = subtotal();",
+  ].join("\n"));
+
+  const result = await resolveSymbolPeek(comparison(root, ["cart.ts"]), { symbol: "ubtota", path: "cart.ts", line: 1 });
+
+  expect(result.definitions).toHaveLength(0);
+  expect(result.usages).toHaveLength(0);
+  expect(result.suggestions).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: "subtotal", path: "cart.ts", line: 1 })]));
+  expect(result.suggestions).toHaveLength(5);
+  expect(result.notice).toContain("Related identifiers");
+});
+
 test("symbol peek is authenticated and bounded at the review API boundary", async () => {
   const root = await mkdtemp(join(import.meta.dir, "symbol-peek-"));
   roots.push(root);

@@ -356,6 +356,11 @@ button { color: inherit; }
 .symbol-peek-location header { padding: 7px 9px; background: var(--panel); font-size: 11px; }
 .symbol-peek-kind { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
 .symbol-peek-location pre, .symbol-peek-raw pre { margin: 0; padding: 9px; overflow: auto; color: var(--text-soft); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.symbol-peek-suggestions { border: 1px solid var(--border-soft); border-radius: 8px; padding: 9px; background: var(--surface-code); }
+.symbol-peek-suggestions h3, .symbol-peek-suggestions p { margin: 0 0 6px; }
+.symbol-peek-suggestions > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.symbol-peek-suggestions button { display: inline-flex; gap: 6px; align-items: baseline; border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; color: var(--text); background: var(--surface-control); }
+.symbol-peek-suggestions button span { color: var(--muted); font-size: 10px; }
 .symbol-peek-raw { border-top: 1px solid var(--border-soft); padding-top: 8px; }
 .diff-view-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .revision-summary { max-width: 48ch; }

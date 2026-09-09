@@ -11,6 +11,8 @@ const MAX_FILE_BYTES = 256 * 1024;
 const MAX_SEARCH_FILES = 200;
 const MAX_SEARCH_BYTES = 2 * 1024 * 1024;
 const MAX_RESULTS = 50;
+const MAX_SUGGESTIONS = 5;
+const MAX_SUGGESTION_IDENTIFIERS = 10_000;
 const MAX_CODEGRAPH_OUTPUT = 512 * 1024;
 const MAX_EXCERPT_LINES = 7;
 const MAX_LINE_LENGTH = 500;
@@ -23,6 +25,12 @@ export interface SymbolPeekLocation {
   endLine: number;
   kind: "definition" | "usage";
   excerpt: string[];
+}
+
+export interface SymbolPeekSuggestion {
+  symbol: string;
+  path: string;
+  line: number;
 }
 
 export interface SymbolPeekRequest {
@@ -41,6 +49,8 @@ export interface SymbolPeekResult {
   raw?: string;
   notice: string;
   truncated: boolean;
+  suggestions?: SymbolPeekSuggestion[];
+  suggestionsTruncated?: boolean;
 }
 
 interface LspLocation {
@@ -119,6 +129,65 @@ async function searchRepositoryAsync(comparison: GitComparison, symbol: string):
     }
   }
   return { matches, truncated };
+}
+
+function compareSuggestions(left: SymbolPeekSuggestion, right: SymbolPeekSuggestion, request: SymbolPeekRequest & { symbol: string }): number {
+  const needle = request.symbol.toLowerCase();
+  const score = (candidate: SymbolPeekSuggestion) => [
+    candidate.path === request.path ? 0 : 1,
+    candidate.symbol.toLowerCase().startsWith(needle) ? 0 : 1,
+    candidate.symbol.length - request.symbol.length,
+    request.line === undefined ? 0 : Math.abs(candidate.line - request.line),
+  ];
+  const leftScore = score(left);
+  const rightScore = score(right);
+  for (let index = 0; index < leftScore.length; index += 1) {
+    if (leftScore[index] !== rightScore[index]) return leftScore[index]! - rightScore[index]!;
+  }
+  return left.symbol.localeCompare(right.symbol) || left.path.localeCompare(right.path) || left.line - right.line;
+}
+
+async function partialSymbolSuggestions(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }): Promise<{ suggestions: SymbolPeekSuggestion[]; truncated: boolean }> {
+  const needle = request.symbol.toLowerCase();
+  if (needle.length < 2) return { suggestions: [], truncated: false };
+  const suggestions = new Map<string, SymbolPeekSuggestion>();
+  let bytes = 0;
+  let files = 0;
+  let identifiers = 0;
+  let truncated = false;
+  scan: for (const path of comparison.repositoryFiles) {
+    if (files >= MAX_SEARCH_FILES || bytes >= MAX_SEARCH_BYTES) {
+      truncated = true;
+      break;
+    }
+    files += 1;
+    let content: string;
+    try {
+      content = await loadRepositoryFile(comparison, path, MAX_FILE_BYTES);
+    } catch {
+      continue;
+    }
+    bytes += new TextEncoder().encode(content).byteLength;
+    if (bytes > MAX_SEARCH_BYTES) {
+      truncated = true;
+      break;
+    }
+    for (const [lineIndex, line] of content.split(/\r?\n/).entries()) {
+      for (const match of line.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) {
+        if (identifiers >= MAX_SUGGESTION_IDENTIFIERS) {
+          truncated = true;
+          break scan;
+        }
+        identifiers += 1;
+        const symbol = match[0]!;
+        if (symbol.length > MAX_SYMBOL_LENGTH || symbol.toLowerCase() === needle || !symbol.toLowerCase().includes(needle)) continue;
+        const candidate = { symbol, path, line: lineIndex + 1 };
+        const existing = suggestions.get(symbol);
+        if (!existing || compareSuggestions(candidate, existing, request) < 0) suggestions.set(symbol, candidate);
+      }
+    }
+  }
+  return { suggestions: [...suggestions.values()].sort((left, right) => compareSuggestions(left, right, request)).slice(0, MAX_SUGGESTIONS), truncated };
 }
 
 async function materializeLocations(comparison: GitComparison, locations: Array<{ path: string; line: number; kind: "definition" | "usage" }>): Promise<SymbolPeekLocation[]> {
@@ -313,12 +382,26 @@ async function languageServerResult(comparison: GitComparison, request: SymbolPe
   return sourceResult(request.symbol, "language-server", materialized.filter((location) => location.kind === "definition"), materialized.filter((location) => location.kind === "usage"), materialized.length ? `Resolved by ${server.command}.` : `${server.command} returned no locations for this symbol.`, result.truncated);
 }
 
+async function withPartialSymbolSuggestions(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }, result: SymbolPeekResult): Promise<SymbolPeekResult> {
+  if (result.definitions.length || result.usages.length) return result;
+  const suggestions = await partialSymbolSuggestions(comparison, request);
+  if (suggestions.suggestions.length === 0 && !suggestions.truncated) return result;
+  return {
+    ...result,
+    suggestions: suggestions.suggestions,
+    ...(suggestions.truncated ? { suggestionsTruncated: true } : {}),
+    notice: suggestions.suggestions.length
+      ? `${result.notice} Related identifiers below come from a bounded repository search.`
+      : result.notice,
+  };
+}
+
 export async function resolveSymbolPeek(comparison: GitComparison, input: SymbolPeekRequest): Promise<SymbolPeekResult> {
   const request = ensureRequest(comparison, input);
   const codeGraph = await codeGraphResult(comparison, request);
-  if (codeGraph) return codeGraph;
+  if (codeGraph) return withPartialSymbolSuggestions(comparison, request, codeGraph);
   const languageServer = await languageServerResult(comparison, request);
-  if (languageServer) return languageServer;
+  if (languageServer) return withPartialSymbolSuggestions(comparison, request, languageServer);
   const search = await searchRepositoryAsync(comparison, request.symbol);
   const definitions: SymbolPeekLocation[] = [];
   const usages: SymbolPeekLocation[] = [];
@@ -327,5 +410,5 @@ export async function resolveSymbolPeek(comparison: GitComparison, input: Symbol
   const notice = matches.length
     ? "CodeGraph and a language server were unavailable; results come from a bounded repository search."
     : "No definition or usage was found. CodeGraph and a language server were unavailable, and repository search was bounded.";
-  return sourceResult(request.symbol, "repository-search", definitions, usages, notice, search.truncated);
+  return withPartialSymbolSuggestions(comparison, request, sourceResult(request.symbol, "repository-search", definitions, usages, notice, search.truncated));
 }
