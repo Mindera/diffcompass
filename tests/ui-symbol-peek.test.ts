@@ -22,7 +22,11 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(html).toContain('data-selection-tool="peek"');
   expect(app).toContain('api("/api/symbol-peek"');
   expect(app).toContain('data-symbol-trail-index');
-  expect(app).toContain('Current stop');
+  expect(app).toContain('Peek trail');
+  expect(app).toContain('aria-current="page"');
+  expect(app).toContain('Return to ${escapeHtml(entry.symbol)}');
+  expect(app).not.toContain('label: "Current stop"');
+  expect(app).not.toContain('index: -1 }, ...peek.history');
   expect(app).toContain('function closeSymbolPeek()');
   expect(app).toContain('void focusCurrentStep()');
   expect(app).toContain('data-symbol-location');
@@ -41,6 +45,7 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(styles).toContain("transform: translate(-50%, -50%)");
   expect(styles).toContain("max-height: min(720px, calc(100dvh - 24px))");
   expect(styles).toContain(".symbol-peek-trail");
+  expect(styles).toContain(".symbol-peek-trail-current");
 });
 
 test("a partial identifier selection explicitly expands the peek action", async () => {

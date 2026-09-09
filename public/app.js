@@ -1603,8 +1603,9 @@ function renderSymbolPeek() {
   elements["symbol-peek-panel"].classList.toggle("hidden", !peek.open);
   if (!peek.open) return;
   elements["symbol-peek-input"].value = peek.current?.symbol ?? "";
-  const trail = [{ label: "Current stop", index: -1 }, ...peek.history.map((entry, index) => ({ label: entry.symbol, index }))];
-  elements["symbol-peek-trail"].innerHTML = trail.map((entry, index) => `${index ? '<span aria-hidden="true">›</span>' : ""}<button type="button" class="text-button" data-symbol-trail-index="${entry.index}">${escapeHtml(entry.label)}</button>`).join("");
+  const trail = peek.history.map((entry, index) => `<button type="button" class="text-button" data-symbol-trail-index="${index}" aria-label="Return to ${escapeHtml(entry.symbol)}" title="Return to ${escapeHtml(entry.symbol)}">${escapeHtml(entry.symbol)}</button>`).join('<span aria-hidden="true">›</span>');
+  elements["symbol-peek-trail"].classList.toggle("hidden", !peek.current || !trail);
+  elements["symbol-peek-trail"].innerHTML = trail ? `<span class="symbol-peek-trail-label">Peek trail</span>${trail}<span aria-hidden="true">›</span><span class="symbol-peek-trail-current" aria-current="page">${escapeHtml(peek.current.symbol)} <span>(current)</span></span>` : "";
   if (!peek.current) {
     elements["symbol-peek-status"].textContent = "Choose a symbol from the code or enter one above.";
     elements["symbol-peek-result"].innerHTML = "";
@@ -3993,7 +3994,6 @@ elements["symbol-peek-panel"]?.addEventListener("click", (event) => {
   const trail = event.target.closest("[data-symbol-trail-index]");
   if (trail) {
     const index = Number(trail.dataset.symbolTrailIndex);
-    if (index < 0) return closeSymbolPeek();
     const entry = state.symbolPeek.history[index];
     if (!entry) return;
     state.symbolPeek.history = state.symbolPeek.history.slice(0, index);
