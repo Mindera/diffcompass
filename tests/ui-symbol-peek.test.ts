@@ -17,6 +17,7 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).toContain('id="symbol-peek-panel"');
+  expect(html).toContain("Source is open behind this card. Click to expand.");
   expect(html).toContain('role="dialog" aria-modal="false"');
   expect(html).toContain('aria-live="polite"');
   expect(html).toContain('data-selection-tool="peek"');
@@ -30,6 +31,11 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(app).toContain('function closeSymbolPeek()');
   expect(app).toContain('void focusCurrentStep()');
   expect(app).toContain('data-symbol-location');
+  expect(app).toContain("function compactSymbolPeek()");
+  expect(app).toContain("function expandSymbolPeek()");
+  expect(app).toContain("compactSymbolPeek();");
+  expect(app).toContain('panel.tabIndex = peek.open && peek.compact ? 0 : -1');
+  expect(app).toContain('!["Enter", " "].includes(event.key)');
   expect(app).toContain('function highlightSymbolPeek()');
   expect(app).toContain('data-symbol-peek-highlight');
   expect(app).toContain('api("/api/highlight"');
@@ -41,6 +47,9 @@ test("symbol peek keeps the diff context visible and exposes an accessible back 
   expect(styles).toContain(".symbol-peek-suggestions");
   expect(styles).toContain(".symbol-peek-panel");
   expect(styles).toContain(".symbol-peek-panel { position: fixed;");
+  expect(styles).toContain(".symbol-peek-panel.symbol-peek-compact { left: 12px;");
+  expect(styles).toContain("transform: translateY(-50%)");
+  expect(styles).toContain(".symbol-peek-panel.symbol-peek-compact .symbol-peek-result { display: none !important; }");
   expect(styles).toContain("top: 50%; left: 50%;");
   expect(styles).toContain("transform: translate(-50%, -50%)");
   expect(styles).toContain("max-height: min(720px, calc(100dvh - 24px))");
@@ -64,4 +73,24 @@ test("a partial identifier selection explicitly expands the peek action", async 
 
   expect(symbolForCodeSelection(selection)).toEqual({ symbol: "subtotal", expanded: true });
   expect(symbolForCodeSelection({ ...selection, text: "subtotal", startOffset: 16, endOffset: 24 })).toEqual({ symbol: "subtotal", expanded: false });
+});
+
+test("opening source compacts Symbol Peek and the compact card restores it", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const state = { symbolPeek: { open: true, compact: false } };
+  let calls = 0;
+  const focusOptions: unknown[] = [];
+  const helpers = new Function("state", "renderSymbolPeek", "elements", `${extract(app, "function compactSymbolPeek()", "function closeSymbolPeek()")}; return { compactSymbolPeek, expandSymbolPeek };`)(
+    state,
+    () => { calls += 1; },
+    { "symbol-peek-panel": { focus: (options: unknown) => focusOptions.push(options) } },
+  );
+
+  helpers.compactSymbolPeek();
+  expect(calls).toBe(1);
+  expect(state.symbolPeek.compact).toBe(true);
+  helpers.expandSymbolPeek();
+  expect(calls).toBe(2);
+  expect(state.symbolPeek.compact).toBe(false);
+  expect(focusOptions).toEqual([{ preventScroll: true }]);
 });

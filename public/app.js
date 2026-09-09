@@ -97,7 +97,7 @@ const state = {
   repositoryFilePath: null,
   repositoryFileContent: "",
   filePanelOpen: false,
-  symbolPeek: { history: [], current: null, requestId: 0, highlightRequestId: 0 },
+  symbolPeek: { history: [], current: null, requestId: 0, highlightRequestId: 0, compact: false },
 };
 
 const elements = Object.fromEntries(
@@ -1572,7 +1572,7 @@ function symbolPeekSuggestionsHtml(result) {
 async function highlightSymbolPeek() {
   const peek = state.symbolPeek;
   const result = peek.result;
-  if (!peek.open || peek.loading || !result) return;
+  if (!peek.open || peek.compact || peek.loading || !result) return;
   const targets = [...elements["symbol-peek-result"].querySelectorAll("[data-symbol-peek-highlight]")];
   const groups = targets.map((target) => ({
     id: target.dataset.symbolPeekHighlight,
@@ -1600,7 +1600,13 @@ async function highlightSymbolPeek() {
 function renderSymbolPeek() {
   const peek = state.symbolPeek;
   const result = peek.result;
-  elements["symbol-peek-panel"].classList.toggle("hidden", !peek.open);
+  const panel = elements["symbol-peek-panel"];
+  panel.classList.toggle("hidden", !peek.open);
+  panel.classList.toggle("symbol-peek-compact", Boolean(peek.open && peek.compact));
+  panel.tabIndex = peek.open && peek.compact ? 0 : -1;
+  panel.setAttribute("aria-expanded", String(Boolean(peek.open && !peek.compact)));
+  elements["symbol-peek-close"].textContent = peek.compact ? "Close" : "Back to code";
+  elements["symbol-peek-close"].setAttribute("aria-label", peek.compact ? "Close symbol context" : "Back to code");
   if (!peek.open) return;
   elements["symbol-peek-input"].value = peek.current?.symbol ?? "";
   const trail = peek.history.map((entry, index) => `<button type="button" class="text-button" data-symbol-trail-index="${index}" aria-label="Return to ${escapeHtml(entry.symbol)}" title="Return to ${escapeHtml(entry.symbol)}">${escapeHtml(entry.symbol)}</button>`).join('<span aria-hidden="true">›</span>');
@@ -1635,6 +1641,7 @@ async function resolvePeekSymbol(symbol, context = symbolPeekContext(), pushHist
   const peek = state.symbolPeek;
   if (pushHistory && peek.current) peek.history.push({ ...peek.current });
   peek.open = true;
+  peek.compact = false;
   peek.current = { symbol: normalized, ...context };
   peek.result = null;
   peek.loading = true;
@@ -1657,10 +1664,26 @@ async function resolvePeekSymbol(symbol, context = symbolPeekContext(), pushHist
   }
 }
 
+function compactSymbolPeek() {
+  const peek = state.symbolPeek;
+  if (!peek.open || peek.compact) return;
+  peek.compact = true;
+  renderSymbolPeek();
+}
+
+function expandSymbolPeek() {
+  const peek = state.symbolPeek;
+  if (!peek.open || !peek.compact) return;
+  peek.compact = false;
+  renderSymbolPeek();
+  elements["symbol-peek-panel"].focus({ preventScroll: true });
+}
+
 function closeSymbolPeek() {
   state.symbolPeek.open = false;
   state.symbolPeek.loading = false;
   state.symbolPeek.result = null;
+  state.symbolPeek.compact = false;
   state.symbolPeek.highlightRequestId += 1;
   renderSymbolPeek();
   void focusCurrentStep();
@@ -3979,6 +4002,7 @@ elements["symbol-peek-open"]?.addEventListener("click", () => {
   if (symbol) void resolvePeekSymbol(symbol);
   else {
     state.symbolPeek.open = true;
+    state.symbolPeek.compact = false;
     state.symbolPeek.current = null;
     state.symbolPeek.result = null;
     renderSymbolPeek();
@@ -3991,6 +4015,7 @@ elements["symbol-peek-form"]?.addEventListener("submit", (event) => {
   void resolvePeekSymbol(elements["symbol-peek-input"].value);
 });
 elements["symbol-peek-panel"]?.addEventListener("click", (event) => {
+  if (state.symbolPeek.compact) return expandSymbolPeek();
   const trail = event.target.closest("[data-symbol-trail-index]");
   if (trail) {
     const index = Number(trail.dataset.symbolTrailIndex);
@@ -4008,8 +4033,14 @@ elements["symbol-peek-panel"]?.addEventListener("click", (event) => {
   }
   const path = location.dataset.symbolLocation;
   const line = Number(location.dataset.symbolLine);
+  compactSymbolPeek();
   if (state.session.comparison.files.some((file) => file.path === path)) void showChangedFile(path, line, location.dataset.symbolSide);
   else void showRepositoryFile(path);
+});
+elements["symbol-peek-panel"]?.addEventListener("keydown", (event) => {
+  if (!state.symbolPeek.compact || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  expandSymbolPeek();
 });
 elements["refresh-button"].addEventListener("click", refresh);
 elements["comparison-view"].addEventListener("change", () => void switchComparisonView(elements["comparison-view"].value));
