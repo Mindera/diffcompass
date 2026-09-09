@@ -272,9 +272,12 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(app).toContain("Exact selected context");
   expect(agent).toContain("Current tour stop id:");
   expect(app).toContain("function commentScope(comment)");
+  expect(app).toContain("function quotationLabel(text)");
+  expect(app).toContain('class="selection-quote-preview" open');
   expect(styles).toContain(".step-discussion");
   expect(styles).toContain(".step-discussion > button { justify-self: start; min-height: 32px; }");
   expect(styles).toContain(".comment-quote");
+  expect(styles).toContain(".selection-quote-preview pre { max-height: 160px;");
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {

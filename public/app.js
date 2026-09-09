@@ -1793,10 +1793,14 @@ function commentScope(comment) {
   return scope === "range" ? "Selected range" : "Line";
 }
 
+function quotationLabel(text) {
+  const lineCount = text.replaceAll("\r\n", "\n").split("\n").length;
+  return `Selected quotation · ${lineCount} ${lineCount === 1 ? "line" : "lines"}`;
+}
+
 function selectedQuotation(comment) {
   if (!comment.selectedText) return "";
-  const lineCount = comment.selectedText.replaceAll("\r\n", "\n").split("\n").length;
-  const label = `Selected quotation · ${lineCount} ${lineCount === 1 ? "line" : "lines"}`;
+  const label = quotationLabel(comment.selectedText);
   return `<details class="comment-quote-details"><summary>${escapeHtml(label)}</summary><blockquote class="comment-quote">${escapeHtml(comment.selectedText)}</blockquote></details>`;
 }
 
@@ -3607,7 +3611,9 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
   const image = row.classList.contains("image-diff-side");
   const location = image ? `${target.path} · ${target.side} image` : endLine === target.line ? `${target.path}:${target.line}` : `${target.path}:${target.line}-${endLine}`;
   const askDisabled = !state.session.outline;
+  const selectionPreview = selection ? `<details class="selection-quote-preview" open><summary>${escapeHtml(quotationLabel(selection.text))}</summary><pre>${escapeHtml(selection.text)}</pre></details>` : "";
   form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? escapeHtml(commentScope(comment)) : selection ? "Selected range" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
+    ${selectionPreview}
     ${comment ? "" : `<div class="inline-composer-tabs" role="group" aria-label="Message type"><button type="button" data-inline-composer-mode="comment" aria-pressed="true">Comment</button><button type="button" data-inline-composer-mode="ask" aria-pressed="false"${askDisabled ? ' disabled title="Start a tour to ask the agent."' : ""}>Ask agent</button></div>`}
     <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? initialBody)}</textarea>
     <footer><span>${selection ? "The exact quotation and diff context are retained." : "Markdown is supported."}</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;

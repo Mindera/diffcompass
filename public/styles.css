@@ -486,6 +486,9 @@ button { color: inherit; }
 .inline-comment-form { box-sizing: border-box; min-width: 0; margin: 8px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: 9px; padding: 11px; background: var(--surface-item); box-shadow: 0 5px 16px var(--shadow); font-family: system-ui, sans-serif; }
 .inline-comment-form header, .inline-comment-form footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .inline-comment-form header strong { display: block; overflow: hidden; margin-top: 3px; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.selection-quote-preview { margin: 10px 0 0; border: 1px solid var(--border-soft); border-radius: 7px; padding: 7px 9px; background: var(--surface-code); }
+.selection-quote-preview summary { cursor: pointer; color: var(--text-soft); font-size: 10px; }
+.selection-quote-preview pre { max-height: 160px; margin: 7px 0 0; overflow: auto; color: var(--text-code); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
 .inline-comment-form textarea { box-sizing: border-box; width: 100%; min-height: 84px; margin: 10px 0; resize: vertical; border: 1px solid var(--border); border-radius: 7px; padding: 9px 10px; color: var(--text-code); background: var(--surface-code); font: 12px/1.5 system-ui, sans-serif; }
 .inline-comment-form footer span { color: var(--muted); font-size: 10px; }
 .inline-composer-tabs { display: inline-flex; gap: 3px; margin: 10px 0 0; border: 1px solid var(--border); border-radius: 7px; padding: 3px; background: var(--surface-code); }
