@@ -1095,6 +1095,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .conversation-card { padding: 16px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; overflow-wrap: anywhere; }
 .conversation-title { background: none; border: 0; padding: 0; text-align: left; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
 .conversation-title:hover { color: var(--accent-strong); }
+.chat-message-status { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .conversation-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 20px; border: 1px solid var(--accent-strong); border-radius: 5px; background: var(--panel); color: var(--accent-strong); cursor: pointer; padding: 2px; }
 .conversation-badge svg { width: 16px; height: 16px; }
 @media (max-width: 900px) {

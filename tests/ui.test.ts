@@ -211,10 +211,27 @@ test("agent answers scroll into view without hiding the reviewer question", asyn
   expect(app).toContain("Math.max(scroll.scrollTop, Math.min(questionTop, revealBottom))");
   expect(app).toContain('scroll.scrollTo({ top: target, behavior: "smooth" })');
   expect(app).toContain("requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId))");
-  expect(askAgent).toContain("state.questionPending = true");
-  expect(askAgent).toContain("state.questionPending = false");
+  expect(askAgent).toContain("state.pendingQuestions.set(localId, pending)");
+  expect(askAgent).toContain("state.pendingQuestions.delete(localId)");
+  expect(askAgent).not.toContain("state.questionPending");
   expect(askAgent).not.toContain('setBusy(true, "The agent is responding…")');
   expect(app).toContain('elements["next-step"].disabled = state.busy || !reviewIsOpen()');
+});
+
+test("line and image questions compose inline while queued questions retain their own anchors", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  const askAboutLine = app.slice(app.indexOf("function askAboutLine(row)"), app.indexOf("function closeInlineEdit()"));
+  const askAgent = app.slice(app.indexOf("async function askAgent"), app.indexOf("async function close"));
+  expect(askAboutLine).toContain('openInlineCommentEditor(row, lineTarget(row), null, { mode: "ask" })');
+  expect(askAboutLine).not.toContain("openConversation(null)");
+  expect(askAgent).toContain("clearSelectedLine();");
+  expect(askAgent).toContain("void (async () => {");
+  expect(app).toContain("for (const pending of state.pendingQuestions.values())");
+  expect(app).toContain('state.pendingQuestions.has(message.id) ? \'<span class="chat-message-status">Queued</span>\'');
+  expect(styles).toContain(".chat-message-status");
 });
 
 test("the questions pane uses compact, responsive conversation controls", async () => {

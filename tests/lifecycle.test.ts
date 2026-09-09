@@ -52,6 +52,36 @@ test("line conversations persist and follow-ups retain their original phase cont
   } finally { await session.dispose(); }
 });
 
+test("attached questions queue without losing their individual anchors", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const firstAnchor = { path: "app.ts", side: "new" as const, line: 1, content: "const base = 1;" };
+    const secondAnchor = { path: "app.ts", side: "new" as const, line: 2, content: "const changed = 2;" };
+    const first = session.ask("First queued question", undefined, { stepId: "first-step", anchor: firstAnchor });
+    const [firstPrompt] = await session.bridge!.eventsAfter(7, 1_000);
+    if (!firstPrompt || firstPrompt.type !== "agent.prompt") throw new Error("Expected first queued question prompt");
+    const second = session.ask("Second queued question", undefined, { stepId: "second-step", anchor: secondAnchor });
+    await session.bridge!.respond(firstPrompt.id, "First answer.");
+    await session.bridge!.ack(firstPrompt.id);
+    await first;
+    const events = await session.bridge!.eventsAfter(firstPrompt.sequence, 1_000);
+    const secondPrompt = events.find((event) => event.type === "agent.prompt" && event.kind === "review.question");
+    if (!secondPrompt || secondPrompt.type !== "agent.prompt") throw new Error("Expected second queued question prompt");
+    expect(secondPrompt.prompt).toContain("Current tour stop Second step [second-step]");
+    expect(secondPrompt.prompt).toContain("Captured code: const changed = 2;");
+    await session.bridge!.respond(secondPrompt.id, "Second answer.");
+    await session.bridge!.ack(secondPrompt.id);
+    const answered = await second;
+    const roots = answered.messages.filter((message) => message.role === "user");
+    expect(roots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ body: "First queued question", stepId: "first-step", anchor: firstAnchor }),
+      expect.objectContaining({ body: "Second queued question", stepId: "second-step", anchor: secondAnchor }),
+    ]));
+  } finally { await session.dispose(); }
+});
+
 test("an unselected question remains visibly scoped to the current tour stop without a code anchor", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));

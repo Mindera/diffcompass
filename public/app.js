@@ -17,8 +17,7 @@ const state = {
   deletingCommentId: null,
   deletingCheckpointId: null,
   busy: false,
-  questionPending: false,
-  pendingQuestion: null,
+  pendingQuestions: new Map(),
   activeThreadId: null,
   questionsOpen: false,
   questionDrafts: new Map(),
@@ -495,7 +494,7 @@ function setBusy(busy, label = "Working…") {
   elements["feedback-button"].disabled = busy;
   elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
   elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
-  elements["chat-form"].querySelector("button").disabled = busy || state.questionPending || !reviewIsOpen();
+  elements["chat-form"].querySelector("button").disabled = busy || !reviewIsOpen();
   syncBriefingPreferenceControls();
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
     elements["step-explanation"].innerHTML = `<span class="loading">${escapeHtml(label)}</span>`;
@@ -524,7 +523,8 @@ function renderAgentActivity() {
   const isQuestion = activity?.kind === "review.question";
   const activityAnchor = isQuestion ? elements["chat-messages"] : elements["step-explanation"];
   activityAnchor.insertAdjacentElement("afterend", elements["agent-activity"]);
-  const otherThread = isQuestion && state.pendingQuestion && state.pendingQuestion.threadId !== state.activeThreadId;
+  const pendingForActiveThread = [...state.pendingQuestions.values()].some((pending) => pending.threadId === state.activeThreadId);
+  const otherThread = isQuestion && state.pendingQuestions.size > 0 && !pendingForActiveThread;
   elements["agent-activity"].classList.toggle("hidden", !visible || Boolean(otherThread));
   if (!visible) return;
   const renderedActivityId = elements["agent-activity"].dataset.activityId;
@@ -2709,8 +2709,7 @@ function conversationThreads() {
     if (!threads.has(id)) threads.set(id, { id, root: message, messages: [] });
     threads.get(id).messages.push(message);
   }
-  if (state.pendingQuestion) {
-    const pending = state.pendingQuestion;
+  for (const pending of state.pendingQuestions.values()) {
     if (!threads.has(pending.threadId)) threads.set(pending.threadId, { id: pending.threadId, root: pending, messages: [] });
     if (!threads.get(pending.threadId).messages.some((message) => message.id === pending.id)) threads.get(pending.threadId).messages.push(pending);
   }
@@ -2850,15 +2849,15 @@ function renderMessages() {
   const thread = threads.find((item) => item.id === state.activeThreadId);
   const messages = thread?.messages ?? [];
   const content = messages
-    .map((message) => `<div class="chat-message ${message.role}" data-message-id="${escapeHtml(message.id)}">${renderMarkdown(message.body)}</div>`)
+    .map((message) => `<div class="chat-message ${message.role}" data-message-id="${escapeHtml(message.id)}">${renderMarkdown(message.body)}${state.pendingQuestions.has(message.id) ? '<span class="chat-message-status">Queued</span>' : ""}</div>`)
     .join("");
   if (elements["chat-messages"].innerHTML !== content) elements["chat-messages"].innerHTML = content;
   renderQuestionScope(thread);
   const options = '<option value="">New question</option>' + threads.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 80))}</option>`).join("");
   if (elements["conversation-select"].innerHTML !== options) elements["conversation-select"].innerHTML = options;
   elements["conversation-select"].value = state.activeThreadId ?? "";
-  elements["conversation-list"].innerHTML = threads.length ? threads.map((item) => `<article class="conversation-card"><button type="button" class="conversation-title" data-conversation="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 180))}</button><p class="muted">${escapeHtml(conversationScopeLabel(item))} · ${item.messages.length} messages</p>${item.root.anchor ? `<button type="button" class="text-button" data-conversation-code="${escapeHtml(item.id)}">Show context</button>` : ""}</article>`).join("") : '<p class="empty">No conversations yet. Ask a question from a changed line, image, or the Questions pane.</p>';
-  const starting = !thread && !state.questionPending;
+  elements["conversation-list"].innerHTML = threads.length ? threads.map((item) => `<article class="conversation-card"><button type="button" class="conversation-title" data-conversation="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 180))}</button><p class="muted">${escapeHtml(conversationScopeLabel(item))} · ${item.messages.length} messages${item.messages.some((message) => state.pendingQuestions.has(message.id)) ? " · queued" : ""}</p>${item.root.anchor ? `<button type="button" class="text-button" data-conversation-code="${escapeHtml(item.id)}">Show context</button>` : ""}</article>`).join("") : '<p class="empty">No conversations yet. Ask a question from a changed line, image, or the Questions pane.</p>';
+  const starting = !thread;
   elements["selection-pill"].classList.toggle("hidden", !starting || !state.selectedLine);
   elements["selection-pill"].innerHTML = starting && state.selectedLine
     ? `<span>${escapeHtml(`${reviewAnchorLabel(state.selectedLine)} selected`)}</span><button type="button" data-remove-line-context aria-label="Remove selected context from question">×</button>`
@@ -3225,7 +3224,7 @@ function renderSession() {
   elements["prefetch-steps"].disabled = closed;
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
-  elements["chat-form"].querySelector("button").disabled = state.busy || state.questionPending || closed;
+  elements["chat-form"].querySelector("button").disabled = state.busy || closed;
   elements["comment-drawer"].classList.toggle("closed", closed);
   if (closed) closeInlineCommentEditor();
   elements["agent-mode"].textContent = state.session.agentSelection?.adapterId === "attached" ? "edits on request" : "read-only";
@@ -3529,13 +3528,7 @@ function openLineComment(row) {
 }
 
 function askAboutLine(row) {
-  openConversation(null);
-  selectLine(row);
-  elements["chat-input"].placeholder = row.classList.contains("image-diff-side")
-    ? `Ask about the ${row.dataset.side} image in ${row.dataset.path}…`
-    : `Ask about ${row.dataset.path}:${row.dataset.line}…`;
-  elements["chat-input"].focus({ preventScroll: true });
-  elements["chat-input"].scrollIntoView({ behavior: "smooth", block: "nearest" });
+  openInlineCommentEditor(row, lineTarget(row), null, { mode: "ask" });
 }
 
 function closeInlineEdit() {
@@ -3879,7 +3872,7 @@ async function deleteReviewComment(comment) {
 async function askAgent(event) {
   event.preventDefault();
   const body = elements["chat-input"].value.trim();
-  if (!body || state.busy || state.questionPending || !reviewIsOpen()) return;
+  if (!body || state.busy || !reviewIsOpen()) return;
   elements["chat-input"].value = "";
   const selectedContext = state.selectedLine
     ? `${state.selectedLine.path}:${state.selectedLine.line}${state.selectedLine.endLine && state.selectedLine.endLine !== state.selectedLine.line ? `-${state.selectedLine.endLine}` : ""} (${state.selectedLine.side})\n${state.selectedLine.selectedText ? `Exact selected quotation:\n${state.selectedLine.selectedText}\nExact selected context:\n${state.selectedLine.context ?? state.selectedLine.content}` : state.selectedLine.content}`
@@ -3890,11 +3883,15 @@ async function askAgent(event) {
   const requestedStepId = !requestThreadId && state.tourMode ? currentStep()?.id ?? null : null;
   const anchor = !requestThreadId && state.selectedLine ? { ...state.selectedLine } : undefined;
   const contextPaths = !requestThreadId ? [...state.questionContextPaths] : [];
-  state.pendingQuestion = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, ...(requestedStepId ? { stepId: requestedStepId } : {}), anchor, contextPaths };
-  state.activeThreadId = state.pendingQuestion.threadId;
+  const pending = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, ...(requestedStepId ? { stepId: requestedStepId } : {}), anchor, contextPaths };
+  state.pendingQuestions.set(localId, pending);
+  state.activeThreadId = pending.threadId;
   state.questionDrafts.delete(originalThreadId);
   state.questionsOpen = true;
   state.mobileAgentPane = "questions";
+  // Each request owns its captured location. Clear the draft now instead of
+  // clearing whichever line a later queued question selected.
+  clearSelectedLine();
   renderMessages();
   const previousActivityId = state.session.agentActivity?.id;
   const queuedAt = new Date().toISOString();
@@ -3915,40 +3912,36 @@ async function askAgent(event) {
     updatedAt: queuedAt,
     localQueued: true,
   };
-  let answeredQuestionId = null;
-  state.questionPending = true;
-  elements["chat-form"].querySelector("button").disabled = true;
   renderAgentActivity();
-  try {
-    const response = await api("/api/agent/message", {
-      method: "POST",
-      body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
-    });
-    const previous = state.session;
-    state.session = response;
-    // The saved root owns its anchor now. Do not let that anchor silently
-    // become context for the next, ostensibly unselected question.
-    clearSelectedLine();
-    answeredQuestionId = [...state.session.messages].reverse().find((message) => message.role === "user" && message.body === body)?.id ?? null;
-    const answered = state.session.messages.find((message) => message.id === answeredQuestionId);
-    if (state.activeThreadId === state.pendingQuestion?.threadId) state.activeThreadId = answered?.threadId ?? answeredQuestionId;
-    state.pendingQuestion = null;
-    state.expectedAgentActivity = null;
-    renderSessionUpdate(previous);
-  } catch (error) {
-    state.expectedAgentActivity = null;
-    if (state.activeThreadId === state.pendingQuestion?.threadId) {
-      state.activeThreadId = originalThreadId;
-      elements["chat-input"].value = body;
-    } else state.questionDrafts.set(originalThreadId, { body, line: anchor, contextPaths });
-    state.pendingQuestion = null;
-    toast(error.message);
-  } finally {
-    state.questionPending = false;
-    elements["chat-form"].querySelector("button").disabled = state.busy || !reviewIsOpen();
-    renderTour();
-    if (answeredQuestionId) requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId));
-  }
+  void (async () => {
+    let answeredQuestionId = null;
+    try {
+      const response = await api("/api/agent/message", {
+        method: "POST",
+        body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
+      });
+      const previous = state.session;
+      state.session = response;
+      answeredQuestionId = [...state.session.messages].reverse().find((message) => message.role === "user" && message.body === body)?.id ?? null;
+      const answered = state.session.messages.find((message) => message.id === answeredQuestionId);
+      if (state.activeThreadId === pending.threadId) state.activeThreadId = answered?.threadId ?? answeredQuestionId;
+      state.expectedAgentActivity = null;
+      state.pendingQuestions.delete(localId);
+      renderSessionUpdate(previous);
+    } catch (error) {
+      state.expectedAgentActivity = null;
+      state.pendingQuestions.delete(localId);
+      if (state.activeThreadId === pending.threadId) {
+        state.activeThreadId = originalThreadId;
+        elements["chat-input"].value = body;
+      } else state.questionDrafts.set(originalThreadId, { body, line: anchor, contextPaths });
+      renderMessages();
+      toast(error.message);
+    } finally {
+      renderTour();
+      if (answeredQuestionId) requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId));
+    }
+  })();
 }
 
 async function close(outcome, decision = outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel", note) {
