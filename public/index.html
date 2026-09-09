@@ -132,6 +132,7 @@
           </div>
         </div>
         <div class="file-controls">
+          <p id="tour-filter-note" class="tour-filter-note hidden">The tour controls this file list. Exit the tour to use filters.</p>
           <label class="search-control"><span class="sr-only">Search changed paths and code</span><input id="diff-search" type="search" placeholder="Search changes…" autocomplete="off" /></label>
           <div class="filter-row">
             <label><span class="sr-only">File status</span><select id="status-filter" aria-label="Filter by file status">
@@ -457,7 +458,7 @@
     <dialog id="architecture-viewer-dialog" class="architecture-viewer-dialog" aria-labelledby="architecture-viewer-title">
       <header class="architecture-viewer-heading">
         <div>
-          <div class="eyebrow">Component diagram</div>
+          <div id="architecture-viewer-eyebrow" class="eyebrow">Component diagram</div>
           <h2 id="architecture-viewer-title"></h2>
         </div>
         <button id="close-architecture-viewer" type="button" class="button secondary">Close</button>
@@ -466,7 +467,7 @@
         <div id="architecture-viewer-controls"></div>
         <div id="architecture-viewer-legend"></div>
         <div id="architecture-viewer-diagram" class="sequence-diagram architecture-diagram" role="img" tabindex="0"></div>
-        <p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
+        <p id="architecture-viewer-help" class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
       </div>
     </dialog>
 

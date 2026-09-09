@@ -281,6 +281,7 @@ button { color: inherit; }
 .count, .mode { flex: 0 0 auto; white-space: nowrap; border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 4px 7px; font-size: 10px; line-height: 1.2; }
 
 .file-controls { display: grid; gap: 7px; padding: 9px 10px; border-bottom: 1px solid var(--border-soft); }
+.tour-filter-note { margin: 0; border-left: 2px solid var(--warning); padding: 2px 0 2px 7px; color: var(--muted); font-size: 10px; line-height: 1.35; }
 .search-control input, .filter-row select, .tree-mode-control select, .diff-toolbar select { width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; color: var(--text); background: var(--surface-control); font-size: 11px; }
 .filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .filter-row label, .search-control { min-width: 0; }
@@ -1012,6 +1013,7 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .architecture-viewer-dialog .architecture-legend { justify-content: center; margin-top: 8px; }
 .architecture-viewer-dialog .sequence-diagram { width: 100%; height: 100%; min-height: 0; max-height: none; margin-top: 10px; }
 .architecture-viewer-dialog .sequence-diagram svg { max-width: none; }
+.architecture-viewer-call-flow { width: 100%; height: 100%; min-height: 0; margin-top: 10px; }
 .sessions-dialog { width: min(760px, calc(100vw - 30px)); max-height: min(760px, calc(100vh - 40px)); overflow: hidden; }
 .about-dialog { width: min(560px, calc(100vw - 30px)); }
 .about-details { display: grid; gap: 0; margin: 18px 0 4px; overflow: hidden; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-control); }

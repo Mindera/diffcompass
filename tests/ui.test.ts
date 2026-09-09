@@ -154,6 +154,11 @@ test("the file pane can filter changed test files without changing the default",
   expect(app).toContain("async function ensureReviewDiffs()");
   expect(app).toContain('return files.map((file) => state.diffCache.get(file.path)).filter(Boolean)');
   expect(styles).toContain(".file-filter-toggle.active");
+  expect(html).toContain('id="tour-filter-note"');
+  expect(html).toContain("The tour controls this file list. Exit the tour to use filters.");
+  expect(app).toContain('elements["tour-filter-note"].classList.toggle("hidden", !state.tourMode)');
+  expect(app).toContain('elements["file-panel"].title = state.tourMode ? tourFilterMessage : ""');
+  expect(styles).toContain(".tour-filter-note");
 
   const helperSource = app.slice(app.indexOf("function isTestFile(path)"), app.indexOf("function renderTreeNode("));
   const isTestFile = new Function(`${helperSource}; return isTestFile;`)() as (path: string) => boolean;
@@ -495,6 +500,11 @@ test("the pre-tour briefing is evidence-labelled, linked, responsive, and export
   expect(app).toContain("function reopenTourIntro()");
   expect(app).toContain("function renderTourIntroDiagrams()");
   expect(app).toContain("renderTourIntroDiagrams();");
+  expect(app).toContain('briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)');
+  expect(app).toContain('briefingDiagramExpandButton("call flow", "call-flow", flow.id)');
+  expect(app).toContain("function openBriefingDiagramViewer(kind, id)");
+  expect(app).toContain('registerArchitectureDiagramInteractions(elements["tour-intro-sequence"])');
+  expect(app).toContain('registerArchitectureDiagramInteractions(elements["tour-intro-call-flows"])');
   expect(app).toContain('tourStarted: false');
   expect(app).toContain('elements["begin-tour"].textContent = state.tourStarted ? "Close" : "Start tour"');
   expect(app).toContain('elements["findings-back"].textContent = state.findingReturn?.fromBriefing ? "← Back to briefing" : "← Back to code"');

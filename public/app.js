@@ -102,7 +102,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
@@ -111,7 +111,7 @@ const elements = Object.fromEntries(
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -2078,6 +2078,10 @@ function architectureDiagramExpandButton(label, key) {
   return `<button class="diagram-expand-button" type="button" data-diagram-expand="${escapeHtml(key)}" aria-label="${escapeHtml(`Expand ${label} diagram`)}" title="Open diagram viewer"><span aria-hidden="true">⛶</span> Expand</button>`;
 }
 
+function briefingDiagramExpandButton(label, kind, id) {
+  return `<button class="diagram-expand-button" type="button" data-briefing-diagram-expand="${escapeHtml(kind)}" data-briefing-diagram-id="${escapeHtml(id)}" aria-label="${escapeHtml(`Expand ${label}`)}" title="Open diagram viewer"><span aria-hidden="true">⛶</span> Expand</button>`;
+}
+
 function changeArchitectureDiagramView(key, action) {
   const view = architectureDiagramView(key);
   if (action === "zoom-in") view.scale = Math.min(ARCHITECTURE_ZOOM_MAX, view.scale + ARCHITECTURE_ZOOM_STEP);
@@ -2134,7 +2138,7 @@ function tourIntroArchitectureCard(architecture, label, key) {
 
 function tourIntroSequenceCard(flow, index) {
   return `<article class="tour-intro-chart tour-intro-flow-card">
-    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Sequence diagram</span><h4>${escapeHtml(flow.title)}</h4></div></div>
+    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Sequence diagram</span><h4>${escapeHtml(flow.title)}</h4></div>${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}</div>
     <p>${escapeHtml(flow.summary)}</p>
     <div class="sequence-diagram mermaid-render" data-tour-intro-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
     <p class="tour-intro-flow-impact">Affects ${flow.affectedFiles?.length || flow.blastRadiusSize} changed file${(flow.affectedFiles?.length || flow.blastRadiusSize) === 1 ? "" : "s"}.</p>
@@ -2144,9 +2148,9 @@ function tourIntroSequenceCard(flow, index) {
 function tourIntroCallFlowCard(flow) {
   const affectedFiles = flow.affectedFiles ?? [];
   return `<article class="tour-intro-chart tour-intro-flow-card">
-    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Call flow</span><h4>${escapeHtml(flow.title)}</h4></div></div>
+    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Call flow</span><h4>${escapeHtml(flow.title)}</h4></div>${briefingDiagramExpandButton("call flow", "call-flow", flow.id)}</div>
     <p>${escapeHtml(flow.summary)}</p>
-    <div class="call-tree tour-intro-call-tree">${renderCallTree(flow, "changes")}</div>
+    <div class="call-tree tour-intro-call-tree" data-tour-intro-call-flow="${escapeHtml(flow.id)}">${renderCallTree(flow, "changes")}</div>
     <p class="tour-intro-flow-impact">Affects ${affectedFiles.length || flow.blastRadiusSize} changed file${(affectedFiles.length || flow.blastRadiusSize) === 1 ? "" : "s"}.</p>
   </article>`;
 }
@@ -2161,15 +2165,54 @@ function openArchitectureDiagramViewer(key) {
   }
   const viewerKey = `viewer-${key}`;
   state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 });
+  elements["architecture-viewer-eyebrow"].textContent = "Component diagram";
   elements["architecture-viewer-title"].textContent = architecture.value.title;
   elements["architecture-viewer-controls"].innerHTML = architectureDiagramControls(architecture.label);
   elements["architecture-viewer-legend"].innerHTML = architectureLegend();
   elements["architecture-viewer-shell"].dataset.architectureKey = viewerKey;
   elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
+  elements["architecture-viewer-diagram"].className = "sequence-diagram architecture-diagram";
+  elements["architecture-viewer-help"].classList.remove("hidden");
   elements["architecture-viewer-diagram"].setAttribute("aria-label", `${architecture.label}: ${architecture.value.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
   elements["architecture-viewer-diagram"].innerHTML = source.innerHTML;
   elements["architecture-viewer-dialog"].showModal();
   applyArchitectureDiagramView(viewerKey);
+  elements["architecture-viewer-diagram"].focus();
+}
+
+function openBriefingDiagramViewer(kind, id) {
+  const sequence = kind === "sequence" ? state.session.outline?.flows.find((flow) => flow.id === id) : null;
+  const callFlow = kind === "call-flow" ? state.session.outline?.callFlows.find((flow) => flow.id === id) : null;
+  const source = sequence
+    ? elements["tour-intro-sequence"].querySelector(`[data-tour-intro-flow-index="${state.session.outline.flows.indexOf(sequence)}"]`)
+    : callFlow ? elements["tour-intro-call-flows"].querySelector(`[data-tour-intro-call-flow="${CSS.escape(id)}"]`) : null;
+  if (!source || (sequence && !source.querySelector("svg"))) {
+    toast(`The ${sequence ? "sequence diagram" : "call flow"} is not ready yet.`);
+    return;
+  }
+  const viewerKey = `viewer-${kind}-${id}`;
+  elements["architecture-viewer-eyebrow"].textContent = sequence ? "Sequence diagram" : "Call flow";
+  elements["architecture-viewer-title"].textContent = (sequence ?? callFlow).title;
+  elements["architecture-viewer-legend"].innerHTML = "";
+  elements["architecture-viewer-diagram"].innerHTML = source.innerHTML;
+  if (sequence) {
+    state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 });
+    elements["architecture-viewer-controls"].innerHTML = architectureDiagramControls("Sequence diagram");
+    elements["architecture-viewer-shell"].dataset.architectureKey = viewerKey;
+    elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
+    elements["architecture-viewer-diagram"].className = "sequence-diagram architecture-diagram";
+    elements["architecture-viewer-diagram"].setAttribute("aria-label", `Sequence diagram: ${sequence.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
+    elements["architecture-viewer-help"].classList.remove("hidden");
+  } else {
+    elements["architecture-viewer-controls"].innerHTML = "";
+    delete elements["architecture-viewer-shell"].dataset.architectureKey;
+    delete elements["architecture-viewer-diagram"].dataset.architectureDiagram;
+    elements["architecture-viewer-diagram"].className = "call-tree architecture-viewer-call-flow";
+    elements["architecture-viewer-diagram"].setAttribute("aria-label", `Call flow: ${callFlow.title}`);
+    elements["architecture-viewer-help"].classList.add("hidden");
+  }
+  elements["architecture-viewer-dialog"].showModal();
+  if (sequence) applyArchitectureDiagramView(viewerKey);
   elements["architecture-viewer-diagram"].focus();
 }
 
@@ -3034,7 +3077,12 @@ function renderSession() {
   elements["review-filter"].disabled = Boolean(state.tourMode);
   elements["test-files-filter"].disabled = Boolean(state.tourMode);
   elements["tree-mode"].disabled = Boolean(state.tourMode);
-  elements["diff-search"].title = state.tourMode ? "Exit the tour to filter all changed files." : "";
+  const tourFilterMessage = "The tour controls this file list. Exit the tour to use filters.";
+  elements["tour-filter-note"].classList.toggle("hidden", !state.tourMode);
+  elements["file-panel"].title = state.tourMode ? tourFilterMessage : "";
+  elements["diff-search"].title = state.tourMode ? tourFilterMessage : "";
+  elements["status-filter"].title = state.tourMode ? tourFilterMessage : "";
+  elements["review-filter"].title = state.tourMode ? tourFilterMessage : "";
   elements["test-files-filter"].title = state.tourMode ? "Exit the tour to filter test files." : "Show only changed test files";
   renderFileTree();
   const large = comparison.diffMode === "file";
@@ -4558,6 +4606,11 @@ function finishArchitectureDiagramDrag(event) {
 
 function registerArchitectureDiagramInteractions(container) {
   container.addEventListener("click", (event) => {
+    const briefingExpandButton = event.target.closest("[data-briefing-diagram-expand]");
+    if (briefingExpandButton) {
+      openBriefingDiagramViewer(briefingExpandButton.dataset.briefingDiagramExpand, briefingExpandButton.dataset.briefingDiagramId);
+      return;
+    }
     const expandButton = event.target.closest("[data-diagram-expand]");
     if (expandButton) {
       openArchitectureDiagramViewer(expandButton.dataset.diagramExpand);
@@ -4610,6 +4663,8 @@ function registerArchitectureDiagramInteractions(container) {
 }
 
 registerArchitectureDiagramInteractions(elements["tour-intro-architecture"]);
+registerArchitectureDiagramInteractions(elements["tour-intro-sequence"]);
+registerArchitectureDiagramInteractions(elements["tour-intro-call-flows"]);
 registerArchitectureDiagramInteractions(elements.architecture);
 registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"]);
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
