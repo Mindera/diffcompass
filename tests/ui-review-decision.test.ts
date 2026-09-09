@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 const app = await Bun.file(new URL("../public/app.js", import.meta.url)).text();
 
 test.each(["request-changes", "approve-with-comments"])("%s submits the modal text as the overall note", (decision) => {
-  const source = app.slice(app.indexOf('elements["review-decision-form"].addEventListener'), app.indexOf('elements["refresh-button"].addEventListener'));
+  const source = app.slice(app.indexOf('elements["review-decision-form"].addEventListener'), app.indexOf('elements["symbol-peek-open"]?.addEventListener'));
   let submit!: (event: { preventDefault(): void }) => void;
   let closed = false;
   let submitted: unknown[] = [];
