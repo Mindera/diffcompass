@@ -1789,9 +1789,9 @@ function commentScope(comment) {
   const scope = comment.scope ?? "line";
   if (scope === "stop") {
     const step = state.session.outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === comment.stepId);
-    return step ? `Tour stop · ${step.title}` : "Tour stop";
+    return step ? `Tour stop comment · ${step.title}` : "Tour stop comment";
   }
-  return scope === "range" ? "Selected range" : "Line";
+  return scope === "range" ? "Line range comment" : "Line comment";
 }
 
 function quotationLabel(text) {
@@ -1905,7 +1905,7 @@ function renderComments() {
     : state.session.comments.map((comment) => `<article class="comment-item ${escapeHtml(comment.status)}" data-comment-id="${escapeHtml(comment.id)}">
       <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(commentLocation(comment))}</button><span class="comment-status">${escapeHtml(commentScope(comment))} · ${escapeHtml(comment.status)}</span></div>
       ${selectedQuotation(comment)}
-      ${comment.scope === "stop" ? `<div class="comment-anchor-context">Scoped to stop <strong>${escapeHtml(commentScope(comment).replace("Tour stop · ", ""))}</strong></div>` : ""}
+      ${comment.scope === "stop" ? `<div class="comment-anchor-context">Scoped to stop <strong>${escapeHtml(commentScope(comment).replace("Tour stop comment · ", ""))}</strong></div>` : ""}
       <p>${renderInlineMarkdown(comment.body)}</p>
       ${state.session.pullRequest && (comment.scope ?? "line") === "line" && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
@@ -3694,7 +3694,7 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
   const location = image ? `${target.path} · ${target.side} image` : endLine === target.line ? `${target.path}:${target.line}` : `${target.path}:${target.line}-${endLine}`;
   const askDisabled = !state.session.outline;
   const selectionPreview = selection ? `<details class="selection-quote-preview" open><summary>${escapeHtml(quotationLabel(selection.text))}</summary><pre>${escapeHtml(selection.text)}</pre></details>` : "";
-  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? escapeHtml(commentScope(comment)) : selection ? "Selected range" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
+  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? escapeHtml(commentScope(comment)) : selection ? "Line range comment" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
     ${selectionPreview}
     ${comment ? "" : `<div class="inline-composer-tabs" role="group" aria-label="Message type"><button type="button" data-inline-composer-mode="comment" aria-pressed="true">Comment</button><button type="button" data-inline-composer-mode="ask" aria-pressed="false"${askDisabled ? ' disabled title="Start a tour to ask the agent."' : ""}>Ask agent</button></div>`}
     <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? initialBody)}</textarea>

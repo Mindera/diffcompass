@@ -355,6 +355,18 @@ test("question scopes retain phase and stop numbers alongside their names", asyn
   expect(helpers.conversationScopeMarkup(null)).toContain("Review-wide question");
 });
 
+test("comment scope labels name the discussion kind before their anchor", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function commentScope(comment)"), app.indexOf("function quotationLabel(text)"));
+  const commentScope = new Function("state", `${source}; return commentScope;`)({
+    session: { outline: { phases: [{ steps: [{ id: "format", title: "Format the receipt" }] }] } },
+  }) as (comment: { scope?: string; stepId?: string }) => string;
+
+  expect(commentScope({})).toBe("Line comment");
+  expect(commentScope({ scope: "range" })).toBe("Line range comment");
+  expect(commentScope({ scope: "stop", stepId: "format" })).toBe("Tour stop comment · Format the receipt");
+});
+
 test("closing a review shows a five-second self-close countdown", async () => {
   const [html, app] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
