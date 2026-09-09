@@ -65,6 +65,13 @@ test("metadata loading preserves mergeability for review briefings", async () =>
   }) as GitHubRunner;
   const loaded = await loadPullRequestContext("/tmp", "7", undefined, withMergeability);
   expect(loaded).toMatchObject({ mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" });
+
+  const inProgress = (async (command, cwd, accepted, options) => {
+    const result = await runner(command, cwd, accepted, options);
+    if (command.slice(0, 3).join(" ") === "gh pr view") result.stdout = JSON.stringify({ ...metadata(), statusCheckRollup: [{ name: "CI", conclusion: "", status: "IN_PROGRESS" }] });
+    return result;
+  }) as GitHubRunner;
+  expect((await loadPullRequestContext("/tmp", "7", undefined, inProgress)).checks).toEqual([{ name: "CI", state: "IN_PROGRESS", url: undefined }]);
 });
 
 test("extracts only bounded explicit acceptance criteria", () => {

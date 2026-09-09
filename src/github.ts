@@ -190,8 +190,8 @@ export async function loadPullRequestContext(
   const checks = raw.statusCheckRollup.slice(0, 500).map((check) => {
     if (!check || typeof check !== "object" || Array.isArray(check)) throw new ReviewError("GitHub returned an invalid status check.");
     const item = check as Record<string, unknown>;
-    const nameValue = item.name ?? item.context;
-    const stateValue = item.conclusion ?? item.state ?? item.status;
+    const nameValue = [item.name, item.context].find((value): value is string => typeof value === "string" && value.length > 0);
+    const stateValue = [item.conclusion, item.state, item.status].find((value): value is string => typeof value === "string" && value.length > 0);
     if (typeof nameValue !== "string" || !nameValue || nameValue.length > 8_000 || typeof stateValue !== "string" || !stateValue || stateValue.length > 500) throw new ReviewError("GitHub returned an invalid status check.");
     const urlValue = item.detailsUrl ?? item.targetUrl;
     if (urlValue !== undefined && (typeof urlValue !== "string" || urlValue.length > 4_096)) throw new ReviewError("GitHub returned an invalid status check URL.");
