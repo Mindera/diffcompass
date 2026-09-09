@@ -17,8 +17,7 @@ const state = {
   deletingCommentId: null,
   deletingCheckpointId: null,
   busy: false,
-  questionPending: false,
-  pendingQuestion: null,
+  pendingQuestions: new Map(),
   activeThreadId: null,
   questionsOpen: false,
   questionDrafts: new Map(),
@@ -87,6 +86,7 @@ const state = {
   syntaxTheme: ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("review-tour-syntax-theme"))
     ? window.localStorage.getItem("review-tour-syntax-theme")
     : "github",
+  commentQuoteHighlightRequestId: 0,
   screenshotUrls: new Map(),
   diffImageUrls: new Map(),
   diffImageRequestId: 0,
@@ -108,9 +108,9 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
-    "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
+    "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
+    "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
@@ -495,7 +495,7 @@ function setBusy(busy, label = "Working…") {
   elements["feedback-button"].disabled = busy;
   elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
   elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
-  elements["chat-form"].querySelector("button").disabled = busy || state.questionPending || !reviewIsOpen();
+  elements["chat-form"].querySelector("button").disabled = busy || !reviewIsOpen();
   syncBriefingPreferenceControls();
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
     elements["step-explanation"].innerHTML = `<span class="loading">${escapeHtml(label)}</span>`;
@@ -524,7 +524,8 @@ function renderAgentActivity() {
   const isQuestion = activity?.kind === "review.question";
   const activityAnchor = isQuestion ? elements["chat-messages"] : elements["step-explanation"];
   activityAnchor.insertAdjacentElement("afterend", elements["agent-activity"]);
-  const otherThread = isQuestion && state.pendingQuestion && state.pendingQuestion.threadId !== state.activeThreadId;
+  const pendingForActiveThread = [...state.pendingQuestions.values()].some((pending) => pending.threadId === state.activeThreadId);
+  const otherThread = isQuestion && state.pendingQuestions.size > 0 && !pendingForActiveThread;
   elements["agent-activity"].classList.toggle("hidden", !visible || Boolean(otherThread));
   if (!visible) return;
   const renderedActivityId = elements["agent-activity"].dataset.activityId;
@@ -1787,6 +1788,69 @@ function renderAgentOptions() {
   renderModelOptions();
 }
 
+function commentScope(comment) {
+  const scope = comment.scope ?? "line";
+  if (scope === "stop") {
+    const step = state.session.outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === comment.stepId);
+    return step ? `Tour stop comment · ${step.title}` : "Tour stop comment";
+  }
+  return scope === "range" ? "Line range comment" : "Line comment";
+}
+
+function quotationLabel(text) {
+  const lineCount = text.replaceAll("\r\n", "\n").split("\n").length;
+  return `Selected quotation · ${lineCount} ${lineCount === 1 ? "line" : "lines"}`;
+}
+
+function selectedQuotation(comment) {
+  if (!comment.selectedText) return "";
+  const label = quotationLabel(comment.selectedText);
+  return `<details class="comment-quote-details"><summary>${escapeHtml(label)}</summary><blockquote class="comment-quote" data-comment-quote-path="${escapeHtml(comment.path)}">${escapeHtml(comment.selectedText)}</blockquote></details>`;
+}
+
+async function highlightCommentQuotes() {
+  const requestId = ++state.commentQuoteHighlightRequestId;
+  const targets = [...document.querySelectorAll(".comment-quote[data-comment-quote-path]")]
+    .map((target, index) => ({
+      target,
+      id: `comment-quote-${requestId}-${index}`,
+      path: target.dataset.commentQuotePath,
+      lines: (target.textContent ?? "").replaceAll("\r\n", "\n").split("\n"),
+    }))
+    .filter((target) => target.path && target.lines.some((line) => line.length > 0));
+  if (targets.length === 0) return;
+  try {
+    const batches = [];
+    for (let index = 0; index < targets.length; index += 100) batches.push(targets.slice(index, index + 100));
+    const results = await Promise.all(batches.map(async (batch) => await api("/api/highlight", {
+      method: "POST",
+      body: JSON.stringify({
+        groups: batch.map(({ id, path, lines }) => ({ id, path, lines })),
+        theme: state.syntaxTheme,
+      }),
+    })));
+    if (requestId !== state.commentQuoteHighlightRequestId) return;
+    const highlighted = new Map(results.flatMap((result) => result.groups).map((group) => [group.id, group]));
+    for (const target of targets) {
+      const group = highlighted.get(target.id);
+      if (!group || !target.target.isConnected) continue;
+      target.target.innerHTML = group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n") || " ";
+    }
+  } catch {
+    // Quoted source remains safely escaped and readable if highlighting is unavailable.
+  }
+}
+
+function commentLocation(comment) {
+  const endLine = comment.endLine ?? comment.line;
+  if (/\.png$/i.test(comment.path)) return `${comment.path} · ${comment.side} image`;
+  return `${comment.path}:${comment.line}${endLine !== comment.line ? `-${endLine}` : ""} · ${comment.side}`;
+}
+
+function commentRowSelector(comment, line = comment.line) {
+  return `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${line}"]`;
+}
+
 function renderComments() {
   document.querySelectorAll(".split-inline-comment").forEach((comment) => comment.remove());
   document.querySelectorAll(".inline-comment").forEach((comment) => comment.remove());
@@ -1803,10 +1867,12 @@ function renderComments() {
     image.removeAttribute("title");
   });
   for (const comment of state.session.comments) {
-    const selector = `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`;
+    const selector = commentRowSelector(comment);
     const imageSelector = `.image-diff-side[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"]`;
     const row = document.querySelector(selector) ?? (/\.png$/i.test(comment.path) ? document.querySelector(imageSelector) : null);
     if (!row) continue;
+    const endLine = comment.endLine ?? comment.line;
+    for (let line = comment.line; line <= endLine; line += 1) document.querySelector(commentRowSelector(comment, line))?.classList.add("has-comment");
     row.classList.add("has-comment");
     row.title = comment.body;
     row.querySelector(".review-dot")?.classList.remove("hidden");
@@ -1818,9 +1884,9 @@ function renderComments() {
     const inline = document.createElement("article");
     inline.className = `inline-comment ${comment.status}`;
     const confirmingDelete = state.deletingCommentId === comment.id;
-    inline.innerHTML = `<header class="inline-comment-header${confirmingDelete ? " confirming-delete" : ""}"><span class="inline-comment-label">Review comment</span><span class="inline-comment-actions${confirmingDelete ? " confirming" : ""}">${confirmingDelete
+    inline.innerHTML = `<header class="inline-comment-header${confirmingDelete ? " confirming-delete" : ""}"><span class="inline-comment-label">${escapeHtml(commentScope(comment))}</span><span class="inline-comment-actions${confirmingDelete ? " confirming" : ""}">${confirmingDelete
       ? `<span>Delete this comment?</span><button type="button" data-inline-comment-action="cancel-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Cancel</button><button class="danger confirm" type="button" data-inline-comment-action="confirm-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`
-      : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${comment.path}:${comment.line}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>`;
+      : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${commentLocation(comment)}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>${selectedQuotation(comment)}`;
     const splitRow = row.closest(".split-row");
     if (row.classList.contains("image-diff-side")) {
       row.querySelector("figcaption").insertAdjacentElement("beforebegin", inline);
@@ -1840,15 +1906,19 @@ function renderComments() {
   elements["comment-list"].innerHTML = state.session.comments.length === 0
     ? '<p class="comment-empty">Choose Comment on a changed line or image to add feedback.</p>'
     : state.session.comments.map((comment) => `<article class="comment-item ${escapeHtml(comment.status)}" data-comment-id="${escapeHtml(comment.id)}">
-      <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(/\.png$/i.test(comment.path) ? `${comment.path} · ${comment.side} image` : `${comment.path}:${comment.line}`)}</button><span class="comment-status">${escapeHtml(comment.status)}</span></div>
+      <div class="comment-meta"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(commentLocation(comment))}</button><span class="comment-status">${escapeHtml(commentScope(comment))} · ${escapeHtml(comment.status)}</span></div>
+      ${selectedQuotation(comment)}
+      ${comment.scope === "stop" ? `<div class="comment-anchor-context">Scoped to stop <strong>${escapeHtml(commentScope(comment).replace("Tour stop comment · ", ""))}</strong></div>` : ""}
       <p>${renderInlineMarkdown(comment.body)}</p>
-      ${state.session.pullRequest && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
+      ${state.session.pullRequest && (comment.scope ?? "line") === "line" && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
         ${state.deletingCommentId === comment.id
           ? `<span class="delete-confirmation">Delete this comment?</span><button class="text-button" data-action="cancel-delete" type="button">Cancel</button><button class="text-button danger" data-action="confirm-delete" type="button">Delete</button>`
           : `<button class="text-button" data-action="edit" type="button"${disabled}>Edit</button><button class="text-button danger" data-action="delete" type="button"${disabled}>Delete</button>`}
       </div>
     </article>`).join("");
+  void highlightCommentQuotes();
+  renderStepDiscussion();
 }
 
 function renderPullRequest() {
@@ -2688,8 +2758,7 @@ function conversationThreads() {
     if (!threads.has(id)) threads.set(id, { id, root: message, messages: [] });
     threads.get(id).messages.push(message);
   }
-  if (state.pendingQuestion) {
-    const pending = state.pendingQuestion;
+  for (const pending of state.pendingQuestions.values()) {
     if (!threads.has(pending.threadId)) threads.set(pending.threadId, { id: pending.threadId, root: pending, messages: [] });
     if (!threads.get(pending.threadId).messages.some((message) => message.id === pending.id)) threads.get(pending.threadId).messages.push(pending);
   }
@@ -2730,9 +2799,60 @@ function openConversation(id = null) {
 }
 
 function reviewAnchorLabel(anchor) {
+  if (anchor.scope === "stop") return `Tour stop: ${anchor.stepTitle ?? anchor.stepId ?? "current stop"}`;
+  const endLine = anchor.endLine ?? anchor.line;
   return /^\[PNG image · (old|new)\]$/.test(anchor.content)
     ? `${anchor.path} · ${anchor.side} image`
-    : `${anchor.path}:${anchor.line} (${anchor.side})`;
+    : `${anchor.path}:${anchor.line}${endLine !== anchor.line ? `-${endLine}` : ""} (${anchor.side})`;
+}
+
+function discussionStop(stepId) {
+  if (!stepId) return undefined;
+  const phaseIndex = state.session.outline?.phases.findIndex((phase) => phase.steps.some((step) => step.id === stepId)) ?? -1;
+  const phase = phaseIndex >= 0 ? state.session.outline?.phases[phaseIndex] : undefined;
+  const stopIndex = phase?.steps.findIndex((step) => step.id === stepId) ?? -1;
+  const step = stopIndex >= 0 ? phase?.steps[stopIndex] : undefined;
+  return step && phase ? { step, phase, phaseIndex, stopIndex } : undefined;
+}
+
+function discussionStopLabel(scope) {
+  return scope.step ? `Phase ${scope.phaseIndex + 1} · ${scope.phase.title} — Stop ${scope.stopIndex + 1} · ${scope.step.title}` : "";
+}
+
+function conversationScope(thread = null) {
+  const root = thread?.root;
+  const stop = root ? discussionStop(root.stepId) : state.tourMode ? discussionStop(currentStep()?.id) : undefined;
+  const anchor = root?.anchor ?? (!thread ? state.selectedLine : undefined);
+  return { ...stop, anchor, original: Boolean(root) };
+}
+
+function conversationScopeLabel(thread = null) {
+  const scope = conversationScope(thread);
+  const stop = scope.step ? `${scope.original ? "Original" : "Current"} tour stop: ${discussionStopLabel(scope)}` : "Review-wide question";
+  return scope.anchor ? `${stop} · selected ${reviewAnchorLabel(scope.anchor)}` : stop;
+}
+
+function conversationScopeMarkup(thread = null) {
+  const scope = conversationScope(thread);
+  const heading = scope.step ? `${scope.original ? "Original" : "Current"} tour stop` : "Review-wide question";
+  const stop = scope.step ? escapeHtml(discussionStopLabel(scope)) : "No tour stop is attached.";
+  const selection = scope.anchor
+    ? `Selected code: ${escapeHtml(reviewAnchorLabel(scope.anchor))}. Exact quotation and diff context are retained.`
+    : scope.step ? "No code selection. This question is scoped to this stop." : "No code selection.";
+  return `<span class="conversation-scope"><strong>${escapeHtml(heading)}</strong><span>${stop}</span></span><span class="conversation-scope-detail">${selection}</span>`;
+}
+
+function anchorRowsMatch(anchor) {
+  const endLine = anchor.endLine ?? anchor.line;
+  if (/^\[PNG image · (old|new)\]$/.test(anchor.content)) {
+    const image = elements.diff.querySelector(`.image-diff-side[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"]`);
+    return image?.dataset.content === anchor.content;
+  }
+  const rows = Array.from({ length: endLine - anchor.line + 1 }, (_, offset) => elements.diff.querySelector(
+    `.diff-row[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"][data-line="${anchor.line + offset}"]`,
+  ));
+  return rows.every(Boolean) && rows[0]?.dataset.content === anchor.content &&
+    (anchor.context === undefined || rows.map((row) => row.dataset.content).join("\n") === anchor.context);
 }
 
 function renderConversationBadges() {
@@ -2741,19 +2861,36 @@ function renderConversationBadges() {
   for (const thread of conversationThreads()) {
     const anchor = thread.root.anchor;
     if (!anchor) continue;
+    if (!anchorRowsMatch(anchor)) continue;
     const row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"][data-line="${anchor.line}"]`)
       ?? elements.diff.querySelector(`.image-diff-side[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"]`);
-    // Never attach an old conversation to different code at the same line.
-    if (!row || row.dataset.content !== anchor.content) continue;
+    if (!row) continue;
     const badge = document.createElement("button");
     badge.type = "button";
     badge.className = "conversation-badge";
     badge.dataset.conversation = thread.id;
-    badge.title = compactText(thread.root.body, 160);
-    badge.setAttribute("aria-label", `Open conversation: ${compactText(thread.root.body, 100)}`);
+    const scope = conversationScopeLabel(thread);
+    badge.title = `${compactText(thread.root.body, 120)}\n${scope}`;
+    badge.setAttribute("aria-label", `Open selected-code conversation, ${scope}: ${compactText(thread.root.body, 80)}`);
     badge.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h14v10H8l-5 4V3Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
     (row.querySelector(".finding-markers") ?? row.querySelector(".image-review-actions"))?.append(badge);
   }
+}
+
+function renderStepDiscussion() {
+  const step = currentStep();
+  const comments = step ? state.session.comments.filter((comment) => comment.scope === "stop" && comment.stepId === step.id) : [];
+  elements["step-discussion"].classList.toggle("hidden", !step);
+  if (!step) return;
+  elements["step-discussion-scope"].textContent = `Comments are attached to “${step.title}” and stay with this stop if the diff moves.`;
+  elements["comment-stop"].disabled = !reviewIsOpen() || state.busy;
+  elements["step-comment-list"].innerHTML = comments.length
+    ? comments.map((comment) => `<article class="step-comment" data-comment-id="${escapeHtml(comment.id)}"><span class="comment-status">${escapeHtml(comment.status)}</span><p>${renderInlineMarkdown(comment.body)}</p><div class="comment-actions"><button class="text-button" data-step-comment-action="edit" type="button">Edit</button><button class="text-button danger" data-step-comment-action="delete" type="button">Delete</button></div></article>`).join("")
+    : '<p class="comment-empty">No comments on this stop yet.</p>';
+}
+
+function renderQuestionScope(thread = conversationThreads().find((item) => item.id === state.activeThreadId)) {
+  elements["question-scope"].innerHTML = conversationScopeMarkup(thread);
 }
 
 function renderMessages() {
@@ -2761,16 +2898,15 @@ function renderMessages() {
   const thread = threads.find((item) => item.id === state.activeThreadId);
   const messages = thread?.messages ?? [];
   const content = messages
-    .map((message) => `<div class="chat-message ${message.role}" data-message-id="${escapeHtml(message.id)}">${renderMarkdown(message.body)}</div>`)
+    .map((message) => `<div class="chat-message ${message.role}" data-message-id="${escapeHtml(message.id)}">${renderMarkdown(message.body)}${state.pendingQuestions.has(message.id) ? '<span class="chat-message-status">Queued</span>' : ""}</div>`)
     .join("");
   if (elements["chat-messages"].innerHTML !== content) elements["chat-messages"].innerHTML = content;
-  const anchor = thread?.root.anchor;
-  elements["conversation-context"].textContent = anchor ? `Conversation at ${reviewAnchorLabel(anchor)}. Location captured when asked; later edits may move it.` : thread ? "Review conversation" : "Ask a question here, or choose Ask agent on a changed line or image.";
+  renderQuestionScope(thread);
   const options = '<option value="">New question</option>' + threads.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 80))}</option>`).join("");
   if (elements["conversation-select"].innerHTML !== options) elements["conversation-select"].innerHTML = options;
   elements["conversation-select"].value = state.activeThreadId ?? "";
-  elements["conversation-list"].innerHTML = threads.length ? threads.map((item) => `<article class="conversation-card"><button type="button" class="conversation-title" data-conversation="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 180))}</button><p class="muted">${item.root.anchor ? escapeHtml(reviewAnchorLabel(item.root.anchor)) : "Review question"} · ${item.messages.length} messages</p>${item.root.anchor ? `<button type="button" class="text-button" data-conversation-code="${escapeHtml(item.id)}">Show context</button>` : ""}</article>`).join("") : '<p class="empty">No conversations yet. Ask a question from a changed line, image, or the Questions pane.</p>';
-  const starting = !thread && !state.questionPending;
+  elements["conversation-list"].innerHTML = threads.length ? threads.map((item) => `<article class="conversation-card"><button type="button" class="conversation-title" data-conversation="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 180))}</button><p class="muted">${escapeHtml(conversationScopeLabel(item))} · ${item.messages.length} messages${item.messages.some((message) => state.pendingQuestions.has(message.id)) ? " · queued" : ""}</p>${item.root.anchor ? `<button type="button" class="text-button" data-conversation-code="${escapeHtml(item.id)}">Show context</button>` : ""}</article>`).join("") : '<p class="empty">No conversations yet. Ask a question from a changed line, image, or the Questions pane.</p>';
+  const starting = !thread;
   elements["selection-pill"].classList.toggle("hidden", !starting || !state.selectedLine);
   elements["selection-pill"].innerHTML = starting && state.selectedLine
     ? `<span>${escapeHtml(`${reviewAnchorLabel(state.selectedLine)} selected`)}</span><button type="button" data-remove-line-context aria-label="Remove selected context from question">×</button>`
@@ -2840,6 +2976,7 @@ function renderTour() {
   elements["step-title"].textContent = step.title;
   elements["step-objective"].textContent = step.objective;
   elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
+  renderStepDiscussion();
   renderAgentActivity();
   const planningNotes = outline.planningNotes ?? [];
   elements["planning-notes"].classList.toggle("hidden", planningNotes.length === 0);
@@ -3136,7 +3273,7 @@ function renderSession() {
   elements["prefetch-steps"].disabled = closed;
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
-  elements["chat-form"].querySelector("button").disabled = state.busy || state.questionPending || closed;
+  elements["chat-form"].querySelector("button").disabled = state.busy || closed;
   elements["comment-drawer"].classList.toggle("closed", closed);
   if (closed) closeInlineCommentEditor();
   elements["agent-mode"].textContent = state.session.agentSelection?.adapterId === "attached" ? "edits on request" : "read-only";
@@ -3393,7 +3530,7 @@ async function downloadExport(format, options = {}) {
   }
 }
 
-function selectLine(row) {
+function selectLine(row, discussion = null) {
   document.querySelectorAll(".diff-row.selected, .image-diff-side.selected").forEach((item) => item.classList.remove("selected"));
   row.classList.add("selected");
   row.querySelectorAll(".image-review-actions button:not(:disabled)").forEach((button) => { button.tabIndex = 0; });
@@ -3402,12 +3539,22 @@ function selectLine(row) {
     side: row.dataset.side,
     line: Number(row.dataset.line),
     content: row.dataset.content,
+    ...(discussion?.endLine && discussion.endLine !== Number(row.dataset.line) ? { endLine: discussion.endLine } : {}),
+    ...(discussion?.selectedText ? { selectedText: discussion.selectedText } : {}),
+    ...(discussion?.context ? { context: discussion.context } : {}),
   };
   const image = row.classList.contains("image-diff-side");
   elements["selection-pill"].textContent = image
     ? `${state.selectedLine.path} (${state.selectedLine.side} image) selected · comment or ask the agent`
     : `${state.selectedLine.path}:${state.selectedLine.line} selected · comment or ask the agent`;
   elements["selection-pill"].classList.remove("hidden");
+  renderQuestionScope();
+}
+
+function clearSelectedLine() {
+  document.querySelectorAll(".diff-row.selected, .image-diff-side.selected").forEach((item) => item.classList.remove("selected"));
+  state.selectedLine = null;
+  renderQuestionScope();
 }
 
 function lineTarget(row) {
@@ -3429,18 +3576,8 @@ function openLineComment(row) {
   openInlineCommentEditor(row, target, existing);
 }
 
-function quotedCode(text) {
-  return `${text.replaceAll("\r\n", "\n").split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
-}
-
 function askAboutLine(row) {
-  openConversation(null);
-  selectLine(row);
-  elements["chat-input"].placeholder = row.classList.contains("image-diff-side")
-    ? `Ask about the ${row.dataset.side} image in ${row.dataset.path}…`
-    : `Ask about ${row.dataset.path}:${row.dataset.line}…`;
-  elements["chat-input"].focus({ preventScroll: true });
-  elements["chat-input"].scrollIntoView({ behavior: "smooth", block: "nearest" });
+  openInlineCommentEditor(row, lineTarget(row), null, { mode: "ask" });
 }
 
 function closeInlineEdit() {
@@ -3548,11 +3685,11 @@ function updateInlineComposerMode(form, mode) {
   form.querySelector(".inline-comment-label").textContent = mode === "ask" ? "Ask agent" : "New review comment";
   form.querySelector("textarea").placeholder = mode === "ask" ? "What do you want to understand about this code?" : "What should the agent revisit?";
   form.querySelector("textarea").setAttribute("aria-label", mode === "ask" ? "Question for agent" : "Review comment");
-  form.querySelector("footer span").textContent = mode === "ask" ? "The selected code is included as context." : "Markdown is supported.";
+  form.querySelector("footer span").textContent = mode === "ask" ? "The selected code is included as context." : form.dataset.commentSelectedText ? "The selected quotation is attached separately." : "Markdown is supported.";
   form.querySelector('[type="submit"]').textContent = mode === "ask" ? "Ask agent" : "Add comment";
 }
 
-function openInlineCommentEditor(row, target, comment, { mode = "comment", initialBody = "", endLine = target.line } = {}) {
+function openInlineCommentEditor(row, target, comment, { mode = "comment", initialBody = "", endLine = target.line, selection = null } = {}) {
   if (!reviewIsOpen()) return;
   closeInlineCommentEditor();
   selectLine(row);
@@ -3561,14 +3698,21 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
   form.dataset.commentPath = target.path;
   form.dataset.commentSide = target.side;
   form.dataset.commentLine = String(target.line);
+  if (selection) {
+    if (endLine !== target.line) form.dataset.commentEndLine = String(endLine);
+    form.dataset.commentSelectedText = selection.text;
+    form.dataset.commentContext = selection.expectedContent;
+  }
   if (comment) form.dataset.commentId = comment.id;
   const image = row.classList.contains("image-diff-side");
   const location = image ? `${target.path} · ${target.side} image` : endLine === target.line ? `${target.path}:${target.line}` : `${target.path}:${target.line}-${endLine}`;
   const askDisabled = !state.session.outline;
-  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? "Edit review comment" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
+  const selectionPreview = selection ? `<details class="selection-quote-preview" open><summary>${escapeHtml(quotationLabel(selection.text))}</summary><pre>${escapeHtml(selection.text)}</pre></details>` : "";
+  form.innerHTML = `<header><div><span class="inline-comment-label">${comment ? escapeHtml(commentScope(comment)) : selection ? "Line range comment" : "New review comment"}</span><strong>${escapeHtml(location)}</strong></div><button class="text-button" type="button" data-inline-comment-cancel>Cancel</button></header>
+    ${selectionPreview}
     ${comment ? "" : `<div class="inline-composer-tabs" role="group" aria-label="Message type"><button type="button" data-inline-composer-mode="comment" aria-pressed="true">Comment</button><button type="button" data-inline-composer-mode="ask" aria-pressed="false"${askDisabled ? ' disabled title="Start a tour to ask the agent."' : ""}>Ask agent</button></div>`}
     <textarea name="body" aria-label="Review comment" placeholder="What should the agent revisit?">${escapeHtml(comment?.body ?? initialBody)}</textarea>
-    <footer><span>Markdown is supported.</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;
+    <footer><span>${selection ? "The exact quotation and diff context are retained." : "Markdown is supported."}</span><button class="button primary" type="submit">${comment ? "Save comment" : "Add comment"}</button></footer>`;
   form.dataset.composerMode = "comment";
   if (!comment && mode === "ask" && !askDisabled) updateInlineComposerMode(form, "ask");
   const splitRow = row.closest(".split-row");
@@ -3589,6 +3733,7 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
 }
 
 async function openCommentEditor(comment) {
+  if (comment.scope === "stop") return openStepCommentEditor(comment);
   const selector = /\.png$/i.test(comment.path)
     ? `.image-diff-side[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"]`
     : `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`;
@@ -3688,7 +3833,11 @@ async function submitInlineAsk(form) {
   if (!row) return toast("That code location is no longer visible.", { tone: "warning" });
   closeInlineCommentEditor();
   openConversation(null);
-  selectLine(row);
+  selectLine(row, {
+    endLine: form.dataset.commentEndLine ? Number(form.dataset.commentEndLine) : Number(form.dataset.commentLine),
+    selectedText: form.dataset.commentSelectedText,
+    context: form.dataset.commentContext,
+  });
   elements["chat-input"].value = body;
   await askAgent({ preventDefault() {} });
 }
@@ -3703,11 +3852,52 @@ async function saveInlineComment(form) {
     const commentId = form.dataset.commentId;
     const latest = commentId
       ? await api(`/api/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
-      : await api("/api/comments", { method: "POST", body: JSON.stringify({ path: form.dataset.commentPath, side: form.dataset.commentSide, line: Number(form.dataset.commentLine), body }) });
+      : await api("/api/comments", { method: "POST", body: JSON.stringify({
+        ...(form.dataset.commentSelectedText ? { scope: "range", selectedText: form.dataset.commentSelectedText, context: form.dataset.commentContext } : {}),
+        path: form.dataset.commentPath,
+        side: form.dataset.commentSide,
+        line: Number(form.dataset.commentLine),
+        ...(form.dataset.commentEndLine ? { endLine: Number(form.dataset.commentEndLine) } : {}),
+        body,
+      }) });
     const previous = state.session;
     state.session = latest;
     renderSessionUpdate(previous, { closeCommentEditor: true });
     toast(commentId ? "Review comment updated" : "Review comment added");
+  } catch (error) {
+    toast(error.message);
+    submit.disabled = false;
+  }
+}
+
+function openStepCommentEditor(comment = null) {
+  if (!reviewIsOpen() || !currentStep()) return;
+  elements["step-comment-form"].classList.remove("hidden");
+  elements["step-comment-form"].dataset.commentId = comment?.id ?? "";
+  elements["step-comment-input"].value = comment?.body ?? "";
+  elements["step-comment-form"].querySelector('[type="submit"]').textContent = comment ? "Save stop comment" : "Add stop comment";
+  elements["step-comment-input"].focus({ preventScroll: true });
+}
+
+async function saveStepComment(event) {
+  event.preventDefault();
+  if (!reviewIsOpen()) return;
+  const body = elements["step-comment-input"].value.trim();
+  const step = currentStep();
+  if (!body || !step) return;
+  const commentId = elements["step-comment-form"].dataset.commentId;
+  const submit = elements["step-comment-form"].querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const latest = commentId
+      ? await api(`/api/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
+      : await api("/api/comments", { method: "POST", body: JSON.stringify({ scope: "stop", stepId: step.id, body }) });
+    const previous = state.session;
+    state.session = latest;
+    elements["step-comment-form"].classList.add("hidden");
+    elements["step-comment-input"].value = "";
+    renderSessionUpdate(previous, { closeCommentEditor: true });
+    toast(commentId ? "Stop comment updated" : "Stop comment added");
   } catch (error) {
     toast(error.message);
     submit.disabled = false;
@@ -3731,21 +3921,26 @@ async function deleteReviewComment(comment) {
 async function askAgent(event) {
   event.preventDefault();
   const body = elements["chat-input"].value.trim();
-  if (!body || state.busy || state.questionPending || !reviewIsOpen()) return;
+  if (!body || state.busy || !reviewIsOpen()) return;
   elements["chat-input"].value = "";
   const selectedContext = state.selectedLine
-    ? `${state.selectedLine.path}:${state.selectedLine.line} (${state.selectedLine.side})\n${state.selectedLine.content}`
+    ? `${state.selectedLine.path}:${state.selectedLine.line}${state.selectedLine.endLine && state.selectedLine.endLine !== state.selectedLine.line ? `-${state.selectedLine.endLine}` : ""} (${state.selectedLine.side})\n${state.selectedLine.selectedText ? `Exact selected quotation:\n${state.selectedLine.selectedText}\nExact selected context:\n${state.selectedLine.context ?? state.selectedLine.content}` : state.selectedLine.content}`
     : undefined;
   const originalThreadId = state.activeThreadId;
   const requestThreadId = originalThreadId?.startsWith("local-question-") ? null : originalThreadId;
   const localId = `local-question-${crypto.randomUUID()}`;
+  const requestedStepId = !requestThreadId && state.tourMode ? currentStep()?.id ?? null : null;
   const anchor = !requestThreadId && state.selectedLine ? { ...state.selectedLine } : undefined;
   const contextPaths = !requestThreadId ? [...state.questionContextPaths] : [];
-  state.pendingQuestion = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, anchor, contextPaths };
-  state.activeThreadId = state.pendingQuestion.threadId;
+  const pending = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, ...(requestedStepId ? { stepId: requestedStepId } : {}), anchor, contextPaths };
+  state.pendingQuestions.set(localId, pending);
+  state.activeThreadId = pending.threadId;
   state.questionDrafts.delete(originalThreadId);
   state.questionsOpen = true;
   state.mobileAgentPane = "questions";
+  // Each request owns its captured location. Clear the draft now instead of
+  // clearing whichever line a later queued question selected.
+  clearSelectedLine();
   renderMessages();
   const previousActivityId = state.session.agentActivity?.id;
   const queuedAt = new Date().toISOString();
@@ -3766,37 +3961,36 @@ async function askAgent(event) {
     updatedAt: queuedAt,
     localQueued: true,
   };
-  let answeredQuestionId = null;
-  state.questionPending = true;
-  elements["chat-form"].querySelector("button").disabled = true;
   renderAgentActivity();
-  try {
-    const response = await api("/api/agent/message", {
-      method: "POST",
-      body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
-    });
-    const previous = state.session;
-    state.session = response;
-    answeredQuestionId = [...state.session.messages].reverse().find((message) => message.role === "user" && message.body === body)?.id ?? null;
-    const answered = state.session.messages.find((message) => message.id === answeredQuestionId);
-    if (state.activeThreadId === state.pendingQuestion?.threadId) state.activeThreadId = answered?.threadId ?? answeredQuestionId;
-    state.pendingQuestion = null;
-    state.expectedAgentActivity = null;
-    renderSessionUpdate(previous);
-  } catch (error) {
-    state.expectedAgentActivity = null;
-    if (state.activeThreadId === state.pendingQuestion?.threadId) {
-      state.activeThreadId = originalThreadId;
-      elements["chat-input"].value = body;
-    } else state.questionDrafts.set(originalThreadId, { body, line: anchor, contextPaths });
-    state.pendingQuestion = null;
-    toast(error.message);
-  } finally {
-    state.questionPending = false;
-    elements["chat-form"].querySelector("button").disabled = state.busy || !reviewIsOpen();
-    renderTour();
-    if (answeredQuestionId) requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId));
-  }
+  void (async () => {
+    let answeredQuestionId = null;
+    try {
+      const response = await api("/api/agent/message", {
+        method: "POST",
+        body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
+      });
+      const previous = state.session;
+      state.session = response;
+      answeredQuestionId = [...state.session.messages].reverse().find((message) => message.role === "user" && message.body === body)?.id ?? null;
+      const answered = state.session.messages.find((message) => message.id === answeredQuestionId);
+      if (state.activeThreadId === pending.threadId) state.activeThreadId = answered?.threadId ?? answeredQuestionId;
+      state.expectedAgentActivity = null;
+      state.pendingQuestions.delete(localId);
+      renderSessionUpdate(previous);
+    } catch (error) {
+      state.expectedAgentActivity = null;
+      state.pendingQuestions.delete(localId);
+      if (state.activeThreadId === pending.threadId) {
+        state.activeThreadId = originalThreadId;
+        elements["chat-input"].value = body;
+      } else state.questionDrafts.set(originalThreadId, { body, line: anchor, contextPaths });
+      renderMessages();
+      toast(error.message);
+    } finally {
+      renderTour();
+      if (answeredQuestionId) requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId));
+    }
+  })();
 }
 
 async function close(outcome, decision = outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel", note) {
@@ -4000,8 +4194,33 @@ elements["questions-toggle"].addEventListener("click", () => {
   state.questionsOpen = !state.questionsOpen;
   renderQuestionLayout();
 });
-elements["new-question"].addEventListener("click", () => { openConversation(); elements["chat-input"].focus({ preventScroll: true }); });
-elements["conversation-select"].addEventListener("change", (event) => openConversation(event.target.value || null));
+elements["new-question"].addEventListener("click", () => {
+  openConversation();
+  clearSelectedLine();
+  renderMessages();
+  elements["chat-input"].focus({ preventScroll: true });
+});
+elements["conversation-select"].addEventListener("change", (event) => {
+  openConversation(event.target.value || null);
+  if (!event.target.value) {
+    clearSelectedLine();
+    renderMessages();
+  }
+});
+elements["comment-stop"].addEventListener("click", () => openStepCommentEditor());
+elements["cancel-step-comment"].addEventListener("click", () => {
+  elements["step-comment-form"].classList.add("hidden");
+  elements["step-comment-input"].value = "";
+});
+elements["step-comment-form"].addEventListener("submit", saveStepComment);
+elements["step-comment-list"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-step-comment-action]");
+  const item = event.target.closest("[data-comment-id]");
+  const comment = item && state.session.comments.find((candidate) => candidate.id === item.dataset.commentId);
+  if (!button || !comment) return;
+  if (button.dataset.stepCommentAction === "edit") void openStepCommentEditor(comment);
+  if (button.dataset.stepCommentAction === "delete") void deleteReviewComment(comment);
+});
 elements["selection-pill"].addEventListener("click", (event) => {
   if (!event.target.closest("[data-remove-line-context]")) return;
   state.selectedLine = null;
@@ -4239,6 +4458,7 @@ elements["syntax-theme-select"].addEventListener("change", () => {
   window.localStorage.setItem("review-tour-syntax-theme", state.syntaxTheme);
   document.documentElement.dataset.syntaxTheme = state.syntaxTheme;
   void highlightRenderedCode();
+  void highlightCommentQuotes();
   void highlightSymbolPeek();
 });
 elements["prefetch-steps"].addEventListener("change", async () => {
@@ -4488,7 +4708,7 @@ elements["code-selection-toolbar"].addEventListener("click", (event) => {
     void resolvePeekSymbol(symbolForCodeSelection(selected).symbol, { path: selected.path, line: selected.startLine, side: selected.side });
   } else {
     const target = lineTarget(selected.startRow);
-    openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", initialBody: quotedCode(selected.text), endLine: selected.endLine });
+    openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", endLine: selected.endLine, selection: selected });
   }
   hideCodeSelectionToolbar(true);
 });

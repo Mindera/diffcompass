@@ -129,8 +129,18 @@ function validCallLocation(value: unknown, side: "old" | "new"): boolean {
 }
 
 function validComment(value: unknown): boolean {
+  const scope = record(value) ? value.scope : undefined;
+  const effectiveScope = scope ?? "line";
   return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.path, 4_096) &&
     ["old", "new"].includes(String(value.side)) && Number.isInteger(value.line) && Number(value.line) > 0 &&
+    (scope === undefined || ["line", "range", "stop"].includes(String(scope))) &&
+    (value.endLine === undefined || (Number.isInteger(value.endLine) && Number(value.endLine) >= Number(value.line) && Number(value.endLine) - Number(value.line) <= 99)) &&
+    (effectiveScope !== "range" || value.endLine !== undefined) &&
+    (effectiveScope !== "line" || value.endLine === undefined || Number(value.endLine) === Number(value.line)) &&
+    (value.selectedText === undefined || nonEmptyString(value.selectedText, 16_000)) &&
+    (value.context === undefined || boundedString(value.context, 32_000)) &&
+    (value.stepId === undefined || nonEmptyString(value.stepId, 128)) &&
+    (scope !== "stop" || nonEmptyString(value.stepId, 128)) &&
     nonEmptyString(value.body, 8_000) && boundedString(value.lineContent) && ["active", "outdated"].includes(String(value.status)) &&
     (value.publishToGitHub === undefined || typeof value.publishToGitHub === "boolean") &&
     nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
@@ -173,7 +183,10 @@ function validMessage(value: unknown): boolean {
     (value.threadId === undefined || nonEmptyString(value.threadId, 128)) &&
     (value.anchor === undefined || (record(value.anchor) && nonEmptyString(value.anchor.path, 4096) &&
       ["old", "new"].includes(String(value.anchor.side)) && Number.isInteger(value.anchor.line) && Number(value.anchor.line) > 0 &&
-      typeof value.anchor.content === "string" && value.anchor.content.length <= 16000)) &&
+      (value.anchor.endLine === undefined || (Number.isInteger(value.anchor.endLine) && Number(value.anchor.endLine) >= Number(value.anchor.line) && Number(value.anchor.endLine) - Number(value.anchor.line) <= 99)) &&
+      typeof value.anchor.content === "string" && value.anchor.content.length <= 20_000 &&
+      (value.anchor.selectedText === undefined || nonEmptyString(value.anchor.selectedText, 16_000)) &&
+      (value.anchor.context === undefined || boundedString(value.anchor.context, 32_000)))) &&
     (value.contextPaths === undefined || (Array.isArray(value.contextPaths) && value.contextPaths.length <= 8 &&
       value.contextPaths.every((path) => nonEmptyString(path, 4096)) && new Set(value.contextPaths).size === value.contextPaths.length)) &&
     nonEmptyString(value.createdAt, 64);

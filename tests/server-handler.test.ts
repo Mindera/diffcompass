@@ -132,6 +132,34 @@ test("diff preferences persist independently for desktop and mobile sessions", a
   expect(invalid.status).toBe(422);
 });
 
+test("discussion endpoints validate paths, ranges, stop ids, and preserve quotations", async () => {
+  const { session, fetch } = fixture();
+  (session as unknown as { outline: unknown; currentStepIndex: number }).outline = {
+    title: "Tour", summary: "Summary", phases: [{ id: "phase", title: "Phase", summary: "Summary", fileChanges: [{ path: "app.ts", summary: "Changed" }], steps: [{ id: "stop-1", title: "Current stop", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }], callFlows: [], flows: [], findings: [],
+  };
+  (session as unknown as { currentStepIndex: number }).currentStepIndex = 0;
+  const range = await fetch(authorizedRequest(session, "/api/comments", {
+    scope: "range", path: "app.ts", side: "new", line: 1, endLine: 1,
+    selectedText: "changed", context: "const changed = 2;", body: "Keep this value visible.",
+  }));
+  expect(range.status).toBe(200);
+  expect((await range.json()).comments[0]).toMatchObject({ scope: "range", endLine: 1, selectedText: "changed", context: "const changed = 2;" });
+
+  const stop = await fetch(authorizedRequest(session, "/api/comments", { scope: "stop", stepId: "stop-1", body: "This belongs to the stop." }));
+  expect(stop.status).toBe(200);
+  expect((await stop.json()).comments[1]).toMatchObject({ scope: "stop", stepId: "stop-1", path: "app.ts" });
+
+  const invalidPath = await fetch(authorizedRequest(session, "/api/comments", { path: "../secret.ts", side: "new", line: 1, body: "bad" }));
+  expect(invalidPath.status).toBe(409);
+  const invalidRange = await fetch(authorizedRequest(session, "/api/comments", { scope: "range", path: "app.ts", side: "new", line: 1, endLine: 101, selectedText: "changed", body: "bad" }));
+  expect(invalidRange.status).toBe(422);
+  const invalidStop = await fetch(authorizedRequest(session, "/api/comments", { scope: "stop", stepId: "missing", body: "bad" }));
+  expect(invalidStop.status).toBe(409);
+
+  const invalidQuestionScope = await fetch(authorizedRequest(session, "/api/agent/message", { body: "What changed?", stepId: false }));
+  expect(invalidQuestionScope.status).toBe(422);
+});
+
 test("inline edit requests accept only the editable new side", async () => {
   const { session, fetch } = fixture();
   const response = await fetch(authorizedRequest(session, "/api/edits", {

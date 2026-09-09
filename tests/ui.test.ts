@@ -211,10 +211,27 @@ test("agent answers scroll into view without hiding the reviewer question", asyn
   expect(app).toContain("Math.max(scroll.scrollTop, Math.min(questionTop, revealBottom))");
   expect(app).toContain('scroll.scrollTo({ top: target, behavior: "smooth" })');
   expect(app).toContain("requestAnimationFrame(() => revealAgentAnswer(answeredQuestionId))");
-  expect(askAgent).toContain("state.questionPending = true");
-  expect(askAgent).toContain("state.questionPending = false");
+  expect(askAgent).toContain("state.pendingQuestions.set(localId, pending)");
+  expect(askAgent).toContain("state.pendingQuestions.delete(localId)");
+  expect(askAgent).not.toContain("state.questionPending");
   expect(askAgent).not.toContain('setBusy(true, "The agent is responding…")');
   expect(app).toContain('elements["next-step"].disabled = state.busy || !reviewIsOpen()');
+});
+
+test("line and image questions compose inline while queued questions retain their own anchors", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  const askAboutLine = app.slice(app.indexOf("function askAboutLine(row)"), app.indexOf("function closeInlineEdit()"));
+  const askAgent = app.slice(app.indexOf("async function askAgent"), app.indexOf("async function close"));
+  expect(askAboutLine).toContain('openInlineCommentEditor(row, lineTarget(row), null, { mode: "ask" })');
+  expect(askAboutLine).not.toContain("openConversation(null)");
+  expect(askAgent).toContain("clearSelectedLine();");
+  expect(askAgent).toContain("void (async () => {");
+  expect(app).toContain("for (const pending of state.pendingQuestions.values())");
+  expect(app).toContain('state.pendingQuestions.has(message.id) ? \'<span class="chat-message-status">Queued</span>\'');
+  expect(styles).toContain(".chat-message-status");
 });
 
 test("the questions pane uses compact, responsive conversation controls", async () => {
@@ -253,6 +270,101 @@ test("questions support removable line and file context while review decisions a
   expect(app).toContain('openReviewDecision("request-changes")');
   expect(app).toContain('window.confirm("Close this review without approving or requesting changes?")');
   expect(app).toContain('void close("cancelled", "cancel")');
+});
+
+test("scoped discussion exposes stop and range anchors in the composer and prompt context", async () => {
+  const [html, app, styles, agent] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+    readFile(join(root, "src/agent.ts"), "utf8"),
+  ]);
+  expect(html).toContain('id="comment-stop"');
+  expect(html).toContain('class="button secondary" type="button">Add stop comment</button>');
+  expect(html).toContain('id="step-comment-form"');
+  expect(html).toContain('id="question-scope" class="question-scope"');
+  expect(html.indexOf('id="questions-scroll"')).toBeLessThan(html.indexOf('id="question-scope" class="question-scope"'));
+  expect(html.indexOf('id="question-scope" class="question-scope"')).toBeLessThan(html.indexOf('class="question-composer"'));
+  expect(html).not.toContain('id="conversation-context"');
+  expect(app).toContain('scope: "stop", stepId: step.id');
+  expect(app).toContain('scope: "range"');
+  expect(app).toContain("form.dataset.commentSelectedText");
+  expect(app).toContain("Exact selected quotation");
+  expect(app).toContain("Exact selected context");
+  expect(agent).toContain("Current tour stop id:");
+  expect(app).toContain("function commentScope(comment)");
+  expect(app).toContain("function quotationLabel(text)");
+  expect(app).toContain("async function highlightCommentQuotes()");
+  expect(app).toContain('data-comment-quote-path');
+  expect(app).toContain('void highlightCommentQuotes();');
+  expect(app).toContain('void highlightRenderedCode();\n  void highlightCommentQuotes();');
+  expect(app).toContain("function conversationScopeMarkup(thread = null)");
+  expect(app).toContain("function renderQuestionScope(thread = conversationThreads().find");
+  expect(app).toContain("function discussionStopLabel(scope)");
+  expect(app).toContain("Phase ${scope.phaseIndex + 1} · ${scope.phase.title} — Stop ${scope.stopIndex + 1} · ${scope.step.title}");
+  expect(app).toContain("No code selection. This question is scoped to this stop.");
+  expect(app).toContain("function anchorRowsMatch(anchor)");
+  expect(app).toContain("if (!anchorRowsMatch(anchor)) continue;");
+  expect(app).toContain("Open selected-code conversation");
+  expect(app).not.toContain("anchorBelongsToDiscussionStop");
+  expect(app).toContain("clearSelectedLine();");
+  expect(app).toContain('class="selection-quote-preview" open');
+  expect(styles).toContain(".step-discussion");
+  expect(styles).toContain(".step-discussion > button { justify-self: start; min-height: 32px; }");
+  expect(styles).toContain(".comment-quote");
+  expect(styles).toContain(".questions-body { flex: 1; min-height: 0; overflow: hidden;");
+  expect(styles).toContain(".question-composer { flex: 0 0 auto;");
+  expect(styles).toContain(".selection-quote-preview pre { max-height: 160px;");
+  expect(styles).toContain(".conversation-scope");
+  expect(styles).toContain(".question-scope");
+});
+
+test("question scopes retain phase and stop numbers alongside their names", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("function discussionStop(stepId)"), app.indexOf("function anchorRowsMatch"));
+  const state = {
+    selectedLine: null as { path: string; side: string; line: number; content: string } | null,
+    tourMode: true,
+    session: {
+      outline: {
+        phases: [{
+          title: "Build the receipt",
+          steps: [{ id: "validate", title: "Validate items" }],
+        }, {
+          title: "Format the receipt",
+          steps: [{ id: "format", title: "Format totals" }],
+        }],
+      },
+    },
+  };
+  const helpers = new Function("state", "currentStep", "escapeHtml", "reviewAnchorLabel", `${source}; return { conversationScopeLabel, conversationScopeMarkup };`)(
+    state,
+    () => state.session.outline.phases[1].steps[0],
+    (value: string) => value,
+    () => "selected code",
+  ) as {
+    conversationScopeLabel: (thread: unknown) => string;
+    conversationScopeMarkup: (thread: unknown) => string;
+  };
+  const thread = { root: { stepId: "format" } };
+  expect(helpers.conversationScopeLabel(thread)).toBe("Original tour stop: Phase 2 · Format the receipt — Stop 1 · Format totals");
+  expect(helpers.conversationScopeMarkup(thread)).toContain("Phase 2 · Format the receipt — Stop 1 · Format totals");
+  state.selectedLine = { path: "src/cart.ts", side: "new", line: 7, content: "applyDiscount();" };
+  expect(helpers.conversationScopeMarkup(null)).toContain("Selected code: selected code");
+  state.tourMode = false;
+  expect(helpers.conversationScopeMarkup(null)).toContain("Review-wide question");
+});
+
+test("comment scope labels name the discussion kind before their anchor", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function commentScope(comment)"), app.indexOf("function quotationLabel(text)"));
+  const commentScope = new Function("state", `${source}; return commentScope;`)({
+    session: { outline: { phases: [{ steps: [{ id: "format", title: "Format the receipt" }] }] } },
+  }) as (comment: { scope?: string; stepId?: string }) => string;
+
+  expect(commentScope({})).toBe("Line comment");
+  expect(commentScope({ scope: "range" })).toBe("Line range comment");
+  expect(commentScope({ scope: "stop", stepId: "format" })).toBe("Tour stop comment · Format the receipt");
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {
@@ -911,7 +1023,8 @@ test("files expand and collapse in place while clicks and selections expose scop
   expect(app).toContain("function openInlineEdit(row, selection = null)");
   expect(app).toContain("function readCodeSelection()");
   expect(app).toContain("function textOffsetWithin(element, node, offset)");
-  expect(app).toContain("function quotedCode(text)");
+  expect(app).toContain("function selectedQuotation(comment)");
+  expect(app).not.toContain("initialBody: quotedCode(selected.text)");
   expect(app).toContain('data-inline-composer-mode="comment"');
   expect(app).toContain('data-inline-composer-mode="ask"');
   expect(app).toContain('api("/api/edits"');
@@ -924,6 +1037,7 @@ test("files expand and collapse in place while clicks and selections expose scop
   expect(styles).toContain(".line-prefix { position: relative; align-self: stretch; min-height: 18px;");
   expect(styles).toContain(".code-selection-toolbar");
   expect(styles).toContain(".inline-composer-tabs");
+  expect(styles).toContain(".comment-quote-details summary");
   expect(styles).toContain(".inline-edit-lane");
   expect(styles).toContain(".inline-edit-highlight { position: absolute;");
   expect(styles).toContain("caret-color: var(--text-code)");

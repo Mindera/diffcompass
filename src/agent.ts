@@ -1013,8 +1013,8 @@ Use plain technical language for a reviewer who knows programming fundamentals. 
 
   async answer(question: string, selectedContext?: string, step?: TourStep, proposalRoot?: string): Promise<AgentResult<string>> {
     const context = [
-      step ? `Current tour step: ${step.title} (${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine})` : "",
-      selectedContext ? `Selected diff line:\n${selectedContext}` : "",
+      step ? `Current tour step: ${step.title} (${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine})\nCurrent tour stop id: ${step.id}` : "",
+      selectedContext ? `Selected discussion context (exact quotation/context supplied by the reviewer):\n${selectedContext}` : "",
     ]
       .filter(Boolean)
       .join("\n\n");

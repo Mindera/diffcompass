@@ -444,14 +444,27 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/agent/message") {
         const input = await readJsonObject(request, 32 * 1024);
-        exactKeys(input, ["body", "selectedContext", "threadId", "anchor", "contextPaths"]);
+        exactKeys(input, ["body", "selectedContext", "threadId", "stepId", "anchor", "contextPaths"]);
         let anchor;
         if (input.anchor !== undefined) {
           if (!input.anchor || typeof input.anchor !== "object" || Array.isArray(input.anchor)) throw new ReviewError("anchor must be an object.");
           const value = input.anchor as Record<string, unknown>;
-          exactKeys(value, ["path", "side", "line", "content"]);
-          if (typeof value.content !== "string" || value.content.length > 16000) throw new ReviewError("Invalid anchor content.");
-          anchor = { path: requiredString(value.path, "path", 4096), side: enumValue(value.side, "side", ["old", "new"]), line: finitePositiveInteger(value.line, "line"), content: value.content };
+          exactKeys(value, ["path", "side", "line", "endLine", "content", "selectedText", "context"]);
+          if (typeof value.content !== "string" || value.content.length > 20000) throw new ReviewError("Invalid anchor content.");
+          if (value.endLine !== undefined && (!Number.isSafeInteger(value.endLine) || Number(value.endLine) < Number(value.line) || Number(value.endLine) - Number(value.line) > 99)) {
+            throw new ReviewError("Invalid anchor range.");
+          }
+          if (value.selectedText !== undefined && (typeof value.selectedText !== "string" || !value.selectedText.trim() || value.selectedText.length > 16000)) throw new ReviewError("Invalid selected quotation.");
+          if (value.context !== undefined && (typeof value.context !== "string" || value.context.length > 32000)) throw new ReviewError("Invalid selected context.");
+          anchor = {
+            path: requiredString(value.path, "path", 4096),
+            side: enumValue(value.side, "side", ["old", "new"]),
+            line: finitePositiveInteger(value.line, "line"),
+            ...(value.endLine === undefined ? {} : { endLine: Number(value.endLine) }),
+            content: value.content,
+            ...(value.selectedText === undefined ? {} : { selectedText: value.selectedText }),
+            ...(value.context === undefined ? {} : { context: value.context }),
+          };
         }
         if (input.contextPaths !== undefined && (!Array.isArray(input.contextPaths) || input.contextPaths.length > 8 || input.contextPaths.some((path) => typeof path !== "string" || !path || path.length > 4_096))) {
           throw new HttpError(422, "contextPaths must contain at most 8 repository paths.");
@@ -459,16 +472,36 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         return json(await session.ask(
           requiredString(input.body, "body", 8_000),
           optionalString(input.selectedContext, "selectedContext", 16_000),
-          { threadId: optionalString(input.threadId, "threadId", 128), anchor, contextPaths: input.contextPaths as string[] | undefined },
+          {
+            threadId: optionalString(input.threadId, "threadId", 128),
+            ...(input.stepId === null ? { stepId: null } : { stepId: optionalString(input.stepId, "stepId", 128) }),
+            anchor,
+            contextPaths: input.contextPaths as string[] | undefined,
+          },
         ));
       }
       if (request.method === "POST" && url.pathname === "/api/comments") {
         const input = await readJsonObject(request, 16 * 1024);
-        exactKeys(input, ["path", "side", "line", "body"]);
+        exactKeys(input, ["scope", "path", "side", "line", "endLine", "selectedText", "context", "stepId", "body"]);
+        const scope = input.scope === undefined ? undefined : enumValue(input.scope, "scope", ["line", "range", "stop"]);
+        if (input.endLine !== undefined && (!Number.isSafeInteger(input.endLine) || Number(input.endLine) < Number(input.line) || Number(input.endLine) - Number(input.line) > 99)) {
+          throw new HttpError(422, "endLine must be an ordered range of at most 100 lines.");
+        }
+        if (input.selectedText !== undefined && (typeof input.selectedText !== "string" || !input.selectedText.trim() || input.selectedText.length > 16_000)) {
+          throw new HttpError(422, "selectedText must be non-empty and at most 16,000 characters.");
+        }
+        if (input.context !== undefined && (typeof input.context !== "string" || input.context.length > 32_000)) {
+          throw new HttpError(422, "context must be at most 32,000 characters.");
+        }
         return json(await session.addComment({
-          path: requiredString(input.path, "path", 4_096),
-          side: enumValue(input.side, "side", ["old", "new"]),
-          line: finitePositiveInteger(input.line, "line"),
+          scope,
+          ...(input.path === undefined ? {} : { path: requiredString(input.path, "path", 4_096) }),
+          ...(input.side === undefined ? {} : { side: enumValue(input.side, "side", ["old", "new"]) }),
+          ...(input.line === undefined ? {} : { line: finitePositiveInteger(input.line, "line") }),
+          ...(input.endLine === undefined ? {} : { endLine: Number(input.endLine) }),
+          ...(input.selectedText === undefined ? {} : { selectedText: input.selectedText as string }),
+          ...(input.context === undefined ? {} : { context: input.context as string }),
+          ...(input.stepId === undefined ? {} : { stepId: requiredString(input.stepId, "stepId", 128) }),
           body: requiredString(input.body, "body", 8_000),
         }));
       }

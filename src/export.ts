@@ -1,5 +1,5 @@
 import type { ReviewSession } from "./session.ts";
-import type { CallFlow, DiffFile, DiffRow, FindingDisposition, ReviewArchitecture, ReviewFinding } from "./types.ts";
+import type { CallFlow, DiffFile, DiffRow, FindingDisposition, ReviewArchitecture, ReviewComment, ReviewFinding } from "./types.ts";
 import type { HighlightGroup, HighlightToken } from "./highlight.ts";
 import { buildNeedsAttention } from "./attention.ts";
 // @ts-expect-error Bun's text loader embeds Mermaid in the self-contained HTML export.
@@ -46,6 +46,20 @@ function markdownText(value: unknown): string {
 
 function reviewLocation(path: string, side: "old" | "new", line: number): string {
   return /\.png$/i.test(path) ? `${path} · ${side} image` : `${path}:${line} (${side})`;
+}
+
+function commentLocation(comment: ReviewComment): string {
+  const endLine = comment.endLine ?? comment.line;
+  if (/\.png$/i.test(comment.path)) return `${comment.path} · ${comment.side} image`;
+  return `${comment.path}:${comment.line}${endLine !== comment.line ? `-${endLine}` : ""} (${comment.side})`;
+}
+
+function commentScope(comment: ReviewComment, session: ReviewSession): string {
+  if ((comment.scope ?? "line") === "stop") {
+    const step = session.outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === comment.stepId);
+    return `Tour stop${step ? `: ${step.title}` : comment.stepId ? `: ${comment.stepId}` : ""}`;
+  }
+  return (comment.scope ?? "line") === "range" ? "Selected range" : "Line";
 }
 
 function markdownArchitecture(label: string, architecture: ReviewArchitecture): string[] {
@@ -123,7 +137,27 @@ function markdown(session: ReviewSession): string {
   if (session.comments.length) {
     lines.push("## Reviewer feedback", "");
     for (const comment of session.comments) {
-      lines.push(`### ${markdownText(reviewLocation(comment.path, comment.side, comment.line))}`, "", `Status: ${comment.status}`, "", markdownText(comment.body), "");
+      lines.push(`### ${markdownText(commentLocation(comment))}`, "", `Scope: ${markdownText(commentScope(comment, session))}`, `Status: ${comment.status}`, "");
+      if (comment.selectedText) lines.push("Selected quotation:", "", markdownFence("text", comment.selectedText), "");
+      if (comment.context) lines.push("Selected context:", "", markdownFence("text", comment.context), "");
+      lines.push(markdownText(comment.body), "");
+    }
+  }
+  const messages = session.messages ?? [];
+  const questionRoots = messages.filter((message) => message.role === "user" && (!message.threadId || message.threadId === message.id));
+  if (questionRoots.length) {
+    lines.push("## Questions", "");
+    for (const root of questionRoots) {
+      const threadId = root.threadId ?? root.id;
+      const replies = messages.filter((message) => message.threadId === threadId || message.id === threadId);
+      const step = root.stepId ? outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === root.stepId) : undefined;
+      lines.push(`### ${markdownText(step ? `Tour stop: ${step.title}` : "Review-wide question")}`, "", markdownText(root.body), "");
+      if (root.anchor) {
+        lines.push(`Anchor: ${markdownText(commentLocation({ id: "export", path: root.anchor.path, side: root.anchor.side, line: root.anchor.line, endLine: root.anchor.endLine, body: "", lineContent: root.anchor.content, status: "active", createdAt: "", updatedAt: "" }))}`, "");
+        if (root.anchor.selectedText) lines.push("Selected quotation:", "", markdownFence("text", root.anchor.selectedText), "");
+        if (root.anchor.context) lines.push("Selected context:", "", markdownFence("text", root.anchor.context), "");
+      }
+      for (const reply of replies.filter((message) => message.id !== root.id)) lines.push(`${reply.role === "agent" ? "Agent" : "Reviewer"}:`, "", markdownText(reply.body), "");
     }
   }
   lines.push("## Changed files", "");
@@ -484,12 +518,20 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
     const removed = flow.edges.filter((edge) => edge.change === "removed").length;
     return `<article class="call-flow-card" data-call-flow="${escapeHtml(flow.id)}"><header><div><span class="provenance ${flow.provenance}">${escapeHtml(flow.provenance === "verified" ? "Verified" : flow.provenance === "partial" ? "Partly verified" : "Unverified")}</span><h3>${escapeHtml(flow.title)}</h3></div></header><p>${escapeHtml(flow.summary)}</p><div class="call-flow-summary"><strong>+${added} calls</strong><strong>−${removed} calls</strong></div><details class="flow-impact"><summary>affects ${flow.affectedFiles.length}</summary><div>${flow.affectedFiles.map((path) => `<button type="button" data-open-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details><div class="call-flow-modes">${(["changes", "before", "after"] as const).map((mode) => `<button type="button" data-call-mode="${mode}"${mode === "changes" ? ' class="active"' : ""}>${mode}</button>`).join("")}</div><div class="call-tree-legend"><span><i class="entrypoint"></i>Entry point</span><span><i class="added"></i>Added</span><span><i class="modified"></i>Changed callable</span><span><i class="removed"></i>Removed</span><span><i class="unchanged"></i>Unchanged</span></div><p class="call-tree-caption">A changed callable exists before and after this change, but its implementation or outgoing calls changed.</p>${(["changes", "before", "after"] as const).map((mode) => `<div class="call-tree" data-call-tree="${mode}"${mode === "changes" ? "" : " hidden"}>${callTree(flow, mode)}</div>`).join("")}</article>`;
   }).join("") ?? "" : "";
-  const comments = session.comments.map((comment) => `<article class="comment"><code>${escapeHtml(reviewLocation(comment.path, comment.side, comment.line))}</code><p>${inlineHtml(comment.body)}</p><span>${escapeHtml(comment.status)}</span></article>`).join("");
+  const comments = session.comments.map((comment) => `<article class="comment"><code>${escapeHtml(commentLocation(comment))}</code><strong>${escapeHtml(commentScope(comment, session))}</strong>${comment.selectedText ? `<blockquote>${escapeHtml(comment.selectedText)}</blockquote>` : ""}<p>${inlineHtml(comment.body)}</p><span>${escapeHtml(comment.status)}</span></article>`).join("");
+  const messages = session.messages ?? [];
+  const questions = messages.filter((message) => message.role === "user" && (!message.threadId || message.threadId === message.id)).map((root) => {
+    const threadId = root.threadId ?? root.id;
+    const replies = messages.filter((message) => message.threadId === threadId || message.id === threadId).filter((message) => message.id !== root.id);
+    const step = root.stepId ? outline?.phases.flatMap((phase) => phase.steps).find((candidate) => candidate.id === root.stepId) : undefined;
+    const anchor = root.anchor ? `<code>${escapeHtml(commentLocation({ id: "export", path: root.anchor.path, side: root.anchor.side, line: root.anchor.line, endLine: root.anchor.endLine, body: "", lineContent: root.anchor.content, status: "active", createdAt: "", updatedAt: "" }))}</code>${root.anchor.selectedText ? `<blockquote>${escapeHtml(root.anchor.selectedText)}</blockquote>` : ""}` : "";
+    return `<article class="comment"><strong>${escapeHtml(step ? `Tour stop: ${step.title}` : "Review-wide question")}</strong>${anchor}<p>${inlineHtml(root.body)}</p>${replies.map((reply) => `<p><strong>${reply.role === "agent" ? "Agent" : "Reviewer"}:</strong> ${inlineHtml(reply.body)}</p>`).join("")}</article>`;
+  }).join("");
   const pr = session.pullRequest ? `<section id="pull-request-metadata" class="pr-description"><span class="eyebrow">Pull request #${session.pullRequest.number} · ${escapeHtml(session.pullRequest.author)}</span><h2>${escapeHtml(session.pullRequest.title)}</h2><div class="prose">${renderedMarkdown(session.pullRequest.body || "No pull request description was provided.")}</div><h3>Checks</h3><ul>${session.pullRequest.checks.map((check) => `<li>${escapeHtml(check.name)} — ${escapeHtml(check.state)}</li>`).join("") || "<li>No checks reported.</li>"}</ul>${session.pullRequest.mergeable || session.pullRequest.mergeStateStatus ? `<p>Mergeability: ${escapeHtml(session.pullRequest.mergeable ?? "unknown")}${session.pullRequest.mergeStateStatus ? ` · ${escapeHtml(session.pullRequest.mergeStateStatus)}` : ""}</p>` : ""}</section>` : "";
   const fileButtons = session.comparison.files.map((file) => `<button type="button" class="file-button" data-file="${escapeHtml(file.path)}"><span class="status ${escapeHtml(file.status)}">${escapeHtml(file.status.slice(0, 1).toUpperCase())}</span><span><strong>${escapeHtml(file.path)}</strong><small>${escapeHtml(file.status)}</small></span><span class="file-stats"><b>+${file.additions}</b> <i>−${file.deletions}</i></span></button>`).join("");
-  const diffs = `${briefingSection}${estimateSection}${session.comparison.files.map((file, index) => `<section class="exported-diff" data-diff-file="${escapeHtml(file.path)}" hidden>${fileDiff(file, findings, session, index, highlighted, markdownPreviews.get(file.path))}</section>`).join("")}`;
+  const diffs = `${briefingSection}${estimateSection}${session.comparison.files.map((file, index) => `<section class="exported-diff" data-diff-file="${escapeHtml(file.path)}" hidden>${fileDiff(file, findings, session, index, highlighted, markdownPreviews.get(file.path))}</section>`).join("")}` + (questions ? `</section><section class="view comments" data-view-panel="questions" hidden><h2>Questions</h2>${questions}` : "");
   const allFindings = findings.map(findingCard).join("");
-  const tabs = [`<button type="button" data-view="diff" class="active">Diff <span>${session.comparison.files.length}</span></button>`, callFlows ? `<button type="button" data-view="calls">Call flows <span>${outline?.callFlows?.length ?? 0}</span></button>` : "", flows ? `<button type="button" data-view="sequences">Sequences <span>${outline?.flows.length ?? 0}</span></button>` : "", includeFindings ? `<button type="button" data-view="findings">Findings <span>${findings.length}</span></button>` : "", comments ? `<button type="button" data-view="feedback">Feedback <span>${session.comments.length}</span></button>` : ""].join("");
+  const tabs = [`<button type="button" data-view="diff" class="active">Diff <span>${session.comparison.files.length}</span></button>`, callFlows ? `<button type="button" data-view="calls">Call flows <span>${outline?.callFlows?.length ?? 0}</span></button>` : "", flows ? `<button type="button" data-view="sequences">Sequences <span>${outline?.flows.length ?? 0}</span></button>` : "", includeFindings ? `<button type="button" data-view="findings">Findings <span>${findings.length}</span></button>` : "", comments ? `<button type="button" data-view="feedback">Feedback <span>${session.comments.length}</span></button>` : "", questions ? `<button type="button" data-view="questions">Questions <span>${questions ? messages.filter((message) => message.role === "user" && (!message.threadId || message.threadId === message.id)).length : 0}</span></button>` : ""].join("");
   return `<!doctype html>
 <html lang="en" data-diff-wrap="${diffWrap}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(outline?.title ?? "Code review tour")}</title>
 <style>

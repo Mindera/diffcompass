@@ -319,6 +319,15 @@
                 <summary><span class="planning-spinner" aria-hidden="true"></span><span id="agent-activity-title">Agent activity</span></summary>
                 <div id="agent-activity-body" class="agent-activity-body"></div>
               </details>
+              <section id="step-discussion" class="step-discussion" aria-label="Current stop discussion">
+                <div><span class="eyebrow">Current stop</span><p id="step-discussion-scope">Comments here stay attached to this tour stop.</p></div>
+                <button id="comment-stop" class="button secondary" type="button">Add stop comment</button>
+                <form id="step-comment-form" class="step-comment-form hidden">
+                  <textarea id="step-comment-input" rows="3" placeholder="What should the reviewer remember about this stop?"></textarea>
+                  <footer><button id="cancel-step-comment" class="text-button" type="button">Cancel</button><button class="button primary" type="submit">Add stop comment</button></footer>
+                </form>
+                <div id="step-comment-list" class="step-comment-list"></div>
+              </section>
             </article>
           <details id="finding-drawer" class="finding-drawer current-step-findings" aria-labelledby="finding-drawer-title" open>
             <summary class="comment-drawer-heading">
@@ -347,13 +356,13 @@
           <div id="questions-body" class="questions-body hidden">
             <label class="conversation-picker"><span class="conversation-picker-label">Conversation</span><select id="conversation-select"><option value="">New question</option></select></label>
             <div id="questions-scroll" class="questions-scroll">
-              <p id="conversation-context" class="muted"></p>
+              <div id="question-scope" class="question-scope"></div>
+              <div id="selection-pill" class="selection-pill hidden"></div>
+              <div id="question-file-context" class="question-file-context"></div>
+              <button id="add-question-files" class="text-button question-add-files" type="button">+ Add file</button>
               <div id="chat-messages" class="chat-messages"></div>
             </div>
             <div class="question-composer">
-            <div id="selection-pill" class="selection-pill hidden"></div>
-            <div id="question-file-context" class="question-file-context"></div>
-            <button id="add-question-files" class="text-button question-add-files" type="button">+ Add file</button>
             <form id="chat-form" class="chat-form">
               <textarea id="chat-input" rows="2" placeholder="Ask about this step or selected code…"></textarea>
               <button class="send-button" type="submit" aria-label="Send">↑</button>
