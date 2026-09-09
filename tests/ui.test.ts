@@ -1109,21 +1109,27 @@ test("split diff panes are resizable and synchronize horizontal scrolling per si
   expect(app).toContain("event.preventDefault()");
 });
 
-test("images and videos are exposed through a conditional authenticated media tab", async () => {
+test("images and videos are exposed through an authenticated media tab with an empty state", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain('id="screenshots-tab" class="tab hidden"');
+  expect(html).toContain('id="screenshots-tab" class="tab"');
   expect(html).toContain('id="screenshots-view" class="review-view hidden"');
-  expect(html).toContain('>Media <span id="screenshots-tab-count"');
+  expect(html).toContain('>Media <span id="screenshots-tab-count" class="tab-count hidden">0</span>');
   expect(app).toContain("function changedImageMedia()");
   expect(app).toContain("const mediaCount = screenshots.length + changedImages.length");
+  expect(app).toContain('"conversations", "screenshots", ...(state.session?.pullRequest');
+  expect(app).toContain('elements["screenshots-tab-count"].classList.toggle("hidden", mediaCount === 0)');
+  expect(app).toContain('No media is available for this review.');
   expect(app).toContain('"X-Review-Tour-Token": state.apiToken');
   expect(app).toContain('apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`)');
   expect(app).toContain('apiBlob(`/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`)');
   expect(app).toContain('shot.mimeType === "video/mp4"');
   expect(styles).toContain(".screenshot-gallery { display: grid;");
+  expect(styles).toContain(".media-empty { grid-column: 1 / -1; }");
   expect(styles).toContain(".changed-image-media > a");
+  expect(styles).toContain(".tab { flex: 0 0 auto;");
+  expect(styles).toContain("font-size: 13px;");
 });

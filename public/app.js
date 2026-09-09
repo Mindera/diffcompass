@@ -2701,8 +2701,7 @@ function changedImageMedia() {
 }
 
 function availableTabs() {
-  const mediaCount = (state.session?.screenshots?.length ?? 0) + changedImageMedia().length;
-  return ["diff", "call-flows", "sequence", "findings", "activity", "conversations", ...(mediaCount ? ["screenshots"] : []), ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "call-flows", "sequence", "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
@@ -2720,11 +2719,10 @@ async function renderScreenshots() {
   const screenshots = state.session?.screenshots ?? [];
   const changedImages = changedImageMedia();
   const mediaCount = screenshots.length + changedImages.length;
-  elements["screenshots-tab"].classList.toggle("hidden", mediaCount === 0);
   elements["screenshots-tab-count"].textContent = String(mediaCount);
+  elements["screenshots-tab-count"].classList.toggle("hidden", mediaCount === 0);
   if (mediaCount === 0) {
-    if (state.activeTab === "screenshots") state.activeTab = "diff";
-    elements.screenshots.innerHTML = "";
+    elements.screenshots.innerHTML = '<p class="empty compact media-empty">No media is available for this review.</p>';
     return;
   }
   const visibleIds = new Set([...screenshots.map((shot) => shot.id), ...changedImages.map((image) => image.id)]);

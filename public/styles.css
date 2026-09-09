@@ -232,8 +232,9 @@ button { color: inherit; }
 .file-panel-toggle, .file-panel-close, .file-panel-backdrop { display: none; }
 .pane-collapse { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; border: 1px solid var(--border); border-radius: 7px; padding: 0; color: var(--text-soft); background: var(--surface-control); font-size: 19px; line-height: 1; cursor: pointer; }
 .pane-collapse:hover { color: var(--text); border-color: var(--accent-border); background: var(--surface-hover); }
-.tabs { gap: 4px; }
-.tab { border: 0; border-radius: 7px; padding: 8px 13px; background: transparent; color: var(--muted); }
+.tabs { min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { flex: 0 0 auto; border: 0; border-radius: 7px; padding: 6px 9px; background: transparent; color: var(--muted); font-size: 13px; line-height: 1.2; white-space: nowrap; }
 .tab.active { color: var(--text); background: var(--panel-raised); }
 .tab:disabled { opacity: .5; }
 .tab-count { display: inline-block; min-width: 16px; margin-left: 4px; border-radius: 999px; padding: 1px 4px; background: var(--accent); color: var(--on-accent); font-size: 9px; font-weight: 800; }
@@ -903,6 +904,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .activity-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .pull-request-content { max-width: 920px; margin: 0 auto; padding: 24px; line-height: 1.55; }
 .screenshot-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; padding: 24px; }
+.media-empty { grid-column: 1 / -1; }
 .screenshot-card { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-card); }
 .screenshot-card > a { display: grid; min-height: 240px; max-height: 620px; place-items: center; overflow: auto; background: var(--code-background); }
 .screenshot-card img { display: block; min-width: min(160px, 100%); max-width: 100%; height: auto; object-fit: contain; }
