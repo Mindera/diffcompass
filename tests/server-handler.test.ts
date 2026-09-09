@@ -155,6 +155,9 @@ test("discussion endpoints validate paths, ranges, stop ids, and preserve quotat
   expect(invalidRange.status).toBe(422);
   const invalidStop = await fetch(authorizedRequest(session, "/api/comments", { scope: "stop", stepId: "missing", body: "bad" }));
   expect(invalidStop.status).toBe(409);
+
+  const invalidQuestionScope = await fetch(authorizedRequest(session, "/api/agent/message", { body: "What changed?", stepId: false }));
+  expect(invalidQuestionScope.status).toBe(422);
 });
 
 test("inline edit requests accept only the editable new side", async () => {

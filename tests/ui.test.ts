@@ -280,8 +280,10 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(app).toContain("function discussionStopLabel(scope)");
   expect(app).toContain("Phase ${scope.phaseIndex + 1} · ${scope.phase.title} — Stop ${scope.stopIndex + 1} · ${scope.step.title}");
   expect(app).toContain("No code selection. This question is scoped to this stop.");
-  expect(app).toContain("function anchorBelongsToDiscussionStop(anchor, step)");
   expect(app).toContain("function anchorRowsMatch(anchor)");
+  expect(app).toContain("if (!anchorRowsMatch(anchor)) continue;");
+  expect(app).toContain("Open selected-code conversation");
+  expect(app).not.toContain("anchorBelongsToDiscussionStop");
   expect(app).toContain("clearSelectedLine();");
   expect(app).toContain('class="selection-quote-preview" open');
   expect(styles).toContain(".step-discussion");
@@ -294,9 +296,10 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
 
 test("question scopes retain phase and stop numbers alongside their names", async () => {
   const app = await readFile(join(root, "public/app.js"), "utf8");
-  const source = app.slice(app.indexOf("function discussionStop(stepId)"), app.indexOf("function anchorBelongsToDiscussionStop"));
+  const source = app.slice(app.indexOf("function discussionStop(stepId)"), app.indexOf("function anchorRowsMatch"));
   const state = {
     selectedLine: null as { path: string; side: string; line: number; content: string } | null,
+    tourMode: true,
     session: {
       outline: {
         phases: [{
@@ -323,6 +326,8 @@ test("question scopes retain phase and stop numbers alongside their names", asyn
   expect(helpers.conversationScopeMarkup(thread)).toContain("Phase 2 · Format the receipt — Stop 1 · Format totals");
   state.selectedLine = { path: "src/cart.ts", side: "new", line: 7, content: "applyDiscount();" };
   expect(helpers.conversationScopeMarkup(null)).toContain("Selected code: selected code");
+  state.tourMode = false;
+  expect(helpers.conversationScopeMarkup(null)).toContain("Review-wide question");
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {

@@ -444,7 +444,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/agent/message") {
         const input = await readJsonObject(request, 32 * 1024);
-        exactKeys(input, ["body", "selectedContext", "threadId", "anchor", "contextPaths"]);
+        exactKeys(input, ["body", "selectedContext", "threadId", "stepId", "anchor", "contextPaths"]);
         let anchor;
         if (input.anchor !== undefined) {
           if (!input.anchor || typeof input.anchor !== "object" || Array.isArray(input.anchor)) throw new ReviewError("anchor must be an object.");
@@ -472,7 +472,12 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         return json(await session.ask(
           requiredString(input.body, "body", 8_000),
           optionalString(input.selectedContext, "selectedContext", 16_000),
-          { threadId: optionalString(input.threadId, "threadId", 128), anchor, contextPaths: input.contextPaths as string[] | undefined },
+          {
+            threadId: optionalString(input.threadId, "threadId", 128),
+            ...(input.stepId === null ? { stepId: null } : { stepId: optionalString(input.stepId, "stepId", 128) }),
+            anchor,
+            contextPaths: input.contextPaths as string[] | undefined,
+          },
         ));
       }
       if (request.method === "POST" && url.pathname === "/api/comments") {

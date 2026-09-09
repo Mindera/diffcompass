@@ -2767,17 +2767,13 @@ function discussionStop(stepId) {
   return step && phase ? { step, phase, phaseIndex, stopIndex } : undefined;
 }
 
-function discussionStep(stepId) {
-  return discussionStop(stepId)?.step;
-}
-
 function discussionStopLabel(scope) {
   return scope.step ? `Phase ${scope.phaseIndex + 1} · ${scope.phase.title} — Stop ${scope.stopIndex + 1} · ${scope.step.title}` : "";
 }
 
 function conversationScope(thread = null) {
   const root = thread?.root;
-  const stop = discussionStop(root?.stepId ?? currentStep()?.id);
+  const stop = root ? discussionStop(root.stepId) : state.tourMode ? discussionStop(currentStep()?.id) : undefined;
   const anchor = root?.anchor ?? (!thread ? state.selectedLine : undefined);
   return { ...stop, anchor, original: Boolean(root) };
 }
@@ -2796,13 +2792,6 @@ function conversationScopeMarkup(thread = null) {
     ? `Selected code: ${escapeHtml(reviewAnchorLabel(scope.anchor))}. Exact quotation and diff context are retained.`
     : scope.step ? "No code selection. This question is scoped to this stop." : "No code selection.";
   return `<span class="conversation-scope"><strong>${escapeHtml(heading)}</strong><span>${stop}</span></span><span class="conversation-scope-detail">${selection}</span>`;
-}
-
-function anchorBelongsToDiscussionStop(anchor, step) {
-  if (!step) return true;
-  const endLine = anchor.endLine ?? anchor.line;
-  return anchor.path === step.anchor.path && anchor.side === step.anchor.side &&
-    anchor.line >= step.anchor.startLine && endLine <= step.anchor.endLine;
 }
 
 function anchorRowsMatch(anchor) {
@@ -2824,10 +2813,7 @@ function renderConversationBadges() {
   for (const thread of conversationThreads()) {
     const anchor = thread.root.anchor;
     if (!anchor) continue;
-    const step = discussionStep(thread.root.stepId);
-    // A selection may intentionally cross a stop boundary, but do not present
-    // its marker as if it were an annotation on this stop.
-    if (!anchorBelongsToDiscussionStop(anchor, step) || !anchorRowsMatch(anchor)) continue;
+    if (!anchorRowsMatch(anchor)) continue;
     const row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"][data-line="${anchor.line}"]`)
       ?? elements.diff.querySelector(`.image-diff-side[data-path="${CSS.escape(anchor.path)}"][data-side="${anchor.side}"]`);
     if (!row) continue;
@@ -2837,7 +2823,7 @@ function renderConversationBadges() {
     badge.dataset.conversation = thread.id;
     const scope = conversationScopeLabel(thread);
     badge.title = `${compactText(thread.root.body, 120)}\n${scope}`;
-    badge.setAttribute("aria-label", `Open conversation scoped to ${scope}: ${compactText(thread.root.body, 80)}`);
+    badge.setAttribute("aria-label", `Open selected-code conversation, ${scope}: ${compactText(thread.root.body, 80)}`);
     badge.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h14v10H8l-5 4V3Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
     (row.querySelector(".finding-markers") ?? row.querySelector(".image-review-actions"))?.append(badge);
   }
@@ -3901,9 +3887,10 @@ async function askAgent(event) {
   const originalThreadId = state.activeThreadId;
   const requestThreadId = originalThreadId?.startsWith("local-question-") ? null : originalThreadId;
   const localId = `local-question-${crypto.randomUUID()}`;
+  const requestedStepId = !requestThreadId && state.tourMode ? currentStep()?.id ?? null : null;
   const anchor = !requestThreadId && state.selectedLine ? { ...state.selectedLine } : undefined;
   const contextPaths = !requestThreadId ? [...state.questionContextPaths] : [];
-  state.pendingQuestion = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, anchor, contextPaths };
+  state.pendingQuestion = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, ...(requestedStepId ? { stepId: requestedStepId } : {}), anchor, contextPaths };
   state.activeThreadId = state.pendingQuestion.threadId;
   state.questionDrafts.delete(originalThreadId);
   state.questionsOpen = true;
@@ -3935,7 +3922,7 @@ async function askAgent(event) {
   try {
     const response = await api("/api/agent/message", {
       method: "POST",
-      body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
+      body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
     });
     const previous = state.session;
     state.session = response;

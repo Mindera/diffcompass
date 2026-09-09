@@ -1538,7 +1538,7 @@ export class ReviewSession {
     });
   }
 
-  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; anchor?: ChatMessage["anchor"]; contextPaths?: string[] }) {
+  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; stepId?: string | null; anchor?: ChatMessage["anchor"]; contextPaths?: string[] }) {
     return this.serialize(async () => {
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;
@@ -1549,6 +1549,7 @@ export class ReviewSession {
       const root = conversation?.threadId ? this.messages.find((message) => message.id === conversation.threadId && message.role === "user" && (!message.threadId || message.threadId === message.id)) : undefined;
       if (conversation?.threadId && !root) throw new ReviewError("Conversation not found.");
       if (root && conversation?.anchor) throw new ReviewError("A follow-up keeps its original code location.");
+      if (root && conversation?.stepId !== undefined) throw new ReviewError("A follow-up keeps its original tour stop.");
       const anchor = root?.anchor ?? conversation?.anchor;
       const normalizedAnchor = root || !anchor ? anchor : this.normalizeQuestionAnchor(anchor);
       if (root && conversation?.contextPaths?.length) throw new ReviewError("A follow-up keeps its original file context.");
@@ -1564,7 +1565,11 @@ export class ReviewSession {
         this.agent = this.createAgent();
       }
       this.agent.useComparison(this.comparison);
-      const step = root ? tourSteps(this.outline).find((candidate) => candidate.id === root.stepId) : tourSteps(this.outline)[this.currentStepIndex];
+      const step = root
+        ? tourSteps(this.outline).find((candidate) => candidate.id === root.stepId)
+        : conversation?.stepId === null ? undefined
+        : conversation?.stepId ? this.resolveDiscussionStep(conversation.stepId)
+        : tourSteps(this.outline)[this.currentStepIndex];
       const stepId = step?.id;
       const messageId = crypto.randomUUID();
       const threadId = root?.id ?? messageId;

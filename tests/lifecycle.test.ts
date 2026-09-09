@@ -75,6 +75,27 @@ test("an unselected question remains visibly scoped to the current tour stop wit
   } finally { await session.dispose(); }
 });
 
+test("an explicitly review-wide question never inherits the last tour stop", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const anchor = { path: "app.ts", side: "new" as const, line: 2, content: "const changed = 2;" };
+    const asking = session.ask("What does this changed line do outside the tour?", undefined, { stepId: null, anchor });
+    const [prompt] = await session.bridge!.eventsAfter(7, 1_000);
+    if (!prompt || prompt.type !== "agent.prompt") throw new Error("Expected a review-wide question prompt");
+    expect(prompt.prompt).toContain("Discussion scope: review-wide question.");
+    expect(prompt.prompt).not.toContain("Current tour stop Second step");
+    expect(prompt.prompt).toContain("Captured code: const changed = 2;");
+    await session.bridge!.respond(prompt.id, "It records the fixture's changed value.");
+    await session.bridge!.ack(prompt.id);
+    const answered = await asking;
+    expect(answered.messages[0]).toMatchObject({ role: "user", anchor });
+    expect(answered.messages[0]?.stepId).toBeUndefined();
+    await expect(session.ask("Retarget stop", undefined, { threadId: answered.messages[0]!.id, stepId: "first-step" })).rejects.toThrow("original tour stop");
+  } finally { await session.dispose(); }
+});
+
 test("image comments and questions use a stable image-level anchor", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await writeFile(join(repository, "screen.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
