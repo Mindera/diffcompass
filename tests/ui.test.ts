@@ -266,6 +266,7 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(html).toContain('class="button secondary" type="button">Add stop comment</button>');
   expect(html).toContain('id="step-comment-form"');
   expect(html).toContain('id="question-scope" class="question-scope"');
+  expect(html).not.toContain('id="conversation-context"');
   expect(app).toContain('scope: "stop", stepId: step.id');
   expect(app).toContain('scope: "range"');
   expect(app).toContain("form.dataset.commentSelectedText");
@@ -275,6 +276,7 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(app).toContain("function commentScope(comment)");
   expect(app).toContain("function quotationLabel(text)");
   expect(app).toContain("function conversationScopeMarkup(thread = null)");
+  expect(app).toContain("function renderQuestionScope(thread = conversationThreads().find");
   expect(app).toContain("function discussionStopLabel(scope)");
   expect(app).toContain("Phase ${scope.phaseIndex + 1} · ${scope.phase.title} — Stop ${scope.stopIndex + 1} · ${scope.step.title}");
   expect(app).toContain("No code selection. This question is scoped to this stop.");
@@ -294,7 +296,7 @@ test("question scopes retain phase and stop numbers alongside their names", asyn
   const app = await readFile(join(root, "public/app.js"), "utf8");
   const source = app.slice(app.indexOf("function discussionStop(stepId)"), app.indexOf("function anchorBelongsToDiscussionStop"));
   const state = {
-    selectedLine: null,
+    selectedLine: null as { path: string; side: string; line: number; content: string } | null,
     session: {
       outline: {
         phases: [{
@@ -319,6 +321,8 @@ test("question scopes retain phase and stop numbers alongside their names", asyn
   const thread = { root: { stepId: "format" } };
   expect(helpers.conversationScopeLabel(thread)).toBe("Original tour stop: Phase 2 · Format the receipt — Stop 1 · Format totals");
   expect(helpers.conversationScopeMarkup(thread)).toContain("Phase 2 · Format the receipt — Stop 1 · Format totals");
+  state.selectedLine = { path: "src/cart.ts", side: "new", line: 7, content: "applyDiscount();" };
+  expect(helpers.conversationScopeMarkup(null)).toContain("Selected code: selected code");
 });
 
 test("closing a review shows a five-second self-close countdown", async () => {

@@ -110,7 +110,7 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
+    "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
@@ -2855,6 +2855,10 @@ function renderStepDiscussion() {
     : '<p class="comment-empty">No comments on this stop yet.</p>';
 }
 
+function renderQuestionScope(thread = conversationThreads().find((item) => item.id === state.activeThreadId)) {
+  elements["question-scope"].innerHTML = conversationScopeMarkup(thread);
+}
+
 function renderMessages() {
   const threads = conversationThreads();
   const thread = threads.find((item) => item.id === state.activeThreadId);
@@ -2863,9 +2867,7 @@ function renderMessages() {
     .map((message) => `<div class="chat-message ${message.role}" data-message-id="${escapeHtml(message.id)}">${renderMarkdown(message.body)}</div>`)
     .join("");
   if (elements["chat-messages"].innerHTML !== content) elements["chat-messages"].innerHTML = content;
-  const scopeMarkup = conversationScopeMarkup(thread);
-  elements["conversation-context"].innerHTML = scopeMarkup;
-  elements["question-scope"].innerHTML = scopeMarkup;
+  renderQuestionScope(thread);
   const options = '<option value="">New question</option>' + threads.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(compactText(item.root.body, 80))}</option>`).join("");
   if (elements["conversation-select"].innerHTML !== options) elements["conversation-select"].innerHTML = options;
   elements["conversation-select"].value = state.activeThreadId ?? "";
@@ -3512,11 +3514,13 @@ function selectLine(row, discussion = null) {
     ? `${state.selectedLine.path} (${state.selectedLine.side} image) selected · comment or ask the agent`
     : `${state.selectedLine.path}:${state.selectedLine.line} selected · comment or ask the agent`;
   elements["selection-pill"].classList.remove("hidden");
+  renderQuestionScope();
 }
 
 function clearSelectedLine() {
   document.querySelectorAll(".diff-row.selected, .image-diff-side.selected").forEach((item) => item.classList.remove("selected"));
   state.selectedLine = null;
+  renderQuestionScope();
 }
 
 function lineTarget(row) {
