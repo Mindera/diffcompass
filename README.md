@@ -280,10 +280,12 @@ later stops invokes the selected local agent and may use tokens.
 
 The fixture contains two phases, four stops, inline feedback, findings, a
 component diagram, a sequence diagram, chat history, and an agent activity
-entry, plus a tiny changed PNG for before/after preview checks. Sending a new
-question invokes the selected agent; the fixture does not fake new answers.
-It also includes both modified and newly added Markdown documents for checking
-the rendered before/after and added-file preview states.
+entry, plus a tiny changed PNG for before/after preview checks. It also seeds a
+simulated same-repository pull request and linked issue assessment; it does not
+call GitHub or retain an issue body. Sending a new question invokes the selected
+agent; the fixture does not fake new answers. It also includes both modified
+and newly added Markdown documents for checking the rendered before/after and
+added-file preview states.
 Use `bun run fixture --prepare-only` when a test only needs fresh
 repository and session files.
 
