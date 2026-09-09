@@ -54,6 +54,13 @@ test("loads every supported repository default", async () => {
       prefetchSteps: 5,
       requireAllFilesReviewed: true,
       closeOutcome: "cancelled",
+      showBriefing: true,
+      briefingArchitecture: true,
+      briefingSequenceDiagrams: false,
+      briefingCallFlows: false,
+      briefingNeedsAttention: true,
+      briefingReviewEffort: true,
+      briefingOrder: ["architecture", "sequence-diagrams", "call-flows", "needs-attention", "review-effort"],
     },
     retention: { maxAgeDays: 30, maxSessions: 50, includeArchived: true },
     reviewPolicy: {

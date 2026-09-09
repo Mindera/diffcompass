@@ -398,6 +398,13 @@ test("persists complete review preferences and rejects partial or out-of-range v
     prefetchSteps: 2,
     requireAllFilesReviewed: true,
     closeOutcome: "cancelled",
+    showBriefing: true,
+    briefingArchitecture: true,
+    briefingSequenceDiagrams: false,
+    briefingCallFlows: false,
+    briefingNeedsAttention: true,
+    briefingReviewEffort: true,
+    briefingOrder: ["architecture", "sequence-diagrams", "call-flows", "needs-attention", "review-effort"],
   };
   await savePersistedSession(path, valid);
   await expect(loadPersistedSession(path)).resolves.toEqual(valid);

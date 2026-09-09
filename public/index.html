@@ -44,6 +44,33 @@
                 <option value="0">0 steps</option><option value="1">1 step</option><option value="2">2 steps</option><option value="3">3 steps</option><option value="4">4 steps</option><option value="5">5 steps</option>
               </select></label>
               <p>Prepared explanations are kept if this is reduced.</p>
+              <div class="settings-subsection">
+                <strong>Before the tour</strong>
+                <label><span>Show briefing</span><input id="show-tour-briefing" type="checkbox" aria-controls="briefing-options" /></label>
+                <div id="briefing-options" class="briefing-options" role="list" aria-label="Briefing sections. Drag rows to reorder them. Keyboard users can focus a row, press Space or Enter, then use Up and Down.">
+                  <div class="briefing-option" data-briefing-option="architecture" role="listitem" draggable="true" tabindex="0" aria-label="Component diagrams briefing section. Drag to reorder.">
+                    <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
+                    <label><span>Component diagrams</span><input id="briefing-architecture" type="checkbox" /></label>
+                  </div>
+                  <div class="briefing-option" data-briefing-option="sequence-diagrams" role="listitem" draggable="true" tabindex="0" aria-label="Sequence diagrams briefing section. Drag to reorder.">
+                    <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
+                    <label><span>Sequence diagrams</span><input id="briefing-sequence-diagrams" type="checkbox" /></label>
+                  </div>
+                  <div class="briefing-option" data-briefing-option="call-flows" role="listitem" draggable="true" tabindex="0" aria-label="Call flows briefing section. Drag to reorder.">
+                    <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
+                    <label><span>Call flows</span><input id="briefing-call-flows" type="checkbox" /></label>
+                  </div>
+                  <div class="briefing-option" data-briefing-option="needs-attention" role="listitem" draggable="true" tabindex="0" aria-label="Needs your attention briefing section. Drag to reorder.">
+                    <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
+                    <label><span>Needs your attention</span><input id="briefing-needs-attention" type="checkbox" /></label>
+                  </div>
+                  <div class="briefing-option" data-briefing-option="review-effort" role="listitem" draggable="true" tabindex="0" aria-label="Review effort briefing section. Drag to reorder.">
+                    <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
+                    <label><span>Review effort</span><input id="briefing-review-effort" type="checkbox" /></label>
+                  </div>
+                </div>
+                <p>Choose which grounded context appears before or during the tour. Drag rows to reorder them.</p>
+              </div>
             </section>
             <section class="settings-section">
               <strong>Appearance</strong>
@@ -370,6 +397,20 @@
             <h3 id="tour-intro-architecture-title">How the change fits together</h3>
           </div>
           <div id="tour-intro-architecture" class="tour-intro-architecture"></div>
+        </section>
+        <section id="tour-intro-sequence-section" class="tour-intro-architecture-section hidden" aria-labelledby="tour-intro-sequence-title">
+          <div class="tour-intro-section-heading">
+            <div class="eyebrow">Runtime flow</div>
+            <h3 id="tour-intro-sequence-title">How the changed behavior runs</h3>
+          </div>
+          <div id="tour-intro-sequence" class="tour-intro-flow-list"></div>
+        </section>
+        <section id="tour-intro-call-flows-section" class="tour-intro-architecture-section hidden" aria-labelledby="tour-intro-call-flows-title">
+          <div class="tour-intro-section-heading">
+            <div class="eyebrow">Call flow</div>
+            <h3 id="tour-intro-call-flows-title">Which calls are affected</h3>
+          </div>
+          <div id="tour-intro-call-flows" class="tour-intro-flow-list"></div>
         </section>
         <section id="tour-intro-attention" class="tour-intro-attention hidden" aria-labelledby="tour-intro-attention-title">
           <div class="tour-intro-section-heading">

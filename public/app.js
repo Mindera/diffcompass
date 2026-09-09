@@ -1,6 +1,9 @@
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 const fragmentToken = fragment.get("token");
 const launchTourIntro = fragment.get("intro") === "1";
+const DEFAULT_BRIEFING_ORDER = ["architecture", "sequence-diagrams", "call-flows", "needs-attention", "review-effort"];
+let briefingDrag = null;
+let briefingKeyboardDragKey = null;
 if (fragmentToken) {
   window.sessionStorage.setItem("review-tour-token", fragmentToken);
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -65,6 +68,7 @@ const state = {
   splitOldWidth: 50,
   renderedPhaseId: null,
   tourMode: null,
+  tourStarted: false,
   focusedStepId: null,
   tourIntroReturn: false,
   tourIntroPending: launchTourIntro,
@@ -98,11 +102,11 @@ const state = {
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
-    "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "conversation-context", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -465,6 +469,12 @@ function setBusy(busy, label = "Working…") {
   elements["agent-select"].disabled = busy;
   elements["model-select"].disabled = busy;
   elements["reasoning-select"].disabled = busy;
+  elements["show-tour-briefing"].disabled = busy;
+  elements["briefing-architecture"].disabled = busy;
+  elements["briefing-sequence-diagrams"].disabled = busy;
+  elements["briefing-call-flows"].disabled = busy;
+  elements["briefing-needs-attention"].disabled = busy;
+  elements["briefing-review-effort"].disabled = busy;
   elements["include-flows"].disabled = busy;
   elements["include-architecture"].disabled = busy;
   elements["include-call-flows"].disabled = busy;
@@ -481,10 +491,26 @@ function setBusy(busy, label = "Working…") {
   elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
   elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
   elements["chat-form"].querySelector("button").disabled = busy || state.questionPending || !reviewIsOpen();
+  syncBriefingPreferenceControls();
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
     elements["step-explanation"].innerHTML = `<span class="loading">${escapeHtml(label)}</span>`;
   }
   renderAgentActivity();
+}
+
+function syncBriefingPreferenceControls() {
+  elements["show-tour-briefing"].disabled = state.busy;
+  const disabled = state.busy || !elements["show-tour-briefing"].checked;
+  elements["briefing-architecture"].disabled = disabled;
+  elements["briefing-sequence-diagrams"].disabled = disabled;
+  elements["briefing-call-flows"].disabled = disabled;
+  elements["briefing-needs-attention"].disabled = disabled;
+  elements["briefing-review-effort"].disabled = disabled;
+  elements["briefing-options"].querySelectorAll("[data-briefing-option]").forEach((option) => {
+    option.draggable = !disabled;
+    option.tabIndex = disabled ? -1 : 0;
+    option.setAttribute("aria-disabled", String(disabled));
+  });
 }
 
 function renderAgentActivity() {
@@ -1675,9 +1701,10 @@ function renderPullRequest() {
 function renderReviewOverview() {
   const outline = state.session.outline;
   const pullRequest = state.session.pullRequest;
+  const showBriefing = state.session.preferences?.showBriefing !== false;
   elements["review-overview"].classList.toggle("hidden", !outline && !pullRequest);
   elements["tour-overview"].classList.toggle("hidden", !outline);
-  elements["tour-intro-return"].classList.toggle("hidden", !outline || !state.tourIntroShown);
+  elements["tour-intro-return"].classList.toggle("hidden", !outline || !state.tourIntroShown || !showBriefing);
   elements["tour-intro-return"].textContent = state.tourIntroReturn ? "↩ Back to briefing" : "View briefing";
   if (outline) {
     elements["review-overview-title"].textContent = outline.title;
@@ -1741,14 +1768,20 @@ function renderFindings() {
   elements["all-findings-empty"].classList.toggle("hidden", findings.length > 0);
   elements["all-findings-list"].innerHTML = findingCards(findings);
   elements["findings-back"].classList.toggle("hidden", !state.findingReturn);
+  elements["findings-back"].textContent = state.findingReturn?.fromBriefing ? "← Back to briefing" : "← Back to code";
 }
 
-function openFindingFromCode(findingId) {
+function openFindingFromCode(findingId, { fromBriefing = false } = {}) {
+  const finding = state.session.outline?.findings.find((candidate) => candidate.id === findingId);
   state.findingReturn = {
     tab: state.activeTab,
     visibleFile: state.visibleFile,
     scrollTop: elements["diff-panel"].scrollTop,
     findingId,
+    fromBriefing,
+    path: finding?.path,
+    line: finding?.line,
+    side: finding?.side,
   };
   state.focusedFindingId = findingId;
   state.activeTab = "findings";
@@ -1763,14 +1796,21 @@ function openFindingFromCode(findingId) {
   });
 }
 
-function returnToFindingCode() {
+async function returnToFindingCode() {
   const target = state.findingReturn;
   if (!target) return;
+  const fromBriefing = target.fromBriefing === true;
   state.findingReturn = null;
   state.focusedFindingId = null;
-  state.activeTab = target.tab;
+  state.tourIntroReturn = fromBriefing;
+  state.activeTab = fromBriefing ? "diff" : target.tab;
   renderFindings();
   renderActiveTab();
+  if (fromBriefing && target.path && target.line && target.side) {
+    await showChangedFile(target.path, target.line, target.side);
+    reopenTourIntro();
+    return;
+  }
   window.requestAnimationFrame(() => {
     elements["diff-panel"].scrollTop = target.scrollTop;
     elements.diff.querySelector(`[data-finding-id="${CSS.escape(target.findingId)}"]`)?.focus({ preventScroll: true });
@@ -1921,6 +1961,25 @@ function tourIntroArchitectureCard(architecture, label, key) {
   </article>`;
 }
 
+function tourIntroSequenceCard(flow, index) {
+  return `<article class="tour-intro-chart tour-intro-flow-card">
+    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Sequence diagram</span><h4>${escapeHtml(flow.title)}</h4></div></div>
+    <p>${escapeHtml(flow.summary)}</p>
+    <div class="sequence-diagram mermaid-render" data-tour-intro-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
+    <p class="tour-intro-flow-impact">Affects ${flow.affectedFiles?.length || flow.blastRadiusSize} changed file${(flow.affectedFiles?.length || flow.blastRadiusSize) === 1 ? "" : "s"}.</p>
+  </article>`;
+}
+
+function tourIntroCallFlowCard(flow) {
+  const affectedFiles = flow.affectedFiles ?? [];
+  return `<article class="tour-intro-chart tour-intro-flow-card">
+    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Call flow</span><h4>${escapeHtml(flow.title)}</h4></div></div>
+    <p>${escapeHtml(flow.summary)}</p>
+    <div class="call-tree tour-intro-call-tree">${renderCallTree(flow, "changes")}</div>
+    <p class="tour-intro-flow-impact">Affects ${affectedFiles.length || flow.blastRadiusSize} changed file${(affectedFiles.length || flow.blastRadiusSize) === 1 ? "" : "s"}.</p>
+  </article>`;
+}
+
 function openArchitectureDiagramViewer(key) {
   const architecture = architectureEntries().find((entry) => entry.key === key);
   const source = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${CSS.escape(key)}"]`)
@@ -1961,39 +2020,114 @@ function renderTourAttention() {
   const briefing = state.session.needsAttention;
   const signals = briefing?.signals ?? [];
   const findingCount = signals.filter((signal) => signal.kind === "finding").length;
-  elements["tour-intro-attention"].classList.toggle("hidden", signals.length === 0);
+  const showAttention = state.session.preferences?.briefingNeedsAttention !== false;
+  const showEffort = state.session.preferences?.briefingReviewEffort !== false;
+  elements["tour-intro-attention"].classList.toggle("hidden", !showAttention || signals.length === 0);
   elements["tour-intro-attention-note"].textContent = signals.length === 0 ? "" : `${signals.length} review cue${signals.length === 1 ? "" : "s"} shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 finding${findingCount === 1 ? "" : "s"}. Other cues point to contracts, tests, flows, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
   elements["tour-intro-attention-list"].innerHTML = signals.map((signal) => `<article class="tour-intro-attention-item ${signal.kind}" role="listitem"><div class="tour-intro-attention-heading"><strong>${escapeHtml(signal.title)}</strong><span class="attention-basis">${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</span></div><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details><button type="button" class="text-button" ${attentionSignalTarget(signal.target)}>${escapeHtml(attentionTargetLabel(signal.target))}</button></article>`).join("");
   const estimate = briefing?.estimate;
+  elements["tour-intro-estimate"].classList.toggle("hidden", !showEffort || !estimate);
   elements["tour-intro-estimate-summary"].textContent = estimate ? `About ${estimate.minutes} minutes for a first pass, based on the visible diff and review signals. It is a rough planning aid, not a risk score or quality rating.` : "Estimate unavailable.";
   elements["tour-intro-estimate-factors"].innerHTML = (estimate?.factors ?? []).map((factor) => `<div class="tour-intro-estimate-factor"><span>${escapeHtml(factor.label)}</span><strong>+${factor.minutes} min</strong><small>${escapeHtml(factor.detail)} · ${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"}</small></div>`).join("");
 }
 
+function briefingArchitectureEntries() {
+  return state.session.preferences?.briefingArchitecture === false ? [] : architectureEntries();
+}
+
+function briefingSequenceFlows() {
+  return state.session.preferences?.briefingSequenceDiagrams === true ? (state.session.outline?.flows ?? []) : [];
+}
+
+function briefingCallFlows() {
+  return state.session.preferences?.briefingCallFlows === true ? (state.session.outline?.callFlows ?? []) : [];
+}
+
+function briefingOrder() {
+  const saved = state.session.preferences?.briefingOrder;
+  return Array.isArray(saved) && saved.length === DEFAULT_BRIEFING_ORDER.length && new Set(saved).size === saved.length && saved.every((key) => DEFAULT_BRIEFING_ORDER.includes(key))
+    ? [...saved]
+    : [...DEFAULT_BRIEFING_ORDER];
+}
+
+function briefingOptionOrderFromDom() {
+  const current = [...elements["briefing-options"].querySelectorAll("[data-briefing-option]")]
+    .map((option) => option.dataset.briefingOption)
+    .filter((key) => DEFAULT_BRIEFING_ORDER.includes(key));
+  return [...current, ...DEFAULT_BRIEFING_ORDER.filter((key) => !current.includes(key))];
+}
+
+function renderBriefingOptionOrder(order = briefingOrder()) {
+  const options = new Map([...elements["briefing-options"].querySelectorAll("[data-briefing-option]")].map((option) => [option.dataset.briefingOption, option]));
+  order.forEach((key, index) => {
+    const option = options.get(key);
+    if (!option) return;
+    elements["briefing-options"].appendChild(option);
+    option.setAttribute("aria-posinset", String(index + 1));
+    option.setAttribute("aria-setsize", String(order.length));
+    option.setAttribute("aria-grabbed", String(briefingKeyboardDragKey === key));
+  });
+}
+
+function renderTourBriefingOrder() {
+  const sections = new Map([
+    ["architecture", elements["tour-intro-architecture-section"]],
+    ["sequence-diagrams", elements["tour-intro-sequence-section"]],
+    ["call-flows", elements["tour-intro-call-flows-section"]],
+    ["needs-attention", elements["tour-intro-attention"]],
+    ["review-effort", elements["tour-intro-estimate"]],
+  ]);
+  const scroll = elements["tour-intro-dialog"].querySelector(".tour-intro-scroll");
+  briefingOrder().forEach((key) => {
+    const section = sections.get(key);
+    if (section) scroll.appendChild(section);
+  });
+}
+
 function renderTourIntro() {
-  if (!state.session.outline) return;
-  const architectures = architectureEntries();
-  elements["tour-intro-title"].textContent = state.session.pullRequest?.title ?? state.session.outline.title;
-  elements["tour-intro-summary"].textContent = state.session.outline.summary;
+  const outline = state.session.outline;
+  const architectures = briefingArchitectureEntries();
+  const flows = briefingSequenceFlows();
+  const callFlows = briefingCallFlows();
+  elements["tour-intro-title"].textContent = state.session.pullRequest?.title ?? outline?.title ?? `${state.session.comparison.repositoryName} review briefing`;
+  elements["tour-intro-summary"].textContent = outline?.summary ?? "Grounded signals from this comparison are ready. Start the tour when you’re ready to explore the change.";
   renderTourAttention();
   elements["tour-intro-architecture-section"].classList.toggle("hidden", architectures.length === 0);
   elements["tour-intro-architecture"].innerHTML = `${architectureLegend()}${architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("")}`;
+  elements["tour-intro-sequence-section"].classList.toggle("hidden", flows.length === 0);
+  elements["tour-intro-sequence"].innerHTML = flows.map(tourIntroSequenceCard).join("");
+  elements["tour-intro-call-flows-section"].classList.toggle("hidden", callFlows.length === 0);
+  elements["tour-intro-call-flows"].innerHTML = callFlows.map(tourIntroCallFlowCard).join("");
+  renderTourBriefingOrder();
+  elements["begin-tour"].textContent = state.tourStarted ? "Close" : "Start tour";
   elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0;
 }
 
+function renderTourIntroDiagrams() {
+  const architectures = briefingArchitectureEntries();
+  const flows = briefingSequenceFlows();
+  if (architectures.length === 0 && flows.length === 0) return;
+  const generation = ++state.flowRenderGeneration;
+  void renderFlowDiagrams(architectures, flows, generation);
+}
+
 function maybeShowTourIntro() {
-  if (!state.tourIntroPending || state.tourIntroShown || !state.session.outline || elements["tour-intro-dialog"].open) return;
+  if (!state.tourIntroPending || state.tourIntroShown || state.session.preferences?.showBriefing === false || elements["tour-intro-dialog"].open) return;
   renderTourIntro();
+  renderTourIntroDiagrams();
   state.tourIntroShown = true;
   elements["tour-intro-dialog"].showModal();
   window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
 }
 
 function reopenTourIntro() {
+  if (state.session.preferences?.showBriefing === false) return;
   state.tourIntroReturn = false;
-  state.tourIntroPending = true;
+  state.tourIntroPending = false;
   state.tourIntroShown = true;
   renderReviewOverview();
   renderTourIntro();
+  renderTourIntroDiagrams();
   elements["tour-intro-dialog"].showModal();
   window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
 }
@@ -2089,17 +2223,29 @@ async function renderFlowDiagrams(architectures, flows, generation) {
     if (generation !== state.flowRenderGeneration) return;
     const card = elements.flows.querySelector(`[data-flow-id="${CSS.escape(flows[index].id)}"]`);
     const target = card?.querySelector(`[data-flow-index="${index}"]`);
-    if (!target) continue;
-    try {
-      const result = await window.mermaid.render(`review-tour-flow-${generation}-${index}`, flows[index].mermaid);
-      if (generation !== state.flowRenderGeneration || !target.isConnected) return;
-      target.innerHTML = result.svg;
-      target.querySelector("svg")?.setAttribute("aria-hidden", "true");
-    } catch {
-      target.innerHTML = '<span class="muted">Diagram unavailable</span>';
-      card.querySelector("[data-flow-error]")?.classList.remove("hidden");
-      const source = card.querySelector(".mermaid-source");
-      if (source) source.open = true;
+    const introTarget = elements["tour-intro-sequence"].querySelector(`[data-tour-intro-flow-index="${index}"]`);
+    if (target) {
+      try {
+        const result = await window.mermaid.render(`review-tour-flow-${generation}-${index}`, flows[index].mermaid);
+        if (generation !== state.flowRenderGeneration || !target.isConnected) return;
+        target.innerHTML = result.svg;
+        target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      } catch {
+        target.innerHTML = '<span class="muted">Diagram unavailable</span>';
+        card.querySelector("[data-flow-error]")?.classList.remove("hidden");
+        const source = card.querySelector(".mermaid-source");
+        if (source) source.open = true;
+      }
+    }
+    if (introTarget) {
+      try {
+        const introResult = await window.mermaid.render(`review-tour-intro-flow-${generation}-${index}`, flows[index].mermaid);
+        if (generation !== state.flowRenderGeneration || !introTarget.isConnected) return;
+        introTarget.innerHTML = introResult.svg;
+        introTarget.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      } catch {
+        introTarget.innerHTML = '<span class="muted">Diagram unavailable</span>';
+      }
     }
   }
 }
@@ -2704,6 +2850,14 @@ function renderSession() {
   elements["test-files-filter"].classList.toggle("active", state.testFilesOnly);
   elements["tree-mode"].value = state.treeMode;
   elements["prefetch-steps"].value = String(state.session.preferences?.prefetchSteps ?? 5);
+  renderBriefingOptionOrder();
+  elements["show-tour-briefing"].checked = state.session.preferences?.showBriefing !== false;
+  elements["briefing-architecture"].checked = state.session.preferences?.briefingArchitecture !== false;
+  elements["briefing-sequence-diagrams"].checked = state.session.preferences?.briefingSequenceDiagrams === true;
+  elements["briefing-call-flows"].checked = state.session.preferences?.briefingCallFlows === true;
+  elements["briefing-needs-attention"].checked = state.session.preferences?.briefingNeedsAttention !== false;
+  elements["briefing-review-effort"].checked = state.session.preferences?.briefingReviewEffort !== false;
+  syncBriefingPreferenceControls();
   elements["diff-search"].disabled = Boolean(state.tourMode);
   elements["status-filter"].disabled = Boolean(state.tourMode);
   elements["review-filter"].disabled = Boolean(state.tourMode);
@@ -2760,8 +2914,21 @@ function renderSession() {
 }
 
 async function beginPreparedTour() {
+  if (state.tourStarted) {
+    state.tourIntroPending = false;
+    state.tourIntroReturn = false;
+    elements["tour-intro-dialog"].close();
+    renderReviewOverview();
+    return;
+  }
+  if (!state.session.outline) {
+    elements["tour-intro-dialog"].close();
+    void startTour();
+    return;
+  }
   state.tourIntroPending = false;
   state.tourIntroReturn = false;
+  state.tourStarted = true;
   state.tourMode = true;
   elements["tour-intro-dialog"].close();
   renderReviewOverview();
@@ -2789,6 +2956,7 @@ async function startTour() {
       }),
     });
     state.tourMode = true;
+    state.tourStarted = true;
     state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null;
     renderSession();
     elements["tour-scroll"].scrollTop = 0;
@@ -3535,7 +3703,10 @@ elements["tour-intro-dialog"].addEventListener("click", (event) => {
   state.tourIntroReturn = true;
   renderReviewOverview();
   elements["tour-intro-dialog"].close();
-  if (kind === "finding") return openFindingFromCode(target.dataset.attentionId);
+  if (kind === "finding") {
+    state.tourMode = false;
+    return openFindingFromCode(target.dataset.attentionId, { fromBriefing: true });
+  }
   state.tourMode = false;
   renderSession();
   if (kind === "file") return void showChangedFile(target.dataset.attentionPath, Number(target.dataset.attentionLine) || undefined, target.dataset.attentionSide);
@@ -3772,6 +3943,123 @@ elements["prefetch-steps"].addEventListener("change", async () => {
   } finally {
     elements["prefetch-steps"].disabled = false;
   }
+});
+async function saveBriefingPreferences(order = briefingOptionOrderFromDom()) {
+  const dependentControls = [elements["briefing-architecture"], elements["briefing-sequence-diagrams"], elements["briefing-call-flows"], elements["briefing-needs-attention"], elements["briefing-review-effort"]];
+  const values = {
+    showBriefing: elements["show-tour-briefing"].checked,
+    briefingArchitecture: elements["briefing-architecture"].checked,
+    briefingSequenceDiagrams: elements["briefing-sequence-diagrams"].checked,
+    briefingCallFlows: elements["briefing-call-flows"].checked,
+    briefingNeedsAttention: elements["briefing-needs-attention"].checked,
+    briefingReviewEffort: elements["briefing-review-effort"].checked,
+    briefingOrder: order,
+  };
+  dependentControls.forEach((control) => { control.disabled = true; });
+  syncBriefingPreferenceControls();
+  try {
+    state.session = await api("/api/preferences", { method: "POST", body: JSON.stringify(values) });
+    if (!values.showBriefing) elements["tour-intro-dialog"].close();
+    renderSession();
+  } catch (error) {
+    toast(error.message);
+    renderSession();
+  } finally {
+    syncBriefingPreferenceControls();
+  }
+}
+[
+  "show-tour-briefing",
+  "briefing-architecture",
+  "briefing-sequence-diagrams",
+  "briefing-call-flows",
+  "briefing-needs-attention",
+  "briefing-review-effort",
+].forEach((id) => elements[id].addEventListener("change", () => void saveBriefingPreferences()));
+elements["briefing-options"].addEventListener("click", (event) => {
+  if (event.target.closest("input")) return;
+  event.target.closest("[data-briefing-option]")?.focus();
+});
+function clearBriefingDrag({ save = false } = {}) {
+  if (!briefingDrag) return;
+  const { option, placeholder } = briefingDrag;
+  if (placeholder.isConnected && save) placeholder.replaceWith(option);
+  else placeholder.remove();
+  option.classList.remove("dragging", "dragging-hidden");
+  briefingDrag = null;
+  const order = briefingOptionOrderFromDom();
+  renderBriefingOptionOrder(order);
+  if (save) void saveBriefingPreferences(order);
+}
+
+function moveBriefingDropPlaceholder(clientY) {
+  if (!briefingDrag) return;
+  const options = [...elements["briefing-options"].querySelectorAll("[data-briefing-option]")]
+    .filter((option) => option !== briefingDrag.option);
+  const nextOption = options.find((option) => {
+    const bounds = option.getBoundingClientRect();
+    return clientY < bounds.top + bounds.height / 2;
+  });
+  if (nextOption) elements["briefing-options"].insertBefore(briefingDrag.placeholder, nextOption);
+  else elements["briefing-options"].appendChild(briefingDrag.placeholder);
+}
+
+elements["briefing-options"].addEventListener("dragstart", (event) => {
+  const option = event.target.closest("[data-briefing-option]");
+  if (!option || option.getAttribute("aria-disabled") === "true") return;
+  const placeholder = document.createElement("div");
+  placeholder.className = "briefing-option-placeholder";
+  placeholder.setAttribute("aria-hidden", "true");
+  placeholder.style.height = `${option.getBoundingClientRect().height}px`;
+  const label = option.querySelector("label span")?.textContent?.trim() ?? "Section";
+  placeholder.textContent = `${label} will move here`;
+  option.after(placeholder);
+  briefingDrag = { option, placeholder };
+  option.classList.add("dragging");
+  event.dataTransfer?.setData("text/plain", option.dataset.briefingOption ?? "");
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  requestAnimationFrame(() => {
+    if (briefingDrag?.option === option) option.classList.add("dragging-hidden");
+  });
+});
+elements["briefing-options"].addEventListener("dragover", (event) => {
+  if (!briefingDrag) return;
+  event.preventDefault();
+  moveBriefingDropPlaceholder(event.clientY);
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+});
+elements["briefing-options"].addEventListener("drop", (event) => {
+  if (!briefingDrag) return;
+  event.preventDefault();
+  moveBriefingDropPlaceholder(event.clientY);
+  clearBriefingDrag({ save: true });
+});
+elements["briefing-options"].addEventListener("dragend", () => clearBriefingDrag());
+elements["briefing-options"].addEventListener("keydown", (event) => {
+  const option = event.target.closest("[data-briefing-option]");
+  if (!option || event.target.closest("input") || option.getAttribute("aria-disabled") === "true") return;
+  const key = option.dataset.briefingOption;
+  if (event.key === "Escape" && briefingKeyboardDragKey) {
+    briefingKeyboardDragKey = null;
+    renderBriefingOptionOrder();
+    return;
+  }
+  if ((event.key === " " || event.key === "Enter") && !briefingKeyboardDragKey) {
+    event.preventDefault();
+    briefingKeyboardDragKey = key;
+    renderBriefingOptionOrder();
+    return;
+  }
+  if (!briefingKeyboardDragKey || briefingKeyboardDragKey !== key || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+  event.preventDefault();
+  const order = briefingOptionOrderFromDom();
+  const index = order.indexOf(key);
+  const nextIndex = index + (event.key === "ArrowUp" ? -1 : 1);
+  if (nextIndex < 0 || nextIndex >= order.length) return;
+  [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+  renderBriefingOptionOrder(order);
+  void saveBriefingPreferences(order);
+  option.focus();
 });
 let fileResizeStart = null;
 elements["file-resizer"].addEventListener("pointerdown", (event) => {

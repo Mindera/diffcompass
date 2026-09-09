@@ -309,6 +309,13 @@ test("required reviewed-file policy blocks successful closure but never blocks c
     prefetchSteps: 2,
     requireAllFilesReviewed: true,
     closeOutcome: "accepted",
+    showBriefing: true,
+    briefingArchitecture: true,
+    briefingSequenceDiagrams: false,
+    briefingCallFlows: false,
+    briefingNeedsAttention: true,
+    briefingReviewEffort: true,
+    briefingOrder: ["architecture", "sequence-diagrams", "call-flows", "needs-attention", "review-effort"],
   };
   const session = new (ReviewSession as unknown as ReviewSessionConstructor)(comparison, [], { preferences });
 

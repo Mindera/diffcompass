@@ -237,6 +237,15 @@ export interface SessionDiffPreferences {
   mobile?: DiffViewPreferences;
 }
 
+export const BRIEFING_SECTION_IDS = ["architecture", "sequence-diagrams", "call-flows", "needs-attention", "review-effort"] as const;
+export type BriefingSection = typeof BRIEFING_SECTION_IDS[number];
+
+export function isBriefingSectionOrder(value: unknown): value is BriefingSection[] {
+  return Array.isArray(value) && value.length === BRIEFING_SECTION_IDS.length &&
+    new Set(value).size === BRIEFING_SECTION_IDS.length &&
+    value.every((section) => BRIEFING_SECTION_IDS.includes(section as BriefingSection));
+}
+
 export interface ReviewPreferences {
   diffLayout: "unified" | "split";
   changedFilesOnly: boolean;
@@ -244,7 +253,16 @@ export interface ReviewPreferences {
   prefetchSteps: number;
   requireAllFilesReviewed: boolean;
   closeOutcome: Extract<ReviewOutcome, "accepted" | "cancelled">;
+  showBriefing: boolean;
+  briefingArchitecture: boolean;
+  briefingSequenceDiagrams: boolean;
+  briefingCallFlows: boolean;
+  briefingNeedsAttention: boolean;
+  briefingReviewEffort: boolean;
+  briefingOrder: BriefingSection[];
 }
+
+export type BriefingPreferences = Pick<ReviewPreferences, "showBriefing" | "briefingArchitecture" | "briefingSequenceDiagrams" | "briefingCallFlows" | "briefingNeedsAttention" | "briefingReviewEffort" | "briefingOrder">;
 
 export type FindingSeverity = "critical" | "high" | "medium" | "low";
 

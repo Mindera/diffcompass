@@ -71,6 +71,50 @@ test("runtime preferences persist a bounded prepare-ahead window", async () => {
   expect(invalid.status).toBe(422);
 });
 
+test("briefing preferences persist and require the complete bounded selection", async () => {
+  const { session, fetch } = fixture();
+  const updated = await fetch(authorizedRequest(session, "/api/preferences", {
+    showBriefing: false,
+    briefingArchitecture: false,
+    briefingSequenceDiagrams: true,
+    briefingCallFlows: true,
+    briefingNeedsAttention: false,
+    briefingReviewEffort: false,
+    briefingOrder: ["review-effort", "needs-attention", "call-flows", "sequence-diagrams", "architecture"],
+  }));
+  expect(updated.status).toBe(200);
+  expect((await updated.json()).preferences).toMatchObject({
+    showBriefing: false,
+    briefingArchitecture: false,
+    briefingSequenceDiagrams: true,
+    briefingCallFlows: true,
+    briefingNeedsAttention: false,
+    briefingReviewEffort: false,
+    briefingOrder: ["review-effort", "needs-attention", "call-flows", "sequence-diagrams", "architecture"],
+  });
+
+  const reenabled = await fetch(authorizedRequest(session, "/api/preferences", {
+    showBriefing: true,
+    briefingArchitecture: false,
+    briefingSequenceDiagrams: true,
+    briefingCallFlows: true,
+    briefingNeedsAttention: false,
+    briefingReviewEffort: false,
+    briefingOrder: ["review-effort", "needs-attention", "call-flows", "sequence-diagrams", "architecture"],
+  }));
+  expect(reenabled.status).toBe(200);
+  expect((await reenabled.json()).preferences.showBriefing).toBe(true);
+
+  const invalid = await fetch(authorizedRequest(session, "/api/preferences", {
+    showBriefing: true,
+    briefingArchitecture: true,
+    briefingNeedsAttention: true,
+    briefingReviewEffort: true,
+    briefingOrder: ["architecture", "sequence-diagrams", "call-flows", "needs-attention", "review-effort"],
+  }));
+  expect(invalid.status).toBe(422);
+});
+
 test("diff preferences persist independently for desktop and mobile sessions", async () => {
   const { session, fetch } = fixture();
   const desktop = await fetch(authorizedRequest(session, "/api/preferences", { diffLayout: "unified", diffWrap: "wrap", mobile: false }));

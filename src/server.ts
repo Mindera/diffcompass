@@ -18,6 +18,7 @@ import { highlightGroups, SYNTAX_THEMES, type HighlightGroup, type SyntaxTheme }
 import { ReviewSession } from "./session.ts";
 import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
 import { createUpdateService, type UpdateService } from "./update.ts";
+import { isBriefingSectionOrder, type BriefingPreferences } from "./types.ts";
 import {
   enumValue,
   exactKeys,
@@ -178,12 +179,28 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/preferences") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["prefetchSteps", "diffLayout", "diffWrap", "mobile"]);
+        exactKeys(input, ["prefetchSteps", "diffLayout", "diffWrap", "mobile", "showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingCallFlows", "briefingNeedsAttention", "briefingReviewEffort", "briefingOrder"]);
         if (input.prefetchSteps !== undefined) {
           if (Object.keys(input).length !== 1 || !Number.isInteger(input.prefetchSteps) || Number(input.prefetchSteps) < 0 || Number(input.prefetchSteps) > 5) {
             throw new HttpError(422, "Prepare ahead must be between 0 and 5 steps.");
           }
           return json(await session.setPrefetchSteps(Number(input.prefetchSteps)));
+        }
+        const briefingKeys = ["showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingCallFlows", "briefingNeedsAttention", "briefingReviewEffort", "briefingOrder"] as const;
+        const briefingBooleanKeys = briefingKeys.slice(0, -1);
+        if (briefingKeys.some((key) => input[key] !== undefined)) {
+          if (Object.keys(input).length !== briefingKeys.length || briefingBooleanKeys.some((key) => typeof input[key] !== "boolean") || !isBriefingSectionOrder(input.briefingOrder)) {
+            throw new HttpError(422, "Briefing preferences must include six boolean values and each briefing section exactly once.");
+          }
+          return json(await session.setBriefingPreferences({
+            showBriefing: input.showBriefing as boolean,
+            briefingArchitecture: input.briefingArchitecture as boolean,
+            briefingSequenceDiagrams: input.briefingSequenceDiagrams as boolean,
+            briefingCallFlows: input.briefingCallFlows as boolean,
+            briefingNeedsAttention: input.briefingNeedsAttention as boolean,
+            briefingReviewEffort: input.briefingReviewEffort as boolean,
+            briefingOrder: input.briefingOrder as BriefingPreferences["briefingOrder"],
+          }));
         }
         if (input.diffLayout === undefined || input.diffWrap === undefined || typeof input.mobile !== "boolean" ||
           !["unified", "split"].includes(String(input.diffLayout)) || !["scroll", "wrap"].includes(String(input.diffWrap))) {

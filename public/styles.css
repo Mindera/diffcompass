@@ -905,6 +905,18 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .settings-section:last-child { border-bottom: 0; }
 .settings-section > strong { color: var(--muted); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
 .settings-section label { display: grid; grid-template-columns: minmax(0, 1fr) 122px; align-items: center; gap: 12px; color: var(--text); font-size: 11px; }
+.settings-subsection { display: grid; gap: 8px; margin-top: 2px; border-top: 1px solid var(--border-soft); padding-top: 9px; }
+.settings-subsection > strong { color: var(--text-soft); font-size: 10px; }
+.settings-subsection label { grid-template-columns: minmax(0, 1fr) auto; }
+.briefing-options { display: grid; gap: 6px; margin-left: 12px; border-left: 2px solid var(--border-soft); padding-left: 12px; }
+.briefing-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; border-radius: 6px; padding: 4px 3px; cursor: grab; }
+.briefing-option:active, .briefing-option.dragging { cursor: grabbing; }
+.briefing-option.dragging { opacity: .4; }
+.briefing-option.dragging-hidden { display: none; }
+.briefing-option-placeholder { display: grid; min-height: 28px; place-items: center; box-sizing: border-box; border: 2px solid var(--accent); border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface-hover)); font-size: 9px; font-weight: 800; letter-spacing: .04em; pointer-events: none; }
+.briefing-option-grip { color: var(--muted); font-size: 12px; letter-spacing: -3px; user-select: none; }
+.briefing-option label { min-width: 0; }
+.briefing-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .settings-section select { min-width: 0; width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 6px 7px; color: var(--text); background: var(--surface-control); cursor: pointer; font-size: 11px; }
 .settings-section p { margin: -3px 0 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
 .settings-actions .text-button { padding: 5px 0; text-align: left; }
@@ -952,6 +964,9 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .tour-intro-chart h4 { margin: 4px 0 6px; font-size: 14px; line-height: 1.3; }
 .tour-intro-chart > p { margin: 0; color: var(--text-soft); font-size: 10px; line-height: 1.45; }
 .tour-intro-chart .sequence-diagram { min-height: 150px; max-height: 300px; margin-top: 12px; }
+.tour-intro-flow-list { display: grid; gap: 12px; margin-top: 12px; }
+.tour-intro-flow-card .call-tree { min-height: 0; margin-top: 12px; }
+.tour-intro-flow-impact { margin-top: 8px !important; color: var(--muted) !important; font-size: 9px !important; }
 .diagram-expand-button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; color: var(--text-soft); background: var(--surface-control); font: 700 10px/1 system-ui, sans-serif; cursor: pointer; }
 .diagram-expand-button:hover, .diagram-expand-button:focus-visible { color: var(--text); border-color: var(--accent-border); background: var(--surface-hover); }
 .diagram-expand-button span { font-size: 13px; }

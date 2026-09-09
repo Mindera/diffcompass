@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
-import type { PersistedReviewSession, SourceCheckpoint } from "./types.ts";
+import { isBriefingSectionOrder, type PersistedReviewSession, type SourceCheckpoint } from "./types.ts";
 import { normalizeSequenceDiagram } from "./flows.ts";
 import { normalizeReviewArchitectureMermaid, validateReviewArchitecture } from "./architecture.ts";
 
@@ -253,7 +253,9 @@ function validPreferences(value: unknown): boolean {
     typeof value.changedFilesOnly === "boolean" && Number.isInteger(value.contextLines) &&
     Number(value.contextLines) >= 3 && Number(value.contextLines) <= 200 &&
     Number.isInteger(value.prefetchSteps) && Number(value.prefetchSteps) >= 0 && Number(value.prefetchSteps) <= 5 &&
-    typeof value.requireAllFilesReviewed === "boolean" && ["accepted", "cancelled"].includes(String(value.closeOutcome));
+    typeof value.requireAllFilesReviewed === "boolean" && ["accepted", "cancelled"].includes(String(value.closeOutcome)) &&
+    ["showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingCallFlows", "briefingNeedsAttention", "briefingReviewEffort"].every((key) => value[key] === undefined || typeof value[key] === "boolean") &&
+    (value.briefingOrder === undefined || isBriefingSectionOrder(value.briefingOrder));
 }
 
 function validDiffViewPreferences(value: unknown): boolean {

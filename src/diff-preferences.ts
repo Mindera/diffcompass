@@ -1,11 +1,12 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { acquireSessionLock } from "./session-library.ts";
-import type { DiffViewPreferences, SessionDiffPreferences } from "./types.ts";
+import { isBriefingSectionOrder, type BriefingPreferences, type DiffViewPreferences, type SessionDiffPreferences } from "./types.ts";
 
 interface DiffPreferenceStore {
   schemaVersion: 1;
   repositories: Record<string, SessionDiffPreferences>;
+  briefing?: BriefingPreferences;
 }
 
 const STORE_NAME = ".diff-preferences.json";
@@ -22,6 +23,16 @@ function validSessionPreferences(value: unknown): value is SessionDiffPreference
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return Object.keys(record).every((scope) => ["desktop", "mobile"].includes(scope) && validPreferences(record[scope]));
+}
+
+function validBriefingPreferences(value: unknown): value is BriefingPreferences {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const keys = ["showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingCallFlows", "briefingNeedsAttention", "briefingReviewEffort", "briefingOrder"];
+  const legacyKeys = keys.slice(0, 4);
+  const currentKeys = keys.slice(0, 6);
+  return (Object.keys(record).length === keys.length || Object.keys(record).length === currentKeys.length || Object.keys(record).length === legacyKeys.length) &&
+    Object.keys(record).every((key) => key === "briefingOrder" ? isBriefingSectionOrder(record[key]) : keys.includes(key) && typeof record[key] === "boolean");
 }
 
 function storePath(directory: string): string {
@@ -42,7 +53,11 @@ async function loadStore(directory: string): Promise<DiffPreferenceStore> {
     for (const [root, preferences] of Object.entries(value.repositories)) {
       if (root.length <= 4_096 && validSessionPreferences(preferences)) repositories[root] = structuredClone(preferences);
     }
-    return { schemaVersion: 1, repositories };
+    return {
+      schemaVersion: 1,
+      repositories,
+      briefing: validBriefingPreferences(value.briefing) ? structuredClone(value.briefing) : undefined,
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { schemaVersion: 1, repositories: {} };
     return { schemaVersion: 1, repositories: {} };
@@ -84,6 +99,29 @@ export async function loadGlobalDiffPreferences(directory: string | undefined, r
   const store = await loadStore(directory);
   const preferences = store.repositories[repositoryKey(repositoryRoot)];
   return preferences ? structuredClone(preferences) : undefined;
+}
+
+export async function loadGlobalBriefingPreferences(directory: string | undefined): Promise<BriefingPreferences | undefined> {
+  if (!directory) return undefined;
+  const store = await loadStore(directory);
+  return store.briefing ? structuredClone(store.briefing) : undefined;
+}
+
+export async function updateGlobalBriefingPreferences(directory: string | undefined, preferences: BriefingPreferences): Promise<BriefingPreferences | undefined> {
+  if (!directory) return undefined;
+  return updateStore(directory, (store) => {
+    const previous = structuredClone(store.briefing);
+    store.briefing = structuredClone(preferences);
+    return previous;
+  });
+}
+
+export async function restoreGlobalBriefingPreferences(directory: string | undefined, previous: BriefingPreferences | undefined): Promise<void> {
+  if (!directory) return;
+  await updateStore(directory, (store) => {
+    if (previous) store.briefing = structuredClone(previous);
+    else delete store.briefing;
+  });
 }
 
 export async function updateGlobalDiffPreferences(

@@ -1,6 +1,6 @@
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { FindingSeverity, ReasoningEffort, ReviewPolicy, ReviewPreferences, StandaloneAgentAdapterId } from "./types.ts";
+import { BRIEFING_SECTION_IDS, isBriefingSectionOrder, type BriefingSection, type FindingSeverity, type ReasoningEffort, type ReviewPolicy, type ReviewPreferences, type StandaloneAgentAdapterId } from "./types.ts";
 
 export interface RetentionConfig {
   maxAgeDays?: number;
@@ -34,6 +34,13 @@ export const DEFAULT_REVIEW_PREFERENCES: ReviewPreferences = {
   prefetchSteps: 5,
   requireAllFilesReviewed: false,
   closeOutcome: "accepted",
+  showBriefing: true,
+  briefingArchitecture: true,
+  briefingSequenceDiagrams: false,
+  briefingCallFlows: false,
+  briefingNeedsAttention: true,
+  briefingReviewEffort: true,
+  briefingOrder: [...BRIEFING_SECTION_IDS],
 };
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -93,7 +100,7 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
   const analysis = value.analysis === undefined ? {} : value.analysis;
   if (!object(diff) || !object(review) || !object(retention) || !object(analysis)) throw new Error(`${path} diff, review, retention, and analysis settings must be objects.`);
   exactKeys(diff, ["layout", "changedFilesOnly", "contextLines"], `${path} diff`);
-  exactKeys(review, ["requireAllFilesReviewed", "closeOutcome"], `${path} review`);
+  exactKeys(review, ["requireAllFilesReviewed", "closeOutcome", "showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingNeedsAttention", "briefingReviewEffort", "briefingOrder"], `${path} review`);
   exactKeys(retention, ["maxAgeDays", "maxSessions", "includeArchived"], `${path} retention`);
   exactKeys(analysis, ["instructions", "findings"], `${path} analysis`);
   const findingPolicy = analysis.findings === undefined ? {} : analysis.findings;
@@ -112,6 +119,10 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
   if (!["unified", "split"].includes(layout)) throw new Error(`${path} diff.layout must be unified or split.`);
   if (diff.changedFilesOnly !== undefined && typeof diff.changedFilesOnly !== "boolean") throw new Error(`${path} diff.changedFilesOnly must be a boolean.`);
   if (review.requireAllFilesReviewed !== undefined && typeof review.requireAllFilesReviewed !== "boolean") throw new Error(`${path} review.requireAllFilesReviewed must be a boolean.`);
+  for (const key of ["showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingCallFlows", "briefingNeedsAttention", "briefingReviewEffort"] as const) {
+    if (review[key] !== undefined && typeof review[key] !== "boolean") throw new Error(`${path} review.${key} must be a boolean.`);
+  }
+  if (review.briefingOrder !== undefined && !isBriefingSectionOrder(review.briefingOrder)) throw new Error(`${path} review.briefingOrder must contain each briefing section exactly once.`);
   const closeOutcome = review.closeOutcome === undefined ? DEFAULT_REVIEW_PREFERENCES.closeOutcome : String(review.closeOutcome);
   if (!["accepted", "cancelled"].includes(closeOutcome)) throw new Error(`${path} review.closeOutcome must be accepted or cancelled.`);
   if (retention.includeArchived !== undefined && typeof retention.includeArchived !== "boolean") throw new Error(`${path} retention.includeArchived must be a boolean.`);
@@ -131,6 +142,13 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
       prefetchSteps: DEFAULT_REVIEW_PREFERENCES.prefetchSteps,
       requireAllFilesReviewed: review.requireAllFilesReviewed ?? DEFAULT_REVIEW_PREFERENCES.requireAllFilesReviewed,
       closeOutcome: closeOutcome as ReviewPreferences["closeOutcome"],
+      showBriefing: review.showBriefing === true ? true : review.showBriefing === false ? false : DEFAULT_REVIEW_PREFERENCES.showBriefing,
+      briefingArchitecture: review.briefingArchitecture === true ? true : review.briefingArchitecture === false ? false : DEFAULT_REVIEW_PREFERENCES.briefingArchitecture,
+      briefingSequenceDiagrams: review.briefingSequenceDiagrams === true ? true : review.briefingSequenceDiagrams === false ? false : DEFAULT_REVIEW_PREFERENCES.briefingSequenceDiagrams,
+      briefingCallFlows: review.briefingCallFlows === true ? true : review.briefingCallFlows === false ? false : DEFAULT_REVIEW_PREFERENCES.briefingCallFlows,
+      briefingNeedsAttention: review.briefingNeedsAttention === true ? true : review.briefingNeedsAttention === false ? false : DEFAULT_REVIEW_PREFERENCES.briefingNeedsAttention,
+      briefingReviewEffort: review.briefingReviewEffort === true ? true : review.briefingReviewEffort === false ? false : DEFAULT_REVIEW_PREFERENCES.briefingReviewEffort,
+      briefingOrder: (review.briefingOrder === undefined ? DEFAULT_REVIEW_PREFERENCES.briefingOrder : [...review.briefingOrder]) as BriefingSection[],
     },
     retention: {
       maxAgeDays: optionalInteger(retention.maxAgeDays, `${path} retention.maxAgeDays`, 1, 3_650),

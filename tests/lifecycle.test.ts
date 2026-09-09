@@ -209,6 +209,35 @@ test("new sessions inherit the last repository-scoped diff preferences", async (
   } finally { await first.dispose(); }
 });
 
+test("new sessions inherit the global briefing preferences", async () => {
+  const { directory, repository, stateFile } = await repositoryFixture();
+  const first = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+  try {
+    await first.setBriefingPreferences({
+      showBriefing: false,
+      briefingArchitecture: false,
+      briefingSequenceDiagrams: true,
+      briefingCallFlows: true,
+      briefingNeedsAttention: false,
+      briefingReviewEffort: false,
+      briefingOrder: ["review-effort", "needs-attention", "call-flows", "sequence-diagrams", "architecture"],
+    });
+
+    const next = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile: join(directory, "next-session.json") });
+    try {
+      expect(next.snapshot().preferences).toMatchObject({
+        showBriefing: false,
+        briefingArchitecture: false,
+        briefingSequenceDiagrams: true,
+        briefingCallFlows: true,
+        briefingNeedsAttention: false,
+        briefingReviewEffort: false,
+        briefingOrder: ["review-effort", "needs-attention", "call-flows", "sequence-diagrams", "architecture"],
+      });
+    } finally { await next.dispose(); }
+  } finally { await first.dispose(); }
+});
+
 function proposalWorkspace(prompt: { type: string; prompt?: string }): string {
   const match = /isolated proposal workspace ("(?:\\.|[^"])*")/.exec(prompt.prompt ?? "");
   if (!match) throw new Error("Attached prompt did not include a proposal workspace.");
@@ -484,6 +513,13 @@ test("prefetch keeps a two-stop sliding window instead of preparing the whole to
     prefetchSteps: 2,
     requireAllFilesReviewed: false,
     closeOutcome: "accepted",
+    showBriefing: true,
+    briefingArchitecture: true,
+    briefingSequenceDiagrams: false,
+    briefingCallFlows: false,
+    briefingNeedsAttention: true,
+    briefingReviewEffort: true,
+    briefingOrder: ["architecture", "sequence-diagrams", "call-flows", "needs-attention", "review-effort"],
   };
   persisted.currentStepIndex = 0;
   persisted.outline!.phases[0]!.steps[0]!.explanation = "The current stop is ready.";

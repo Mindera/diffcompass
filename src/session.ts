@@ -12,10 +12,11 @@ import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
 import type { FindingDisposition } from "./types.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
+import { isBriefingSectionOrder } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
-import { diffPreferenceStoreDirectory, loadGlobalDiffPreferences, restoreGlobalDiffPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
+import { diffPreferenceStoreDirectory, loadGlobalBriefingPreferences, loadGlobalDiffPreferences, restoreGlobalBriefingPreferences, restoreGlobalDiffPreferences, updateGlobalBriefingPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
 import { buildNeedsAttention } from "./attention.ts";
 
 interface AgentDefaults {
@@ -154,7 +155,11 @@ export class ReviewSession {
     initialDiffPreferences?: SessionDiffPreferences,
   ) {
     this.browserToken = persisted?.browserToken ?? crypto.randomUUID();
-    this.preferences = structuredClone(persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES);
+    this.preferences = structuredClone({
+      ...DEFAULT_REVIEW_PREFERENCES,
+      ...(defaults.preferences ?? {}),
+      ...(persisted?.preferences ?? {}),
+    });
     this.diffPreferences = structuredClone(persisted?.diffPreferences ?? initialDiffPreferences);
     this.reviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
@@ -639,7 +644,13 @@ export class ReviewSession {
     const includeFindings = defaults.includeFindings === false
       ? false
       : persisted?.findingGenerationEnabled ?? defaults.includeFindings;
-    const preferences = persisted?.preferences ?? defaults.preferences ?? DEFAULT_REVIEW_PREFERENCES;
+    const preferenceDirectory = defaults.diffPreferenceDirectory ?? diffPreferenceStoreDirectory(defaults.stateFile);
+    const globalBriefingPreferences = await loadGlobalBriefingPreferences(preferenceDirectory);
+    const preferences = persisted?.preferences ?? {
+      ...DEFAULT_REVIEW_PREFERENCES,
+      ...(defaults.preferences ?? {}),
+      ...(globalBriefingPreferences ?? {}),
+    };
     const comparison = await loadComparison(persisted?.repositoryRoot ?? cwd, persisted?.base ?? base, preferences.contextLines);
     if (persisted && (
       comparison.repositoryRoot !== persisted.repositoryRoot ||
@@ -647,7 +658,7 @@ export class ReviewSession {
     )) throw new ReviewError("The persisted review does not match the requested repository comparison.");
     const adapters = structuredClone(defaults.agentAdapters ?? await discoverAgentAdapters(comparison.repositoryRoot));
     const preferenceRepositoryRoot = persisted?.pullRequest?.sourceRepositoryRoot ?? defaults.pullRequest?.sourceRepositoryRoot ?? comparison.repositoryRoot;
-    const globalDiffPreferences = await loadGlobalDiffPreferences(defaults.diffPreferenceDirectory ?? diffPreferenceStoreDirectory(defaults.stateFile), preferenceRepositoryRoot);
+    const globalDiffPreferences = await loadGlobalDiffPreferences(preferenceDirectory, preferenceRepositoryRoot);
     const attached = defaults.attached || Boolean(persisted?.bridgeToken);
     const bridge = attached ? new AttachedAgentBridge(
       persisted?.bridgeToken,
@@ -1192,6 +1203,35 @@ export class ReviewSession {
         throw error;
       }
       this.scheduleNextStepPrefetch();
+      return this.snapshot();
+    });
+  }
+
+  async setBriefingPreferences(preferences: BriefingPreferences) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (![preferences.showBriefing, preferences.briefingArchitecture, preferences.briefingSequenceDiagrams, preferences.briefingCallFlows, preferences.briefingNeedsAttention, preferences.briefingReviewEffort].every((value) => typeof value === "boolean") || !isBriefingSectionOrder(preferences.briefingOrder)) {
+        throw new ReviewError("Briefing preferences are invalid.");
+      }
+      const previous = structuredClone(this.preferences);
+      const next = { ...this.preferences, ...preferences };
+      if (JSON.stringify(previous) === JSON.stringify(next)) return this.snapshot();
+      const previousRevision = this.revision;
+      Object.assign(this.preferences, preferences);
+      this.revision += 1;
+      const preferenceDirectory = this.defaults.diffPreferenceDirectory ?? diffPreferenceStoreDirectory(this.defaults.stateFile);
+      let globalUpdated = false;
+      let previousGlobal: BriefingPreferences | undefined;
+      try {
+        previousGlobal = await updateGlobalBriefingPreferences(preferenceDirectory, preferences);
+        globalUpdated = preferenceDirectory !== undefined;
+        await this.persist();
+      } catch (error) {
+        Object.assign(this.preferences, previous);
+        this.revision = previousRevision;
+        if (globalUpdated) await restoreGlobalBriefingPreferences(preferenceDirectory, previousGlobal).catch(() => undefined);
+        throw error;
+      }
       return this.snapshot();
     });
   }
