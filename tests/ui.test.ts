@@ -263,6 +263,7 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
     readFile(join(root, "src/agent.ts"), "utf8"),
   ]);
   expect(html).toContain('id="comment-stop"');
+  expect(html).toContain('class="button secondary" type="button">Add stop comment</button>');
   expect(html).toContain('id="step-comment-form"');
   expect(app).toContain('scope: "stop", stepId: step.id');
   expect(app).toContain('scope: "range"');
@@ -272,6 +273,7 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(agent).toContain("Current tour stop id:");
   expect(app).toContain("function commentScope(comment)");
   expect(styles).toContain(".step-discussion");
+  expect(styles).toContain(".step-discussion > button { justify-self: start; min-height: 32px; }");
   expect(styles).toContain(".comment-quote");
 });
 
