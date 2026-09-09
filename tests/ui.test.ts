@@ -283,6 +283,8 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(html).toContain('class="button secondary" type="button">Add stop comment</button>');
   expect(html).toContain('id="step-comment-form"');
   expect(html).toContain('id="question-scope" class="question-scope"');
+  expect(html.indexOf('id="questions-scroll"')).toBeLessThan(html.indexOf('id="question-scope" class="question-scope"'));
+  expect(html.indexOf('id="question-scope" class="question-scope"')).toBeLessThan(html.indexOf('class="question-composer"'));
   expect(html).not.toContain('id="conversation-context"');
   expect(app).toContain('scope: "stop", stepId: step.id');
   expect(app).toContain('scope: "range"');
@@ -292,6 +294,10 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(agent).toContain("Current tour stop id:");
   expect(app).toContain("function commentScope(comment)");
   expect(app).toContain("function quotationLabel(text)");
+  expect(app).toContain("async function highlightCommentQuotes()");
+  expect(app).toContain('data-comment-quote-path');
+  expect(app).toContain('void highlightCommentQuotes();');
+  expect(app).toContain('void highlightRenderedCode();\n  void highlightCommentQuotes();');
   expect(app).toContain("function conversationScopeMarkup(thread = null)");
   expect(app).toContain("function renderQuestionScope(thread = conversationThreads().find");
   expect(app).toContain("function discussionStopLabel(scope)");
@@ -306,6 +312,8 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(styles).toContain(".step-discussion");
   expect(styles).toContain(".step-discussion > button { justify-self: start; min-height: 32px; }");
   expect(styles).toContain(".comment-quote");
+  expect(styles).toContain(".questions-body { flex: 1; min-height: 0; overflow: hidden;");
+  expect(styles).toContain(".question-composer { flex: 0 0 auto;");
   expect(styles).toContain(".selection-quote-preview pre { max-height: 160px;");
   expect(styles).toContain(".conversation-scope");
   expect(styles).toContain(".question-scope");

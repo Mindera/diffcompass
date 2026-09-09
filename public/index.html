@@ -356,13 +356,13 @@
           <div id="questions-body" class="questions-body hidden">
             <label class="conversation-picker"><span class="conversation-picker-label">Conversation</span><select id="conversation-select"><option value="">New question</option></select></label>
             <div id="questions-scroll" class="questions-scroll">
+              <div id="question-scope" class="question-scope"></div>
+              <div id="selection-pill" class="selection-pill hidden"></div>
+              <div id="question-file-context" class="question-file-context"></div>
+              <button id="add-question-files" class="text-button question-add-files" type="button">+ Add file</button>
               <div id="chat-messages" class="chat-messages"></div>
             </div>
             <div class="question-composer">
-            <div id="question-scope" class="question-scope"></div>
-            <div id="selection-pill" class="selection-pill hidden"></div>
-            <div id="question-file-context" class="question-file-context"></div>
-            <button id="add-question-files" class="text-button question-add-files" type="button">+ Add file</button>
             <form id="chat-form" class="chat-form">
               <textarea id="chat-input" rows="2" placeholder="Ask about this step or selected code…"></textarea>
               <button class="send-button" type="submit" aria-label="Send">↑</button>

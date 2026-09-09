@@ -1075,7 +1075,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .questions-new { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; color: var(--text-soft); background: var(--surface-control); font-size: 10px; font-weight: 700; }
 .questions-new span { color: var(--accent-strong); font-size: 14px; line-height: 1; }
 .questions-new:hover { color: var(--text); border-color: var(--accent-border); background: var(--surface-hover); }
-.questions-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.questions-body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .questions-open .questions-pane { flex: var(--questions-share, 45) 1 0; }
 .questions-open .tour-active { flex: var(--tour-share, 55) 1 0; }
 .questions-only #tour-active { display: none; }
@@ -1087,7 +1087,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .conversation-picker select { width: 100%; min-width: 0; height: 38px; appearance: none; border: 1px solid var(--border); border-radius: 9px; padding: 0 34px 0 11px; overflow: hidden; color: var(--text); background: var(--surface-control); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .conversation-picker::after { content: "⌄"; position: absolute; right: 25px; bottom: 22px; color: var(--muted); font-size: 14px; line-height: 1; pointer-events: none; }
 .conversation-picker:hover select { border-color: var(--border-hover); background: var(--surface-hover); }
-.question-composer { padding: 8px 12px 12px; border-top: 1px solid var(--border); }
+.question-composer { flex: 0 0 auto; padding: 8px 12px 12px; border-top: 1px solid var(--border); }
 .questions-resizer { position: relative; flex: 0 0 8px; cursor: row-resize; touch-action: none; border-block: 1px solid var(--border); background: var(--panel); }
 .questions-resizer::after { content: ""; position: absolute; inset: 2px 42%; border-radius: 999px; background: var(--muted); }
 .questions-resizer:hover, .questions-resizer:focus-visible { background: var(--accent); }

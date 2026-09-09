@@ -86,6 +86,7 @@ const state = {
   syntaxTheme: ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("review-tour-syntax-theme"))
     ? window.localStorage.getItem("review-tour-syntax-theme")
     : "github",
+  commentQuoteHighlightRequestId: 0,
   screenshotUrls: new Map(),
   diffImageUrls: new Map(),
   diffImageRequestId: 0,
@@ -1801,7 +1802,40 @@ function quotationLabel(text) {
 function selectedQuotation(comment) {
   if (!comment.selectedText) return "";
   const label = quotationLabel(comment.selectedText);
-  return `<details class="comment-quote-details"><summary>${escapeHtml(label)}</summary><blockquote class="comment-quote">${escapeHtml(comment.selectedText)}</blockquote></details>`;
+  return `<details class="comment-quote-details"><summary>${escapeHtml(label)}</summary><blockquote class="comment-quote" data-comment-quote-path="${escapeHtml(comment.path)}">${escapeHtml(comment.selectedText)}</blockquote></details>`;
+}
+
+async function highlightCommentQuotes() {
+  const requestId = ++state.commentQuoteHighlightRequestId;
+  const targets = [...document.querySelectorAll(".comment-quote[data-comment-quote-path]")]
+    .map((target, index) => ({
+      target,
+      id: `comment-quote-${requestId}-${index}`,
+      path: target.dataset.commentQuotePath,
+      lines: (target.textContent ?? "").replaceAll("\r\n", "\n").split("\n"),
+    }))
+    .filter((target) => target.path && target.lines.some((line) => line.length > 0));
+  if (targets.length === 0) return;
+  try {
+    const batches = [];
+    for (let index = 0; index < targets.length; index += 100) batches.push(targets.slice(index, index + 100));
+    const results = await Promise.all(batches.map(async (batch) => await api("/api/highlight", {
+      method: "POST",
+      body: JSON.stringify({
+        groups: batch.map(({ id, path, lines }) => ({ id, path, lines })),
+        theme: state.syntaxTheme,
+      }),
+    })));
+    if (requestId !== state.commentQuoteHighlightRequestId) return;
+    const highlighted = new Map(results.flatMap((result) => result.groups).map((group) => [group.id, group]));
+    for (const target of targets) {
+      const group = highlighted.get(target.id);
+      if (!group || !target.target.isConnected) continue;
+      target.target.innerHTML = group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n") || " ";
+    }
+  } catch {
+    // Quoted source remains safely escaped and readable if highlighting is unavailable.
+  }
 }
 
 function commentLocation(comment) {
@@ -1880,6 +1914,7 @@ function renderComments() {
           : `<button class="text-button" data-action="edit" type="button"${disabled}>Edit</button><button class="text-button danger" data-action="delete" type="button"${disabled}>Delete</button>`}
       </div>
     </article>`).join("");
+  void highlightCommentQuotes();
   renderStepDiscussion();
 }
 
@@ -4380,6 +4415,7 @@ elements["syntax-theme-select"].addEventListener("change", () => {
   window.localStorage.setItem("review-tour-syntax-theme", state.syntaxTheme);
   document.documentElement.dataset.syntaxTheme = state.syntaxTheme;
   void highlightRenderedCode();
+  void highlightCommentQuotes();
   void highlightSymbolPeek();
 });
 elements["prefetch-steps"].addEventListener("change", async () => {
