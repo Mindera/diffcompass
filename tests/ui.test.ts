@@ -591,9 +591,41 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain("Only issue metadata and explicit criteria are retained");
   expect(app).toContain("statuses are not verified test results");
   expect(app).toContain("issue.access !== \"available\"");
+  expect(app).toContain("function issueAssessmentItems(items)");
+  expect(app).toContain('<details class="issue-criterion ${escapeHtml(item.status)}">');
+  expect(app).toContain("issueAssessmentItems(assessment.items)");
   expect(styles).toContain(".issue-criterion.implemented");
   expect(styles).toContain(".issue-criterion.missing");
   expect(styles).toContain(".issue-criterion.unclear");
+  expect(styles).toContain(".issue-criterion summary");
+  expect(styles).toContain(".issue-assessment-evidence");
+});
+
+test("pull request description controls switch the rendered and raw source views", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function setPullRequestDescriptionMode("), app.indexOf("async function api("));
+  const state = { prDescriptionMode: "rendered" };
+  let pullRequestRenders = 0;
+  let overviewRenders = 0;
+  let focused = false;
+  const setMode = new Function("state", "renderPullRequest", "renderReviewOverview", `${source}; return setPullRequestDescriptionMode;`)(
+    state,
+    () => { pullRequestRenders += 1; },
+    () => { overviewRenders += 1; },
+  ) as (event: { target: { closest: (selector: string) => unknown }; currentTarget: { querySelector: (selector: string) => { focus: (options: FocusOptions) => void } | null } }) => void;
+
+  setMode({
+    target: { closest: () => ({ dataset: { prDescriptionMode: "source" } }) },
+    currentTarget: { querySelector: () => ({ focus: () => { focused = true; } }) },
+  });
+
+  expect(state.prDescriptionMode).toBe("source");
+  expect(pullRequestRenders).toBe(1);
+  expect(overviewRenders).toBe(1);
+  expect(focused).toBe(true);
+  expect(app).toContain('aria-label="Raw Markdown source"');
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode)');
+  expect(app).toContain('elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode)');
 });
 
 test("agent-launched tours introduce the change before navigating to the first stop", async () => {

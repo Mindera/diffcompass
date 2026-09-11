@@ -322,15 +322,22 @@ function pullRequestDescription(body) {
   return `<div class="description-mode" role="group" aria-label="Pull request description display">
     <button class="text-button${rendered ? " active" : ""}" type="button" data-pr-description-mode="rendered" aria-pressed="${rendered}">Rendered</button>
     <button class="text-button${rendered ? "" : " active"}" type="button" data-pr-description-mode="source" aria-pressed="${!rendered}">Source</button>
-  </div>${rendered ? `<div class="rendered-markdown">${renderMarkdown(value)}</div>` : `<pre class="markdown-source">${escapeHtml(value)}</pre>`}`;
+  </div>${rendered ? `<div class="rendered-markdown">${renderMarkdown(value)}</div>` : `<pre class="markdown-source" aria-label="Raw Markdown source">${escapeHtml(value)}</pre>`}`;
 }
 
 function setPullRequestDescriptionMode(event) {
   const button = event.target.closest("[data-pr-description-mode]");
   if (!button) return;
-  state.prDescriptionMode = button.dataset.prDescriptionMode;
+  const mode = button.dataset.prDescriptionMode;
+  if (!["rendered", "source"].includes(mode)) return;
+  state.prDescriptionMode = mode;
   renderPullRequest();
   renderReviewOverview();
+  event.currentTarget.querySelector(`[data-pr-description-mode="${mode}"]`)?.focus({ preventScroll: true });
+}
+
+function issueAssessmentItems(items) {
+  return items.map((item) => `<details class="issue-criterion ${escapeHtml(item.status)}"><summary><span class="issue-criterion-title">${escapeHtml(item.criterion)}</span><span class="issue-status">${escapeHtml(item.status)}</span></summary><div class="issue-assessment-evidence"><p><span class="issue-evidence-label">Assessment</span>${renderInlineMarkdown(item.evidence)}</p>${item.evidencePaths.length ? `<small><span class="issue-evidence-label">Repository evidence</span>${item.evidencePaths.map((path) => escapeHtml(path)).join(", ")}</small>` : ""}</div></details>`).join("");
 }
 
 async function api(path, options = {}) {
@@ -2009,7 +2016,7 @@ function renderPullRequest() {
   const assessment = state.session.outline?.issueAssessment;
   const issueAssessment = !issue
     ? `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3><p class="muted">No linked issue was reported for this pull request. No issue or related provider resources were fetched.</p><p class="provider-boundary">Provider scope: linked closing issue only · related issues and earlier pull requests: not requested. Only issue metadata and explicit criteria are retained.</p></section>`
-    : `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3><p><a href="${escapeHtml(issue.url)}" rel="noreferrer">#${issue.number} ${escapeHtml(issue.title)}</a> <span class="mode">${escapeHtml(issue.access)}</span></p><p class="provider-boundary">Provider scope: one same-repository closing issue · related issues and earlier pull requests: not requested. Only issue metadata and explicit criteria are retained.</p>${issue.access !== "available" ? `<p class="muted">The linked issue is ${escapeHtml(issue.access)}. Its content was not included in the assessment.</p>` : issue.criteriaStatus === "malformed" ? `<p class="muted">The linked issue body was malformed or exceeded the safe limit. No criteria were assessed.</p>` : issue.criteriaStatus === "not-found" ? `<p class="muted">No explicit acceptance criteria were found in the issue body.</p>` : !assessment ? `<p class="muted">Start the tour to map the ${issue.acceptanceCriteria.length} explicit acceptance ${issue.acceptanceCriteria.length === 1 ? "criterion" : "criteria"} to repository evidence.</p>` : `<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p><div class="issue-criteria">${assessment.items.map((item) => `<article class="issue-criterion ${escapeHtml(item.status)}"><div><strong>${escapeHtml(item.criterion)}</strong><span class="issue-status">${escapeHtml(item.status)}</span></div><p>${renderInlineMarkdown(item.evidence)}</p>${item.evidencePaths.length ? `<small>Repository evidence: ${item.evidencePaths.map((path) => escapeHtml(path)).join(", ")}</small>` : ""}</article>`).join("")}</div>`}</section>`;
+    : `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3><p><a href="${escapeHtml(issue.url)}" rel="noreferrer">#${issue.number} ${escapeHtml(issue.title)}</a> <span class="mode">${escapeHtml(issue.access)}</span></p><p class="provider-boundary">Provider scope: one same-repository closing issue · related issues and earlier pull requests: not requested. Only issue metadata and explicit criteria are retained.</p>${issue.access !== "available" ? `<p class="muted">The linked issue is ${escapeHtml(issue.access)}. Its content was not included in the assessment.</p>` : issue.criteriaStatus === "malformed" ? `<p class="muted">The linked issue body was malformed or exceeded the safe limit. No criteria were assessed.</p>` : issue.criteriaStatus === "not-found" ? `<p class="muted">No explicit acceptance criteria were found in the issue body.</p>` : !assessment ? `<p class="muted">Start the tour to map the ${issue.acceptanceCriteria.length} explicit acceptance ${issue.acceptanceCriteria.length === 1 ? "criterion" : "criteria"} to repository evidence.</p>` : `<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p><div class="issue-criteria">${issueAssessmentItems(assessment.items)}</div>`}</section>`;
   elements["pull-request-content"].innerHTML = `
     <div class="panel-heading"><div><div class="eyebrow">GitHub pull request</div><h2>#${pullRequest.number} ${escapeHtml(pullRequest.title)}</h2></div><span class="mode">${escapeHtml(pullRequest.reviewDecision ?? "REVIEW REQUIRED")}</span></div>
     <p class="muted">${escapeHtml(pullRequest.repository)} · ${escapeHtml(pullRequest.author)} · ${escapeHtml(pullRequest.baseRefName)} ← ${escapeHtml(pullRequest.headRefName)} · ${escapeHtml(pullRequest.headRefOid.slice(0, 8))}</p>
