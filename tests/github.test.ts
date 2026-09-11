@@ -83,6 +83,11 @@ test("extracts only bounded explicit acceptance criteria", () => {
     { id: "criterion-1", text: "Return a stable error" },
     { id: "criterion-2", text: "Preserve the original status" },
   ]);
+  expect(extractAcceptanceCriteria("# Implementation checklist\n- [ ] Ship the feature\n\n## Notes\n- [ ] This is not an acceptance criterion")).toEqual([]);
+  expect(extractAcceptanceCriteria("## Acceptance Criteria\n- [ ] A request can be retried\n  - [ ] Add a retry metric\n- [ ] Errors include a request id")).toEqual([
+    { id: "criterion-1", text: "A request can be retried" },
+    { id: "criterion-2", text: "Errors include a request id" },
+  ]);
   expect(extractAcceptanceCriteria("No explicit acceptance criteria here")).toEqual([]);
   expect(extractAcceptanceCriteria(`\u0000${"x".repeat(100_000)}`)).toEqual([]);
 });
@@ -111,11 +116,30 @@ test("loads one same-repository linked issue and degrades when issue access is u
   expect(degraded.providerScope?.relatedResources).toBe("not-requested");
 
   const malformed = (async (command, cwd, accepted, options) => {
-    if (command[0] === "gh" && command[1] === "issue") return { stdout: JSON.stringify({ number: 12, title: "Retry requests", body: null }), stderr: "", exitCode: 0 };
+    if (command[0] === "gh" && command[1] === "issue") return { stdout: JSON.stringify({ number: 12, title: "Retry requests", body: null, url: "https://github.com/acme/widgets/issues/12" }), stderr: "", exitCode: 0 };
     return runner(command, cwd, accepted, options);
   }) as GitHubRunner;
   const malformedContext = await loadPullRequestContext("/tmp", "7", undefined, malformed);
   expect(malformedContext.linkedIssue).toMatchObject({ access: "available", criteriaStatus: "malformed", acceptanceCriteria: [] });
+
+  const foreignReferenceCommands: string[][] = [];
+  const foreignReference = (async (command, cwd, accepted, options) => {
+    foreignReferenceCommands.push(command);
+    if (command.slice(0, 3).join(" ") === "gh pr view") return { stdout: JSON.stringify({ ...metadata(), closingIssuesReferences: [{ number: 12, title: "Foreign issue", url: "https://github.com/other/repository/issues/12" }] }), stderr: "", exitCode: 0 };
+    if (command[0] === "gh" && command[1] === "issue") throw new Error("An unbound issue reference must not be fetched.");
+    return runner(command, cwd, accepted, options);
+  }) as GitHubRunner;
+  const noLinkedIssue = await loadPullRequestContext("/tmp", "7", undefined, foreignReference);
+  expect(noLinkedIssue.linkedIssue).toBeUndefined();
+  expect(noLinkedIssue.providerScope).toEqual({ linkedIssue: "none", relatedResources: "not-requested" });
+  expect(foreignReferenceCommands.filter((command) => command[1] === "issue")).toHaveLength(0);
+
+  const mismatchedIssueUrl = (async (command, cwd, accepted, options) => {
+    if (command[0] === "gh" && command[1] === "issue") return { stdout: JSON.stringify({ number: 12, title: "Retry requests", body: "## Acceptance Criteria\n- [ ] A request can be retried", url: "https://github.com/other/repository/issues/12" }), stderr: "", exitCode: 0 };
+    return runner(command, cwd, accepted, options);
+  }) as GitHubRunner;
+  const rejectedIssue = await loadPullRequestContext("/tmp", "7", undefined, mismatchedIssueUrl);
+  expect(rejectedIssue.linkedIssue).toMatchObject({ number: 12, access: "unavailable", criteriaStatus: "unavailable", acceptanceCriteria: [] });
 });
 
 async function git(cwd: string, ...args: string[]) { return runProcess(["git", ...args], cwd); }

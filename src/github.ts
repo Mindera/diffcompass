@@ -11,27 +11,48 @@ interface PullRequestIdentifier { repository?: string; number: number }
 
 const ISSUE_BODY_LIMIT = 100_000;
 
+function isCanonicalIssueUrl(value: unknown, repository: string, number: number): boolean {
+  if (typeof value !== "string" || !value || value.length > 4_096) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.host === "github.com" && !url.username && !url.password && !url.search && !url.hash &&
+      url.pathname.toLocaleLowerCase() === `/${repository}/issues/${number}`.toLocaleLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 /** Extract only explicit, checklist-like acceptance criteria from an issue body. */
 export function extractAcceptanceCriteria(body: string): LinkedIssueContext["acceptanceCriteria"] {
   if (body.length > ISSUE_BODY_LIMIT || body.includes("\u0000")) return [];
-  const lines = body.split(/\r?\n/).map((line) => line.trim());
+  const lines = body.split(/\r?\n/);
   const criteria: Array<{ id: string; text: string }> = [];
-  const section = lines.findIndex((line) => /^(?:#{1,6}\s*)?acceptance criteria\s*:?\s*$/i.test(line));
-  const sectionLines = section >= 0
-    ? lines.slice(section + 1, (() => { const next = lines.slice(section + 1).findIndex((line) => /^#{1,6}\s+/.test(line)); return next < 0 ? undefined : section + 1 + next; })())
-    : lines;
+  const section = lines.findIndex((line) => /^\s*(?:#{1,6}\s*)?acceptance criteria\s*:?\s*$/i.test(line));
   const candidates = section >= 0
     ? (() => {
       const result: string[] = [];
       let started = false;
-      for (const line of sectionLines) {
-        const match = /^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?(.+)$/.exec(line)?.[1] ?? /^(?:\[[ xX]\]\s+)(.+)$/.exec(line)?.[1];
-        if (match) { result.push(match); started = true; continue; }
-        if (started && line) break;
+      let listIndent: number | undefined;
+      for (const line of lines.slice(section + 1)) {
+        if (/^\s*#{1,6}\s+/.test(line)) break;
+        if (!line.trim()) continue;
+        const match = /^(\s*)(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?(.+)$/.exec(line) ?? /^(\s*)\[[ xX]\]\s+(.+)$/.exec(line);
+        if (!match) {
+          if (started) break;
+          continue;
+        }
+        const indent = match[1]!.length;
+        if (listIndent === undefined) listIndent = indent;
+        if (indent !== listIndent) {
+          if (indent < listIndent) break;
+          continue;
+        }
+        result.push(match[2]!);
+        started = true;
       }
       return result;
     })()
-    : lines.map((line) => /^(?:[-*+]\s+)?\[[ xX]\]\s+(.+)$/.exec(line)?.[1] ?? /^(?:AC|criterion)\s*\d+\s*[:.)-]\s*(.+)$/i.exec(line)?.[1]).filter((line): line is string => Boolean(line));
+    : lines.map((line) => /^(?:AC|criterion)\s*\d+\s*[:.)-]\s*(.+)$/i.exec(line.trim())?.[1]).filter((line): line is string => Boolean(line));
   for (const text of candidates) {
     const normalized = text.replace(/\s+/g, " ").trim();
     if (!normalized || normalized.length > 4_000 || criteria.some((candidate) => candidate.text === normalized)) continue;
@@ -69,11 +90,12 @@ async function loadLinkedIssue(
   if (!Number.isInteger(number) || Number(number) <= 0) return issueFallback(repository, 1, title, "unavailable");
   try {
     const raw = await jsonCommand(runner, ["gh", "issue", "view", String(number), "--repo", repository, "--json", "number,title,body,url,state,author"], cwd);
-    if (raw.number !== number || (raw.url !== undefined && (typeof raw.url !== "string" || raw.url.length > 4_096))) {
+    if (raw.number !== number || !isCanonicalIssueUrl(raw.url, repository, number)) {
       return issueFallback(repository, number, title, "unavailable");
     }
     const body = raw.body;
     const bodyMalformed = typeof body !== "string" || body.length > ISSUE_BODY_LIMIT || body.includes("\u0000");
+    const acceptanceCriteria = bodyMalformed ? [] : extractAcceptanceCriteria(body);
     const issueTitle = typeof raw.title === "string" && raw.title.length > 0 && raw.title.length <= 8_000 ? raw.title : title || `Linked issue #${number}`;
     const author = raw.author && typeof raw.author === "object" && !Array.isArray(raw.author) && typeof (raw.author as Record<string, unknown>).login === "string"
       ? (raw.author as Record<string, unknown>).login as string : undefined;
@@ -86,8 +108,8 @@ async function loadLinkedIssue(
       ...(author ? { author } : {}),
       ...(state ? { state } : {}),
       access: "available",
-      criteriaStatus: bodyMalformed ? "malformed" : extractAcceptanceCriteria(body as string).length ? "found" : "not-found",
-      acceptanceCriteria: bodyMalformed ? [] : extractAcceptanceCriteria(body as string),
+      criteriaStatus: bodyMalformed ? "malformed" : acceptanceCriteria.length ? "found" : "not-found",
+      acceptanceCriteria,
     };
   } catch (error) {
     return issueFallback(repository, number, title, issueAccessError(error));
@@ -239,7 +261,9 @@ export async function loadPullRequestContext(
       const item = candidate as Record<string, unknown>;
       const referenceRepository = item.repository && typeof item.repository === "object" && !Array.isArray(item.repository)
         ? (item.repository as Record<string, unknown>).nameWithOwner : undefined;
-      return Number.isInteger(item.number) && Number(item.number) > 0 && (referenceRepository === undefined || referenceRepository === repository);
+      return Number.isInteger(item.number) && Number(item.number) > 0 &&
+        isCanonicalIssueUrl(item.url, repository, Number(item.number)) &&
+        (referenceRepository === undefined || (typeof referenceRepository === "string" && referenceRepository.toLocaleLowerCase() === repository.toLocaleLowerCase()));
     }) as Record<string, unknown> | undefined;
     if (reference) {
       linkedIssueScope = "same-repository-closing-issue";
