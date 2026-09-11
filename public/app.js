@@ -86,6 +86,7 @@ const state = {
   closeCountdownSeconds: null,
   closeCountdownMessage: null,
   prDescriptionMode: "rendered",
+  pullRequestWide: false,
   syntaxTheme: ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("review-tour-syntax-theme"))
     ? window.localStorage.getItem("review-tour-syntax-theme")
     : "github",
@@ -799,6 +800,12 @@ function setSplitOldWidth(value, persist = false) {
   if (persist) window.localStorage.setItem(preferenceKey("split-old-width"), String(width));
 }
 
+function setPullRequestContentWidth(wide, persist = false) {
+  state.pullRequestWide = Boolean(wide);
+  elements["pull-request-content"].classList.toggle("wide", state.pullRequestWide);
+  if (persist) window.localStorage.setItem(preferenceKey("pull-request-wide"), String(state.pullRequestWide));
+}
+
 function initializeUiPreferences() {
   const repository = state.session.pullRequest?.sourceRepositoryRoot ?? state.session.comparison.repositoryRoot;
   if (state.preferenceRepository === repository) return;
@@ -810,6 +817,7 @@ function initializeUiPreferences() {
   const savedAgentPanelCollapsed = window.localStorage.getItem(preferenceKey("agent-panel-collapsed")) === "true";
   const savedSplitOldWidth = Number(window.localStorage.getItem(preferenceKey("split-old-width")));
   const savedQuestionPanePercent = Number(window.localStorage.getItem(preferenceKey("question-pane-percent")));
+  const savedPullRequestWide = window.localStorage.getItem(preferenceKey("pull-request-wide")) === "true";
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = preferredDiffLayout();
   state.diffWrap = preferredDiffWrap();
@@ -824,6 +832,7 @@ function initializeUiPreferences() {
   setPaneCollapsed("file", savedFilePanelCollapsed);
   setPaneCollapsed("agent", savedAgentPanelCollapsed);
   setSplitOldWidth(Number.isFinite(savedSplitOldWidth) && savedSplitOldWidth > 0 ? savedSplitOldWidth : 50);
+  setPullRequestContentWidth(savedPullRequestWide);
   resizeQuestions(Number.isFinite(savedQuestionPanePercent) && savedQuestionPanePercent > 0 ? savedQuestionPanePercent : 45);
   setFilePanelWidth(state.filePanelWidth);
 }
@@ -2025,13 +2034,22 @@ function renderPullRequest() {
   const issue = pullRequest.linkedIssue;
   const assessment = state.session.outline?.issueAssessment;
   const issueAssessment = !issue ? "" : `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3>${issue.access !== "available" ? `<p class="muted">The linked issue is ${escapeHtml(issue.access)}. No assessment was generated.</p>` : issue.criteriaStatus === "malformed" ? `<p class="muted">The linked issue body was malformed or exceeded the safe limit. No criteria were assessed.</p>` : issue.criteriaStatus === "not-found" ? `<p class="muted">No explicit acceptance criteria were found in the issue body.</p>` : !assessment ? `<p class="muted">Start the tour to map the ${issue.acceptanceCriteria.length} explicit acceptance ${issue.acceptanceCriteria.length === 1 ? "criterion" : "criteria"} to repository evidence.</p>` : `<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p><div class="issue-criteria">${issueAssessmentItems(assessment.items)}</div>`}</section>`;
+  elements["pull-request-content"].classList.toggle("wide", state.pullRequestWide);
   elements["pull-request-content"].innerHTML = `
-    <div class="panel-heading"><div><div class="eyebrow">GitHub pull request</div><h2>#${pullRequest.number} ${escapeHtml(pullRequest.title)}</h2></div><span class="mode">${escapeHtml(pullRequest.reviewDecision ?? "REVIEW REQUIRED")}</span></div>
+    <div class="panel-heading"><div><div class="eyebrow">GitHub pull request</div><h2>#${pullRequest.number} ${escapeHtml(pullRequest.title)}</h2></div><div class="pull-request-header-actions"><button class="button secondary" type="button" data-pull-request-width aria-pressed="${state.pullRequestWide}" title="${state.pullRequestWide ? "Return to a centred reading width" : "Use the full available review width"}">${state.pullRequestWide ? "Center width" : "Full width"}</button><span class="mode">${escapeHtml(pullRequest.reviewDecision ?? "REVIEW REQUIRED")}</span></div></div>
     <p class="muted">${escapeHtml(pullRequest.repository)} · ${escapeHtml(pullRequest.author)} · ${escapeHtml(pullRequest.baseRefName)} ← ${escapeHtml(pullRequest.headRefName)} · ${escapeHtml(pullRequest.headRefOid.slice(0, 8))}</p>
     <div class="pull-request-context"><section class="pull-request-description-panel"><h3>Pull request description</h3>${pullRequestDescription(pullRequest.body)}</section>${linkedIssueSummary(issue)}</div>${issueAssessment}
     <h3>Checks</h3><ul>${checks}</ul>
     <h3>Commits</h3><ul>${commits}</ul>
     <h3>Existing review threads${pullRequest.threadsTruncated ? " (first 100)" : ""}</h3>${threads}`;
+}
+
+function togglePullRequestContentWidth(event) {
+  const button = event.target.closest("[data-pull-request-width]");
+  if (!button) return;
+  setPullRequestContentWidth(!state.pullRequestWide, true);
+  renderPullRequest();
+  event.currentTarget.querySelector("[data-pull-request-width]")?.focus({ preventScroll: true });
 }
 
 function renderReviewOverview() {
@@ -4612,6 +4630,7 @@ elements["html-export-form"].addEventListener("submit", (event) => {
   void downloadExport("html", options);
 });
 elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode);
+elements["pull-request-content"].addEventListener("click", togglePullRequestContentWidth);
 elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);
 elements["regenerate-flows"].addEventListener("click", () => regenerateFlows());
 elements["regenerate-call-flows"].addEventListener("click", () => regenerateCallFlows());

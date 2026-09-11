@@ -595,6 +595,9 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain("function linkedIssueSummary(issue)");
   expect(app).toContain('class="pull-request-context"');
   expect(app).toContain('class="linked-issue-criteria"');
+  expect(app).toContain('data-pull-request-width aria-pressed="${state.pullRequestWide}"');
+  expect(app).toContain('window.localStorage.setItem(preferenceKey("pull-request-wide"), String(state.pullRequestWide))');
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", togglePullRequestContentWidth)');
   expect(app).toContain('<details class="issue-criterion ${escapeHtml(item.status)}">');
   expect(app).toContain("issueAssessmentItems(assessment.items)");
   expect(styles).toContain(".issue-criterion.implemented");
@@ -603,6 +606,8 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(styles).toContain(".issue-criterion summary");
   expect(styles).toContain(".issue-assessment-evidence");
   expect(styles).toContain(".pull-request-context { display: grid;");
+  expect(styles).toContain(".pull-request-content.wide { max-width: none; }");
+  expect(styles).toContain(".pull-request-header-actions");
   expect(styles).toContain("@media (max-width: 700px) { .pull-request-context");
 
   const summarySource = app.slice(app.indexOf("function linkedIssueSummary(issue)"), app.indexOf("async function api("));
@@ -650,6 +655,26 @@ test("pull request description controls switch the rendered and raw source views
   expect(app).toContain('aria-label="Raw Markdown source"');
   expect(app).toContain('elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode)');
   expect(app).toContain('elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode)');
+});
+
+test("pull request content can use and persist the full available width", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function setPullRequestContentWidth("), app.indexOf("function initializeUiPreferences("));
+  const classes = new Set<string>();
+  const writes: Array<[string, string]> = [];
+  const state = { pullRequestWide: false };
+  const setWidth = new Function("state", "elements", "window", "preferenceKey", `${source}; return setPullRequestContentWidth;`)(
+    state,
+    { "pull-request-content": { classList: { toggle: (name: string, enabled: boolean) => { if (enabled) classes.add(name); else classes.delete(name); } } } },
+    { localStorage: { setItem: (key: string, value: string) => writes.push([key, value]) } },
+    (name: string) => `review-tour:test:${name}`,
+  ) as (wide: boolean, persist?: boolean) => void;
+
+  setWidth(true, true);
+
+  expect(state.pullRequestWide).toBe(true);
+  expect(classes.has("wide")).toBe(true);
+  expect(writes).toEqual([["review-tour:test:pull-request-wide", "true"]]);
 });
 
 test("agent-launched tours introduce the change before navigating to the first stop", async () => {

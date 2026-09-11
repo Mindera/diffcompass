@@ -903,6 +903,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .activity-card { margin-bottom: 16px; border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--surface-card); }
 .activity-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .pull-request-content { max-width: 920px; margin: 0 auto; padding: 24px; line-height: 1.55; }
+.pull-request-content.wide { max-width: none; }
 .screenshot-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; padding: 24px; }
 .media-empty { grid-column: 1 / -1; }
 .screenshot-card { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-card); }
@@ -917,6 +918,8 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .pull-request-content h2 { margin: 4px 0; font-size: 22px; }
 .pull-request-content h3 { margin: 24px 0 8px; font-size: 13px; }
 .pull-request-content ul { padding-left: 22px; }
+.pull-request-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.pull-request-header-actions .button { padding: 5px 8px; font-size: 10px; }
 .pull-request-context { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 14px; margin-top: 16px; }
 .pull-request-description-panel, .linked-issue-summary { min-width: 0; border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px; background: var(--surface-card); }
 .pull-request-context h3 { margin: 0 0 10px; }
