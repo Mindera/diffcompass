@@ -917,6 +917,15 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .pull-request-content h2 { margin: 4px 0; font-size: 22px; }
 .pull-request-content h3 { margin: 24px 0 8px; font-size: 13px; }
 .pull-request-content ul { padding-left: 22px; }
+.pull-request-context { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 14px; margin-top: 16px; }
+.pull-request-description-panel, .linked-issue-summary { min-width: 0; border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px; background: var(--surface-card); }
+.pull-request-context h3 { margin: 0 0 10px; }
+.pull-request-description-panel .description-mode { justify-content: flex-start; margin: 0 0 8px; }
+.pull-request-description-panel .rendered-markdown { color: var(--text-soft); font-size: 12px; line-height: 1.55; }
+.linked-issue-heading { margin: 0 0 8px; }
+.linked-issue-criteria-label { margin: 12px 0 5px; color: var(--text-soft); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.linked-issue-criteria { max-height: 300px; margin: 0; padding-left: 20px; overflow: auto; color: var(--text-soft); font-size: 11px; line-height: 1.45; }
+.linked-issue-criteria li { margin: 5px 0; }
 .issue-assessment { margin-top: 24px; border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px; background: var(--panel-raised); }
 .issue-assessment h3 { margin-top: 0; }
 .provider-boundary,.assessment-disclaimer { color: var(--text-soft); font-size: 11px; }
@@ -938,6 +947,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .issue-assessment-evidence p { margin: 0 0 7px; color: var(--text-soft); font-size: 11px; line-height: 1.45; }
 .issue-assessment-evidence small { display: block; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .issue-evidence-label { display: block; margin-bottom: 2px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+@media (max-width: 700px) { .pull-request-context { grid-template-columns: minmax(0, 1fr); } }
 .activity-card h2 { display: inline; margin: 0 0 0 8px; font-size: 15px; line-height: 1.4; }
 .activity-card time, .activity-agent { color: var(--muted); font-size: 10px; }
 .activity-card time { white-space: nowrap; }

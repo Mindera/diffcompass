@@ -592,6 +592,9 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain("statuses are not verified test results");
   expect(app).toContain("issue.access !== \"available\"");
   expect(app).toContain("function issueAssessmentItems(items)");
+  expect(app).toContain("function linkedIssueSummary(issue)");
+  expect(app).toContain('class="pull-request-context"');
+  expect(app).toContain('class="linked-issue-criteria"');
   expect(app).toContain('<details class="issue-criterion ${escapeHtml(item.status)}">');
   expect(app).toContain("issueAssessmentItems(assessment.items)");
   expect(styles).toContain(".issue-criterion.implemented");
@@ -599,6 +602,27 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(styles).toContain(".issue-criterion.unclear");
   expect(styles).toContain(".issue-criterion summary");
   expect(styles).toContain(".issue-assessment-evidence");
+  expect(styles).toContain(".pull-request-context { display: grid;");
+  expect(styles).toContain("@media (max-width: 700px) { .pull-request-context");
+
+  const summarySource = app.slice(app.indexOf("function linkedIssueSummary(issue)"), app.indexOf("async function api("));
+  const linkedIssueSummary = new Function("escapeHtml", `${summarySource}; return linkedIssueSummary;`)((value: unknown) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")) as (issue: unknown) => string;
+  const linked = linkedIssueSummary({
+    number: 12,
+    title: "Bounded linked issue",
+    url: "https://github.com/example/repo/issues/12",
+    access: "available",
+    criteriaStatus: "found",
+    acceptanceCriteria: [{ id: "criterion-1", text: "Only explicit criteria are retained" }],
+  });
+  expect(linked).toContain("Linked issue");
+  expect(linked).toContain("Only explicit criteria are retained");
+  expect(linked).toContain("related issues and earlier pull requests: not requested");
 });
 
 test("pull request description controls switch the rendered and raw source views", async () => {
