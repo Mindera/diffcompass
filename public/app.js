@@ -116,7 +116,7 @@ const elements = Object.fromEntries(
     "shortcut-help-dialog", "shortcut-help-title", "shortcuts-button", "close-shortcut-help", "focus-mode-toggle",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -337,8 +337,45 @@ function setPullRequestDescriptionMode(event) {
   event.currentTarget.querySelector(`[data-pr-description-mode="${mode}"]`)?.focus({ preventScroll: true });
 }
 
+function issueEvidencePathLinks(paths) {
+  return paths.map((path) => `<button class="issue-evidence-file" type="button" data-issue-evidence-file="${escapeHtml(path)}" title="Open ${escapeHtml(path)} in the review">${escapeHtml(path)}</button>`).join(", ");
+}
+
 function issueAssessmentItems(items) {
-  return items.map((item) => `<details class="issue-criterion ${escapeHtml(item.status)}"><summary><span class="issue-criterion-title">${escapeHtml(item.criterion)}</span><span class="issue-status">${escapeHtml(item.status)}</span></summary><div class="issue-assessment-evidence"><p><span class="issue-evidence-label">Assessment</span>${renderInlineMarkdown(item.evidence)}</p>${item.evidencePaths.length ? `<small><span class="issue-evidence-label">Repository evidence</span>${item.evidencePaths.map((path) => escapeHtml(path)).join(", ")}</small>` : ""}</div></details>`).join("");
+  return items.map((item) => `<details class="issue-criterion ${escapeHtml(item.status)}"><summary><span class="issue-criterion-title">${escapeHtml(item.criterion)}</span><span class="issue-status">${escapeHtml(item.status)}</span></summary><div class="issue-assessment-evidence"><p><span class="issue-evidence-label">Assessment</span>${renderInlineMarkdown(item.evidence)}</p>${item.evidencePaths.length ? `<small><span class="issue-evidence-label">Repository evidence</span>${issueEvidencePathLinks(item.evidencePaths)}</small>` : ""}<button class="text-button issue-assessment-explain" type="button" data-issue-assessment-explain="${escapeHtml(item.criterionId)}">Show me how</button></div></details>`).join("");
+}
+
+let issueAssessmentReturnTarget = null;
+
+function openIssueAssessmentExplanation(item, returnTarget) {
+  issueAssessmentReturnTarget = returnTarget instanceof HTMLElement ? returnTarget : null;
+  elements["issue-assessment-title"].textContent = "How this assessment is grounded";
+  elements["issue-assessment-description"].innerHTML = `<p class="issue-assessment-model-note">This is a model explanation based on cited repository paths. It is not a verified test result.</p><section><span class="issue-evidence-label">Acceptance criterion</span><p>${escapeHtml(item.criterion)}</p></section><section><span class="issue-evidence-label">How the cited code is relevant</span><div class="issue-assessment-explanation">${renderInlineMarkdown(item.evidence)}</div></section>${item.evidencePaths.length ? `<section><span class="issue-evidence-label">Inspect the cited files</span><p class="issue-assessment-file-links">${issueEvidencePathLinks(item.evidencePaths)}</p></section>` : ""}`;
+  elements["issue-assessment-dialog"].showModal();
+  elements["close-issue-assessment"].focus();
+}
+
+async function showIssueEvidenceFile(path) {
+  const changed = state.session.comparison.files.some((file) => file.path === path);
+  const opened = changed ? await showAnalysisFile(path) : await showRepositoryFile(path);
+  if (opened) toast(changed ? `Opened ${path} in the diff` : `Opened ${path}; it is unchanged in this pull request.`);
+}
+
+function handleIssueAssessmentClick(event) {
+  const explain = event.target.closest("[data-issue-assessment-explain]");
+  if (explain) {
+    const item = state.session.outline?.issueAssessment?.items.find((candidate) => candidate.criterionId === explain.dataset.issueAssessmentExplain);
+    if (item) openIssueAssessmentExplanation(item, explain);
+    return;
+  }
+  const file = event.target.closest("[data-issue-evidence-file]");
+  if (file) {
+    if (elements["issue-assessment-dialog"].open) {
+      issueAssessmentReturnTarget = null;
+      elements["issue-assessment-dialog"].close();
+    }
+    void showIssueEvidenceFile(file.dataset.issueEvidenceFile);
+  }
 }
 
 function linkedIssueSummary(issue) {
@@ -4631,7 +4668,15 @@ elements["html-export-form"].addEventListener("submit", (event) => {
 });
 elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode);
 elements["pull-request-content"].addEventListener("click", togglePullRequestContentWidth);
+elements["pull-request-content"].addEventListener("click", handleIssueAssessmentClick);
 elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);
+elements["close-issue-assessment"].addEventListener("click", () => elements["issue-assessment-dialog"].close());
+elements["issue-assessment-dialog"].addEventListener("click", handleIssueAssessmentClick);
+elements["issue-assessment-dialog"].addEventListener("close", () => {
+  const target = issueAssessmentReturnTarget;
+  issueAssessmentReturnTarget = null;
+  if (target?.isConnected) target.focus({ preventScroll: true });
+});
 elements["regenerate-flows"].addEventListener("click", () => regenerateFlows());
 elements["regenerate-call-flows"].addEventListener("click", () => regenerateCallFlows());
 elements["flow-form"].addEventListener("submit", saveFlow);

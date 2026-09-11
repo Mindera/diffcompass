@@ -582,7 +582,8 @@ test("stable tour and pull request context render above the diff instead of insi
 });
 
 test("GitHub issue assessment discloses its bounded provider scope and model basis", async () => {
-  const [app, styles] = await Promise.all([
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public", "index.html"), "utf8"),
     readFile(join(root, "public", "app.js"), "utf8"),
     readFile(join(root, "public", "styles.css"), "utf8"),
   ]);
@@ -600,11 +601,22 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain('elements["pull-request-content"].addEventListener("click", togglePullRequestContentWidth)');
   expect(app).toContain('<details class="issue-criterion ${escapeHtml(item.status)}">');
   expect(app).toContain("issueAssessmentItems(assessment.items)");
+  expect(app).toContain("function issueEvidencePathLinks(paths)");
+  expect(app).toContain('data-issue-evidence-file="${escapeHtml(path)}"');
+  expect(app).toContain('data-issue-assessment-explain="${escapeHtml(item.criterionId)}"');
+  expect(app).toContain("function openIssueAssessmentExplanation(item, returnTarget)");
+  expect(app).toContain("This is a model explanation based on cited repository paths. It is not a verified test result.");
+  expect(app).toContain("async function showIssueEvidenceFile(path)");
+  expect(app).toContain("elements[\"pull-request-content\"].addEventListener(\"click\", handleIssueAssessmentClick)");
+  expect(html).toContain('id="issue-assessment-dialog"');
+  expect(html).toContain('id="close-issue-assessment"');
   expect(styles).toContain(".issue-criterion.implemented");
   expect(styles).toContain(".issue-criterion.missing");
   expect(styles).toContain(".issue-criterion.unclear");
   expect(styles).toContain(".issue-criterion summary");
   expect(styles).toContain(".issue-assessment-evidence");
+  expect(styles).toContain(".issue-evidence-file");
+  expect(styles).toContain(".issue-assessment-dialog");
   expect(styles).toContain(".pull-request-context { display: grid;");
   expect(styles).toContain(".pull-request-content.wide { max-width: none; }");
   expect(styles).toContain(".pull-request-header-actions");
@@ -628,6 +640,25 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(linked).toContain("Linked issue");
   expect(linked).toContain("Only explicit criteria are retained");
   expect(linked).toContain("related issues and earlier pull requests: not requested");
+
+  const escape = (value: unknown) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+  const assessmentSource = app.slice(app.indexOf("function issueEvidencePathLinks(paths)"), app.indexOf("function linkedIssueSummary(issue)"));
+  const issueAssessmentItems = new Function("escapeHtml", "renderInlineMarkdown", `${assessmentSource}; return issueAssessmentItems;`)(escape, escape) as (items: unknown[]) => string;
+  const assessmentMarkup = issueAssessmentItems([{
+    criterionId: "criterion-1",
+    criterion: "Only explicit criteria are retained",
+    status: "implemented",
+    evidence: "src/github.ts bounds parsing to explicit criteria.",
+    evidencePaths: ["src/github.ts", "tests/github.test.ts"],
+  }]);
+  expect(assessmentMarkup).toContain('data-issue-evidence-file="src/github.ts"');
+  expect(assessmentMarkup).toContain('data-issue-evidence-file="tests/github.test.ts"');
+  expect(assessmentMarkup).toContain('data-issue-assessment-explain="criterion-1"');
 });
 
 test("pull request description controls switch the rendered and raw source views", async () => {
