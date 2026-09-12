@@ -622,6 +622,9 @@ test("the pre-tour briefing is evidence-labelled, linked, responsive, and export
   expect(app).toContain("function reopenTourIntro()");
   expect(app).toContain("function renderTourIntroDiagrams()");
   expect(app).toContain("renderTourIntroDiagrams();");
+  expect(app).toContain('const briefingWasOpen = elements["tour-intro-dialog"].open;');
+  expect(app).toContain("if (briefingWasOpen) {");
+  expect(app).toContain('elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = briefingScroll;');
   expect(app).toContain('briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)');
   expect(app).toContain('briefingDiagramExpandButton("call flow", "call-flow", flow.id)');
   expect(app).toContain('callFlowCardHtml(callFlow, { showTitle: false, showRegenerate: false, viewer: true })');
@@ -757,8 +760,10 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(app).toContain('placeholder.textContent = `${label} will move here`');
   expect(app).toContain('clearBriefingDrag({ save: true })');
   expect(app).toContain("function syncBriefingPreferenceControls()");
-  expect(app).toContain('elements["show-tour-briefing"].disabled = state.busy;');
-  expect(app).toContain("const dependentControls = [elements[\"briefing-architecture\"], elements[\"briefing-sequence-diagrams\"], elements[\"briefing-call-flows\"], elements[\"briefing-needs-attention\"], elements[\"briefing-review-effort\"]];");
+  expect(app).toContain('elements["show-tour-briefing"].disabled = state.briefingPreferencesSaving;');
+  expect(app).toContain('const disabled = state.briefingPreferencesSaving || !elements["show-tour-briefing"].checked;');
+  expect(app).toContain("state.briefingPreferencesSaving = true;");
+  expect(app).toContain("state.briefingPreferencesSaving = false;");
   expect(app).toContain('!elements["show-tour-briefing"].checked');
   expect(styles).toContain(".briefing-options");
   expect(styles).toContain(".briefing-option-placeholder");

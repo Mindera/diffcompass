@@ -17,6 +17,7 @@ const state = {
   deletingCommentId: null,
   deletingCheckpointId: null,
   busy: false,
+  briefingPreferencesSaving: false,
   pendingQuestions: new Map(),
   activeThreadId: null,
   questionsOpen: false,
@@ -477,12 +478,6 @@ function setBusy(busy, label = "Working…") {
   elements["agent-select"].disabled = busy;
   elements["model-select"].disabled = busy;
   elements["reasoning-select"].disabled = busy;
-  elements["show-tour-briefing"].disabled = busy;
-  elements["briefing-architecture"].disabled = busy;
-  elements["briefing-sequence-diagrams"].disabled = busy;
-  elements["briefing-call-flows"].disabled = busy;
-  elements["briefing-needs-attention"].disabled = busy;
-  elements["briefing-review-effort"].disabled = busy;
   elements["include-flows"].disabled = busy;
   elements["include-architecture"].disabled = busy;
   elements["include-call-flows"].disabled = busy;
@@ -507,8 +502,8 @@ function setBusy(busy, label = "Working…") {
 }
 
 function syncBriefingPreferenceControls() {
-  elements["show-tour-briefing"].disabled = state.busy;
-  const disabled = state.busy || !elements["show-tour-briefing"].checked;
+  elements["show-tour-briefing"].disabled = state.briefingPreferencesSaving;
+  const disabled = state.briefingPreferencesSaving || !elements["show-tour-briefing"].checked;
   elements["briefing-architecture"].disabled = disabled;
   elements["briefing-sequence-diagrams"].disabled = disabled;
   elements["briefing-call-flows"].disabled = disabled;
@@ -2452,7 +2447,6 @@ function renderTourIntro() {
   elements["tour-intro-call-flows"].innerHTML = callFlows.map(tourIntroCallFlowCard).join("");
   renderTourBriefingOrder();
   elements["begin-tour"].textContent = state.tourStarted ? "Close" : "Start tour";
-  elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0;
 }
 
 function renderTourIntroDiagrams() {
@@ -3231,6 +3225,8 @@ function renderSessionUpdate(previous, options) {
 
 function renderSession() {
   const { comparison, comments } = state.session;
+  const briefingWasOpen = elements["tour-intro-dialog"].open;
+  const briefingScroll = briefingWasOpen ? elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop : 0;
   if (state.tourMode === null && state.session.outline) state.tourMode = true;
   initializeUiPreferences();
   state.proposalPreview = false;
@@ -3302,6 +3298,11 @@ function renderSession() {
   if (state.activeTab === "sequence") renderSequenceDiagrams();
   renderActivities();
   renderPullRequest();
+  if (briefingWasOpen) {
+    renderTourIntro();
+    renderTourIntroDiagrams();
+    elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = briefingScroll;
+  }
   void renderScreenshots();
   renderActiveTab();
   elements["feedback-button"].classList.remove("hidden");
@@ -4554,7 +4555,6 @@ elements["prefetch-steps"].addEventListener("change", async () => {
   }
 });
 async function saveBriefingPreferences(order = briefingOptionOrderFromDom()) {
-  const dependentControls = [elements["briefing-architecture"], elements["briefing-sequence-diagrams"], elements["briefing-call-flows"], elements["briefing-needs-attention"], elements["briefing-review-effort"]];
   const values = {
     showBriefing: elements["show-tour-briefing"].checked,
     briefingArchitecture: elements["briefing-architecture"].checked,
@@ -4564,7 +4564,7 @@ async function saveBriefingPreferences(order = briefingOptionOrderFromDom()) {
     briefingReviewEffort: elements["briefing-review-effort"].checked,
     briefingOrder: order,
   };
-  dependentControls.forEach((control) => { control.disabled = true; });
+  state.briefingPreferencesSaving = true;
   syncBriefingPreferenceControls();
   try {
     state.session = await api("/api/preferences", { method: "POST", body: JSON.stringify(values) });
@@ -4574,6 +4574,7 @@ async function saveBriefingPreferences(order = briefingOptionOrderFromDom()) {
     toast(error.message);
     renderSession();
   } finally {
+    state.briefingPreferencesSaving = false;
     syncBriefingPreferenceControls();
   }
 }
