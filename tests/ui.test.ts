@@ -612,6 +612,8 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain('data-issue-assessment-excerpt-highlight="${escapeHtml(id)}"');
   expect(app).toContain('api(`/api/files?path=${encodeURIComponent(path)}`)');
   expect(app).toContain('body: JSON.stringify({ groups, theme: state.syntaxTheme })');
+  expect(app).toContain("function dismissIssueAssessmentOnBackdrop(event)");
+  expect(app).toContain('elements["issue-assessment-dialog"].addEventListener("click", dismissIssueAssessmentOnBackdrop)');
   expect(app).toContain("async function showIssueEvidenceFile(path)");
   expect(app).toContain("elements[\"pull-request-content\"].addEventListener(\"click\", handleIssueAssessmentClick)");
   expect(html).toContain('id="issue-assessment-dialog"');
@@ -680,6 +682,18 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(excerpt).toMatchObject({ path: "src/assessment.ts", startLine: 6 });
   expect(excerpt.lines).toHaveLength(15);
   expect(excerpt.lines).toContain('const status = "implemented";');
+
+  const backdropSource = app.slice(app.indexOf("function dismissIssueAssessmentOnBackdrop(event)"), app.indexOf("async function showIssueEvidenceFile(path)"));
+  let closes = 0;
+  const dialog = {
+    getBoundingClientRect: () => ({ left: 20, right: 100, top: 30, bottom: 80 }),
+    close: () => { closes += 1; },
+  };
+  const dismissIssueAssessmentOnBackdrop = new Function("elements", `${backdropSource}; return dismissIssueAssessmentOnBackdrop;`)({ "issue-assessment-dialog": dialog }) as (event: { target: unknown; clientX: number; clientY: number }) => void;
+  dismissIssueAssessmentOnBackdrop({ target: dialog, clientX: 10, clientY: 20 });
+  dismissIssueAssessmentOnBackdrop({ target: dialog, clientX: 60, clientY: 50 });
+  dismissIssueAssessmentOnBackdrop({ target: {}, clientX: 10, clientY: 20 });
+  expect(closes).toBe(1);
 });
 
 test("pull request description controls switch the rendered and raw source views", async () => {

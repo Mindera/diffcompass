@@ -452,6 +452,14 @@ function openIssueAssessmentExplanation(item, returnTarget) {
   void hydrateIssueAssessmentCodeExcerpts(item, requestId);
 }
 
+function dismissIssueAssessmentOnBackdrop(event) {
+  const dialog = elements["issue-assessment-dialog"];
+  if (event.target !== dialog) return;
+  const bounds = dialog.getBoundingClientRect();
+  if (event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom) return;
+  dialog.close();
+}
+
 async function showIssueEvidenceFile(path) {
   const changed = state.session.comparison.files.some((file) => file.path === path);
   const opened = changed ? await showAnalysisFile(path) : await showRepositoryFile(path);
@@ -4769,6 +4777,7 @@ elements["pull-request-content"].addEventListener("click", handleIssueAssessment
 elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);
 elements["close-issue-assessment"].addEventListener("click", () => elements["issue-assessment-dialog"].close());
 elements["issue-assessment-dialog"].addEventListener("click", handleIssueAssessmentClick);
+elements["issue-assessment-dialog"].addEventListener("click", dismissIssueAssessmentOnBackdrop);
 elements["issue-assessment-dialog"].addEventListener("close", () => {
   state.issueAssessmentExcerptRequestId += 1;
   const target = issueAssessmentReturnTarget;
