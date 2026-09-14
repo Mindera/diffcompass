@@ -627,6 +627,8 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(styles).toContain(".issue-assessment-dialog");
   expect(styles).toContain(".issue-assessment-code-excerpt");
   expect(styles).toContain(".issue-assessment-code-excerpts");
+  expect(styles).toContain("white-space: pre-wrap");
+  expect(styles).toContain("overflow-wrap: anywhere");
   expect(styles).toContain(".pull-request-context { display: grid;");
   expect(styles).toContain(".pull-request-content.wide { max-width: none; }");
   expect(styles).toContain(".pull-request-header-actions");
@@ -679,7 +681,7 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
     },
   }) as (path: string, content: string, terms: string[]) => { path: string; startLine: number; lines: string[] };
   const excerpt = issueAssessmentExcerpt("src/assessment.ts", Array.from({ length: 25 }, (_, index) => index === 11 ? 'const status = "implemented";' : `const line${index + 1} = true;`).join("\n"), ["implemented"]);
-  expect(excerpt).toMatchObject({ path: "src/assessment.ts", startLine: 6 });
+  expect(excerpt).toMatchObject({ path: "src/assessment.ts", startLine: 4 });
   expect(excerpt.lines).toHaveLength(15);
   expect(excerpt.lines).toContain('const status = "implemented";');
 

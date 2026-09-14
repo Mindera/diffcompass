@@ -343,7 +343,7 @@ function issueEvidencePathLinks(paths) {
 }
 
 const ISSUE_ASSESSMENT_EXCERPT_LIMIT = 3;
-const ISSUE_ASSESSMENT_EXCERPT_CONTEXT = 6;
+const ISSUE_ASSESSMENT_EXCERPT_CONTEXT = 8;
 const ISSUE_ASSESSMENT_EXCERPT_LINE_LIMIT = 15;
 const ISSUE_ASSESSMENT_IGNORED_TERMS = new Set([
   "acceptance", "assessment", "criteria", "criterion", "evidence", "explicit", "implementation", "implemented", "issue", "issues", "linked", "missing", "model", "only", "path", "paths", "provider", "pull", "related", "repository", "request", "requests", "retained", "reviewed", "status", "statuses", "test", "tests", "unclear", "using", "with", "without",
