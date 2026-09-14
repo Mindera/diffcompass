@@ -278,6 +278,8 @@ test("maps supplied issue criteria with an explicit model-assessment boundary", 
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
   expect(event.prompt).toContain("exactly one same-repository closing issue");
   expect(event.prompt).toContain("related issues, earlier pull requests");
+  expect(event.prompt).toContain('Source issue: #12 "Retry" (https://github.com/repository/issues/12)');
+  expect(event.prompt).toContain("- criterion-1: A request can be retried");
   expect(event.prompt).toContain('"basis":"model-assessment"');
   await bridge.respond(event.id, JSON.stringify({
     title: "Retry review", summary: "The retry flag is introduced.",
