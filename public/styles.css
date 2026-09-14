@@ -953,7 +953,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .issue-evidence-file { border: 0; padding: 0; color: var(--accent-strong); background: transparent; cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .issue-evidence-file:hover { color: var(--accent); }
 .issue-assessment-explain { margin-top: 9px; }
-.issue-assessment-dialog { width: min(620px, calc(100vw - 30px)); max-height: min(720px, calc(100vh - 40px)); overflow: auto; }
+.issue-assessment-dialog { width: min(820px, calc(100vw - 30px)); max-height: min(820px, calc(100vh - 40px)); overflow: auto; }
 .issue-assessment-dialog-content { display: grid; gap: 16px; margin-top: 14px; }
 .issue-assessment-dialog-content section { border-top: 1px solid var(--border-soft); padding-top: 12px; }
 .issue-assessment-dialog-content p { margin: 4px 0 0; color: var(--text-soft); font-size: 12px; line-height: 1.55; }
@@ -961,6 +961,15 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .issue-assessment-explanation > :first-child { margin-top: 4px; }
 .issue-assessment-explanation > :last-child { margin-bottom: 0; }
 .issue-assessment-file-links { overflow-wrap: anywhere; }
+.issue-assessment-excerpt-note { color: var(--muted) !important; font-size: 11px !important; }
+.issue-assessment-code-excerpts { display: grid; gap: 10px; margin-top: 9px; }
+.issue-assessment-code-excerpts > .muted { margin: 0; }
+.issue-assessment-code-excerpt { overflow: hidden; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-code); }
+.issue-assessment-code-excerpt header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border-soft); padding: 7px 9px; }
+.issue-assessment-code-excerpt header strong { min-width: 0; overflow-wrap: anywhere; color: var(--text-code); font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.issue-assessment-code-excerpt header .text-button { flex: 0 0 auto; font-size: 10px; }
+.issue-assessment-code-excerpt pre { max-height: 260px; margin: 0; overflow: auto; padding: 9px 10px; color: var(--text-code); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
+.issue-assessment-code-excerpt code { display: block; min-width: max-content; }
 @media (max-width: 700px) { .pull-request-context { grid-template-columns: minmax(0, 1fr); } }
 .activity-card h2 { display: inline; margin: 0 0 0 8px; font-size: 15px; line-height: 1.4; }
 .activity-card time, .activity-agent { color: var(--muted); font-size: 10px; }

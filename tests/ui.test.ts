@@ -606,6 +606,12 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain('data-issue-assessment-explain="${escapeHtml(item.criterionId)}"');
   expect(app).toContain("function openIssueAssessmentExplanation(item, returnTarget)");
   expect(app).toContain("This is a model explanation based on cited repository paths. It is not a verified test result.");
+  expect(app).toContain("const ISSUE_ASSESSMENT_EXCERPT_LIMIT = 3;");
+  expect(app).toContain("function issueAssessmentExcerpt(path, content, terms)");
+  expect(app).toContain("async function hydrateIssueAssessmentCodeExcerpts(item, requestId)");
+  expect(app).toContain('data-issue-assessment-excerpt-highlight="${escapeHtml(id)}"');
+  expect(app).toContain('api(`/api/files?path=${encodeURIComponent(path)}`)');
+  expect(app).toContain('body: JSON.stringify({ groups, theme: state.syntaxTheme })');
   expect(app).toContain("async function showIssueEvidenceFile(path)");
   expect(app).toContain("elements[\"pull-request-content\"].addEventListener(\"click\", handleIssueAssessmentClick)");
   expect(html).toContain('id="issue-assessment-dialog"');
@@ -617,6 +623,8 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(styles).toContain(".issue-assessment-evidence");
   expect(styles).toContain(".issue-evidence-file");
   expect(styles).toContain(".issue-assessment-dialog");
+  expect(styles).toContain(".issue-assessment-code-excerpt");
+  expect(styles).toContain(".issue-assessment-code-excerpts");
   expect(styles).toContain(".pull-request-context { display: grid;");
   expect(styles).toContain(".pull-request-content.wide { max-width: none; }");
   expect(styles).toContain(".pull-request-header-actions");
@@ -659,6 +667,19 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(assessmentMarkup).toContain('data-issue-evidence-file="src/github.ts"');
   expect(assessmentMarkup).toContain('data-issue-evidence-file="tests/github.test.ts"');
   expect(assessmentMarkup).toContain('data-issue-assessment-explain="criterion-1"');
+
+  const excerptSource = app.slice(app.indexOf("const ISSUE_ASSESSMENT_EXCERPT_LIMIT"), app.indexOf("function linkedIssueSummary(issue)"));
+  const issueAssessmentExcerpt = new Function("state", `${excerptSource}; return issueAssessmentExcerpt;`)({
+    session: {
+      comparison: {
+        files: [{ path: "src/assessment.ts", hunks: [{ rows: [{ kind: "addition", newLine: 12, content: 'const status = "implemented";' }] }] }],
+      },
+    },
+  }) as (path: string, content: string, terms: string[]) => { path: string; startLine: number; lines: string[] };
+  const excerpt = issueAssessmentExcerpt("src/assessment.ts", Array.from({ length: 25 }, (_, index) => index === 11 ? 'const status = "implemented";' : `const line${index + 1} = true;`).join("\n"), ["implemented"]);
+  expect(excerpt).toMatchObject({ path: "src/assessment.ts", startLine: 6 });
+  expect(excerpt.lines).toHaveLength(15);
+  expect(excerpt.lines).toContain('const status = "implemented";');
 });
 
 test("pull request description controls switch the rendered and raw source views", async () => {

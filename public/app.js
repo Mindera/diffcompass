@@ -102,6 +102,7 @@ const state = {
   repositoryFileContent: "",
   filePanelOpen: false,
   symbolPeek: { history: [], current: null, requestId: 0, highlightRequestId: 0, compact: false },
+  issueAssessmentExcerptRequestId: 0,
 };
 
 const elements = Object.fromEntries(
@@ -341,6 +342,100 @@ function issueEvidencePathLinks(paths) {
   return paths.map((path) => `<button class="issue-evidence-file" type="button" data-issue-evidence-file="${escapeHtml(path)}" title="Open ${escapeHtml(path)} in the review">${escapeHtml(path)}</button>`).join(", ");
 }
 
+const ISSUE_ASSESSMENT_EXCERPT_LIMIT = 3;
+const ISSUE_ASSESSMENT_EXCERPT_CONTEXT = 6;
+const ISSUE_ASSESSMENT_EXCERPT_LINE_LIMIT = 15;
+const ISSUE_ASSESSMENT_IGNORED_TERMS = new Set([
+  "acceptance", "assessment", "criteria", "criterion", "evidence", "explicit", "implementation", "implemented", "issue", "issues", "linked", "missing", "model", "only", "path", "paths", "provider", "pull", "related", "repository", "request", "requests", "retained", "reviewed", "status", "statuses", "test", "tests", "unclear", "using", "with", "without",
+]);
+
+function issueAssessmentEvidenceTerms(evidence) {
+  const terms = String(evidence ?? "").match(/[A-Za-z_$][A-Za-z0-9_$]*/g) ?? [];
+  return [...new Set(terms.map((term) => term.toLocaleLowerCase()).filter((term) => term.length >= 4 && !ISSUE_ASSESSMENT_IGNORED_TERMS.has(term)))].sort((left, right) => right.length - left.length).slice(0, 24);
+}
+
+function issueAssessmentLineScore(line, terms) {
+  const source = String(line ?? "").toLocaleLowerCase();
+  return terms.reduce((score, term) => score + (source.includes(term) ? term.length : 0), 0);
+}
+
+function issueAssessmentChangedAnchor(path, terms) {
+  const file = state.session?.comparison?.files?.find((candidate) => candidate.path === path);
+  const rows = file?.hunks?.flatMap((hunk) => hunk.rows ?? []) ?? [];
+  let best = null;
+  for (const row of rows) {
+    if (!row.newLine || row.kind === "deletion") continue;
+    const score = issueAssessmentLineScore(row.content, terms);
+    if (score > (best?.score ?? 0)) best = { line: row.newLine, score };
+  }
+  if (best?.score) return best.line;
+  return rows.find((row) => row.kind === "addition" && row.newLine)?.newLine ?? null;
+}
+
+function issueAssessmentExcerpt(path, content, terms) {
+  const lines = String(content ?? "").split("\n");
+  const changedAnchor = issueAssessmentChangedAnchor(path, terms);
+  let matchedAnchor = null;
+  let bestScore = 0;
+  lines.forEach((line, index) => {
+    const score = issueAssessmentLineScore(line, terms);
+    if (score > bestScore) {
+      bestScore = score;
+      matchedAnchor = index + 1;
+    }
+  });
+  const anchor = changedAnchor ?? matchedAnchor ?? 1;
+  const length = Math.min(ISSUE_ASSESSMENT_EXCERPT_LINE_LIMIT, Math.max(1, lines.length));
+  const startLine = Math.max(1, Math.min(Math.max(1, lines.length - length + 1), anchor - ISSUE_ASSESSMENT_EXCERPT_CONTEXT));
+  return { path, startLine, lines: lines.slice(startLine - 1, startLine - 1 + length) };
+}
+
+function issueAssessmentExcerptMarkup(excerpt, id) {
+  const endLine = excerpt.startLine + excerpt.lines.length - 1;
+  return `<article class="issue-assessment-code-excerpt"><header><strong>${escapeHtml(excerpt.path)}:${excerpt.startLine}${endLine > excerpt.startLine ? `–${endLine}` : ""}</strong><button class="text-button" type="button" data-issue-evidence-file="${escapeHtml(excerpt.path)}">Open file</button></header><pre><code data-issue-assessment-excerpt-highlight="${escapeHtml(id)}">${escapeHtml(excerpt.lines.join("\n"))}</code></pre></article>`;
+}
+
+function issueAssessmentExcerptSection(item) {
+  const paths = [...new Set(item.evidencePaths)].slice(0, ISSUE_ASSESSMENT_EXCERPT_LIMIT);
+  if (paths.length === 0) return "";
+  const omitted = item.evidencePaths.length - paths.length;
+  return `<section><span class="issue-evidence-label">Cited code excerpts</span><p class="issue-assessment-excerpt-note">Short, bounded previews from the cited paths. Open a file to inspect its full context.</p><div class="issue-assessment-code-excerpts" data-issue-assessment-excerpts><p class="muted">Loading cited source…</p></div>${omitted > 0 ? `<p class="muted">${omitted} additional cited ${omitted === 1 ? "file is" : "files are"} available from the assessment.</p>` : ""}</section>`;
+}
+
+async function hydrateIssueAssessmentCodeExcerpts(item, requestId) {
+  const target = elements["issue-assessment-description"].querySelector("[data-issue-assessment-excerpts]");
+  const paths = [...new Set(item.evidencePaths)].slice(0, ISSUE_ASSESSMENT_EXCERPT_LIMIT);
+  if (!target || paths.length === 0) return;
+  const sources = await Promise.all(paths.map(async (path) => {
+    try {
+      const file = await api(`/api/files?path=${encodeURIComponent(path)}`);
+      return { path, content: file.content };
+    } catch {
+      return { path, content: null };
+    }
+  }));
+  if (requestId !== state.issueAssessmentExcerptRequestId || !target.isConnected || !elements["issue-assessment-dialog"].open) return;
+  const terms = issueAssessmentEvidenceTerms(item.evidence);
+  const excerpts = sources.filter((source) => typeof source.content === "string").map((source) => issueAssessmentExcerpt(source.path, source.content, terms));
+  const unavailable = sources.length - excerpts.length;
+  target.innerHTML = `${excerpts.map((excerpt, index) => issueAssessmentExcerptMarkup(excerpt, `issue-assessment-excerpt-${index}`)).join("")}${unavailable ? `<p class="muted">${unavailable} cited ${unavailable === 1 ? "file could" : "files could"} not be displayed.</p>` : ""}` || '<p class="muted">No cited source could be displayed.</p>';
+  const groups = excerpts.map((excerpt, index) => ({ id: `issue-assessment-excerpt-${index}`, path: excerpt.path, lines: excerpt.lines }));
+  if (groups.length === 0) return;
+  try {
+    const highlighted = await api("/api/highlight", {
+      method: "POST",
+      body: JSON.stringify({ groups, theme: state.syntaxTheme }),
+    });
+    if (requestId !== state.issueAssessmentExcerptRequestId || !target.isConnected || !elements["issue-assessment-dialog"].open) return;
+    for (const group of highlighted.groups ?? []) {
+      const code = target.querySelector(`[data-issue-assessment-excerpt-highlight="${CSS.escape(group.id)}"]`);
+      if (code) code.innerHTML = group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n");
+    }
+  } catch {
+    // Raw escaped source remains readable if highlighting is unavailable.
+  }
+}
+
 function issueAssessmentItems(items) {
   return items.map((item) => `<details class="issue-criterion ${escapeHtml(item.status)}"><summary><span class="issue-criterion-title">${escapeHtml(item.criterion)}</span><span class="issue-status">${escapeHtml(item.status)}</span></summary><div class="issue-assessment-evidence"><p><span class="issue-evidence-label">Assessment</span>${renderInlineMarkdown(item.evidence)}</p>${item.evidencePaths.length ? `<small><span class="issue-evidence-label">Repository evidence</span>${issueEvidencePathLinks(item.evidencePaths)}</small>` : ""}<button class="text-button issue-assessment-explain" type="button" data-issue-assessment-explain="${escapeHtml(item.criterionId)}">Show me how</button></div></details>`).join("");
 }
@@ -349,10 +444,12 @@ let issueAssessmentReturnTarget = null;
 
 function openIssueAssessmentExplanation(item, returnTarget) {
   issueAssessmentReturnTarget = returnTarget instanceof HTMLElement ? returnTarget : null;
+  const requestId = ++state.issueAssessmentExcerptRequestId;
   elements["issue-assessment-title"].textContent = "How this assessment is grounded";
-  elements["issue-assessment-description"].innerHTML = `<p class="issue-assessment-model-note">This is a model explanation based on cited repository paths. It is not a verified test result.</p><section><span class="issue-evidence-label">Acceptance criterion</span><p>${escapeHtml(item.criterion)}</p></section><section><span class="issue-evidence-label">How the cited code is relevant</span><div class="issue-assessment-explanation">${renderInlineMarkdown(item.evidence)}</div></section>${item.evidencePaths.length ? `<section><span class="issue-evidence-label">Inspect the cited files</span><p class="issue-assessment-file-links">${issueEvidencePathLinks(item.evidencePaths)}</p></section>` : ""}`;
+  elements["issue-assessment-description"].innerHTML = `<p class="issue-assessment-model-note">This is a model explanation based on cited repository paths. It is not a verified test result.</p><section><span class="issue-evidence-label">Acceptance criterion</span><p>${escapeHtml(item.criterion)}</p></section><section><span class="issue-evidence-label">How the cited code is relevant</span><div class="issue-assessment-explanation">${renderInlineMarkdown(item.evidence)}</div></section>${issueAssessmentExcerptSection(item)}${item.evidencePaths.length ? `<section><span class="issue-evidence-label">Inspect the cited files</span><p class="issue-assessment-file-links">${issueEvidencePathLinks(item.evidencePaths)}</p></section>` : ""}`;
   elements["issue-assessment-dialog"].showModal();
   elements["close-issue-assessment"].focus();
+  void hydrateIssueAssessmentCodeExcerpts(item, requestId);
 }
 
 async function showIssueEvidenceFile(path) {
@@ -4673,6 +4770,7 @@ elements["pull-request-description"].addEventListener("click", setPullRequestDes
 elements["close-issue-assessment"].addEventListener("click", () => elements["issue-assessment-dialog"].close());
 elements["issue-assessment-dialog"].addEventListener("click", handleIssueAssessmentClick);
 elements["issue-assessment-dialog"].addEventListener("close", () => {
+  state.issueAssessmentExcerptRequestId += 1;
   const target = issueAssessmentReturnTarget;
   issueAssessmentReturnTarget = null;
   if (target?.isConnected) target.focus({ preventScroll: true });
