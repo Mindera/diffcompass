@@ -445,6 +445,58 @@ test("session defaults can disable findings, reject a browser override, and surv
   expect(explicitlyDisabledResume.snapshot().findingGenerationEnabled).toBe(false);
 });
 
+test("pull request tours enable findings unless the caller explicitly disables them", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const base = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
+  const pullRequest = {
+    repository: "acme/widgets",
+    number: 7,
+    url: "https://github.com/acme/widgets/pull/7",
+    title: "PR",
+    body: "",
+    author: "reviewer",
+    baseRefName: "main",
+    baseRefOid: base,
+    headRefName: "feature",
+    headRefOid: base,
+    sourceRepositoryRoot: repository,
+    workspaceRoot: repository,
+    refNamespace: "refs/code-review-tour/test",
+    commits: [],
+    checks: [],
+    threads: [],
+    threadsTruncated: false,
+    updatedAt: new Date().toISOString(),
+  };
+  const disabledPolicy = {
+    instructions: [],
+    findings: { enabled: false, categories: ["correctness"], minimumSeverity: "low" as const },
+  };
+
+  const enabled = await ReviewSession.create(repository, undefined, {
+    ...noAdapters,
+    stateFile,
+    pullRequest,
+    reviewPolicy: disabledPolicy,
+  });
+  expect(enabled.snapshot()).toMatchObject({
+    findingGenerationEnabled: true,
+    reviewPolicy: { findings: { enabled: true } },
+  });
+
+  const explicitlyDisabled = await ReviewSession.create(repository, undefined, {
+    ...noAdapters,
+    stateFile: join(repository, "..", "disabled-pr-session.json"),
+    pullRequest,
+    reviewPolicy: disabledPolicy,
+    includeFindings: false,
+  });
+  expect(explicitlyDisabled.snapshot()).toMatchObject({
+    findingGenerationEnabled: false,
+    reviewPolicy: { findings: { enabled: false } },
+  });
+});
+
 test("a resumed open attached session retains its stop and drives the rehydrated agent bridge", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));

@@ -512,6 +512,10 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(app).toContain('class="finding-disposition ${escapeHtml(disposition)}"');
   expect(app).toContain("finding.outdated ? '<span class=\"finding-reassessment\">Needs reassessment</span>' : \"\"");
   expect(app).toContain('finding.outdated ? "Revalidate" : "Add as feedback"');
+  expect(app).toContain('data-action="publish-finding"');
+  expect(app).toContain("Add to PR review");
+  expect(app).toContain('publishFinding ? { publish: true } : {}');
+  expect(app).toContain("Finding added to the pending PR review");
   expect(app).not.toContain('finding.outdated ? " disabled" : ""');
   expect(styles).toContain(".finding-badges .finding-reassessment");
   expect(styles).toContain(".finding-pin.needs-reassessment");

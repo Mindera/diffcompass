@@ -2014,6 +2014,8 @@ function findingCards(findings, compact = false) {
     : ordered.map((finding) => {
       const focused = finding.id === state.focusedFindingId;
       const disposition = finding.disposition || (finding.status === "dismissed" ? "deferred" : "");
+      const findingComment = finding.commentId ? state.session.comments.find((comment) => comment.id === finding.commentId) : null;
+      const convertedLabel = findingComment?.publishToGitHub ? "Added to PR review" : "Added to feedback";
       const classes = `finding-item ${finding.priority.toLowerCase()} ${escapeHtml(finding.status)}${disposition ? ` ${escapeHtml(disposition)}` : ""}${finding.outdated ? " outdated" : ""}${focused ? " focused" : ""}`;
       const body = `<div class="finding-heading"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(finding.path)}:${finding.line}</button><span class="finding-priority">${finding.priority}</span></div>
       <strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong>
@@ -2022,7 +2024,7 @@ function findingCards(findings, compact = false) {
       <div class="finding-badges"><span>${finding.introduced === true ? "introduced" : finding.introduced === false ? "pre-existing" : "attribution unknown"}</span><span>${finding.tested ? "tested" : "untested"}</span><span>blast ${finding.blastRadiusSize}</span><span>${escapeHtml(finding.pinScope)} pin</span>${finding.recallGuard ? "<span>recall-protected</span>" : ""}${disposition ? `<span class="finding-disposition ${escapeHtml(disposition)}">${escapeHtml(findingDispositionLabel(disposition))}</span>` : ""}${finding.outdated ? '<span class="finding-reassessment">Needs reassessment</span>' : ""}</div>
       ${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${renderInlineMarkdown(finding.reviewerNote)}</p></div>` : ""}
       <div class="comment-actions">
-        ${finding.status === "converted-to-feedback" ? '<span class="muted">Added to feedback</span>' : `<label class="finding-disposition-control"><span>Disposition</span><select data-finding-disposition${disabled}><option value=""${!disposition ? " selected" : ""}>Open</option>${Object.entries(findingDispositionLabels).map(([value, label]) => `<option value="${value}"${disposition === value ? " selected" : ""}>${label}</option>`).join("")}</select></label><textarea data-finding-note rows="2" maxlength="8000" placeholder="Optional reviewer note"${disabled}>${escapeHtml(finding.reviewerNote || "")}</textarea><button class="text-button" data-action="save-disposition" type="button"${disabled}>Save disposition</button>${finding.status === "open" ? `<button class="text-button" data-action="convert" type="button"${disabled}>${finding.outdated ? "Revalidate" : "Add as feedback"}</button>` : `<button class="text-button" data-action="reopen" type="button"${disabled}>Reopen</button>`}`}
+        ${finding.status === "converted-to-feedback" ? `<span class="muted">${convertedLabel}</span>` : `<label class="finding-disposition-control"><span>Disposition</span><select data-finding-disposition${disabled}><option value=""${!disposition ? " selected" : ""}>Open</option>${Object.entries(findingDispositionLabels).map(([value, label]) => `<option value="${value}"${disposition === value ? " selected" : ""}>${label}</option>`).join("")}</select></label><textarea data-finding-note rows="2" maxlength="8000" placeholder="Optional reviewer note"${disabled}>${escapeHtml(finding.reviewerNote || "")}</textarea><button class="text-button" data-action="save-disposition" type="button"${disabled}>Save disposition</button>${finding.status === "open" ? `<button class="text-button" data-action="convert" type="button"${disabled}>${finding.outdated ? "Revalidate" : "Add as feedback"}</button>${state.session.pullRequest && !/\.png$/i.test(finding.path) ? `<button class="text-button" data-action="publish-finding" type="button"${disabled}>Add to PR review</button>` : ""}` : `<button class="text-button" data-action="reopen" type="button"${disabled}>Reopen</button>`}`}
       </div>`;
       if (compact) {
         const fileName = finding.path.split("/").at(-1) || finding.path;
@@ -5318,12 +5320,13 @@ async function handleFindingClick(event) {
   }
   if (!reviewIsOpen()) return;
   try {
+    const publishFinding = action === "publish-finding";
     state.session = await api(`/api/findings/${encodeURIComponent(finding.id)}`, {
       method: "PATCH",
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action: publishFinding ? "convert" : action, ...(publishFinding ? { publish: true } : {}) }),
     });
     renderSession();
-    toast(action === "convert" ? "Finding added to review feedback" : action === "dismiss" ? "Finding deferred" : "Finding reopened");
+    toast(publishFinding ? "Finding added to the pending PR review" : action === "convert" ? "Finding added to review feedback" : action === "dismiss" ? "Finding deferred" : "Finding reopened");
   } catch (error) {
     toast(error.message);
   }

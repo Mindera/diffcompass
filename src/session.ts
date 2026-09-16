@@ -175,7 +175,11 @@ export class ReviewSession {
       ...(persisted?.preferences ?? {}),
     });
     this.diffPreferences = structuredClone(persisted?.diffPreferences ?? initialDiffPreferences);
-    this.reviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
+    const configuredReviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
+    const pullRequestReview = Boolean(persisted?.pullRequest ?? defaults.pullRequest);
+    this.reviewPolicy = pullRequestReview && defaults.includeFindings !== false
+      ? { ...configuredReviewPolicy, findings: { ...configuredReviewPolicy.findings, enabled: true } }
+      : configuredReviewPolicy;
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.screenshots = structuredClone(persisted?.screenshots ?? []);
     this.checkpoints = structuredClone(persisted?.checkpoints ?? []);
@@ -1775,7 +1779,7 @@ export class ReviewSession {
     });
   }
 
-  async updateFinding(id: string, action: FindingUpdate, reviewerNote?: string) {
+  async updateFinding(id: string, action: FindingUpdate, reviewerNote?: string, publishToGitHub = false) {
     return this.serializeMutation(async () => {
     const before = this.captureMutableState();
     const terminalEpoch = this.terminalEpoch;
@@ -1784,6 +1788,9 @@ export class ReviewSession {
     this.ensureOpen();
     const finding = this.outline?.findings.find((candidate) => candidate.id === id);
     if (!finding) throw new ReviewError(`Review finding does not exist: ${id}`);
+    if (publishToGitHub && action !== "convert") throw new ReviewError("Only feedback converted from a finding can be added to a GitHub review.");
+    if (publishToGitHub && !this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
+    if (publishToGitHub && /\.png$/i.test(finding.path)) throw new ReviewError("Image findings remain local because GitHub cannot publish them as inline diff comments.");
     if (finding.status === "converted-to-feedback" && action !== "convert") {
       throw new ReviewError("A finding already converted to feedback cannot change state.");
     }
@@ -1820,6 +1827,7 @@ export class ReviewSession {
           body,
           lineContent: row.content,
           status: "active",
+          publishToGitHub,
           createdAt: timestamp,
           updatedAt: timestamp,
         });
@@ -1827,6 +1835,9 @@ export class ReviewSession {
         finding.disposition = undefined;
         finding.reviewerNote = undefined;
         finding.commentId = commentId;
+      } else if (publishToGitHub && finding.commentId) {
+        const comment = this.comments.find((candidate) => candidate.id === finding.commentId);
+        if (comment) comment.publishToGitHub = true;
       }
     }
     this.revision += 1;

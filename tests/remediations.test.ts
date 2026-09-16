@@ -236,6 +236,36 @@ test("converting a finding creates feedback once and makes that finding terminal
   await expect(session.updateFinding("finding-1", "reopen")).rejects.toThrow("already converted to feedback");
 });
 
+test("a finding can be queued directly as an inline pull request review comment", async () => {
+  const { repository, comparison, session } = await reviewFixture();
+  session.outline = outline(finding());
+  session.pullRequest = {
+    repository: "acme/widgets",
+    number: 7,
+    url: "https://github.com/acme/widgets/pull/7",
+    title: "PR",
+    body: "",
+    author: "reviewer",
+    baseRefName: "main",
+    baseRefOid: comparison.base,
+    headRefName: "feature",
+    headRefOid: comparison.head,
+    sourceRepositoryRoot: repository,
+    workspaceRoot: repository,
+    refNamespace: "refs/code-review-tour/test",
+    commits: [],
+    checks: [],
+    threads: [],
+    threadsTruncated: false,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const converted = await session.updateFinding("finding-1", "convert", undefined, true);
+
+  expect(converted.outline?.findings[0]).toMatchObject({ status: "converted-to-feedback", commentId: converted.comments[0]?.id });
+  expect(converted.comments[0]).toMatchObject({ body: "[P2] Validate the changed value.", publishToGitHub: true });
+});
+
 test("deleting feedback converted from a finding reopens the finding", async () => {
   const { session } = await reviewFixture();
   session.outline = outline(finding());
