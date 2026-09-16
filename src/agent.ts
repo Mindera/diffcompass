@@ -295,13 +295,28 @@ function validateIssueAssessment(value: unknown, issue: LinkedIssueContext | und
       !Array.isArray(entry.evidencePaths) || entry.evidencePaths.length > 8 || entry.evidencePaths.some((path) => typeof path !== "string" || !comparison.repositoryFiles.includes(path)) ||
       (entry.status !== "unclear" && entry.evidencePaths.length === 0) ||
       entry.basis !== "model-assessment") return undefined;
+    const evidencePaths = [...new Set(entry.evidencePaths as string[])];
+    const rawPathExplanations = entry.pathExplanations;
+    let pathExplanations: IssueAssessmentItem["pathExplanations"];
+    if (rawPathExplanations !== undefined) {
+      if (!Array.isArray(rawPathExplanations) || rawPathExplanations.length !== evidencePaths.length) return undefined;
+      const explainedPaths = new Set<string>();
+      pathExplanations = [];
+      for (const explanation of rawPathExplanations) {
+        if (!explanation || typeof explanation !== "object" || Array.isArray(explanation)) return undefined;
+        const detail = explanation as { path?: unknown; explanation?: unknown };
+        if (typeof detail.path !== "string" || !evidencePaths.includes(detail.path) || explainedPaths.has(detail.path) ||
+          typeof detail.explanation !== "string" || !detail.explanation.trim() || detail.explanation.length > 600) return undefined;
+        explainedPaths.add(detail.path);
+        pathExplanations.push({ path: detail.path, explanation: detail.explanation.trim() });
+      }
+    }
     const criterionId = entry.criterionId;
     const criterion = entry.criterion as string;
     const status = entry.status as IssueAssessmentItem["status"];
     const evidence = entry.evidence as string;
-    const evidencePaths = entry.evidencePaths as string[];
     seen.add(criterionId);
-    items.push({ criterionId, criterion, status, evidence, evidencePaths: [...new Set(evidencePaths)], basis: "model-assessment" });
+    items.push({ criterionId, criterion, status, evidence, evidencePaths, ...(pathExplanations !== undefined ? { pathExplanations } : {}), basis: "model-assessment" });
   }
   return seen.size === source.size ? { issueNumber: issue.number, issueUrl: issue.url, items } : undefined;
 }
@@ -318,6 +333,7 @@ const ISSUE_ASSESSMENT_PROVIDER_BOUNDARY = [
 const ISSUE_ASSESSMENT_OUTPUT_CONTRACT = [
   "Include exactly one item for each supplied criterion and preserve each criterionId and criterion text exactly.",
   "Cite only repository paths you inspected, and use an empty evidencePaths array only when the status is unclear.",
+  "For every evidence path, include one matching pathExplanations entry with a short model explanation of why that path is relevant.",
   "Do not describe any item or status as verified.",
 ].join(" ");
 
@@ -336,6 +352,7 @@ function issueAssessmentPromptContext(issue: LinkedIssueContext | undefined): st
       status: "implemented|missing|unclear",
       evidence: "short evidence-based explanation",
       evidencePaths: ["exact repository path"],
+      pathExplanations: [{ path: "exact repository path", explanation: "short model explanation of why this path is relevant" }],
       basis: "model-assessment",
     }],
   });

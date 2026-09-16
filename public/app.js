@@ -390,9 +390,14 @@ function issueAssessmentExcerpt(path, content, terms) {
   return { path, startLine, lines: lines.slice(startLine - 1, startLine - 1 + length) };
 }
 
-function issueAssessmentExcerptMarkup(excerpt, id) {
+function issueAssessmentPathExplanation(item, path) {
+  const explanation = item.pathExplanations?.find((detail) => detail?.path === path)?.explanation;
+  return typeof explanation === "string" && explanation.trim() ? explanation.trim() : "Cited repository evidence for this model assessment.";
+}
+
+function issueAssessmentExcerptMarkup(excerpt, id, explanation) {
   const endLine = excerpt.startLine + excerpt.lines.length - 1;
-  return `<article class="issue-assessment-code-excerpt"><header><strong>${escapeHtml(excerpt.path)}:${excerpt.startLine}${endLine > excerpt.startLine ? `–${endLine}` : ""}</strong><button class="text-button" type="button" data-issue-evidence-file="${escapeHtml(excerpt.path)}">Open file</button></header><pre><code data-issue-assessment-excerpt-highlight="${escapeHtml(id)}">${escapeHtml(excerpt.lines.join("\n"))}</code></pre></article>`;
+  return `<article class="issue-assessment-code-excerpt"><header><div class="issue-assessment-excerpt-heading"><strong>${escapeHtml(excerpt.path)}:${excerpt.startLine}${endLine > excerpt.startLine ? `–${endLine}` : ""}</strong><span><b>Model relevance:</b> ${escapeHtml(explanation)}</span></div><button class="text-button" type="button" data-issue-evidence-file="${escapeHtml(excerpt.path)}">Open file</button></header><pre><code data-issue-assessment-excerpt-highlight="${escapeHtml(id)}">${escapeHtml(excerpt.lines.join("\n"))}</code></pre></article>`;
 }
 
 function issueAssessmentExcerptSection(item) {
@@ -418,7 +423,7 @@ async function hydrateIssueAssessmentCodeExcerpts(item, requestId) {
   const terms = issueAssessmentEvidenceTerms(item.evidence);
   const excerpts = sources.filter((source) => typeof source.content === "string").map((source) => issueAssessmentExcerpt(source.path, source.content, terms));
   const unavailable = sources.length - excerpts.length;
-  target.innerHTML = `${excerpts.map((excerpt, index) => issueAssessmentExcerptMarkup(excerpt, `issue-assessment-excerpt-${index}`)).join("")}${unavailable ? `<p class="muted">${unavailable} cited ${unavailable === 1 ? "file could" : "files could"} not be displayed.</p>` : ""}` || '<p class="muted">No cited source could be displayed.</p>';
+  target.innerHTML = `${excerpts.map((excerpt, index) => issueAssessmentExcerptMarkup(excerpt, `issue-assessment-excerpt-${index}`, issueAssessmentPathExplanation(item, excerpt.path))).join("")}${unavailable ? `<p class="muted">${unavailable} cited ${unavailable === 1 ? "file could" : "files could"} not be displayed.</p>` : ""}` || '<p class="muted">No cited source could be displayed.</p>';
   const groups = excerpts.map((excerpt, index) => ({ id: `issue-assessment-excerpt-${index}`, path: excerpt.path, lines: excerpt.lines }));
   if (groups.length === 0) return;
   try {

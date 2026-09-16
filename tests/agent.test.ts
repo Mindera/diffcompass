@@ -280,15 +280,16 @@ test("maps supplied issue criteria with an explicit model-assessment boundary", 
   expect(event.prompt).toContain("related issues, earlier pull requests");
   expect(event.prompt).toContain('Source issue: #12 "Retry" (https://github.com/repository/issues/12)');
   expect(event.prompt).toContain("- criterion-1: A request can be retried");
+  expect(event.prompt).toContain('"pathExplanations"');
   expect(event.prompt).toContain('"basis":"model-assessment"');
   await bridge.respond(event.id, JSON.stringify({
     title: "Retry review", summary: "The retry flag is introduced.",
     phases: [{ id: "behavior", title: "Retry", summary: "The flag enables the retry path.", fileChanges: [{ path: "app.ts", summary: "Adds the retry flag." }], steps: [{ id: "retry", title: "Retry flag", objective: "The changed flag enables retry behavior.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
     callFlows: [], flows: [], findings: [],
-    issueAssessment: { issueNumber: 12, issueUrl: issue.url, items: [{ criterionId: "criterion-1", criterion: "A request can be retried", status: "implemented", evidence: "app.ts defines the retry flag.", evidencePaths: ["app.ts"], basis: "model-assessment" }],
+    issueAssessment: { issueNumber: 12, issueUrl: issue.url, items: [{ criterionId: "criterion-1", criterion: "A request can be retried", status: "implemented", evidence: "app.ts defines the retry flag.", evidencePaths: ["app.ts"], pathExplanations: [{ path: "app.ts", explanation: "The changed retry flag is defined here." }], basis: "model-assessment" }],
   }}));
   const outline = (await pending).value;
-  expect(outline.issueAssessment).toEqual(expect.objectContaining({ items: [expect.objectContaining({ status: "implemented", basis: "model-assessment" })] }));
+  expect(outline.issueAssessment).toEqual(expect.objectContaining({ items: [expect.objectContaining({ status: "implemented", pathExplanations: [{ path: "app.ts", explanation: "The changed retry flag is defined here." }], basis: "model-assessment" })] }));
 });
 
 test("repository policy is bounded context and findings are enforced after generation", async () => {

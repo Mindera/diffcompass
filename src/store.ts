@@ -147,13 +147,25 @@ function validComment(value: unknown): boolean {
     nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
 }
 
+function validPathExplanations(value: unknown, evidencePaths: string[]): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length !== new Set(evidencePaths).size) return false;
+  const paths = new Set<string>();
+  return value.every((detail) => record(detail) && nonEmptyString(detail.path, 4_096) && evidencePaths.includes(detail.path) && !paths.has(detail.path) && Boolean(paths.add(detail.path)) &&
+    nonEmptyString(detail.explanation, 600));
+}
+
 function validIssueAssessment(value: unknown): boolean {
   if (!record(value) || !Number.isInteger(value.issueNumber) || Number(value.issueNumber) <= 0 || !nonEmptyString(value.issueUrl, 4_096) || !Array.isArray(value.items) || value.items.length > 20) return false;
   const ids = new Set<string>();
-  return value.items.every((item) => record(item) && nonEmptyString(item.criterionId, 128) && !ids.has(item.criterionId) && Boolean(ids.add(item.criterionId)) &&
-    nonEmptyString(item.criterion, 4_000) && ["implemented", "missing", "unclear"].includes(String(item.status)) && nonEmptyString(item.evidence, 12_000) &&
-    Array.isArray(item.evidencePaths) && item.evidencePaths.length <= 8 && item.evidencePaths.every((path) => nonEmptyString(path, 4_096)) &&
-    (item.status === "unclear" || item.evidencePaths.length > 0) && item.basis === "model-assessment");
+  return value.items.every((item) => {
+    if (!record(item) || !nonEmptyString(item.criterionId, 128) || ids.has(item.criterionId) || !nonEmptyString(item.criterion, 4_000) ||
+      !["implemented", "missing", "unclear"].includes(String(item.status)) || !nonEmptyString(item.evidence, 12_000) ||
+      !Array.isArray(item.evidencePaths) || item.evidencePaths.length > 8 || !item.evidencePaths.every((path) => nonEmptyString(path, 4_096)) ||
+      (item.status !== "unclear" && item.evidencePaths.length === 0) || item.basis !== "model-assessment") return false;
+    ids.add(item.criterionId);
+    return validPathExplanations(item.pathExplanations, item.evidencePaths);
+  });
 }
 
 function validPullRequest(value: unknown): boolean {

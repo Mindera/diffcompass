@@ -608,6 +608,7 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain("This is a model explanation based on cited repository paths. It is not a verified test result.");
   expect(app).toContain("const ISSUE_ASSESSMENT_EXCERPT_LIMIT = 3;");
   expect(app).toContain("function issueAssessmentExcerpt(path, content, terms)");
+  expect(app).toContain("function issueAssessmentPathExplanation(item, path)");
   expect(app).toContain("async function hydrateIssueAssessmentCodeExcerpts(item, requestId)");
   expect(app).toContain('data-issue-assessment-excerpt-highlight="${escapeHtml(id)}"');
   expect(app).toContain('api(`/api/files?path=${encodeURIComponent(path)}`)');
@@ -627,6 +628,7 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(styles).toContain(".issue-assessment-dialog");
   expect(styles).toContain(".issue-assessment-code-excerpt");
   expect(styles).toContain(".issue-assessment-code-excerpts");
+  expect(styles).toContain(".issue-assessment-excerpt-heading");
   expect(styles).toContain("white-space: pre-wrap");
   expect(styles).toContain("overflow-wrap: anywhere");
   expect(styles).toContain(".pull-request-context { display: grid;");
@@ -684,6 +686,13 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(excerpt).toMatchObject({ path: "src/assessment.ts", startLine: 4 });
   expect(excerpt.lines).toHaveLength(15);
   expect(excerpt.lines).toContain('const status = "implemented";');
+
+  const excerptMarkupSource = app.slice(app.indexOf("function issueAssessmentPathExplanation(item, path)"), app.indexOf("function issueAssessmentExcerptSection(item)"));
+  const { issueAssessmentExcerptMarkup } = new Function("escapeHtml", `${excerptMarkupSource}; return { issueAssessmentExcerptMarkup };`)(escape) as {
+    issueAssessmentExcerptMarkup: (excerpt: { path: string; startLine: number; lines: string[] }, id: string, explanation: string) => string;
+  };
+  expect(issueAssessmentExcerptMarkup(excerpt, "excerpt", "The changed status is validated here.")).toContain("Model relevance:");
+  expect(issueAssessmentExcerptMarkup(excerpt, "excerpt", "The changed status is validated here.")).toContain("The changed status is validated here.");
 
   const backdropSource = app.slice(app.indexOf("function dismissIssueAssessmentOnBackdrop(event)"), app.indexOf("async function showIssueEvidenceFile(path)"));
   let closes = 0;

@@ -139,6 +139,7 @@ export interface IssueAssessmentItem {
   status: "implemented" | "missing" | "unclear";
   evidence: string;
   evidencePaths: string[];
+  pathExplanations?: Array<{ path: string; explanation: string }>;
   basis: "model-assessment";
 }
 

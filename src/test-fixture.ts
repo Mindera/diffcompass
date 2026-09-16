@@ -328,6 +328,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
           status: "implemented",
           evidence: "The changed discount calculation multiplies the amount by the supplied fractional percentage.",
           evidencePaths: ["src/cart.ts"],
+          pathExplanations: [{ path: "src/cart.ts", explanation: "The changed calculation applies the supplied fractional percentage to the amount." }],
           basis: "model-assessment",
         }, {
           criterionId: "criterion-2",
@@ -335,6 +336,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
           status: "implemented",
           evidence: "The changed receipt formatter renders the amount with toFixed(2).",
           evidencePaths: ["src/receipt.ts"],
+          pathExplanations: [{ path: "src/receipt.ts", explanation: "The formatter renders the calculated amount with two decimal places." }],
           basis: "model-assessment",
         }, {
           criterionId: "criterion-3",
@@ -342,6 +344,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
           status: "missing",
           evidence: "The changed discount contract accepts a number but does not add range validation.",
           evidencePaths: ["src/cart.ts"],
+          pathExplanations: [{ path: "src/cart.ts", explanation: "The changed input path accepts the discount value without a range guard." }],
           basis: "model-assessment",
         }, {
           criterionId: "criterion-4",
@@ -349,6 +352,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
           status: "unclear",
           evidence: "The changed paths do not establish a currency or localization contract.",
           evidencePaths: [],
+          pathExplanations: [],
           basis: "model-assessment",
         }],
       },
