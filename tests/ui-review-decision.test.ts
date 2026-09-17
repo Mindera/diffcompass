@@ -11,10 +11,51 @@ test.each(["request-changes", "approve-with-comments"])("%s submits the modal te
     "review-decision-form": { addEventListener: (_: string, handler: typeof submit) => { submit = handler; } },
     "review-decision-dialog": { dataset: { decision }, close() { closed = true; } },
     "review-decision-note": { value: "  Preserve selection.\nKeep scroll position.  " },
+    "cancel-github-review-confirmation": { addEventListener() {} },
+    "github-review-confirmation-dialog": { addEventListener() {} },
+    "github-review-confirmation-form": { addEventListener() {} },
   }, (...args: unknown[]) => { submitted = args; });
   submit({ preventDefault() {} });
   expect(closed).toBe(true);
   expect(submitted).toEqual([decision === "request-changes" ? "feedback" : "accepted", decision, "Preserve selection.\nKeep scroll position."]);
+});
+
+test("GitHub publication confirmation names the action, pull request revision, and selected comments", () => {
+  const source = app.slice(app.indexOf("let pendingGitHubReview = null;"), app.indexOf("async function close("));
+  const classStates = new Map<string, boolean>();
+  let opened = false;
+  let focused = false;
+  const elements = {
+    "github-review-confirmation-title": { textContent: "" },
+    "github-review-confirmation-description": { textContent: "" },
+    "github-review-confirmation-action": { textContent: "" },
+    "github-review-confirmation-pull-request": { textContent: "" },
+    "github-review-confirmation-revision": { textContent: "" },
+    "github-review-confirmation-comments": { textContent: "" },
+    "submit-github-review-confirmation": {
+      textContent: "",
+      classList: { toggle: (name: string, enabled: boolean) => classStates.set(name, enabled) },
+      focus: () => { focused = true; },
+    },
+    "github-review-confirmation-dialog": { showModal: () => { opened = true; } },
+  };
+  const open = new Function("state", "elements", `${source}; return openGitHubReviewConfirmation;`)({
+    session: {
+      pullRequest: { repository: "acme/widgets", number: 42, headRefOid: "1234567890abcdef" },
+      comments: [{ publishToGitHub: true }, { publishToGitHub: false }, { publishToGitHub: true }],
+    },
+  }, elements) as (outcome: string, decision: string, note?: string) => void;
+
+  open("accepted", "approve");
+
+  expect(elements["github-review-confirmation-title"].textContent).toBe("Approve this pull request?");
+  expect(elements["github-review-confirmation-pull-request"].textContent).toBe("acme/widgets#42");
+  expect(elements["github-review-confirmation-revision"].textContent).toBe("12345678");
+  expect(elements["github-review-confirmation-comments"].textContent).toBe("2 selected inline comments");
+  expect(elements["submit-github-review-confirmation"].textContent).toBe("Publish approval");
+  expect(classStates).toEqual(new Map([["danger", false], ["primary", true]]));
+  expect(opened).toBe(true);
+  expect(focused).toBe(true);
 });
 
 test("feedback confirmation counts the overall note alongside inline comments", () => {

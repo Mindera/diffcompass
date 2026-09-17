@@ -268,6 +268,14 @@ test("questions support removable line and file context while review decisions a
   expect(html).toContain(">Close review</button>");
   expect(app).toContain('openReviewDecision("approve-with-comments")');
   expect(app).toContain('openReviewDecision("request-changes")');
+  expect(html).toContain('id="github-review-confirmation-dialog"');
+  expect(html).toContain('id="github-review-confirmation-pull-request"');
+  expect(html).toContain('id="github-review-confirmation-revision"');
+  expect(html).toContain('id="github-review-confirmation-comments"');
+  expect(app).toContain("function openGitHubReviewConfirmation(outcome, decision, note)");
+  expect(app).toContain('elements["github-review-confirmation-dialog"].showModal()');
+  expect(app).toContain('void close(pending.outcome, pending.decision, pending.note, true)');
+  expect(styles).toContain(".github-review-confirmation-summary");
   expect(app).toContain('window.confirm("Close this review without approving or requesting changes?")');
   expect(app).toContain('void close("cancelled", "cancel")');
 });

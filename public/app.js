@@ -108,7 +108,7 @@ const state = {
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
-    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
@@ -4309,7 +4309,34 @@ async function askAgent(event) {
   })();
 }
 
-async function close(outcome, decision = outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel", note) {
+let pendingGitHubReview = null;
+
+function githubReviewActionLabel(decision) {
+  if (decision === "request-changes") return "Request changes";
+  if (decision === "approve-with-comments") return "Approve with comments";
+  return "Approve";
+}
+
+function openGitHubReviewConfirmation(outcome, decision, note) {
+  const pullRequest = state.session?.pullRequest;
+  if (!pullRequest) return;
+  const selected = state.session.comments.filter((comment) => comment.publishToGitHub).length;
+  const action = githubReviewActionLabel(decision);
+  pendingGitHubReview = { outcome, decision, note };
+  elements["github-review-confirmation-title"].textContent = decision === "approve" ? "Approve this pull request?" : `${action}?`;
+  elements["github-review-confirmation-description"].textContent = "This creates a GitHub review for the exact pull request revision shown below.";
+  elements["github-review-confirmation-action"].textContent = action;
+  elements["github-review-confirmation-pull-request"].textContent = `${pullRequest.repository}#${pullRequest.number}`;
+  elements["github-review-confirmation-revision"].textContent = pullRequest.headRefOid.slice(0, 8);
+  elements["github-review-confirmation-comments"].textContent = `${selected} selected inline ${selected === 1 ? "comment" : "comments"}`;
+  elements["submit-github-review-confirmation"].textContent = decision === "request-changes" ? "Publish request changes" : decision === "approve-with-comments" ? "Publish approval with comments" : "Publish approval";
+  elements["submit-github-review-confirmation"].classList.toggle("danger", decision === "request-changes");
+  elements["submit-github-review-confirmation"].classList.toggle("primary", decision !== "request-changes");
+  elements["github-review-confirmation-dialog"].showModal();
+  elements["submit-github-review-confirmation"].focus();
+}
+
+async function close(outcome, decision = outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel", note, confirmed = false) {
   if (!reviewIsOpen()) return;
   if (decision === "approve" && state.session.comments.length > 0) {
     toast("Use Approve with comments, request changes, or remove all inline comments.");
@@ -4318,9 +4345,10 @@ async function close(outcome, decision = outcome === "accepted" ? "approve" : ou
   try {
     let result;
     if (state.session.pullRequest && outcome !== "cancelled") {
-      const selected = state.session.comments.filter((comment) => comment.publishToGitHub).length;
-      const action = decision === "approve-with-comments" ? "approve with comments" : outcome === "accepted" ? "approve" : "request changes on";
-      if (!window.confirm(`Publish a GitHub review to ${action} ${state.session.pullRequest.repository}#${state.session.pullRequest.number} at ${state.session.pullRequest.headRefOid.slice(0, 8)} with ${selected} selected inline comment(s)?`)) return;
+      if (!confirmed) {
+        openGitHubReviewConfirmation(outcome, decision, note);
+        return;
+      }
       result = await api("/api/github/review", { method: "POST", body: JSON.stringify({ outcome, decision, note, headOid: state.session.pullRequest.headRefOid, confirm: true }) });
     } else {
       result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome, decision, note }) });
@@ -4624,6 +4652,16 @@ elements["review-decision-form"].addEventListener("submit", (event) => {
   if (!note) return;
   elements["review-decision-dialog"].close();
   void close(decision === "request-changes" ? "feedback" : "accepted", decision, note);
+});
+elements["cancel-github-review-confirmation"].addEventListener("click", () => elements["github-review-confirmation-dialog"].close());
+elements["github-review-confirmation-dialog"].addEventListener("close", () => { pendingGitHubReview = null; });
+elements["github-review-confirmation-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  const pending = pendingGitHubReview;
+  if (!pending) return;
+  pendingGitHubReview = null;
+  elements["github-review-confirmation-dialog"].close();
+  void close(pending.outcome, pending.decision, pending.note, true);
 });
 elements["symbol-peek-open"]?.addEventListener("click", () => {
   const symbol = state.codeSelection ? symbolForCodeSelection(state.codeSelection).symbol : symbolFromText(state.selectedLine?.content ?? "");

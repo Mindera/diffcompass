@@ -407,6 +407,22 @@
       </form>
     </dialog>
 
+    <dialog id="github-review-confirmation-dialog" class="github-review-confirmation-dialog" aria-labelledby="github-review-confirmation-title" aria-describedby="github-review-confirmation-description">
+      <form id="github-review-confirmation-form">
+        <div class="eyebrow">GitHub publication</div>
+        <h2 id="github-review-confirmation-title">Publish approval?</h2>
+        <p id="github-review-confirmation-description" class="dialog-description"></p>
+        <dl class="github-review-confirmation-summary">
+          <div><dt>Action</dt><dd id="github-review-confirmation-action"></dd></div>
+          <div><dt>Pull request</dt><dd id="github-review-confirmation-pull-request"></dd></div>
+          <div><dt>Revision</dt><dd><code id="github-review-confirmation-revision"></code></dd></div>
+          <div><dt>Inline comments</dt><dd id="github-review-confirmation-comments"></dd></div>
+        </dl>
+        <p class="github-review-confirmation-note">This action publishes a GitHub review. Only the selected inline comments are included.</p>
+        <div class="dialog-actions"><button id="cancel-github-review-confirmation" class="button secondary" type="button">Cancel</button><button id="submit-github-review-confirmation" class="button primary" type="submit">Publish approval</button></div>
+      </form>
+    </dialog>
+
     <dialog id="checkpoint-dialog" class="checkpoint-dialog" aria-labelledby="checkpoint-title" aria-describedby="checkpoint-description">
       <form id="checkpoint-form">
         <div class="eyebrow">Review checkpoint</div>
