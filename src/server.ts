@@ -58,6 +58,14 @@ function errorResponse(error: unknown): Response {
   if (error instanceof ReviewError) return json({ error: error.message }, 409);
   if (error instanceof ProcessError) {
     console.error(error);
+    const githubReviewPublication = error.command[0] === "gh" &&
+      error.command.includes("api") &&
+      error.command.some((part) => /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews$/.test(part)) &&
+      error.command.includes("--method") && error.command.includes("POST");
+    const githubStatus = /\(HTTP (\d{3})\)/.exec(error.stderr)?.[1];
+    if (githubReviewPublication && githubStatus === "422") {
+      return json({ error: "GitHub rejected this review (HTTP 422). It was not published. GitHub can reject approvals on your own pull request." }, 422);
+    }
     return json({ error: "The agent command failed. Check the server terminal for details." }, 502);
   }
   const requestId = crypto.randomUUID();

@@ -7,14 +7,15 @@ test.each(["request-changes", "approve-with-comments"])("%s submits the modal te
   let submit!: (event: { preventDefault(): void }) => void;
   let closed = false;
   let submitted: unknown[] = [];
-  new Function("elements", "close", source)({
+  new Function("elements", "close", "updateGitHubReviewConfirmation", source)({
     "review-decision-form": { addEventListener: (_: string, handler: typeof submit) => { submit = handler; } },
     "review-decision-dialog": { dataset: { decision }, close() { closed = true; } },
     "review-decision-note": { value: "  Preserve selection.\nKeep scroll position.  " },
     "cancel-github-review-confirmation": { addEventListener() {} },
     "github-review-confirmation-dialog": { addEventListener() {} },
+    "github-review-confirmation-local-only": { addEventListener() {} },
     "github-review-confirmation-form": { addEventListener() {} },
-  }, (...args: unknown[]) => { submitted = args; });
+  }, (...args: unknown[]) => { submitted = args; }, () => {});
   submit({ preventDefault() {} });
   expect(closed).toBe(true);
   expect(submitted).toEqual([decision === "request-changes" ? "feedback" : "accepted", decision, "Preserve selection.\nKeep scroll position."]);
@@ -32,6 +33,9 @@ test("GitHub publication confirmation names the action, pull request revision, a
     "github-review-confirmation-pull-request": { textContent: "" },
     "github-review-confirmation-revision": { textContent: "" },
     "github-review-confirmation-comments": { textContent: "" },
+    "github-review-confirmation-local-only-option": { hidden: false },
+    "github-review-confirmation-local-only": { checked: false, disabled: false },
+    "github-review-confirmation-note": { textContent: "" },
     "submit-github-review-confirmation": {
       textContent: "",
       classList: { toggle: (name: string, enabled: boolean) => classStates.set(name, enabled) },
@@ -53,9 +57,53 @@ test("GitHub publication confirmation names the action, pull request revision, a
   expect(elements["github-review-confirmation-revision"].textContent).toBe("12345678");
   expect(elements["github-review-confirmation-comments"].textContent).toBe("2 selected inline comments");
   expect(elements["submit-github-review-confirmation"].textContent).toBe("Publish approval");
+  expect(elements["github-review-confirmation-local-only-option"].hidden).toBe(false);
   expect(classStates).toEqual(new Map([["danger", false], ["primary", true]]));
   expect(opened).toBe(true);
   expect(focused).toBe(true);
+});
+
+test("approval with comments also offers local-only tour approval", () => {
+  const source = app.slice(app.indexOf("let pendingGitHubReview = null;"), app.indexOf("async function close("));
+  const elements = {
+    "github-review-confirmation-title": { textContent: "" },
+    "github-review-confirmation-description": { textContent: "" },
+    "github-review-confirmation-action": { textContent: "" },
+    "github-review-confirmation-pull-request": { textContent: "" },
+    "github-review-confirmation-revision": { textContent: "" },
+    "github-review-confirmation-comments": { textContent: "" },
+    "github-review-confirmation-local-only-option": { hidden: true },
+    "github-review-confirmation-local-only": { checked: false, disabled: true },
+    "github-review-confirmation-note": { textContent: "" },
+    "submit-github-review-confirmation": { textContent: "", classList: { toggle() {} }, focus() {} },
+    "github-review-confirmation-dialog": { showModal() {} },
+  };
+  const open = new Function("state", "elements", `${source}; return openGitHubReviewConfirmation;`)({
+    session: { pullRequest: { repository: "acme/widgets", number: 42, headRefOid: "1234567890abcdef" }, comments: [] },
+  }, elements) as (outcome: string, decision: string, note?: string) => void;
+
+  open("accepted", "approve-with-comments", "Looks good.");
+
+  expect(elements["github-review-confirmation-local-only-option"].hidden).toBe(false);
+  expect(elements["github-review-confirmation-local-only"].disabled).toBe(false);
+});
+
+test("approval confirmation can close the tour without publishing a GitHub review", () => {
+  const source = app.slice(app.indexOf('elements["cancel-github-review-confirmation"].addEventListener'), app.indexOf('elements["symbol-peek-open"]?.addEventListener'));
+  let submit!: (event: { preventDefault(): void }) => void;
+  let closeArgs: unknown[] = [];
+  let dialogClosed = false;
+  new Function("elements", "close", "updateGitHubReviewConfirmation", `let pendingGitHubReview = { outcome: "accepted", decision: "approve" }; ${source}`)({
+    "cancel-github-review-confirmation": { addEventListener() {} },
+    "github-review-confirmation-dialog": { addEventListener() {}, close: () => { dialogClosed = true; } },
+    "github-review-confirmation-local-only": { checked: true, addEventListener() {} },
+    "github-review-confirmation-form": { addEventListener: (_: string, handler: typeof submit) => { submit = handler; } },
+  }, (...args: unknown[]) => { closeArgs = args; }, () => {});
+
+  submit({ preventDefault() {} });
+
+  expect(dialogClosed).toBe(true);
+  expect(closeArgs).toEqual(["accepted", "approve", undefined, true, false]);
 });
 
 test("feedback confirmation counts the overall note alongside inline comments", () => {

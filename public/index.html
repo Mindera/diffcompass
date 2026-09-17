@@ -418,7 +418,8 @@
           <div><dt>Revision</dt><dd><code id="github-review-confirmation-revision"></code></dd></div>
           <div><dt>Inline comments</dt><dd id="github-review-confirmation-comments"></dd></div>
         </dl>
-        <p class="github-review-confirmation-note">This action publishes a GitHub review. Only the selected inline comments are included.</p>
+        <label id="github-review-confirmation-local-only-option" class="github-review-confirmation-local-only"><input id="github-review-confirmation-local-only" type="checkbox"> <span><strong>Approve tour without approving the pull request</strong><small>Closes this local review as approved. No GitHub review is created.</small></span></label>
+        <p id="github-review-confirmation-note" class="github-review-confirmation-note">This action publishes a GitHub review. Only the selected inline comments are included.</p>
         <div class="dialog-actions"><button id="cancel-github-review-confirmation" class="button secondary" type="button">Cancel</button><button id="submit-github-review-confirmation" class="button primary" type="submit">Publish approval</button></div>
       </form>
     </dialog>

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, removeProposalWorkspace } from "../src/git.ts";
-import { runProcess } from "../src/process.ts";
+import { ProcessError, runProcess } from "../src/process.ts";
 import { startServer } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
 import { savePersistedSession } from "../src/store.ts";
@@ -125,6 +125,28 @@ test("GitHub publication requires confirmation, current head, and uses only sele
   const published = await jsonRequest(url, "/api/github/review", { method: "POST", headers, body: JSON.stringify({ outcome: "feedback", headOid: head, confirm: true }) });
   expect(published.status).toBe(200);
   expect(publishedPayload).toMatchObject({ commit_id: head, event: "REQUEST_CHANGES", comments: [] });
+});
+
+test("GitHub review rejection reports the provider response instead of an agent failure", async () => {
+  const { comparison, repository, session, url } = await fixture();
+  const headers = browserHeaders(url, session.browserToken);
+  const head = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
+  const base = comparison.mergeBase;
+  const runner = async (command: string[], _cwd: string, _accepted: number[] = [0]) => {
+    if (command.slice(0, 3).join(" ") === "gh repo view") return { stdout: JSON.stringify({ nameWithOwner: "acme/widgets" }), stderr: "", exitCode: 0 };
+    if (command.slice(0, 3).join(" ") === "gh pr view") return { stdout: JSON.stringify({ number: 7, title: "PR", body: "", url: "https://github.com/acme/widgets/pull/7", author: { login: "author" }, baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, commits: [], statusCheckRollup: [], reviewDecision: "REVIEW_REQUIRED" }), stderr: "", exitCode: 0 };
+    if (command.includes("graphql")) return { stdout: JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }), stderr: "", exitCode: 0 };
+    if (command.at(-1)?.includes("reviews?per_page")) return { stdout: "[]", stderr: "", exitCode: 0 };
+    if (command.includes("--method")) throw new ProcessError(command, 1, "gh: Unprocessable Entity (HTTP 422)\n");
+    throw new Error(`Unexpected command: ${command.join(" ")}`);
+  };
+  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/code-review-tour/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
+  (session as unknown as { defaults: { githubRunner?: typeof runner } }).defaults.githubRunner = runner;
+
+  const response = await jsonRequest(url, "/api/github/review", { method: "POST", headers, body: JSON.stringify({ outcome: "accepted", headOid: head, confirm: true }) });
+
+  expect(response.status).toBe(422);
+  await expect(response.json()).resolves.toEqual({ error: "GitHub rejected this review (HTTP 422). It was not published. GitHub can reject approvals on your own pull request." });
 });
 
 test("serves the early theme bootstrap before the stylesheet", async () => {
