@@ -104,6 +104,43 @@ function markdownIssueAssessment(issue: LinkedIssueContext | undefined, assessme
   return lines;
 }
 
+function githubStatusLabel(state: string): string {
+  return state.trim().toLocaleLowerCase().replaceAll("_", " ").replace(/\b\w/g, (character) => character.toLocaleUpperCase());
+}
+
+function githubCheckStatus(state: string): { label: string; explanation: string } {
+  const value = state.trim().toLocaleUpperCase();
+  if (value === "IN_PROGRESS") return { label: "Running", explanation: "GitHub has not reported a final result for this check." };
+  if (["QUEUED", "PENDING", "REQUESTED", "WAITING"].includes(value)) return { label: "Pending", explanation: "GitHub has not reported a final result for this check." };
+  if (value === "SUCCESS") return { label: "Passed", explanation: "GitHub reported a successful result." };
+  if (["FAILURE", "FAILED", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"].includes(value)) return { label: "Needs attention", explanation: `GitHub reported ${githubStatusLabel(value)}. Open the check run for provider details.` };
+  if (["NEUTRAL", "SKIPPED", "COMPLETED"].includes(value)) return { label: "Completed", explanation: `GitHub reported ${githubStatusLabel(value)}.` };
+  return { label: githubStatusLabel(value), explanation: "GitHub reported this state; the review snapshot does not include an explanation." };
+}
+
+function githubMergeabilitySummary(mergeable: string | undefined, mergeStateStatus: string | undefined): string[] {
+  const details: string[] = [];
+  if (mergeable === "MERGEABLE") details.push("No merge conflict reported by GitHub.");
+  else if (mergeable === "CONFLICTING") details.push("GitHub reports merge conflicts between the pull request branches.");
+  else if (mergeable === "UNKNOWN") details.push("GitHub did not report whether the pull request branches merge cleanly.");
+  if (mergeStateStatus === "UNSTABLE") details.push("GitHub has not provided a stable merge status. This review snapshot does not include why.");
+  else if (mergeStateStatus) details.push(`GitHub also reported ${githubStatusLabel(mergeStateStatus)} as the merge status. This snapshot does not include an explanation for that status.`);
+  return details;
+}
+
+function markdownGitHubChecks(session: ReviewSession): string[] {
+  const pullRequest = session.pullRequest;
+  if (!pullRequest) return [];
+  const lines = ["## GitHub checks", "", "Snapshot captured when this review was loaded. These statuses do not include a provider-supplied reason; this review did not fetch check or workflow details.", ""];
+  for (const detail of githubMergeabilitySummary(pullRequest.mergeable, pullRequest.mergeStateStatus)) lines.push(`- Mergeability: ${detail}`);
+  for (const check of pullRequest.checks) {
+    const status = githubCheckStatus(check.state);
+    lines.push(`- ${markdownText(check.name)} — **${status.label}**. ${status.explanation}${check.url ? ` [Open run in GitHub](${check.url})` : ""}`);
+  }
+  if (pullRequest.checks.length === 0) lines.push("- GitHub reported no checks for this pull request.");
+  return [...lines, ""];
+}
+
 function markdown(session: ReviewSession): string {
   const outline = session.outline;
   const briefing = buildNeedsAttention(session.comparison, outline, session.pullRequest);
@@ -131,7 +168,7 @@ function markdown(session: ReviewSession): string {
     lines.push("");
   }
   lines.push("## First-pass review time", "", `About ${briefing.estimate.minutes} minutes for a first pass, based on the visible diff and review signals. This is a rough planning aid, not a risk score or quality rating.`, "", "Contributing factors:", "", ...briefing.estimate.factors.map((factor) => `- ${markdownText(factor.label)}: +${factor.minutes} min — ${markdownText(factor.detail)} (${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"})`), "");
-  if (session.pullRequest) lines.push(...markdownIssueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment));
+  if (session.pullRequest) lines.push(...markdownGitHubChecks(session), ...markdownIssueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment));
   if (outline?.phases.length) {
     lines.push("## Tour", "");
     let stopNumber = 0;
@@ -513,9 +550,10 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   };
   const findingEvidenceStyles = `<style>.finding-evidence-list{display:grid;gap:6px;margin:8px 0 2px;padding:0;list-style:none}.finding-evidence-list li{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px;border:1px solid var(--line);border-radius:6px;padding:7px;background:var(--code)}.finding-evidence-list li>strong{color:var(--soft);font-size:8px;text-transform:uppercase}.finding-evidence-list li>div{min-width:0;color:#cbd5e3;overflow-wrap:anywhere}@media(max-width:600px){.finding-evidence-list li{grid-template-columns:1fr;gap:2px}}</style>`;
   const briefingStyles = `<style>.attention-briefing,.review-estimate{max-width:1050px;margin:0 auto;padding:18px 24px;border-bottom:1px solid var(--line)}.attention-briefing h2,.review-estimate h2{margin:4px 0;font-size:16px}.attention-briefing>.muted,.review-estimate>.muted{margin:6px 0;color:var(--soft);font-size:11px}.attention-list{display:grid;gap:8px;margin-top:12px}.attention-item{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:10px;background:var(--item)}.attention-item.finding,.attention-item.github-check,.attention-item.merge-conflict{border-left-color:var(--red)}.attention-item header{display:flex;justify-content:space-between;gap:10px}.attention-item header small{color:var(--soft);font-size:9px}.attention-item p{margin:4px 0;color:var(--soft);font-size:10px}.attention-item details{color:var(--soft);font-size:9px}.attention-item button{border:0;padding:2px 0;color:var(--accent);background:transparent;font-size:10px;cursor:pointer}.review-estimate details{margin-top:12px;color:var(--soft);font-size:10px}.review-estimate details p{margin:7px 0}.review-estimate small{color:var(--soft)}@media(max-width:600px){.attention-item header{align-items:flex-start;flex-direction:column;gap:2px}}</style>`;
+  const githubCheckStyles = `<style>.github-checks-export{margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--item)}.github-checks-export h3,.github-checks-export h4{margin:0}.github-checks-export header,.github-check-export-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.github-checks-export header p,.github-checks-export p{margin:4px 0 0;color:var(--soft);font-size:11px;line-height:1.45}.github-checks-export a{color:var(--accent)}.github-mergeability-export{margin-top:12px;border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--raised)}.github-mergeability-export h4{color:var(--soft);font-size:10px;letter-spacing:.06em;text-transform:uppercase}.github-check-export-list{display:grid;gap:6px;margin:12px 0 0;padding:0;list-style:none}.github-check-export-item{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--raised)}.github-check-export-item strong{display:block;overflow-wrap:anywhere;font-size:12px}.github-check-export-status{display:inline-block;margin-right:6px;color:var(--text);font-weight:800}.github-check-export-boundary{border-top:1px solid var(--line);padding-top:9px}@media(max-width:600px){.github-checks-export header,.github-check-export-item{flex-direction:column}}</style>`;
   const findingCount = briefing.signals.filter((signal) => signal.kind === "finding").length;
   const briefingNote = `${briefing.signals.length} review cues shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 findings. Other cues point to contracts, tests, flows, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
-  const briefingSection = findingEvidenceStyles + briefingStyles + (briefing.signals.length > 0 ? `<section class="attention-briefing" aria-labelledby="attention-title"><span class="eyebrow">Evidence briefing</span><h2 id="attention-title">Needs your attention</h2><p class="muted">${escapeHtml(briefingNote)}</p><div class="attention-list">${briefing.signals.map((signal) => `<article class="attention-item ${signal.kind}"><header><strong>${escapeHtml(signal.title)}</strong><small>${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</small></header><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details>${briefingTarget(signal)}</article>`).join("")}</div></section>` : "");
+  const briefingSection = findingEvidenceStyles + briefingStyles + githubCheckStyles + (briefing.signals.length > 0 ? `<section class="attention-briefing" aria-labelledby="attention-title"><span class="eyebrow">Evidence briefing</span><h2 id="attention-title">Needs your attention</h2><p class="muted">${escapeHtml(briefingNote)}</p><div class="attention-list">${briefing.signals.map((signal) => `<article class="attention-item ${signal.kind}"><header><strong>${escapeHtml(signal.title)}</strong><small>${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</small></header><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details>${briefingTarget(signal)}</article>`).join("")}</div></section>` : "");
   const estimateSection = `<section class="review-estimate" aria-labelledby="estimate-title"><span class="eyebrow">Review effort</span><h2 id="estimate-title">How much time might this review take? About ${briefing.estimate.minutes} minutes</h2><p class="muted">A rough first-pass planning aid based on the visible diff and review signals, not a risk score or quality rating.</p><details><summary>Why this estimate?</summary><div>${briefing.estimate.factors.map((factor) => `<p><strong>${escapeHtml(factor.label)} · +${factor.minutes} min</strong><br><small>${escapeHtml(factor.detail)} · ${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"}</small></p>`).join("")}</div></details></section>`;
   const architectureLegend = '<div class="architecture-legend" aria-label="Diagram colour legend"><span><i class="new"></i>New</span><span><i class="changed"></i>Changed</span><span><i class="removed"></i>Removed</span><span><i class="external"></i>Outside this change</span></div>';
   const diagramControls = '<div class="diagram-controls"><span>Move</span><button type="button" data-diagram-action="move-left" aria-label="Move diagram left">←</button><button type="button" data-diagram-action="move-up" aria-label="Move diagram up">↑</button><button type="button" data-diagram-action="move-down" aria-label="Move diagram down">↓</button><button type="button" data-diagram-action="move-right" aria-label="Move diagram right">→</button><span>Zoom</span><button type="button" data-diagram-action="zoom-out" aria-label="Zoom out">−</button><button type="button" class="diagram-zoom" data-diagram-action="reset">100%</button><button type="button" data-diagram-action="zoom-in" aria-label="Zoom in">+</button></div>';
@@ -576,7 +614,17 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
     if (!assessment) return `${intro}<p>Start the tour to map the explicit acceptance criteria to repository evidence.</p></section>`;
     return `${intro}<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p>${assessment.items.map((item) => `<article class="issue-criterion ${escapeHtml(item.status)}"><strong>${escapeHtml(item.criterion)}</strong><span class="issue-status">${escapeHtml(item.status)}</span><p>${inlineHtml(item.evidence)}</p><small>Repository evidence: ${item.evidencePaths.map(escapeHtml).join(", ") || "none cited"}</small></article>`).join("")}</section>`;
   };
-  const pr = session.pullRequest ? `<section id="pull-request-metadata" class="pr-description"><span class="eyebrow">Pull request #${session.pullRequest.number} · ${escapeHtml(session.pullRequest.author)}</span><h2>${escapeHtml(session.pullRequest.title)}</h2><div class="prose">${renderedMarkdown(session.pullRequest.body || "No pull request description was provided.")}</div><h3>Checks</h3><ul>${session.pullRequest.checks.map((check) => `<li>${escapeHtml(check.name)} — ${escapeHtml(check.state)}</li>`).join("") || "<li>No checks reported.</li>"}</ul>${session.pullRequest.mergeable || session.pullRequest.mergeStateStatus ? `<p>Mergeability: ${escapeHtml(session.pullRequest.mergeable ?? "unknown")}${session.pullRequest.mergeStateStatus ? ` · ${escapeHtml(session.pullRequest.mergeStateStatus)}` : ""}</p>` : ""}${issueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment)}</section>` : "";
+  const githubChecks = (pullRequest: NonNullable<ReviewSession["pullRequest"]>) => {
+    const mergeability = githubMergeabilitySummary(pullRequest.mergeable, pullRequest.mergeStateStatus);
+    const checks = pullRequest.checks.length === 0
+      ? '<p>GitHub reported no checks for this pull request.</p>'
+      : `<ul class="github-check-export-list">${pullRequest.checks.map((check) => {
+        const status = githubCheckStatus(check.state);
+        return `<li class="github-check-export-item"><div><strong>${escapeHtml(check.name)}</strong><p><span class="github-check-export-status">${escapeHtml(status.label)}</span>${escapeHtml(status.explanation)}</p></div>${check.url ? `<a href="${escapeHtml(check.url)}" target="_blank" rel="noreferrer">Open run in GitHub</a>` : '<span class="muted">No check-run link was included.</span>'}</li>`;
+      }).join("")}</ul>`;
+    return `<section class="github-checks-export"><header><div><h3>GitHub checks</h3><p>Snapshot captured when this review was loaded.</p></div><a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">Open pull request in GitHub</a></header>${mergeability.length ? `<section class="github-mergeability-export"><h4>Mergeability</h4>${mergeability.map((detail) => `<p>${escapeHtml(detail)}</p>`).join("")}</section>` : ""}${checks}<p class="github-check-export-boundary">These statuses do not include a provider-supplied reason. This review did not fetch check or workflow details.</p></section>`;
+  };
+  const pr = session.pullRequest ? `<section id="pull-request-metadata" class="pr-description"><span class="eyebrow">Pull request #${session.pullRequest.number} · ${escapeHtml(session.pullRequest.author)}</span><h2>${escapeHtml(session.pullRequest.title)}</h2><div class="prose">${renderedMarkdown(session.pullRequest.body || "No pull request description was provided.")}</div>${githubChecks(session.pullRequest)}${issueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment)}</section>` : "";
   const fileButtons = session.comparison.files.map((file) => `<button type="button" class="file-button" data-file="${escapeHtml(file.path)}"><span class="status ${escapeHtml(file.status)}">${escapeHtml(file.status.slice(0, 1).toUpperCase())}</span><span><strong>${escapeHtml(file.path)}</strong><small>${escapeHtml(file.status)}</small></span><span class="file-stats"><b>+${file.additions}</b> <i>−${file.deletions}</i></span></button>`).join("");
   const diffs = `${briefingSection}${estimateSection}${session.comparison.files.map((file, index) => `<section class="exported-diff" data-diff-file="${escapeHtml(file.path)}" hidden>${fileDiff(file, findings, session, index, highlighted, markdownPreviews.get(file.path))}</section>`).join("")}` + (questions ? `</section><section class="view comments" data-view-panel="questions" hidden><h2>Questions</h2>${questions}` : "");
   const allFindings = findings.map(findingCard).join("");

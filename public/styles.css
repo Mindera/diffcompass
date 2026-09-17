@@ -973,7 +973,23 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .issue-assessment-code-excerpt header .text-button { flex: 0 0 auto; font-size: 10px; }
 .issue-assessment-code-excerpt pre { max-height: 260px; margin: 0; overflow: auto; padding: 9px 10px; color: var(--text-code); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
 .issue-assessment-code-excerpt code { display: block; min-width: 0; }
+.github-checks { margin-top: 24px; border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px; background: var(--surface-card); }
+.github-checks-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.github-checks h3, .github-checks h4 { margin: 0; }
+.github-checks-heading p, .github-checks-boundary, .github-checks-empty { margin: 4px 0 0; color: var(--text-soft); font-size: 11px; line-height: 1.45; }
+.github-check-link { flex: 0 0 auto; color: var(--accent-strong); font-size: 11px; line-height: 1.45; text-decoration: underline; text-underline-offset: 2px; }
+.github-mergeability { margin-top: 14px; border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px; background: var(--panel-raised); }
+.github-mergeability h4 { color: var(--text-soft); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.github-mergeability p { margin: 5px 0 0; color: var(--text); font-size: 11px; line-height: 1.45; }
+.github-check-list { display: grid; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }
+.github-check { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px; background: var(--panel-raised); }
+.github-check > div { min-width: 0; }
+.github-check > div > strong { display: block; overflow-wrap: anywhere; font-size: 12px; }
+.github-check p { margin: 4px 0 0; color: var(--text-soft); font-size: 11px; line-height: 1.45; }
+.github-check-status { display: inline-block; margin-right: 6px; color: var(--text); font-weight: 800; }
+.github-checks-boundary { border-top: 1px solid var(--border-soft); padding-top: 10px; }
 @media (max-width: 700px) { .pull-request-context { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .github-checks-heading, .github-check { flex-direction: column; } .github-check-link { flex-basis: auto; } }
 .activity-card h2 { display: inline; margin: 0 0 0 8px; font-size: 15px; line-height: 1.4; }
 .activity-card time, .activity-agent { color: var(--muted); font-size: 10px; }
 .activity-card time { white-space: nowrap; }

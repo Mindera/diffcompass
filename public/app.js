@@ -2166,6 +2166,42 @@ function renderComments() {
   renderStepDiscussion();
 }
 
+function githubStatusLabel(state) {
+  return String(state ?? "unknown").trim().toLocaleLowerCase().replaceAll("_", " ").replace(/\b\w/g, (character) => character.toLocaleUpperCase());
+}
+
+function githubCheckStatus(state) {
+  const value = String(state ?? "").trim().toLocaleUpperCase();
+  if (value === "IN_PROGRESS") return { label: "Running", explanation: "GitHub has not reported a final result for this check." };
+  if (["QUEUED", "PENDING", "REQUESTED", "WAITING"].includes(value)) return { label: "Pending", explanation: "GitHub has not reported a final result for this check." };
+  if (value === "SUCCESS") return { label: "Passed", explanation: "GitHub reported a successful result." };
+  if (["FAILURE", "FAILED", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"].includes(value)) return { label: "Needs attention", explanation: `GitHub reported ${githubStatusLabel(value)}. Open the check run for provider details.` };
+  if (["NEUTRAL", "SKIPPED", "COMPLETED"].includes(value)) return { label: "Completed", explanation: `GitHub reported ${githubStatusLabel(value)}.` };
+  return { label: githubStatusLabel(value), explanation: "GitHub reported this state; the review snapshot does not include an explanation." };
+}
+
+function githubMergeabilitySummary(pullRequest) {
+  const details = [];
+  if (pullRequest.mergeable === "MERGEABLE") details.push("No merge conflict reported by GitHub.");
+  else if (pullRequest.mergeable === "CONFLICTING") details.push("GitHub reports merge conflicts between the pull request branches.");
+  else if (pullRequest.mergeable === "UNKNOWN") details.push("GitHub did not report whether the pull request branches merge cleanly.");
+  if (pullRequest.mergeStateStatus === "UNSTABLE") details.push("GitHub has not provided a stable merge status. This review snapshot does not include why.");
+  else if (pullRequest.mergeStateStatus) details.push(`GitHub also reported ${githubStatusLabel(pullRequest.mergeStateStatus)} as the merge status. This snapshot does not include an explanation for that status.`);
+  return details;
+}
+
+function githubChecksSummary(pullRequest) {
+  const mergeability = githubMergeabilitySummary(pullRequest);
+  const checks = pullRequest.checks.length === 0
+    ? '<p class="github-checks-empty">GitHub reported no checks for this pull request.</p>'
+    : `<ul class="github-check-list">${pullRequest.checks.map((check) => {
+      const status = githubCheckStatus(check.state);
+      const link = check.url ? `<a class="github-check-link" href="${escapeHtml(check.url)}" target="_blank" rel="noreferrer">Open run in GitHub</a>` : '<span class="github-check-link muted">No check-run link was included.</span>';
+      return `<li class="github-check"><div><strong>${escapeHtml(check.name)}</strong><p><span class="github-check-status">${escapeHtml(status.label)}</span>${escapeHtml(status.explanation)}</p></div>${link}</li>`;
+    }).join("")}</ul>`;
+  return `<section class="github-checks" aria-labelledby="github-checks-heading"><div class="github-checks-heading"><div><h3 id="github-checks-heading">GitHub checks</h3><p>Snapshot captured when this review was loaded.</p></div><a class="github-check-link" href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">Open pull request in GitHub</a></div>${mergeability.length ? `<section class="github-mergeability"><h4>Mergeability</h4>${mergeability.map((detail) => `<p>${escapeHtml(detail)}</p>`).join("")}</section>` : ""}${checks}<p class="github-checks-boundary">These statuses do not include a provider-supplied reason. This review did not fetch check or workflow details.</p></section>`;
+}
+
 function renderPullRequest() {
   const pullRequest = state.session.pullRequest;
   elements["pull-request-tab"].classList.toggle("hidden", !pullRequest);
@@ -2174,8 +2210,6 @@ function renderPullRequest() {
     elements["pull-request-content"].innerHTML = "";
     return;
   }
-  const mergeability = pullRequest.mergeable || pullRequest.mergeStateStatus ? `<li><strong>Mergeability</strong> — ${escapeHtml(pullRequest.mergeable ?? "unknown")}${pullRequest.mergeStateStatus ? ` · ${escapeHtml(pullRequest.mergeStateStatus)}` : ""}</li>` : "";
-  const checks = `${mergeability}${pullRequest.checks.length === 0 ? "<li>No checks reported.</li>" : pullRequest.checks.map((check) => `<li><strong>${escapeHtml(check.name)}</strong> — ${escapeHtml(check.state)}</li>`).join("")}`;
   const commits = pullRequest.commits.length === 0 ? "<li>No commits reported.</li>" : pullRequest.commits.map((commit) => `<li><code>${escapeHtml(commit.oid.slice(0, 8))}</code> ${escapeHtml(commit.headline)} <span class="muted">${escapeHtml(commit.authors.join(", "))}</span></li>`).join("");
   const threads = pullRequest.threads.length === 0 ? "<p class=\"muted\">No existing review threads.</p>" : pullRequest.threads.map((thread) => `<article class="comment-item"><div class="comment-meta"><span>${escapeHtml(thread.path)}${thread.line ? `:${thread.line}` : ""}</span><span>${thread.resolved ? "resolved" : "open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}</article>`).join("");
   const issue = pullRequest.linkedIssue;
@@ -2186,7 +2220,7 @@ function renderPullRequest() {
     <div class="panel-heading"><div><div class="eyebrow">GitHub pull request</div><h2>#${pullRequest.number} ${escapeHtml(pullRequest.title)}</h2></div><div class="pull-request-header-actions"><button class="button secondary" type="button" data-pull-request-width aria-pressed="${state.pullRequestWide}" title="${state.pullRequestWide ? "Return to a centred reading width" : "Use the full available review width"}">${state.pullRequestWide ? "Center width" : "Full width"}</button><span class="mode">${escapeHtml(pullRequest.reviewDecision ?? "REVIEW REQUIRED")}</span></div></div>
     <p class="muted">${escapeHtml(pullRequest.repository)} · ${escapeHtml(pullRequest.author)} · ${escapeHtml(pullRequest.baseRefName)} ← ${escapeHtml(pullRequest.headRefName)} · ${escapeHtml(pullRequest.headRefOid.slice(0, 8))}</p>
     <div class="pull-request-context"><section class="pull-request-description-panel"><h3>Pull request description</h3>${pullRequestDescription(pullRequest.body)}</section>${linkedIssueSummary(issue)}</div>${issueAssessment}
-    <h3>Checks</h3><ul>${checks}</ul>
+    ${githubChecksSummary(pullRequest)}
     <h3>Commits</h3><ul>${commits}</ul>
     <h3>Existing review threads${pullRequest.threadsTruncated ? " (first 100)" : ""}</h3>${threads}`;
 }

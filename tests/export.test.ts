@@ -187,13 +187,19 @@ test("exports the bounded issue assessment with its model disclaimer", () => {
   session.pullRequest = {
     repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
     baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/widgets", workspaceRoot: "/tmp/widgets", refNamespace: "refs/code-review-tour/test",
-    commits: [], checks: [], threads: [], threadsTruncated: false, providerScope: { linkedIssue: "same-repository-closing-issue", relatedResources: "not-requested" },
+    commits: [], checks: [{ name: "verify", state: "IN_PROGRESS", url: "https://github.com/acme/widgets/actions/runs/1" }], threads: [], threadsTruncated: false, mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE", providerScope: { linkedIssue: "same-repository-closing-issue", relatedResources: "not-requested" },
     linkedIssue: { repository: "acme/widgets", number: 12, url: "https://github.com/acme/widgets/issues/12", title: "Retry", access: "available", criteriaStatus: "found", acceptanceCriteria: [{ id: "criterion-1", text: "A request can be retried" }] }, updatedAt: "now",
   } as unknown as NonNullable<ReviewSession["pullRequest"]>;
   session.outline!.issueAssessment = { issueNumber: 12, issueUrl: "https://github.com/acme/widgets/issues/12", items: [{ criterionId: "criterion-1", criterion: "A request can be retried", status: "implemented", evidence: "The changed handler retries the request.", evidencePaths: ["app.ts"], basis: "model-assessment" }] };
   expect(exportReview(session, "markdown").content).toContain("Model assessment based on cited repository paths; statuses are not verified test results.");
+  expect(exportReview(session, "markdown").content).toContain("## GitHub checks");
+  expect(exportReview(session, "markdown").content).toContain("**Running**. GitHub has not reported a final result for this check.");
+  expect(exportReview(session, "markdown").content).toContain("this review did not fetch check or workflow details.");
   expect(exportReview(session, "html").content).toContain("Issue-to-implementation assessment");
   expect(exportReview(session, "html").content).toContain("A request can be retried");
+  expect(exportReview(session, "html").content).toContain("No merge conflict reported by GitHub.");
+  expect(exportReview(session, "html").content).toContain("GitHub has not provided a stable merge status. This review snapshot does not include why.");
+  expect(exportReview(session, "html").content).toContain("Open run in GitHub");
 });
 
 test("HTML export is a self-contained interactive copy of the review tour", () => {

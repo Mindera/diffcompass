@@ -765,6 +765,31 @@ test("pull request content can use and persist the full available width", async 
   expect(writes).toEqual([["review-tour:test:pull-request-wide", "true"]]);
 });
 
+test("GitHub check snapshots explain known state without inventing a provider reason", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  const source = app.slice(app.indexOf("function githubStatusLabel("), app.indexOf("function renderPullRequest("));
+  const helpers = new Function(`${source}; return { githubCheckStatus, githubMergeabilitySummary };`)() as {
+    githubCheckStatus: (state: string) => { label: string; explanation: string };
+    githubMergeabilitySummary: (pullRequest: { mergeable?: string; mergeStateStatus?: string }) => string[];
+  };
+
+  expect(helpers.githubCheckStatus("IN_PROGRESS")).toEqual({ label: "Running", explanation: "GitHub has not reported a final result for this check." });
+  expect(helpers.githubCheckStatus("FAILURE")).toEqual({ label: "Needs attention", explanation: "GitHub reported Failure. Open the check run for provider details." });
+  expect(helpers.githubMergeabilitySummary({ mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE" })).toEqual([
+    "No merge conflict reported by GitHub.",
+    "GitHub has not provided a stable merge status. This review snapshot does not include why.",
+  ]);
+  expect(app).toContain("function githubChecksSummary(pullRequest)");
+  expect(app).toContain("Snapshot captured when this review was loaded.");
+  expect(app).toContain("This review did not fetch check or workflow details.");
+  expect(app).toContain('target="_blank" rel="noreferrer">Open run in GitHub</a>');
+  expect(styles).toContain(".github-checks {");
+  expect(styles).toContain(".github-check-list {");
+});
+
 test("agent-launched tours introduce the change before navigating to the first stop", async () => {
   const [html, app, cli, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
