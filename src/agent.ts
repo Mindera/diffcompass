@@ -333,7 +333,7 @@ const ISSUE_ASSESSMENT_PROVIDER_BOUNDARY = [
 const ISSUE_ASSESSMENT_OUTPUT_CONTRACT = [
   "Include exactly one item for each supplied criterion and preserve each criterionId and criterion text exactly.",
   "Cite only repository paths you inspected, and use an empty evidencePaths array only when the status is unclear.",
-  "For every evidence path, include one matching pathExplanations entry with a short model explanation of why that path is relevant.",
+  "For every evidence path, include one matching pathExplanations entry that says how the file contributes to the criterion's implementation or reported gap.",
   "Do not describe any item or status as verified.",
 ].join(" ");
 
@@ -352,7 +352,7 @@ function issueAssessmentPromptContext(issue: LinkedIssueContext | undefined): st
       status: "implemented|missing|unclear",
       evidence: "short evidence-based explanation",
       evidencePaths: ["exact repository path"],
-      pathExplanations: [{ path: "exact repository path", explanation: "short model explanation of why this path is relevant" }],
+      pathExplanations: [{ path: "exact repository path", explanation: "short contribution to the criterion or reported gap" }],
       basis: "model-assessment",
     }],
   });

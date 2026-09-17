@@ -281,6 +281,7 @@ test("maps supplied issue criteria with an explicit model-assessment boundary", 
   expect(event.prompt).toContain('Source issue: #12 "Retry" (https://github.com/repository/issues/12)');
   expect(event.prompt).toContain("- criterion-1: A request can be retried");
   expect(event.prompt).toContain('"pathExplanations"');
+  expect(event.prompt).toContain("how the file contributes to the criterion's implementation or reported gap");
   expect(event.prompt).toContain('"basis":"model-assessment"');
   await bridge.respond(event.id, JSON.stringify({
     title: "Retry review", summary: "The retry flag is introduced.",

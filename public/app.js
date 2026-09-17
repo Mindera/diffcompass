@@ -392,12 +392,12 @@ function issueAssessmentExcerpt(path, content, terms) {
 
 function issueAssessmentPathExplanation(item, path) {
   const explanation = item.pathExplanations?.find((detail) => detail?.path === path)?.explanation;
-  return typeof explanation === "string" && explanation.trim() ? explanation.trim() : "Cited repository evidence for this model assessment.";
+  return typeof explanation === "string" && explanation.trim() ? explanation.trim() : "No file-specific contribution was retained for this assessment.";
 }
 
 function issueAssessmentExcerptMarkup(excerpt, id, explanation) {
   const endLine = excerpt.startLine + excerpt.lines.length - 1;
-  return `<article class="issue-assessment-code-excerpt"><header><div class="issue-assessment-excerpt-heading"><strong>${escapeHtml(excerpt.path)}:${excerpt.startLine}${endLine > excerpt.startLine ? `–${endLine}` : ""}</strong><span><b>Model relevance:</b> ${escapeHtml(explanation)}</span></div><button class="text-button" type="button" data-issue-evidence-file="${escapeHtml(excerpt.path)}">Open file</button></header><pre><code data-issue-assessment-excerpt-highlight="${escapeHtml(id)}">${escapeHtml(excerpt.lines.join("\n"))}</code></pre></article>`;
+  return `<article class="issue-assessment-code-excerpt"><header><div class="issue-assessment-excerpt-heading"><strong>${escapeHtml(excerpt.path)}:${excerpt.startLine}${endLine > excerpt.startLine ? `–${endLine}` : ""}</strong><span><b>How it contributes:</b> ${escapeHtml(explanation)}</span></div><button class="text-button" type="button" data-issue-evidence-file="${escapeHtml(excerpt.path)}">Open file</button></header><pre><code data-issue-assessment-excerpt-highlight="${escapeHtml(id)}">${escapeHtml(excerpt.lines.join("\n"))}</code></pre></article>`;
 }
 
 function issueAssessmentExcerptSection(item) {

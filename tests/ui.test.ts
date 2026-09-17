@@ -691,7 +691,7 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   const { issueAssessmentExcerptMarkup } = new Function("escapeHtml", `${excerptMarkupSource}; return { issueAssessmentExcerptMarkup };`)(escape) as {
     issueAssessmentExcerptMarkup: (excerpt: { path: string; startLine: number; lines: string[] }, id: string, explanation: string) => string;
   };
-  expect(issueAssessmentExcerptMarkup(excerpt, "excerpt", "The changed status is validated here.")).toContain("Model relevance:");
+  expect(issueAssessmentExcerptMarkup(excerpt, "excerpt", "The changed status is validated here.")).toContain("How it contributes:");
   expect(issueAssessmentExcerptMarkup(excerpt, "excerpt", "The changed status is validated here.")).toContain("The changed status is validated here.");
 
   const backdropSource = app.slice(app.indexOf("function dismissIssueAssessmentOnBackdrop(event)"), app.indexOf("async function showIssueEvidenceFile(path)"));
