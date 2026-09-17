@@ -613,6 +613,25 @@ function shortcutTargetIsEditable(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true'], [role='textbox']"));
 }
 
+function submitTextareaOnModifiedEnter(event) {
+  if (event.defaultPrevented || event.repeat || event.isComposing || event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+  const textarea = event.target.closest?.("textarea");
+  if (!textarea || textarea.disabled || textarea.readOnly) return;
+  const form = textarea.closest("form");
+  if (form) {
+    const submit = form.querySelector('[type="submit"]');
+    if (!submit || submit.disabled) return;
+    event.preventDefault();
+    form.requestSubmit(submit);
+    return;
+  }
+  const finding = textarea.closest(".finding-item");
+  const saveFinding = finding?.querySelector('[data-action="save-disposition"]');
+  if (!saveFinding || saveFinding.disabled) return;
+  event.preventDefault();
+  saveFinding.click();
+}
+
 function modalDialogIsOpen() {
   return Boolean(document.querySelector("dialog[open]"));
 }
@@ -4460,6 +4479,7 @@ document.addEventListener("keydown", (event) => {
     reviewActionsToggle.focus();
   }
 });
+document.addEventListener("keydown", submitTextareaOnModifiedEnter);
 document.addEventListener("keydown", (event) => {
   if (event.defaultPrevented || event.repeat || shortcutTargetIsEditable(event.target) || modalDialogIsOpen()) return;
   const systemModifier = event.ctrlKey || event.metaKey || event.altKey;

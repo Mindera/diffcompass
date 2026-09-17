@@ -25,9 +25,26 @@ test("review navigation exposes discoverable, accessible shortcut help", async (
   expect(html).toContain("<kbd>K</kbd>");
   expect(html).toContain("<kbd>Z</kbd>");
   expect(html).toContain("<kbd>?</kbd>");
+  expect(html).toContain("<kbd>⌘/Ctrl</kbd> + <kbd>Enter</kbd>");
   expect(app).toContain('elements["shortcuts-button"].addEventListener("click", openShortcutHelp)');
   expect(app).toContain('elements["shortcut-help-dialog"].addEventListener("close", restoreShortcutHelpFocus)');
   expect(app).toContain('elements["close-shortcut-help"].focus()');
+});
+
+test("modified Enter submits multiline composers while plain Enter remains available", async () => {
+  const [app] = await sourceFiles();
+  const start = app.indexOf("function submitTextareaOnModifiedEnter");
+  const end = app.indexOf("function modalDialogIsOpen", start);
+
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const shortcut = app.slice(start, end);
+  expect(shortcut).toContain('event.key !== "Enter"');
+  expect(shortcut).toContain("event.metaKey || event.ctrlKey");
+  expect(shortcut).toContain('event.target.closest?.("textarea")');
+  expect(shortcut).toContain("form.requestSubmit(submit)");
+  expect(shortcut).toContain("saveFinding.click()");
+  expect(app).toContain('document.addEventListener("keydown", submitTextareaOnModifiedEnter)');
 });
 
 test("J and K share the existing tour navigation behavior and avoid accidental repeats", async () => {
