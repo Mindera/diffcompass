@@ -4367,7 +4367,7 @@ async function close(outcome, decision = outcome === "accepted" ? "approve" : ou
       }
       result = await api("/api/github/review", { method: "POST", body: JSON.stringify({ outcome, decision, note, headOid: state.session.pullRequest.headRefOid, confirm: true }) });
     } else {
-      result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome, decision, note }) });
+      result = await api("/api/close", { method: "POST", body: JSON.stringify({ outcome, decision, note, localOnly: !publishToGitHub }) });
     }
     const previousStatus = state.session.status;
     state.session = { ...state.session, status: result.status };

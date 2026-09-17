@@ -149,6 +149,23 @@ test("GitHub review rejection reports the provider response instead of an agent 
   await expect(response.json()).resolves.toEqual({ error: "GitHub rejected this review (HTTP 422). It was not published. GitHub can reject approvals on your own pull request." });
 });
 
+test("local-only approval closes a pull request review without publication", async () => {
+  const { comparison, repository, session, url } = await fixture();
+  const headers = browserHeaders(url, session.browserToken);
+  const head = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
+  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: comparison.mergeBase, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/code-review-tour/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
+
+  const comment = await jsonRequest(url, "/api/comments", { method: "POST", headers, body: JSON.stringify({ path: "app.ts", side: "new", line: 2, body: "Local note" }) });
+  expect(comment.status).toBe(200);
+  const rejected = await jsonRequest(url, "/api/close", { method: "POST", headers, body: JSON.stringify({ outcome: "feedback", decision: "request-changes", localOnly: true }) });
+  expect(rejected.status).toBe(422);
+  const response = await jsonRequest(url, "/api/close", { method: "POST", headers, body: JSON.stringify({ outcome: "accepted", decision: "approve", localOnly: true }) });
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toMatchObject({ status: "accepted", decision: "approve" });
+  expect(session.pullRequest.publication).toBeUndefined();
+});
+
 test("serves the early theme bootstrap before the stylesheet", async () => {
   const { url } = await fixture();
   const page = await (await jsonRequest(url, "/")).text();

@@ -1998,7 +1998,7 @@ export class ReviewSession {
     });
   }
 
-  private assertCloseAllowed(outcome: ReviewOutcome, decision?: ReviewDecisionIntent): void {
+  private assertCloseAllowed(outcome: ReviewOutcome, decision?: ReviewDecisionIntent, localOnly = false): void {
     if (outcome !== "cancelled" && this.activities.some((activity) => activity.changeStatus === "pending")) {
       throw new ReviewError("Apply or reject every pending agent change before closing the review.");
     }
@@ -2006,7 +2006,7 @@ export class ReviewSession {
       this.fullComparison.files.some((file) => !this.reviewedFiles.has(file.path))) {
       throw new ReviewError("Mark every changed file as reviewed before completing this review.");
     }
-    if (outcome === "accepted" && this.comments.length > 0 && decision !== "approve-with-comments") {
+    if (outcome === "accepted" && this.comments.length > 0 && decision !== "approve-with-comments" && !localOnly) {
       throw new ReviewError("Use Approve with comments, request changes, or remove all inline comments.");
     }
   }
@@ -2041,7 +2041,7 @@ export class ReviewSession {
     });
   }
 
-  async close(outcome: ReviewOutcome, options: { githubPublished?: boolean; decision?: ReviewDecisionIntent; note?: string } = {}) {
+  async close(outcome: ReviewOutcome, options: { githubPublished?: boolean; localOnly?: boolean; decision?: ReviewDecisionIntent; note?: string } = {}) {
     if (this.closePromise) {
       const result = await this.closePromise;
       if (result.outcome !== outcome) throw new ReviewError(`The review already closed as ${result.outcome}.`);
@@ -2051,13 +2051,13 @@ export class ReviewSession {
       if (this.status !== outcome) throw new ReviewError(`The review already closed as ${this.status}.`);
       return { outcome, comments: this.comments, status: this.status };
     }
-    if (this.pullRequest && outcome !== "cancelled" && !options.githubPublished) {
+    if (this.pullRequest && outcome !== "cancelled" && !options.githubPublished && !options.localOnly) {
       throw new ReviewError("Publish the pull request review to GitHub, or cancel the local review.");
     }
     if (this.pullRequest?.publication && outcome === "cancelled") {
       throw new ReviewError("A GitHub review publication has already started. Retry it to determine the final remote result.");
     }
-    this.assertCloseAllowed(outcome, options.decision);
+    this.assertCloseAllowed(outcome, options.decision, options.localOnly);
     this.closePromise = (async () => {
       const previousRevision = this.revision;
       let transitioned = false;

@@ -130,6 +130,7 @@ test("local-only approval closes a tour that has inline comments", async () => {
 
   expect(requests).toHaveLength(1);
   expect(requests[0]?.path).toBe("/api/close");
+  expect(JSON.parse(String(requests[0]?.init.body))).toMatchObject({ outcome: "accepted", decision: "approve", localOnly: true });
   expect(state.session.status).toBe("accepted");
   expect(countdown).toBe(1);
 });

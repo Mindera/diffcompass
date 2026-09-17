@@ -578,12 +578,16 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/close") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["outcome", "decision", "note"]);
+        exactKeys(input, ["outcome", "decision", "note", "localOnly"]);
         const outcome = parseOutcome(input.outcome);
         const decision = input.decision === undefined
           ? (outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel")
           : enumValue(input.decision, "decision", ["approve", "approve-with-comments", "request-changes", "cancel"]);
-        return json(await session.close(outcome, { decision, note: optionalString(input.note, "note", 8_000) }));
+        const localOnly = input.localOnly === true;
+        if (localOnly && (outcome !== "accepted" || !["approve", "approve-with-comments"].includes(decision))) {
+          throw new HttpError(422, "Local-only closure is available only for pull request approval.");
+        }
+        return json(await session.close(outcome, { decision, note: optionalString(input.note, "note", 8_000), localOnly }));
       }
       if (url.pathname.startsWith("/api/")) throw new HttpError(404, "API endpoint not found.");
 
