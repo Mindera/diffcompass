@@ -106,6 +106,34 @@ test("approval confirmation can close the tour without publishing a GitHub revie
   expect(closeArgs).toEqual(["accepted", "approve", undefined, true, false]);
 });
 
+test("local-only approval closes a tour that has inline comments", async () => {
+  const source = app.slice(app.indexOf("async function close("), app.indexOf("function requestCloseReview("));
+  const requests: Array<{ path: string; init: RequestInit }> = [];
+  let countdown = 0;
+  const state = {
+    session: { status: "open", comments: [{ id: "comment-1" }], pullRequest: { headRefOid: "1234567890abcdef" } },
+  };
+  const close = new Function("state", "reviewIsOpen", "toast", "openGitHubReviewConfirmation", "api", "beginCloseCountdownForTransition", "renderSession", `${source}; return close;`)(
+    state,
+    () => true,
+    () => { throw new Error("local approval should not be rejected"); },
+    () => { throw new Error("local approval should not open GitHub confirmation"); },
+    async (path: string, init: RequestInit) => {
+      requests.push({ path, init });
+      return { status: "accepted", comments: [] };
+    },
+    () => { countdown += 1; },
+    () => {},
+  ) as (outcome: string, decision: string, note: string | undefined, confirmed: boolean, publishToGitHub: boolean) => Promise<void>;
+
+  await close("accepted", "approve", undefined, true, false);
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.path).toBe("/api/close");
+  expect(state.session.status).toBe("accepted");
+  expect(countdown).toBe(1);
+});
+
 test("feedback confirmation counts the overall note alongside inline comments", () => {
   const source = app.slice(app.indexOf("function beginCloseCountdownForTransition("), app.indexOf("async function checkForUpdate("));
   let message = "";

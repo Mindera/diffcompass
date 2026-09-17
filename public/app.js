@@ -4354,7 +4354,7 @@ function openGitHubReviewConfirmation(outcome, decision, note) {
 
 async function close(outcome, decision = outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel", note, confirmed = false, publishToGitHub = true) {
   if (!reviewIsOpen()) return;
-  if (decision === "approve" && state.session.comments.length > 0) {
+  if (decision === "approve" && publishToGitHub && state.session.comments.length > 0) {
     toast("Use Approve with comments, request changes, or remove all inline comments.");
     return;
   }
