@@ -25,7 +25,8 @@ test("the attached-agent skill documents authoritative event and anchor shapes",
 
 test("the attached-agent skill scopes preview redirects and media evidence", async () => {
   const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
-  expect(skill).toContain("Add `--preview-redirect` only when the host exposes the server through a preview");
+  expect(skill).toContain("--attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH");
+  expect(skill).toContain("Pass `--preview-redirect` by default");
   expect(skill).toContain("unrelated to the attached bridge token");
   expect(skill).toContain("separate `--media` argument");
   expect(skill).toContain("`--attached --open` also implies `--start-tour`");
