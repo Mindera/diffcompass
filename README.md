@@ -9,13 +9,14 @@ explicit actions.
 ![Code Review Tour with changed files, a split diff, conversations, and explicit review decisions](docs/images/overview.png)
 
 [Install](#install) · [Run](#run) · [Questions](#questions-and-conversations) ·
-[Edits](#comments-and-code-suggestions) · [Media](#images-and-videos) ·
+[Edits](#comments-and-code-suggestions) · [GitHub](#github-pull-requests) ·
+[Analysis](#architecture-and-analysis) · [Media](#images-and-videos) ·
 [Development fixture](#reusable-test-fixture)
 
 Before the tour starts, choose the attached or installed agent, its model and
 reasoning level, and whether this run should include the component map, changed
-call flows, sequence diagrams, and findings. All optional outputs are enabled by
-default; disabling one skips that generation work.
+call flows, sequence diagrams, adaptive diagrams, and findings. All optional
+outputs are enabled by default; disabling one skips that generation work.
 
 The selected agent plans an ordered route through the change, anchors every stop
 to the relevant code, and stays available for follow-up questions.
@@ -36,25 +37,31 @@ review. Questions remain available, and you can resume the tour later.
 - identifies the active repository and branch in the persistent top bar, using pull-request metadata when reviewing an isolated GitHub PR workspace;
 - renders the complete repository tree, unchanged source files, and the branch diff between independently resizable file and agent panes;
 - detects installed Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI agents;
-- lets the reviewer choose an available agent, model, and reasoning effort, plus whether to generate the component map, call-flow changes, sequence diagrams, and findings;
+- lets the reviewer choose an available agent, model, and reasoning effort, plus whether to generate the component map, call-flow changes, sequence diagrams, adaptive diagrams, and findings;
 - asks the selected agent to organize the change into logical phases and precise code stops;
+- opens with a configurable evidence briefing that highlights review cues, estimates first-pass effort, and previews the component, sequence, and call-flow views available for the change;
 - prepares up to five upcoming stops by default, configurable from zero to five in Settings;
-- keeps line-anchored conversations in a separate Questions area and Conversations tab, with speech-bubble badges that reopen threads without changing the tour stop;
+- keeps line-, range-, stop-, and review-scoped conversations in a separate Questions area and Conversations tab, with speech-bubble badges that reopen threads without changing the tour stop;
 - lets reviewers remove selected code context or add up to eight repository files to a question;
+- supports Copy, Edit, Comment, and Ask agent for selected code ranges, with syntax-highlighted multi-line edit proposals and modified-Enter submission throughout review composers;
 - places a prominent tour annotation immediately before the active code while the agent gives a short, plain-language explanation in a separately scrollable panel;
 - keeps diff navigation reviewer-controlled, with a `Current step` shortcut when you scroll away from the active stop;
 - declares each phase's changed files and their role in a collapsed-on-entry section, with Git-derived additions and deletions;
 - separates stop-scoped and phase-scoped P0–P3 findings, with collapsed phase summaries matching the in-code pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
 - gives findings explicit Accepted, False positive, Intentional, Deferred, Fixed, and Obsolete after refresh dispositions, with optional reviewer notes preserved across refreshes;
+- presents finding evidence as labelled Observation, Causal path, Impact, and Coverage facts, and can queue a finding as an inline pull-request review comment;
 - syntax-highlights loaded diffs locally in both light and dark themes;
+- peeks definitions and usages for a selected symbol through a bounded repository search, with partial-name suggestions and a back trail into opened source;
 - previews changed Markdown as rendered Before/After documents while retaining addition/deletion highlights and line-anchored tour stops, including in self-contained HTML exports;
 - previews changed PNGs directly in the diff with Before/After images, accurate Added/Removed captions, full-size links, and image-level Comment and Ask agent actions (up to 20 MiB per image; live review only);
 - traces changed caller-to-callee edges from concrete entrypoints, compares their Before and After trees, and links every added or removed call back to its diff evidence;
 - renders Mermaid sequence diagrams as strict local SVG for goal-critical flows, with exact expandable affected-file lists, explicit fully traced, partly inferred, or unverified provenance wording, validated editing, source fallback, and agent regeneration;
+- adds evidence-gated state-machine and data-model/ER diagrams only when repository evidence supports them and the extra view materially improves understanding;
 - applies bounded repository review instructions, finding categories, and a minimum finding severity;
 - validates findings in a separate repository-aware pass that traces consequential candidates through their actual runtime, build, signing, CI, and delivery consumers and performs a focused recall audit before results are shown;
-- exports the complete tour, call flows, sequence diagrams, findings, reviewer feedback, changed-file state, and diff as Markdown or self-contained HTML;
+- exports the complete tour, call flows, component/sequence/adaptive diagrams, findings, reviewer feedback, questions, changed-file state, Markdown previews, and diff as Markdown or self-contained HTML;
 - refreshes when repository files change and marks stale annotations as needing reassessment;
+- captures named checkpoints, classifies files changed since a checkpoint, and preserves a manageable revision history for focused re-review;
 - records agent-authored file changes, their triggering request, and verification in an Activity timeline;
 - prepares attached-agent edits in isolated worktrees with explicit Apply, Reject, and conflict-safe Undo controls;
 - persists review state atomically so the server can resume it after restart;
@@ -65,7 +72,9 @@ review. Questions remain available, and you can resume the tour later.
 - renders very large diffs one file at a time in bounded 1,000-row chunks;
 - searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
 - starts with a dense split diff on desktop and unified diff on narrow screens, expands hunk context on demand, and persists per-file reviewed state;
-- opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, and review threads, and publishes an explicitly confirmed review;
+- provides J/K tour navigation, Escape-to-cancel for drafts, discoverable shortcut help, and a focus mode that widens the diff without removing its explicit exit;
+- opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, review threads, and a bounded assessment of explicit criteria from one linked closing issue or a reviewer-supplied local task;
+- publishes an explicitly confirmed GitHub review containing the chosen decision, overall note, selected inline comments, and selected finding-derived comments;
 - exposes explicit `Approve`, `Approve with comments`, and `Request changes` decisions, with a review note for the latter two, plus `Close review` when the reviewer wants to end without a verdict.
 
 Standalone **agents** are read-only; reviewers can still create inline edit
@@ -74,6 +83,25 @@ a lost heartbeat—may edit only when the reviewer explicitly requests a concret
 change. Suggestions are prepared in isolated worktrees: the reviewed working
 tree remains untouched until the reviewer presses `Apply`. Applying a suggestion
 does not commit or push code.
+
+## Briefing and revision checkpoints
+
+Before guided navigation begins, the briefing introduces the change and shows
+the enabled component diagrams, sequence diagrams, call flows, high-priority
+review cues, and a bounded first-pass effort estimate. Review cues explain why
+an area deserves attention; they are not additional findings or a quality
+score. Diagram previews can be expanded without starting the tour. In
+`Settings → Before the tour`, each section can be enabled, disabled, and
+reordered; those choices become the defaults for later sessions. `View
+briefing` reopens the same evidence after the tour starts.
+
+`Checkpoint` captures the current reviewed tree with an optional label. The
+revision history can return to or delete saved checkpoints, while `Full change`
+and `Since last review` switch the diff between the complete comparison and the
+files that are new, changed again, or resolved since the selected baseline.
+Files changed since the checkpoint reopen for review; unchanged reviewed files
+retain their state. Refresh and background preparation preserve the active tab,
+expanded files, drafts, and reading position.
 
 ## Attached-agent mode
 
@@ -194,7 +222,7 @@ Installed releases manage their own lifecycle:
 
 ```sh
 code-review-tour update
-code-review-tour update --version v1.1.24
+code-review-tour update --version v1.1.25
 code-review-tour rollback
 code-review-tour rollback --to 1.1.3
 code-review-tour uninstall --dry-run
@@ -210,7 +238,7 @@ removes an unmarked skill directory or an unrelated command.
 Pin a particular release by setting the version for the installer process:
 
 ```sh
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.24 bash
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.25 bash
 ```
 
 Once the repository is public, this bootstrap can switch from authenticated
@@ -278,14 +306,14 @@ without explanations, so the configured prepare-ahead window and agent progress
 UI can be tested without inheriting work from an earlier run. Preparing those
 later stops invokes the selected local agent and may use tokens.
 
-The fixture contains two phases, four stops, inline feedback, findings, a
-component diagram, a sequence diagram, chat history, and an agent activity
-entry, plus a tiny changed PNG for before/after preview checks. It also seeds a
-simulated same-repository pull request and linked issue assessment; it does not
-call GitHub or retain an issue body. Sending a new question invokes the selected
-agent; the fixture does not fake new answers. It also includes both modified
-and newly added Markdown documents for checking the rendered before/after and
-added-file preview states.
+The fixture contains two phases, four stops, inline feedback, structured
+findings, component/sequence/adaptive diagrams, a checkpoint, chat history, and
+an agent activity entry, plus a tiny changed PNG for before/after preview checks.
+It also seeds a simulated same-repository pull request and linked issue
+assessment; it does not call GitHub or retain an issue body. Sending a new
+question invokes the selected agent; the fixture does not fake new answers. It
+also includes both modified and newly added Markdown documents for checking the
+rendered before/after and added-file preview states.
 Use `bun run fixture --prepare-only` when a test only needs fresh
 repository and session files.
 
@@ -306,17 +334,31 @@ code-review-tour pr https://github.com/OWNER/REPOSITORY/pull/106 --repo /path/to
 The source checkout stays on its current branch. Code Review Tour fetches the
 pull request into a persistent isolated worktree, compares the exact base and
 head commits reported by GitHub, and retains that workspace for session resume.
-The Pull request tab shows metadata, checks, commits, and the first 100 existing
-review threads. Each local line comment can be included in or excluded from the
-GitHub review. Approving or requesting changes shows a final confirmation bound
-to the current head SHA; the server rechecks that SHA before publishing. A
+The Pull request tab shows a rendered/raw description, metadata, checks,
+commits, and the first 100 existing review threads. Its content can use the full
+review width when desired. Each local line comment can be included in or excluded from the
+GitHub review. Findings can likewise be added as selected inline review comments.
+Known check states are explained, check snapshots can be refreshed, and commit
+revisions link back to GitHub when the provider URL is trusted. Approving or
+requesting changes shows a final confirmation bound to the current head SHA;
+the server rechecks that SHA before publishing. A
 durable hidden marker makes a retry reuse the remote review instead of submitting
 a duplicate if the first response was interrupted. Remote updates apply only to
 a clean isolated worktree and stale local annotations are marked as needing reassessment.
 
+When GitHub reports a same-repository closing issue, Code Review Tour retains
+only its bounded metadata and explicit top-level acceptance criteria. The agent
+maps each criterion to cited repository paths and labels it satisfied, partial,
+missing, or unclear; this is a model assessment, not a verified test result.
+Related issues, earlier pull requests, and unstructured checklist prose are not
+fetched. If no usable linked issue exists, add a Markdown task description
+locally and run the same assessment without publishing that task to GitHub.
+
 Applying a code suggestion changes only the isolated PR worktree. It does not
 push to the PR branch. Publishing a review sends the selected comments and
 review decision to GitHub, not the proposed code changes.
+`Approve tour without approving the pull request` remains available when the
+reviewer wants to close the local tour without creating a GitHub review.
 
 ## Saved sessions
 
@@ -342,8 +384,12 @@ terminal outcome.
 
 ## Questions and conversations
 
-Select a code line and choose `Ask agent`, or start a `New question` in the
-Questions pane. During a desktop tour, the explanation stays above Questions;
+Click a diff line to open its inline composer and choose `Comment` or `Ask
+agent`. Selecting one or more lines opens Copy, Edit, Comment, Ask agent, and
+Peek symbol actions; comments and questions quote the exact selected range.
+Stop comments remain attached to their named tour stop even if the diff moves.
+You can also start a review-wide `New question` in the Questions pane. During a
+desktop tour, the explanation stays above Questions;
 drag the divider to change their relative height. Exiting or finishing the
 tour gives that space to Questions without closing the review.
 
@@ -358,6 +404,8 @@ Before sending a new question, remove its selected line with `×`, or choose
 eight text files, each no larger than 32,000 bytes. A thread retains its original
 file selection and line context after the first message; start a new question
 to use different context. Follow-ups appear after the previous answer.
+Plain Enter inserts a newline; Command+Enter on macOS or Ctrl+Enter elsewhere
+submits comments, questions, review notes, and other multiline composers.
 
 ## Comments and code suggestions
 
@@ -365,10 +413,11 @@ Select a line and choose `Comment` to compose feedback directly beneath the
 code. Comments are separate from questions to the agent. Edit them inline;
 deleting a comment uses an in-page confirmation rather than a browser dialog.
 
-Choose `Edit` on a new-side diff line to enter replacement code. This creates
-a reviewer suggestion, not an immediate working-tree change. The same controls
-are available whether the reviewed code came from an existing branch or was
-just written by an agent.
+Choose `Edit` on selected new-side diff text to enter syntax-highlighted
+replacement code for one or more contiguous lines. This creates a reviewer
+suggestion, not an immediate working-tree change. The same controls are
+available whether the reviewed code came from an existing branch or was just
+written by an agent.
 
 The `Activity` tab groups repository changes by reviewer edit or attached-agent request. It shows
 the affected files, before/after diff totals, and the verification reported by
@@ -421,10 +470,18 @@ words and punctuation within paired removed/added lines while syntax colours
 remain intact. Each hunk can progressively load more surrounding
 context without making the initial session snapshot unbounded. Marking a file
 reviewed is stored with the session and survives server and browser restarts.
+`Test files only` narrows either tree mode, while `All files in this tour`
+combines reviewed and unreviewed paths declared by the guided route.
 
 Use `Expand context` for more surrounding lines or `Expand file` for the whole
 text file. Expansion and background preparation preserve your reading position.
 When the current tour stop is out of view, `Current step` takes you back to it.
+`Peek symbol` opens a bounded definition-and-usage search without hiding the
+source behind it. It supports partial identifier suggestions, syntax-highlighted
+results, a back trail, and opening a result while keeping the compact peek card
+available. Press J/K for next/previous tour stops, `?` for shortcut help, Escape
+to cancel an inline draft, and Z for Focus mode. Focus mode widens the diff and
+retains both its button and keyboard exit.
 
 Paired removed/added lines that differ only in leading or trailing spaces/tabs
 are labelled `whitespace only`. Dots show spaces and arrows show tabs on those
@@ -438,8 +495,10 @@ whitespace changes (including spaces inside strings) are not classified this way
 Settings separates the application appearance (`System`, `Light`, or `Dark`)
 from syntax highlighting (`GitHub`, `Vitesse`, `Review Tour`, `Catppuccin Frappé`,
 `Catppuccin Macchiato`, or `Catppuccin Mocha`). It also contains the prepare-ahead
-selector, file-tree mode, exports, and saved sessions. Clicking outside closes
-the settings menu.
+selector, optional `+`/`−` line markers, file-tree mode, exports, and saved
+sessions. Clicking outside closes the settings menu. The top bar keeps
+repository identity and review actions above a separately scrollable navigation
+row so analysis tabs remain usable as capabilities are added.
 
 On narrow screens, the `Files` button opens the left pane as a dismissible
 drawer. Diffs start in unified mode; an explicit layout choice is remembered
@@ -461,7 +520,9 @@ a separate mobile app or a remote-access service.
 
 Changed `.png` files render directly inside their diff frames. Modified and
 renamed images show Before/After previews; added or deleted images show the
-available side. Click a preview to open it full-size. The before image comes
+available side with Added or Removed rather than a misleading Before/After
+caption. Click a preview to open it full-size, or attach an image-level Comment
+or Ask agent discussion. The before image comes
 from the comparison baseline and the after image from the reviewed working
 tree. No `--media` argument is required for these previews.
 
@@ -555,9 +616,9 @@ output in addition to including it in the planning prompt. Repository
 instructions cannot override read-only execution, evidence requirements, or the
 tour response contract.
 
-The tour start panel includes a Component diagram, Call flows, Sequence
-diagrams, and Findings by default. Turning any of them off skips that analysis
-instead of merely hiding its output.
+The tour start panel includes Component diagrams, Call flows, Sequence diagrams,
+Adaptive diagrams, and Findings by default. Turning any of them off skips that
+analysis instead of merely hiding its output.
 When findings are enabled, broad tour planning produces candidates and a second,
 authoritative audit validates their causal chain, removes unsupported guesses,
 and searches high-impact boundaries for omissions. A malformed audit fails the
@@ -600,6 +661,16 @@ sequence diagram or `Regenerate diagrams` to ask the active tour agent to
 re-inspect the current diff. Call flows can likewise be regenerated individually
 or as a complete set.
 
+The Adaptive diagrams tab can contain a state machine for a lifecycle or a
+data-model/ER view for persistent relationships. These diagrams are deliberately
+evidence-gated: each one names changed files, retains repository observations,
+and explains why it adds understanding beyond the component, call-flow, and
+sequence views. Unsupported or weakly supported diagrams are omitted, so an
+empty tab is an honest result. State and data-model legends explain their
+notation. Every diagram supports independent drag, arrow-key or pinch movement,
+zoom down to a comfortable overview, reset, full-screen expansion, strict local
+Mermaid rendering, and source fallback.
+
 Guided reviews are organized as `Tour → Phases → Stops`. A phase represents one
 coherent behavioral or architectural change and declares the changed files that
 participate in it. A stop is an exact old/new diff anchor with a short inline
@@ -617,8 +688,13 @@ migrated into a legacy phase without guessing finding scope.
 ## Exports and retention
 
 Use `Settings → Export` at any point—including after closure—to download
-Markdown or a self-contained HTML artifact. Exports contain no scripts, remote
-assets, session tokens, or repository filesystem paths.
+Markdown or a self-contained HTML artifact. Exports preserve the tour route,
+syntax-highlighted diff, Markdown previews, stop markers, structured finding
+evidence, call flows, component/sequence/adaptive diagrams, comments, questions,
+and selected wrap/scroll presentation when those sections are included. HTML
+exports remain interactive for navigation and diagram inspection but omit agent,
+edit, regeneration, and comment controls. Exports contain no remote assets,
+session tokens, or repository filesystem paths.
 
 Retention is always explicit. `sessions prune` previews its targets; add
 `--yes` to delete them. `--repo PATH` loads that repository's retention
