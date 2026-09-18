@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { buildCopilotArgs, buildGeminiArgs, parseClaudeJson, parseCodexJsonLines, parseGeminiStreamJson, TourAgent, type AgentTransport } from "../src/agent.ts";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { DEFAULT_REVIEW_POLICY } from "../src/config.ts";
-import type { AgentRunActivity, GitComparison, LinkedIssueContext } from "../src/types.ts";
+import type { AgentRunActivity, GitComparison, LinkedIssueContext, ReviewerTaskContext } from "../src/types.ts";
 
 test("extracts the thread and final agent messages from Codex JSONL", () => {
   const parsed = parseCodexJsonLines([
@@ -282,6 +282,7 @@ test("maps supplied issue criteria with an explicit model-assessment boundary", 
   expect(event.prompt).toContain("- criterion-1: A request can be retried");
   expect(event.prompt).toContain('"pathExplanations"');
   expect(event.prompt).toContain("how the file contributes to the criterion's implementation or reported gap");
+  expect(event.prompt).toContain("For algorithmic criteria, cite paths that together establish the relevant input, decision or transformation, and resulting output or side effect.");
   expect(event.prompt).toContain('"basis":"model-assessment"');
   await bridge.respond(event.id, JSON.stringify({
     title: "Retry review", summary: "The retry flag is introduced.",
@@ -291,6 +292,35 @@ test("maps supplied issue criteria with an explicit model-assessment boundary", 
   }}));
   const outline = (await pending).value;
   expect(outline.issueAssessment).toEqual(expect.objectContaining({ items: [expect.objectContaining({ status: "implemented", pathExplanations: [{ path: "app.ts", explanation: "The changed retry flag is defined here." }], basis: "model-assessment" })] }));
+});
+
+test("assesses reviewer-supplied criteria without provider context or a new tour outline", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false, includeFindings: false }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "+const retry = true;", repositoryFiles: ["app.ts"],
+    files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, rows: [{ kind: "addition", content: "const retry = true;", oldLine: null, newLine: 1 }] }],
+    }],
+  };
+  const task: ReviewerTaskContext = {
+    body: "## Acceptance Criteria\n- [ ] A request can be retried",
+    criteriaStatus: "found",
+    acceptanceCriteria: [{ id: "criterion-1", text: "A request can be retried" }],
+    updatedAt: "2026-09-17T00:00:00.000Z",
+  };
+  const pending = agent.assessReviewerTask(comparison, task);
+  const [event] = await bridge.eventsAfter(0, 1_000);
+  if (!event || event.type !== "agent.prompt") throw new Error("Expected a reviewer-task assessment prompt.");
+  expect(event.kind).toBe("issue.assessment");
+  expect(event.prompt).toContain("reviewer supplied this task description locally");
+  expect(event.prompt).toContain("did not come from GitHub");
+  expect(event.prompt).toContain("Do not query or infer issues, pull requests, comments");
+  expect(event.prompt).toContain("Do not plan or change the tour");
+  await bridge.respond(event.id, JSON.stringify({
+    items: [{ criterionId: "criterion-1", criterion: "A request can be retried", status: "implemented", evidence: "app.ts defines the retry flag.", evidencePaths: ["app.ts"], pathExplanations: [{ path: "app.ts", explanation: "The retry flag is defined here." }], basis: "model-assessment" }],
+  }));
+  await expect(pending).resolves.toMatchObject({ value: { items: [expect.objectContaining({ status: "implemented", evidencePaths: ["app.ts"] })] } });
 });
 
 test("repository policy is bounded context and findings are enforced after generation", async () => {

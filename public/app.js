@@ -86,6 +86,9 @@ const state = {
   closeCountdownSeconds: null,
   closeCountdownMessage: null,
   prDescriptionMode: "rendered",
+  prDescriptionCollapsed: false,
+  reviewerTaskCollapsed: false,
+  reviewerTaskMode: "write",
   pullRequestWide: false,
   syntaxTheme: ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("review-tour-syntax-theme"))
     ? window.localStorage.getItem("review-tour-syntax-theme")
@@ -103,11 +106,14 @@ const state = {
   filePanelOpen: false,
   symbolPeek: { history: [], current: null, requestId: 0, highlightRequestId: 0, compact: false },
   issueAssessmentExcerptRequestId: 0,
+  reviewerTaskReturnTarget: null,
+  pullRequestReturn: null,
+  githubSnapshotRefreshing: false,
 };
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
@@ -115,9 +121,9 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "shortcut-help-dialog", "shortcut-help-title", "shortcuts-button", "close-shortcut-help", "focus-mode-toggle",
-    "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
+    "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "reviewer-task-assessment-status", "reviewer-task-assessment-status-title", "reviewer-task-assessment-status-body", "view-reviewer-task-assessment", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -171,16 +177,71 @@ function renderInlineChangeText(value, ranges = [], baseOffset = 0) {
   return html;
 }
 
+function markdownHtmlAttribute(value) {
+  return String(value ?? "").replace(/&(?:amp|quot|#0*39|lt|gt);/gi, (entity) => ({
+    "&amp;": "&",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&lt;": "<",
+    "&gt;": ">",
+  })[entity.toLocaleLowerCase()] ?? entity);
+}
+
+function safeMarkdownImage(tag) {
+  const attributes = {};
+  const attributePattern = /([A-Za-z][A-Za-z0-9:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+  for (const match of String(tag).matchAll(attributePattern)) {
+    attributes[match[1].toLocaleLowerCase()] = markdownHtmlAttribute(match[2] ?? match[3] ?? match[4] ?? "");
+  }
+  let source = "";
+  try {
+    const url = new URL(attributes.src);
+    if (url.protocol === "https:") source = url.toString();
+  } catch {
+    // Raw HTML remains text when it does not contain a safe absolute image URL.
+  }
+  if (!source) return renderInlineChangeText(tag);
+  const dimension = (name) => {
+    const value = Number(attributes[name]);
+    return Number.isInteger(value) && value > 0 && value <= 2_048 ? ` ${name}="${value}"` : "";
+  };
+  const alt = String(attributes.alt ?? "").slice(0, 1_000);
+  return `<span class="markdown-inline-image-frame"><img class="markdown-inline-image" src="${escapeHtml(source)}" alt="${escapeHtml(alt)}" loading="lazy" referrerpolicy="no-referrer"${dimension("width")}${dimension("height")}><span class="markdown-inline-image-unavailable hidden" data-markdown-image-unavailable>Image could not be rendered.</span></span>`;
+}
+
+function renderMarkdownImageUnavailable(image) {
+  const frame = image.closest(".markdown-inline-image-frame");
+  const message = frame?.querySelector("[data-markdown-image-unavailable]");
+  if (!frame || !message || frame.classList.contains("unavailable")) return;
+  frame.classList.add("unavailable");
+  message.textContent = "Image could not be rendered. ";
+  const pullRequestUrl = state.session?.pullRequest?.url;
+  try {
+    const url = new URL(pullRequestUrl);
+    if (url.protocol !== "https:" || url.hostname !== "github.com") throw new Error("Invalid pull request URL.");
+    const link = document.createElement("a");
+    link.href = url.toString();
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = "View pull request in GitHub";
+    message.append(link);
+  } catch {
+    message.append("View the pull request in GitHub.");
+  }
+  message.classList.remove("hidden");
+}
+
 function renderInlineMarkdown(value, ranges = [], baseOffset = 0) {
   const text = String(value);
-  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  const pattern = /(<img\b[^>]*>)|`([^`]+)`|\*\*([^*]+)\*\*/gi;
   let html = "";
   let cursor = 0;
   for (const match of text.matchAll(pattern)) {
     const index = match.index;
     html += renderInlineChangeText(text.slice(cursor, index), ranges, baseOffset + cursor);
-    if (match[1] !== undefined) html += `<code>${renderInlineChangeText(match[1], ranges, baseOffset + index + 1)}</code>`;
-    else html += `<strong>${renderInlineChangeText(match[2], ranges, baseOffset + index + 2)}</strong>`;
+    if (match[1] !== undefined) html += safeMarkdownImage(match[1]);
+    else if (match[2] !== undefined) html += `<code>${renderInlineChangeText(match[2], ranges, baseOffset + index + 1)}</code>`;
+    else html += `<strong>${renderInlineChangeText(match[3], ranges, baseOffset + index + 2)}</strong>`;
     cursor = index + match[0].length;
   }
   return html + renderInlineChangeText(text.slice(cursor), ranges, baseOffset + cursor);
@@ -328,6 +389,14 @@ function pullRequestDescription(body) {
 }
 
 function setPullRequestDescriptionMode(event) {
+  const toggle = event.target.closest("[data-pr-description-toggle]");
+  if (toggle?.dataset?.prDescriptionToggle !== undefined) {
+    state.prDescriptionCollapsed = !state.prDescriptionCollapsed;
+    renderPullRequest();
+    renderReviewOverview();
+    event.currentTarget.querySelector("[data-pr-description-toggle]")?.focus({ preventScroll: true });
+    return;
+  }
   const button = event.target.closest("[data-pr-description-mode]");
   if (!button) return;
   const mode = button.dataset.prDescriptionMode;
@@ -345,18 +414,92 @@ function issueEvidencePathLinks(paths) {
 const ISSUE_ASSESSMENT_EXCERPT_LIMIT = 3;
 const ISSUE_ASSESSMENT_EXCERPT_CONTEXT = 8;
 const ISSUE_ASSESSMENT_EXCERPT_LINE_LIMIT = 15;
+const ISSUE_ASSESSMENT_CHAIN_EXCERPT_CONTEXT = 2;
+const ISSUE_ASSESSMENT_CHAIN_EXCERPT_LINE_LIMIT = 9;
 const ISSUE_ASSESSMENT_IGNORED_TERMS = new Set([
   "acceptance", "assessment", "criteria", "criterion", "evidence", "explicit", "implementation", "implemented", "issue", "issues", "linked", "missing", "model", "only", "path", "paths", "provider", "pull", "related", "repository", "request", "requests", "retained", "reviewed", "status", "statuses", "test", "tests", "unclear", "using", "with", "without",
 ]);
 
 function issueAssessmentEvidenceTerms(evidence) {
   const terms = String(evidence ?? "").match(/[A-Za-z_$][A-Za-z0-9_$]*/g) ?? [];
-  return [...new Set(terms.map((term) => term.toLocaleLowerCase()).filter((term) => term.length >= 4 && !ISSUE_ASSESSMENT_IGNORED_TERMS.has(term)))].sort((left, right) => right.length - left.length).slice(0, 24);
+  return [...new Set(terms.flatMap((term) => {
+    const value = term.toLocaleLowerCase();
+    const stem = value.replace(/(?:ing|ed|s)$/u, "");
+    return [value, stem];
+  }).filter((term) => term.length >= 4 && !ISSUE_ASSESSMENT_IGNORED_TERMS.has(term)))].sort((left, right) => right.length - left.length).slice(0, 24);
+}
+
+function issueAssessmentNonBehaviorLine(line) {
+  return /^(?:package|import)\s|^@\w+\s*$|^(?:data\s+object|(?:private|internal|public)?\s*(?:sealed\s+)?(?:interface|class|object))\b/.test(String(line ?? "").trim());
 }
 
 function issueAssessmentLineScore(line, terms) {
-  const source = String(line ?? "").toLocaleLowerCase();
-  return terms.reduce((score, term) => score + (source.includes(term) ? term.length : 0), 0);
+  const source = String(line ?? "").trim().toLocaleLowerCase();
+  if (!source || issueAssessmentNonBehaviorLine(source)) return 0;
+  let score = terms.reduce((total, term) => total + (source.includes(term) ? term.length : 0), 0);
+  if (/\bon[a-z0-9_]*(?:click|pressed)\s*=/i.test(source)) score += 24;
+  if (/\b(?:navcontroller|navigator)\.(?:navigate|replace|popbackstack)\b/i.test(source)) score += 24;
+  return score;
+}
+
+function issueAssessmentProofKind(item) {
+  const description = [item?.criterion, item?.evidence, ...(item?.pathExplanations ?? []).map((detail) => detail?.explanation)].join(" ");
+  if (/\b(?:sort(?:ed|ing)?|order(?:ed|ing)?|filter(?:ed|ing)?|search(?:ed|ing)?|group(?:ed|ing)?|aggregate|calculat(?:e|es|ed|ing|ion)|comput(?:e|es|ed|ing|ation)|deriv(?:e|es|ed|ing|ation)|transform(?:ed|ing|ation)?|convert(?:ed|ing|ion)?|normaliz(?:e|es|ed|ing|ation)|validat(?:e|es|ed|ing|ion)|pars(?:e|es|ed|ing)|serializ(?:e|es|ed|ing|ation)|deserializ(?:e|es|ed|ing|ation)|map(?:ped|ping)?|reduc(?:e|es|ed|ing|tion)|fold(?:ed|ing)?|match(?:ed|ing)?|rank(?:ed|ing)?|scor(?:e|es|ed|ing)|deduplicat(?:e|es|ed|ing|ion)|merg(?:e|es|ed|ing)|split(?:s|ting)?|format(?:s|ted|ting)?)\b/i.test(description)) return "algorithmic";
+  if (/\b(?:click(?:ed|ing)?|tap(?:ped|ping)?|press(?:ed|ing)?|cta|navigate(?:s|d|ing|ion)?|route|screen|dialog|modal)\b/i.test(description)) return "interaction";
+  return "behavior";
+}
+
+function issueAssessmentFunctionDeclaration(line) {
+  return /^\s*(?:(?:private|public|internal|protected|override|suspend|inline|tailrec|operator|infix|open|abstract|final|static|async|export|default)\s+)*(?:fun|function|def)\s+[A-Za-z_$][A-Za-z0-9_$]*/.test(String(line ?? ""))
+    || /^\s*(?:const|let|var)\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>/.test(String(line ?? ""));
+}
+
+function issueAssessmentAlgorithmicLineScore(line, terms) {
+  const source = String(line ?? "").trim();
+  if (!source || issueAssessmentNonBehaviorLine(source)) return 0;
+  let score = terms.reduce((total, term) => total + (source.toLocaleLowerCase().includes(term) ? term.length : 0), 0);
+  if (/\b(?:map|flatmap|filter|fold|reduce|groupby|associate|sorted(?:by)?|sortby|partition|zip|scan|parse|serialize|deserialize|normalize|validate|convert|transform|calculate|compute|derive|format|distinct)\b/i.test(source)) score += 26;
+  if (/\b(?:if|else|when|for|while|switch|case)\b/i.test(source)) score += 14;
+  if (/\b(?:return|yield|emit|dispatch|publish)\b/i.test(source)) score += 10;
+  if (/\s=\s|\.update\s*\(/.test(source)) score += 4;
+  return score;
+}
+
+function issueAssessmentAlgorithmicAnchors(lines, terms) {
+  let transformation = null;
+  lines.forEach((line, index) => {
+    if (issueAssessmentFunctionDeclaration(line)) return;
+    const score = issueAssessmentAlgorithmicLineScore(line, terms);
+    if (score > (transformation?.score ?? 0)) transformation = { line: index + 1, score };
+  });
+  if (!transformation) return [];
+  let inputLine = null;
+  for (let index = transformation.line - 2; index >= Math.max(0, transformation.line - 101); index -= 1) {
+    if (issueAssessmentFunctionDeclaration(lines[index])) {
+      inputLine = index + 1;
+      break;
+    }
+  }
+  const nextFunction = lines.findIndex((line, index) => index >= transformation.line && issueAssessmentFunctionDeclaration(line));
+  const outputLimit = nextFunction === -1 ? Math.min(lines.length, transformation.line + 100) : nextFunction;
+  let outputLine = null;
+  for (let index = transformation.line - 1; index < outputLimit; index += 1) {
+    if (/\b(?:return|yield|emit|dispatch|publish)\b|\b(?:ui|view|screen|state)[A-Za-z0-9_]*\s*(?:\.value)?\s*=|\.update\s*\(/i.test(lines[index])) {
+      outputLine = index + 1;
+      break;
+    }
+  }
+  const anchors = [];
+  const add = (role, line) => {
+    if (!line) return;
+    const existing = anchors.find((anchor) => anchor.line === line);
+    if (existing) existing.role = `${existing.role} and ${role.toLocaleLowerCase()}`;
+    else anchors.push({ role, line });
+  };
+  add("Input", inputLine);
+  add("Transformation", transformation.line);
+  add("Output", outputLine);
+  return anchors;
 }
 
 function issueAssessmentChangedAnchor(path, terms) {
@@ -369,7 +512,9 @@ function issueAssessmentChangedAnchor(path, terms) {
     if (score > (best?.score ?? 0)) best = { line: row.newLine, score };
   }
   if (best?.score) return best.line;
-  return rows.find((row) => row.kind === "addition" && row.newLine)?.newLine ?? null;
+  return rows.find((row) => row.kind === "addition" && row.newLine && !issueAssessmentNonBehaviorLine(row.content))?.newLine
+    ?? rows.find((row) => row.kind === "addition" && row.newLine)?.newLine
+    ?? null;
 }
 
 function issueAssessmentExcerpt(path, content, terms) {
@@ -386,8 +531,25 @@ function issueAssessmentExcerpt(path, content, terms) {
   });
   const anchor = changedAnchor ?? matchedAnchor ?? 1;
   const length = Math.min(ISSUE_ASSESSMENT_EXCERPT_LINE_LIMIT, Math.max(1, lines.length));
-  const startLine = Math.max(1, Math.min(Math.max(1, lines.length - length + 1), anchor - ISSUE_ASSESSMENT_EXCERPT_CONTEXT));
+  let startLine = Math.max(1, Math.min(Math.max(1, lines.length - length + 1), anchor - ISSUE_ASSESSMENT_EXCERPT_CONTEXT));
+  while (startLine < anchor && issueAssessmentNonBehaviorLine(lines[startLine - 1])) startLine += 1;
   return { path, startLine, lines: lines.slice(startLine - 1, startLine - 1 + length) };
+}
+
+function issueAssessmentChainExcerpt(path, lines, anchor) {
+  const length = Math.min(ISSUE_ASSESSMENT_CHAIN_EXCERPT_LINE_LIMIT, Math.max(1, lines.length));
+  let startLine = Math.max(1, Math.min(Math.max(1, lines.length - length + 1), anchor.line - ISSUE_ASSESSMENT_CHAIN_EXCERPT_CONTEXT));
+  while (startLine < anchor.line && issueAssessmentNonBehaviorLine(lines[startLine - 1])) startLine += 1;
+  return { path, role: anchor.role, startLine, lines: lines.slice(startLine - 1, startLine - 1 + length) };
+}
+
+function issueAssessmentProofExcerpts(item, path, content, terms) {
+  if (issueAssessmentProofKind(item) !== "algorithmic") return [issueAssessmentExcerpt(path, content, terms)];
+  const lines = String(content ?? "").split("\n");
+  const anchors = issueAssessmentAlgorithmicAnchors(lines, terms);
+  return anchors.length >= 2
+    ? anchors.map((anchor) => issueAssessmentChainExcerpt(path, lines, anchor))
+    : [issueAssessmentExcerpt(path, content, terms)];
 }
 
 function issueAssessmentPathExplanation(item, path) {
@@ -397,14 +559,17 @@ function issueAssessmentPathExplanation(item, path) {
 
 function issueAssessmentExcerptMarkup(excerpt, id, explanation) {
   const endLine = excerpt.startLine + excerpt.lines.length - 1;
-  return `<article class="issue-assessment-code-excerpt"><header><div class="issue-assessment-excerpt-heading"><strong>${escapeHtml(excerpt.path)}:${excerpt.startLine}${endLine > excerpt.startLine ? `–${endLine}` : ""}</strong><span><b>How it contributes:</b> ${escapeHtml(explanation)}</span></div><button class="text-button" type="button" data-issue-evidence-file="${escapeHtml(excerpt.path)}">Open file</button></header><pre><code data-issue-assessment-excerpt-highlight="${escapeHtml(id)}">${escapeHtml(excerpt.lines.join("\n"))}</code></pre></article>`;
+  return `<article class="issue-assessment-code-excerpt"><header><div class="issue-assessment-excerpt-heading">${excerpt.role ? `<em class="issue-assessment-proof-role">${escapeHtml(excerpt.role)}</em>` : ""}<strong>${escapeHtml(excerpt.path)}:${excerpt.startLine}${endLine > excerpt.startLine ? `–${endLine}` : ""}</strong><span><b>How it contributes:</b> ${escapeHtml(explanation)}</span></div><button class="text-button" type="button" data-issue-evidence-file="${escapeHtml(excerpt.path)}">Open file</button></header><pre><code data-issue-assessment-excerpt-highlight="${escapeHtml(id)}">${escapeHtml(excerpt.lines.join("\n"))}</code></pre></article>`;
 }
 
 function issueAssessmentExcerptSection(item) {
   const paths = [...new Set(item.evidencePaths)].slice(0, ISSUE_ASSESSMENT_EXCERPT_LIMIT);
   if (paths.length === 0) return "";
   const omitted = item.evidencePaths.length - paths.length;
-  return `<section><span class="issue-evidence-label">Cited code excerpts</span><p class="issue-assessment-excerpt-note">Short, bounded previews from the cited paths. Open a file to inspect its full context.</p><div class="issue-assessment-code-excerpts" data-issue-assessment-excerpts><p class="muted">Loading cited source…</p></div>${omitted > 0 ? `<p class="muted">${omitted} additional cited ${omitted === 1 ? "file is" : "files are"} available from the assessment.</p>` : ""}</section>`;
+  const note = issueAssessmentProofKind(item) === "algorithmic"
+    ? "Short, bounded previews follow the relevant input, transformation, and output when those steps are available in cited code. Open a file to inspect its full context."
+    : "Short, bounded previews select executable bindings and effects from the cited paths. Open a file to inspect its full context.";
+  return `<section><span class="issue-evidence-label">Cited code excerpts</span><p class="issue-assessment-excerpt-note">${note}</p><div class="issue-assessment-code-excerpts" data-issue-assessment-excerpts><p class="muted">Loading cited source…</p></div>${omitted > 0 ? `<p class="muted">${omitted} additional cited ${omitted === 1 ? "file is" : "files are"} available from the assessment.</p>` : ""}</section>`;
 }
 
 async function hydrateIssueAssessmentCodeExcerpts(item, requestId) {
@@ -420,8 +585,8 @@ async function hydrateIssueAssessmentCodeExcerpts(item, requestId) {
     }
   }));
   if (requestId !== state.issueAssessmentExcerptRequestId || !target.isConnected || !elements["issue-assessment-dialog"].open) return;
-  const terms = issueAssessmentEvidenceTerms(item.evidence);
-  const excerpts = sources.filter((source) => typeof source.content === "string").map((source) => issueAssessmentExcerpt(source.path, source.content, terms));
+  const terms = issueAssessmentEvidenceTerms([item.criterion, item.evidence, ...(item.pathExplanations ?? []).map((detail) => detail?.explanation)].join(" "));
+  const excerpts = sources.filter((source) => typeof source.content === "string").flatMap((source) => issueAssessmentProofExcerpts(item, source.path, source.content, terms));
   const unavailable = sources.length - excerpts.length;
   target.innerHTML = `${excerpts.map((excerpt, index) => issueAssessmentExcerptMarkup(excerpt, `issue-assessment-excerpt-${index}`, issueAssessmentPathExplanation(item, excerpt.path))).join("")}${unavailable ? `<p class="muted">${unavailable} cited ${unavailable === 1 ? "file could" : "files could"} not be displayed.</p>` : ""}` || '<p class="muted">No cited source could be displayed.</p>';
   const groups = excerpts.map((excerpt, index) => ({ id: `issue-assessment-excerpt-${index}`, path: excerpt.path, lines: excerpt.lines }));
@@ -466,6 +631,7 @@ function dismissIssueAssessmentOnBackdrop(event) {
 }
 
 async function showIssueEvidenceFile(path) {
+  rememberPullRequestReturn();
   const changed = state.session.comparison.files.some((file) => file.path === path);
   const opened = changed ? await showAnalysisFile(path) : await showRepositoryFile(path);
   if (opened) toast(changed ? `Opened ${path} in the diff` : `Opened ${path}; it is unchanged in this pull request.`);
@@ -474,7 +640,10 @@ async function showIssueEvidenceFile(path) {
 function handleIssueAssessmentClick(event) {
   const explain = event.target.closest("[data-issue-assessment-explain]");
   if (explain) {
-    const item = state.session.outline?.issueAssessment?.items.find((candidate) => candidate.criterionId === explain.dataset.issueAssessmentExplain);
+    const item = [
+      ...(state.session.outline?.issueAssessment?.items ?? []),
+      ...(state.session.pullRequest?.reviewerTask?.assessment?.items ?? []),
+    ].find((candidate) => candidate.criterionId === explain.dataset.issueAssessmentExplain);
     if (item) openIssueAssessmentExplanation(item, explain);
     return;
   }
@@ -488,14 +657,113 @@ function handleIssueAssessmentClick(event) {
   }
 }
 
-function linkedIssueSummary(issue) {
-  if (!issue) return `<section class="linked-issue-summary"><h3>Linked issue</h3><p class="muted">No linked issue was reported for this pull request. No issue or related provider resources were fetched.</p><p class="provider-boundary">Provider scope: linked closing issue only · related issues and earlier pull requests: not requested. Only issue metadata and explicit criteria are retained.</p></section>`;
+function reviewerTaskSummary(issue, task) {
+  const collapsed = state.reviewerTaskCollapsed;
+  const linkedIssueNote = issue
+    ? `GitHub reported a linked issue as ${escapeHtml(issue.access)}, but its usable acceptance criteria were not retained.`
+    : "No linked issue was reported for this pull request.";
+  const criteria = task.criteriaStatus === "found"
+    ? `<p class="linked-issue-criteria-label">${task.acceptanceCriteria.length} explicit acceptance ${task.acceptanceCriteria.length === 1 ? "criterion" : "criteria"}</p><ol class="linked-issue-criteria">${task.acceptanceCriteria.map((criterion) => `<li>${escapeHtml(criterion.text)}</li>`).join("")}</ol>`
+    : '<p class="muted">No explicit acceptance criteria were found. Add a Markdown <code>Acceptance Criteria</code> list or numbered <code>AC1:</code> lines, then save again.</p>';
+  const pending = task.assessmentPending ? '<p class="muted">Assessing the saved acceptance criteria in the background…</p>' : "";
+  return `<section class="linked-issue-summary reviewer-task-summary"><div class="reviewer-task-heading"><h3>Reviewer task</h3><div class="reviewer-task-actions"><button class="text-button" type="button" data-reviewer-task-toggle aria-expanded="${!collapsed}" aria-controls="reviewer-task-body">${collapsed ? "Expand task" : "Collapse task"}</button><button class="text-button" type="button" data-reviewer-task-edit>Edit task description</button></div></div><div id="reviewer-task-body" class="reviewer-task-body"${collapsed ? " hidden" : ""}><p class="muted">${linkedIssueNote}</p><p class="provider-boundary">This description is stored in this review session and supplied to the review agent. It is not sent to GitHub and does not request issue, pull request, comment, or other provider data.</p>${criteria}${pending}</div></section>`;
+}
+
+function linkedIssueSummary(issue, reviewerTask) {
+  if (reviewerTask) return reviewerTaskSummary(issue, reviewerTask);
+  if (!issue) return `<section class="linked-issue-summary"><div class="reviewer-task-heading"><h3>Linked issue</h3><button class="text-button" type="button" data-reviewer-task-edit>Add task description</button></div><p class="muted">No linked issue was reported for this pull request. No issue or related provider resources were fetched.</p><p class="provider-boundary">Provider scope: linked closing issue only · related issues and earlier pull requests: not requested. Add a local task description to assess explicit acceptance criteria without expanding provider access.</p></section>`;
   const heading = `<p class="linked-issue-heading"><a href="${escapeHtml(issue.url)}" rel="noreferrer">#${issue.number} ${escapeHtml(issue.title)}</a> <span class="mode">${escapeHtml(issue.access)}</span></p>`;
   const boundary = '<p class="provider-boundary">Provider scope: one same-repository closing issue · related issues and earlier pull requests: not requested. Only issue metadata and explicit criteria are retained.</p>';
-  if (issue.access !== "available") return `<section class="linked-issue-summary"><h3>Linked issue</h3>${heading}${boundary}<p class="muted">The linked issue is ${escapeHtml(issue.access)}. Its content was not retained.</p></section>`;
-  if (issue.criteriaStatus === "malformed") return `<section class="linked-issue-summary"><h3>Linked issue</h3>${heading}${boundary}<p class="muted">The linked issue body was malformed or exceeded the safe limit. No criteria were retained.</p></section>`;
-  if (issue.criteriaStatus !== "found") return `<section class="linked-issue-summary"><h3>Linked issue</h3>${heading}${boundary}<p class="muted">No explicit acceptance criteria were found in the issue body.</p></section>`;
+  const edit = '<button class="text-button" type="button" data-reviewer-task-edit>Add task description</button>';
+  if (issue.access !== "available") return `<section class="linked-issue-summary"><div class="reviewer-task-heading"><h3>Linked issue</h3>${edit}</div>${heading}${boundary}<p class="muted">The linked issue is ${escapeHtml(issue.access)}. Its content was not retained.</p></section>`;
+  if (issue.criteriaStatus === "malformed") return `<section class="linked-issue-summary"><div class="reviewer-task-heading"><h3>Linked issue</h3>${edit}</div>${heading}${boundary}<p class="muted">The linked issue body was malformed or exceeded the safe limit. No criteria were retained.</p></section>`;
+  if (issue.criteriaStatus !== "found") return `<section class="linked-issue-summary"><div class="reviewer-task-heading"><h3>Linked issue</h3>${edit}</div>${heading}${boundary}<p class="muted">No explicit acceptance criteria were found in the issue body.</p></section>`;
   return `<section class="linked-issue-summary"><h3>Linked issue</h3>${heading}${boundary}<p class="linked-issue-criteria-label">${issue.acceptanceCriteria.length} explicit acceptance ${issue.acceptanceCriteria.length === 1 ? "criterion" : "criteria"}</p><ol class="linked-issue-criteria">${issue.acceptanceCriteria.map((criterion) => `<li>${escapeHtml(criterion.text)}</li>`).join("")}</ol></section>`;
+}
+
+function openReviewerTaskDialog(returnTarget) {
+  if (!state.session?.pullRequest || state.busy) return;
+  state.reviewerTaskReturnTarget = returnTarget instanceof HTMLElement ? returnTarget : null;
+  elements["reviewer-task-body"].value = state.session.pullRequest.reviewerTask?.body ?? "";
+  setReviewerTaskMode("write");
+  elements["reviewer-task-dialog"].showModal();
+  elements["reviewer-task-body"].focus();
+}
+
+function updateReviewerTaskPreview() {
+  const body = elements["reviewer-task-body"].value;
+  elements["reviewer-task-preview"].innerHTML = body.trim()
+    ? renderMarkdown(body)
+    : '<p class="muted">Write Markdown to preview the task description.</p>';
+}
+
+function setReviewerTaskMode(mode) {
+  const writing = mode !== "preview";
+  state.reviewerTaskMode = writing ? "write" : "preview";
+  elements["reviewer-task-body"].hidden = !writing;
+  elements["reviewer-task-preview"].hidden = writing;
+  elements["reviewer-task-dialog"].querySelectorAll("[data-reviewer-task-mode]").forEach((button) => {
+    const active = button.dataset.reviewerTaskMode === state.reviewerTaskMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (!writing) updateReviewerTaskPreview();
+}
+
+function updateReviewerTaskIndentation(textarea, outdent) {
+  const value = textarea.value;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+  const lastSelectedCharacter = end > start && value[end - 1] === "\n" ? end - 1 : end;
+  const lineEndIndex = value.indexOf("\n", lastSelectedCharacter);
+  const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+  const lines = value.slice(lineStart, lineEnd).split("\n");
+  const replacement = lines.map((line) => {
+    if (!outdent) return `  ${line}`;
+    if (line.startsWith("\t")) return line.slice(1);
+    if (line.startsWith("  ")) return line.slice(2);
+    return line.startsWith(" ") ? line.slice(1) : line;
+  });
+  const changes = replacement.map((line, index) => line.length - lines[index].length);
+  textarea.value = value.slice(0, lineStart) + replacement.join("\n") + value.slice(lineEnd);
+  const nextStart = Math.max(lineStart, start + changes[0]);
+  const nextEnd = Math.max(nextStart, end + changes.reduce((total, change) => total + change, 0));
+  textarea.setSelectionRange(nextStart, nextEnd);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function handleReviewerTaskEditorKeydown(event) {
+  if (event.key !== "Tab" || event.isComposing) return;
+  event.preventDefault();
+  updateReviewerTaskIndentation(event.currentTarget, event.shiftKey);
+}
+
+async function saveReviewerTask() {
+  if (!reviewIsOpen() || state.busy) return;
+  const body = elements["reviewer-task-body"].value.trim();
+  elements["reviewer-task-dialog"].close();
+  setBusy(true, "Saving task description…");
+  try {
+    state.session = await api("/api/pull-request/reviewer-task", { method: "POST", body: JSON.stringify({ body }) });
+    const task = state.session.pullRequest?.reviewerTask;
+    renderSession();
+    const message = task?.assessment
+      ? "Task description saved and acceptance criteria assessed."
+      : task?.assessmentError
+        ? task.assessmentError
+        : task?.assessmentPending
+          ? "Task description saved. Assessing acceptance criteria in the background…"
+        : task?.criteriaStatus === "not-found"
+          ? "Task description saved. Add explicit acceptance criteria to generate an assessment."
+          : "Task description saved.";
+    toast(message);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
 }
 
 async function api(path, options = {}) {
@@ -713,6 +981,46 @@ function renderAgentActivity() {
   }
   elements["agent-activity-body"].querySelector(".agent-activity-elapsed").textContent = `${elapsed}s elapsed`;
   elements["agent-activity-body"].querySelector(".agent-activity-warning").classList.toggle("hidden", !appearsDisconnected);
+}
+
+function renderReviewerTaskAssessmentStatus() {
+  const task = state.session?.pullRequest?.reviewerTask;
+  const status = elements["reviewer-task-assessment-status"];
+  if (!task || (task.criteriaStatus !== "found" && !task.assessmentError)) {
+    status.classList.add("hidden");
+    return;
+  }
+  const criteriaCount = task.acceptanceCriteria?.length ?? task.assessment?.items?.length ?? 0;
+  const countLabel = criteriaCount === 1 ? "criterion" : "criteria";
+  let title = "Task assessment ready";
+  let body = `${criteriaCount} acceptance ${countLabel} have been assessed against the reviewed code.`;
+  let stateClass = "ready";
+  let canView = Boolean(task.assessment || task.assessmentError);
+  if (task.assessmentPending) {
+    title = "Task assessment in progress";
+    body = `Assessing ${criteriaCount} acceptance ${countLabel} in the background. You can continue reviewing while it runs.`;
+    stateClass = "pending";
+    canView = false;
+  } else if (task.assessmentError) {
+    title = "Task assessment unavailable";
+    body = task.assessmentError;
+    stateClass = "error";
+  } else if (!task.assessment) {
+    title = "Task assessment pending";
+    body = "The saved acceptance criteria are waiting for an available review agent.";
+    stateClass = "pending";
+    canView = false;
+  }
+  status.classList.remove("hidden", "pending", "ready", "error");
+  status.classList.add(stateClass);
+  elements["reviewer-task-assessment-status-title"].textContent = title;
+  elements["reviewer-task-assessment-status-body"].textContent = body;
+  elements["view-reviewer-task-assessment"].classList.toggle("hidden", !canView);
+}
+
+function viewReviewerTaskAssessment() {
+  elements["pull-request-tab"].click();
+  window.requestAnimationFrame(() => document.getElementById("reviewer-task-assessment")?.scrollIntoView({ block: "start", behavior: "smooth" }));
 }
 
 async function loadSessions() {
@@ -950,6 +1258,7 @@ function setSplitOldWidth(value, persist = false) {
 function setPullRequestContentWidth(wide, persist = false) {
   state.pullRequestWide = Boolean(wide);
   elements["pull-request-content"].classList.toggle("wide", state.pullRequestWide);
+  elements.workspace.classList.toggle("pull-request-wide", state.pullRequestWide);
   if (persist) window.localStorage.setItem(preferenceKey("pull-request-wide"), String(state.pullRequestWide));
 }
 
@@ -1315,6 +1624,7 @@ function renderDiff(files, { proposalActivityId = null } = {}) {
   void hydrateDiffImages(files);
   if (files.some((file) => /\.md$/i.test(file.path) && state.markdownPreviewPaths?.has(file.path))) void hydrateMarkdownPreviews(files);
   renderConversationBadges();
+  renderGitHubReviewThreads();
 }
 
 function currentDiffRenderOptions() {
@@ -2096,6 +2406,55 @@ function commentRowSelector(comment, line = comment.line) {
   return `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${line}"]`;
 }
 
+function githubThreadReplyUrl(thread) {
+  const candidate = thread.comments?.at(-1)?.url;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" && url.hostname === "github.com" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function githubThreadLocation(thread) {
+  return `${thread.path}${thread.line ? `:${thread.line}` : ""}${thread.side ? ` · ${thread.side}` : ""}`;
+}
+
+function githubThreadReplyLink(thread, label = "Reply in GitHub") {
+  const url = githubThreadReplyUrl(thread);
+  return url ? `<a class="github-thread-reply" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${label}</a>` : "";
+}
+
+function githubThreadInlineMarkup(thread) {
+  return `<header><div><span class="inline-comment-label">GitHub thread · ${thread.resolved ? "resolved" : "open"}</span><strong>${escapeHtml(githubThreadLocation(thread))}</strong></div>${githubThreadReplyLink(thread)}</header><div class="github-thread-messages">${thread.comments.map((comment) => `<section><strong>${escapeHtml(comment.author)}</strong><p>${renderMarkdown(comment.body)}</p></section>`).join("")}</div>`;
+}
+
+function renderGitHubReviewThreads() {
+  document.querySelectorAll(".split-github-thread, .github-thread-inline").forEach((thread) => thread.remove());
+  document.querySelectorAll(".diff-row.has-github-thread").forEach((row) => row.classList.remove("has-github-thread"));
+  const threads = state.session?.pullRequest?.threads ?? [];
+  for (const thread of threads) {
+    if (!thread.line) continue;
+    const side = thread.side ?? "new";
+    const row = diffViewRow(thread.path, side, thread.line);
+    if (!row) continue;
+    row.classList.add("has-github-thread");
+    const inline = document.createElement("article");
+    inline.className = `github-thread-inline ${thread.resolved ? "resolved" : "open"}`;
+    inline.dataset.githubThreadInline = thread.id;
+    inline.innerHTML = githubThreadInlineMarkup(thread);
+    const splitRow = row.closest(".split-row");
+    if (splitRow) {
+      const lane = document.createElement("div");
+      lane.className = `split-github-thread ${side}-side`;
+      lane.append(inline);
+      splitRow.insertAdjacentElement("afterend", lane);
+    } else {
+      row.insertAdjacentElement("afterend", inline);
+    }
+  }
+}
+
 function renderComments() {
   document.querySelectorAll(".split-inline-comment").forEach((comment) => comment.remove());
   document.querySelectorAll(".inline-comment").forEach((comment) => comment.remove());
@@ -2163,6 +2522,7 @@ function renderComments() {
       </div>
     </article>`).join("");
   void highlightCommentQuotes();
+  renderGitHubReviewThreads();
   renderStepDiscussion();
 }
 
@@ -2180,29 +2540,51 @@ function githubCheckStatus(state) {
   return { label: githubStatusLabel(value), explanation: "GitHub reported this state; the review snapshot does not include an explanation." };
 }
 
-function githubMergeabilitySummary(pullRequest) {
+function githubPullRequestStatus(pullRequest) {
+  if (pullRequest.state === "MERGED") return { heading: "Pull request status", details: ["This pull request has been merged. Mergeability is no longer applicable."] };
   const details = [];
   if (pullRequest.mergeable === "MERGEABLE") details.push("No merge conflict reported by GitHub.");
   else if (pullRequest.mergeable === "CONFLICTING") details.push("GitHub reports merge conflicts between the pull request branches.");
   else if (pullRequest.mergeable === "UNKNOWN") details.push("GitHub did not report whether the pull request branches merge cleanly.");
   if (pullRequest.mergeStateStatus === "UNSTABLE") details.push("GitHub has not provided a stable merge status. This review snapshot does not include why.");
   else if (pullRequest.mergeStateStatus) details.push(`GitHub also reported ${githubStatusLabel(pullRequest.mergeStateStatus)} as the merge status. This snapshot does not include an explanation for that status.`);
-  return details;
+  return { heading: "Mergeability", details };
+}
+
+function githubCommitUrl(pullRequest, oid) {
+  if (!/^[0-9a-f]{40,64}$/i.test(oid)) return "";
+  try {
+    const url = new URL(pullRequest.url);
+    const expectedPath = `/${pullRequest.repository}/pull/${pullRequest.number}`;
+    if (url.protocol !== "https:" || url.hostname !== "github.com" || url.pathname.toLocaleLowerCase() !== expectedPath.toLocaleLowerCase()) return "";
+    url.pathname = `/${pullRequest.repository}/commit/${oid}`;
+    return url.toString();
+  } catch {
+    return "";
+  }
 }
 
 function githubChecksSummary(pullRequest) {
-  const mergeability = githubMergeabilitySummary(pullRequest);
+  const pullRequestStatus = githubPullRequestStatus(pullRequest);
+  const refreshing = state.githubSnapshotRefreshing;
+  const refreshControl = `<button class="github-check-link github-snapshot-refresh" type="button" data-github-snapshot-refresh title="Refreshes the pull request snapshot and reviewed comparison. It does not fetch check or workflow details."${refreshing ? ' disabled aria-busy="true"' : ""}>${refreshing ? '<span class="button-spinner" aria-hidden="true"></span>Updating snapshot…' : "Update snapshot"}</button>${refreshing ? '<p class="github-snapshot-progress" role="status">Updating the pull request snapshot and comparison…</p>' : ""}`;
   const checks = pullRequest.checks.length === 0
     ? '<p class="github-checks-empty">GitHub reported no checks for this pull request.</p>'
     : `<ul class="github-check-list">${pullRequest.checks.map((check) => {
       const status = githubCheckStatus(check.state);
-      const link = check.url ? `<a class="github-check-link" href="${escapeHtml(check.url)}" target="_blank" rel="noreferrer">Open run in GitHub</a>` : '<span class="github-check-link muted">No check-run link was included.</span>';
+      const link = check.url ? `<a class="github-check-link" href="${escapeHtml(check.url)}" target="_blank" rel="noreferrer">View run in GitHub</a>` : '<span class="github-check-link muted">No check-run link was included.</span>';
       return `<li class="github-check"><div><strong>${escapeHtml(check.name)}</strong><p><span class="github-check-status">${escapeHtml(status.label)}</span>${escapeHtml(status.explanation)}</p></div>${link}</li>`;
     }).join("")}</ul>`;
-  return `<section class="github-checks" aria-labelledby="github-checks-heading"><div class="github-checks-heading"><div><h3 id="github-checks-heading">GitHub checks</h3><p>Snapshot captured when this review was loaded.</p></div><a class="github-check-link" href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">Open pull request in GitHub</a></div>${mergeability.length ? `<section class="github-mergeability"><h4>Mergeability</h4>${mergeability.map((detail) => `<p>${escapeHtml(detail)}</p>`).join("")}</section>` : ""}${checks}<p class="github-checks-boundary">These statuses do not include a provider-supplied reason. This review did not fetch check or workflow details.</p></section>`;
+  return `<section class="github-checks" aria-labelledby="github-checks-heading"><div class="github-checks-heading"><div><h3 id="github-checks-heading">GitHub checks</h3><p>Snapshot captured when this review was loaded.</p></div><div class="github-checks-actions">${refreshControl}<a class="github-check-link" href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">View pull request in GitHub</a></div></div>${pullRequestStatus.details.length ? `<section class="github-mergeability"><h4>${pullRequestStatus.heading}</h4>${pullRequestStatus.details.map((detail) => `<p>${escapeHtml(detail)}</p>`).join("")}</section>` : ""}${checks}<p class="github-checks-boundary">Updating refreshes this pull request snapshot and comparison. These statuses do not include a provider-supplied reason, and this review does not fetch check or workflow details.</p></section>`;
+}
+
+function githubReviewThreadCard(thread) {
+  const location = `<button class="comment-jump" type="button" data-github-thread-jump="${escapeHtml(thread.id)}" title="Open ${escapeHtml(thread.path)} in the review">${escapeHtml(githubThreadLocation(thread))}</button>`;
+  return `<article class="comment-item github-thread-card"><div class="comment-meta">${location}<span>${thread.resolved ? "resolved" : "open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}${githubThreadReplyLink(thread)}</article>`;
 }
 
 function renderPullRequest() {
+  const scrollTop = state.activeTab === "pull-request" ? elements["diff-panel"].scrollTop : null;
   const pullRequest = state.session.pullRequest;
   elements["pull-request-tab"].classList.toggle("hidden", !pullRequest);
   if (!pullRequest) {
@@ -2210,19 +2592,29 @@ function renderPullRequest() {
     elements["pull-request-content"].innerHTML = "";
     return;
   }
-  const commits = pullRequest.commits.length === 0 ? "<li>No commits reported.</li>" : pullRequest.commits.map((commit) => `<li><code>${escapeHtml(commit.oid.slice(0, 8))}</code> ${escapeHtml(commit.headline)} <span class="muted">${escapeHtml(commit.authors.join(", "))}</span></li>`).join("");
-  const threads = pullRequest.threads.length === 0 ? "<p class=\"muted\">No existing review threads.</p>" : pullRequest.threads.map((thread) => `<article class="comment-item"><div class="comment-meta"><span>${escapeHtml(thread.path)}${thread.line ? `:${thread.line}` : ""}</span><span>${thread.resolved ? "resolved" : "open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}</article>`).join("");
+  const commits = pullRequest.commits.length === 0 ? "<li>No commits reported.</li>" : pullRequest.commits.map((commit) => {
+    const commitUrl = githubCommitUrl(pullRequest, commit.oid);
+    const revision = `<code>${escapeHtml(commit.oid.slice(0, 8))}</code>`;
+    const author = commit.authors.length ? ` <span class="muted">${escapeHtml(commit.authors.join(", "))}</span>` : "";
+    return `<li>${commitUrl ? `<a class="github-commit-link" href="${escapeHtml(commitUrl)}" target="_blank" rel="noreferrer">${revision}</a>` : revision} ${escapeHtml(commit.headline)}${author}</li>`;
+  }).join("");
+  const threads = pullRequest.threads.length === 0 ? "<p class=\"muted\">No existing review threads.</p>" : pullRequest.threads.map(githubReviewThreadCard).join("");
   const issue = pullRequest.linkedIssue;
+  const reviewerTask = pullRequest.reviewerTask;
+  const descriptionCollapsed = state.prDescriptionCollapsed;
   const assessment = state.session.outline?.issueAssessment;
-  const issueAssessment = !issue ? "" : `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3>${issue.access !== "available" ? `<p class="muted">The linked issue is ${escapeHtml(issue.access)}. No assessment was generated.</p>` : issue.criteriaStatus === "malformed" ? `<p class="muted">The linked issue body was malformed or exceeded the safe limit. No criteria were assessed.</p>` : issue.criteriaStatus === "not-found" ? `<p class="muted">No explicit acceptance criteria were found in the issue body.</p>` : !assessment ? `<p class="muted">Start the tour to map the ${issue.acceptanceCriteria.length} explicit acceptance ${issue.acceptanceCriteria.length === 1 ? "criterion" : "criteria"} to repository evidence.</p>` : `<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p><div class="issue-criteria">${issueAssessmentItems(assessment.items)}</div>`}</section>`;
+  const issueAssessment = reviewerTask
+    ? `<section id="reviewer-task-assessment" class="issue-assessment"><h3>Task-to-implementation assessment</h3><p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results. The task description is reviewer-supplied and was not sent to GitHub.</p>${reviewerTask.criteriaStatus === "not-found" ? '<p class="muted">No explicit acceptance criteria were found in the saved task description.</p>' : reviewerTask.assessmentError ? `<p class="muted">${escapeHtml(reviewerTask.assessmentError)}</p>` : reviewerTask.assessmentPending ? '<p class="muted">Assessing the saved acceptance criteria in the background…</p>' : !reviewerTask.assessment ? `<p class="muted">The saved task is ready to assess when a review agent is available.</p>` : `<div class="issue-criteria">${issueAssessmentItems(reviewerTask.assessment.items)}</div>`}</section>`
+    : !issue ? "" : `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3>${issue.access !== "available" ? `<p class="muted">The linked issue is ${escapeHtml(issue.access)}. No assessment was generated.</p>` : issue.criteriaStatus === "malformed" ? `<p class="muted">The linked issue body was malformed or exceeded the safe limit. No criteria were assessed.</p>` : issue.criteriaStatus === "not-found" ? `<p class="muted">No explicit acceptance criteria were found in the issue body.</p>` : !assessment ? `<p class="muted">Start the tour to map the ${issue.acceptanceCriteria.length} explicit acceptance ${issue.acceptanceCriteria.length === 1 ? "criterion" : "criteria"} to repository evidence.</p>` : `<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p><div class="issue-criteria">${issueAssessmentItems(assessment.items)}</div>`}</section>`;
   elements["pull-request-content"].classList.toggle("wide", state.pullRequestWide);
   elements["pull-request-content"].innerHTML = `
     <div class="panel-heading"><div><div class="eyebrow">GitHub pull request</div><h2>#${pullRequest.number} ${escapeHtml(pullRequest.title)}</h2></div><div class="pull-request-header-actions"><button class="button secondary" type="button" data-pull-request-width aria-pressed="${state.pullRequestWide}" title="${state.pullRequestWide ? "Return to a centred reading width" : "Use the full available review width"}">${state.pullRequestWide ? "Center width" : "Full width"}</button><span class="mode">${escapeHtml(pullRequest.reviewDecision ?? "REVIEW REQUIRED")}</span></div></div>
     <p class="muted">${escapeHtml(pullRequest.repository)} · ${escapeHtml(pullRequest.author)} · ${escapeHtml(pullRequest.baseRefName)} ← ${escapeHtml(pullRequest.headRefName)} · ${escapeHtml(pullRequest.headRefOid.slice(0, 8))}</p>
-    <div class="pull-request-context"><section class="pull-request-description-panel"><h3>Pull request description</h3>${pullRequestDescription(pullRequest.body)}</section>${linkedIssueSummary(issue)}</div>${issueAssessment}
+    <div class="pull-request-context"><section class="pull-request-description-panel"><div class="pull-request-section-heading"><h3>Pull request description</h3><button class="text-button" type="button" data-pr-description-toggle aria-expanded="${!descriptionCollapsed}" aria-controls="pull-request-description-body">${descriptionCollapsed ? "Expand description" : "Collapse description"}</button></div><div id="pull-request-description-body" class="pull-request-description-body"${descriptionCollapsed ? " hidden" : ""}>${pullRequestDescription(pullRequest.body)}</div></section>${linkedIssueSummary(issue, reviewerTask)}</div>${issueAssessment}
     ${githubChecksSummary(pullRequest)}
     <h3>Commits</h3><ul>${commits}</ul>
     <h3>Existing review threads${pullRequest.threadsTruncated ? " (first 100)" : ""}</h3>${threads}`;
+  if (scrollTop !== null) elements["diff-panel"].scrollTop = scrollTop;
 }
 
 function togglePullRequestContentWidth(event) {
@@ -2231,6 +2623,33 @@ function togglePullRequestContentWidth(event) {
   setPullRequestContentWidth(!state.pullRequestWide, true);
   renderPullRequest();
   event.currentTarget.querySelector("[data-pull-request-width]")?.focus({ preventScroll: true });
+}
+
+function refreshGitHubSnapshot(event) {
+  if (!event.target.closest("[data-github-snapshot-refresh]")) return;
+  void refresh();
+}
+
+function handleReviewerTaskClick(event) {
+  const toggle = event.target.closest("[data-reviewer-task-toggle]");
+  if (toggle?.dataset?.reviewerTaskToggle !== undefined) {
+    state.reviewerTaskCollapsed = !state.reviewerTaskCollapsed;
+    renderPullRequest();
+    renderReviewOverview();
+    event.currentTarget.querySelector("[data-reviewer-task-toggle]")?.focus({ preventScroll: true });
+    return;
+  }
+  const button = event.target.closest("[data-reviewer-task-edit]");
+  if (button) openReviewerTaskDialog(button);
+}
+
+function handleGitHubReviewThreadClick(event) {
+  const button = event.target.closest("[data-github-thread-jump]");
+  if (!button) return;
+  const thread = state.session?.pullRequest?.threads.find((candidate) => candidate.id === button.dataset.githubThreadJump);
+  if (!thread?.path) return;
+  rememberPullRequestReturn();
+  void showAnalysisFile(thread.path, thread.line, thread.side ?? "new");
 }
 
 function renderReviewOverview() {
@@ -2926,6 +3345,7 @@ function renderActiveTab() {
     elements[`${tabName}-tab`].setAttribute("aria-selected", String(active));
     elements[`${tabName}-tab`].tabIndex = active ? 0 : -1;
   }
+  updatePullRequestReturnVisibility();
   scheduleCurrentStepReturnUpdate();
 }
 
@@ -2983,6 +3403,7 @@ async function renderScreenshots() {
 
 function activateReviewTab(tabName, render = null) {
   if (tabName === state.activeTab) return;
+  if (tabName !== "diff") state.pullRequestReturn = null;
   state.tabScrollPositions.set(state.activeTab, elements["diff-panel"].scrollTop);
   state.activeTab = tabName;
   render?.();
@@ -2991,6 +3412,32 @@ function activateReviewTab(tabName, render = null) {
   window.requestAnimationFrame(() => {
     if (state.activeTab === tabName) elements["diff-panel"].scrollTop = scrollTop;
   });
+}
+
+function rememberPullRequestReturn() {
+  if (state.activeTab !== "pull-request") return false;
+  const scrollTop = elements["diff-panel"].scrollTop;
+  state.tabScrollPositions.set("pull-request", scrollTop);
+  state.pullRequestReturn = { scrollTop };
+  return true;
+}
+
+function returnToPullRequest() {
+  const returnTarget = state.pullRequestReturn;
+  if (!returnTarget || !state.session?.pullRequest) return;
+  state.tabScrollPositions.set("pull-request", returnTarget.scrollTop);
+  state.pullRequestReturn = null;
+  activateReviewTab("pull-request");
+}
+
+function updatePullRequestReturnVisibility() {
+  const button = elements["pull-request-return"];
+  const visible = Boolean(state.pullRequestReturn) && state.activeTab === "diff";
+  button.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const panelBounds = elements["diff-panel"].getBoundingClientRect();
+  button.style.right = `${Math.max(12, window.innerWidth - panelBounds.right + 14)}px`;
+  button.style.bottom = `${Math.max(58, window.innerHeight - Math.min(window.innerHeight, panelBounds.bottom) + 58)}px`;
 }
 
 let currentStepReturnFrame = null;
@@ -3262,6 +3709,7 @@ function revealAgentAnswer(questionId) {
 function renderTour() {
   const { outline, currentStepIndex } = state.session;
   renderReviewOverview();
+  renderReviewerTaskAssessmentStatus();
   const active = Boolean(outline);
   const planning = state.session.tourState === "planning";
   elements["tour-empty"].classList.toggle("hidden", active);
@@ -3487,6 +3935,7 @@ function renderInPlaceSessionUpdate(previous, { closeCommentEditor = false } = {
   if (closeCommentEditor) closeInlineCommentEditor();
   elements["feedback-button"].classList.remove("hidden");
   renderAgentActivity();
+  renderReviewerTaskAssessmentStatus();
   scroll.scrollTop = scrollTop;
   if (commentsChanged || closeCommentEditor) {
     panel.scrollTop = diffScrollTop;
@@ -4441,18 +4890,24 @@ function expandFilesChangedByRefresh(session) {
 
 async function refresh() {
   if ((!reviewIsOpen() && !state.session.pullRequest) || state.busy) return;
-  setBusy(true, "Refreshing the comparison…");
+  const isPullRequest = Boolean(state.session.pullRequest);
+  if (isPullRequest) {
+    state.githubSnapshotRefreshing = true;
+    renderPullRequest();
+  }
+  setBusy(true, isPullRequest ? "Updating GitHub snapshot and comparison…" : "Refreshing the comparison…");
   try {
-    const refreshed = await api(state.session.pullRequest ? "/api/github/refresh" : "/api/refresh", { method: "POST", body: "{}" });
+    const refreshed = await api(isPullRequest ? "/api/github/refresh" : "/api/refresh", { method: "POST", body: "{}" });
     expandFilesChangedByRefresh(refreshed);
     state.session = refreshed;
     state.selectedLine = null;
     elements["selection-pill"].classList.add("hidden");
     renderSession();
-    toast("Diff refreshed. Outdated feedback is marked in the comment list.");
+    toast(isPullRequest ? "GitHub snapshot and diff updated. Outdated feedback is marked in the comment list." : "Diff refreshed. Outdated feedback is marked in the comment list.");
   } catch (error) {
     toast(error.message);
   } finally {
+    if (isPullRequest) state.githubSnapshotRefreshing = false;
     setBusy(false);
     renderSession();
   }
@@ -4836,6 +5291,9 @@ elements["file-panel-close"].addEventListener("click", () => setFilePanelOpen(fa
 elements["file-panel-collapse"].addEventListener("click", () => setPaneCollapsed("file", !state.filePanelCollapsed, true));
 elements["agent-panel-collapse"].addEventListener("click", () => setPaneCollapsed("agent", !state.agentPanelCollapsed, true));
 elements["file-panel-backdrop"].addEventListener("click", () => setFilePanelOpen(false, { restoreFocus: true }));
+document.addEventListener("error", (event) => {
+  if (event.target instanceof HTMLImageElement && event.target.classList.contains("markdown-inline-image")) renderMarkdownImageUnavailable(event.target);
+}, true);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.filePanelOpen) setFilePanelOpen(false, { restoreFocus: true });
 });
@@ -4868,7 +5326,11 @@ elements["html-export-form"].addEventListener("submit", (event) => {
 });
 elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode);
 elements["pull-request-content"].addEventListener("click", togglePullRequestContentWidth);
+elements["pull-request-content"].addEventListener("click", refreshGitHubSnapshot);
 elements["pull-request-content"].addEventListener("click", handleIssueAssessmentClick);
+elements["pull-request-content"].addEventListener("click", handleReviewerTaskClick);
+elements["pull-request-content"].addEventListener("click", handleGitHubReviewThreadClick);
+elements["view-reviewer-task-assessment"].addEventListener("click", viewReviewerTaskAssessment);
 elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode);
 elements["close-issue-assessment"].addEventListener("click", () => elements["issue-assessment-dialog"].close());
 elements["issue-assessment-dialog"].addEventListener("click", handleIssueAssessmentClick);
@@ -4877,6 +5339,30 @@ elements["issue-assessment-dialog"].addEventListener("close", () => {
   state.issueAssessmentExcerptRequestId += 1;
   const target = issueAssessmentReturnTarget;
   issueAssessmentReturnTarget = null;
+  if (target?.isConnected) target.focus({ preventScroll: true });
+});
+elements["cancel-reviewer-task"].addEventListener("click", () => elements["reviewer-task-dialog"].close());
+elements["reviewer-task-body"].addEventListener("input", updateReviewerTaskPreview);
+elements["reviewer-task-body"].addEventListener("keydown", handleReviewerTaskEditorKeydown);
+elements["reviewer-task-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveReviewerTask();
+});
+elements["reviewer-task-dialog"].addEventListener("click", (event) => {
+  const modeButton = event.target.closest("[data-reviewer-task-mode]");
+  if (modeButton) {
+    setReviewerTaskMode(modeButton.dataset.reviewerTaskMode);
+    return;
+  }
+  const dialog = elements["reviewer-task-dialog"];
+  if (event.target !== dialog) return;
+  const bounds = dialog.getBoundingClientRect();
+  if (event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom) return;
+  dialog.close();
+});
+elements["reviewer-task-dialog"].addEventListener("close", () => {
+  const target = state.reviewerTaskReturnTarget;
+  state.reviewerTaskReturnTarget = null;
   if (target?.isConnected) target.focus({ preventScroll: true });
 });
 elements["regenerate-flows"].addEventListener("click", () => regenerateFlows());
@@ -5728,6 +6214,7 @@ elements["comment-list"].addEventListener("change", async (event) => {
 
 elements["update-button"].addEventListener("click", installUpdate);
 elements["current-step-return"].addEventListener("click", () => void focusCurrentStep());
+elements["pull-request-return"].addEventListener("click", returnToPullRequest);
 setFilePanelOpen(false);
 renderFocusMode();
 

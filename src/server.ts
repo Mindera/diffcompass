@@ -41,7 +41,7 @@ const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
-  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -565,6 +565,11 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "POST" && url.pathname === "/api/github/refresh") {
         await readJsonObject(request);
         return json(await session.refreshPullRequest());
+      }
+      if (request.method === "POST" && url.pathname === "/api/pull-request/reviewer-task") {
+        const input = await readJsonObject(request, 128 * 1024);
+        exactKeys(input, ["body"]);
+        return json(await session.saveReviewerTask(requiredString(input.body, "body", 100_000)));
       }
       if (request.method === "POST" && url.pathname === "/api/github/review") {
         const input = await readJsonObject(request);

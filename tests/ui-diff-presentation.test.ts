@@ -9,11 +9,11 @@ test("added files render only the new side while modified files keep split layou
   const state = { collapsedFiles: new Set(), diffLayout: "split", session: {}, splitOldWidth: 50, proposalPreview: false, proposalActivityId: null as string | null, renderedDiffFiles: [] as unknown[] };
   const diff = { innerHTML: "", querySelectorAll: () => [] };
   const elements = { diff, "empty-diff": { classList: { toggle() {} } } };
-  const render = new Function("state", "elements", "CSS", "syncDiffViewControls", "escapeHtml", "renderDiffFileHeader", "isPngDiff", "whitespaceChangedRows", "inlineChangesForRows", "fileContext", "splitRows", "renderSplitSide", "renderUnifiedRow", "highlightRenderedCode", "hydrateDiffImages", "renderConversationBadges", "SPLIT_PANE_MIN", "SPLIT_PANE_MAX", `${source}; return renderDiff;`)(
+  const render = new Function("state", "elements", "CSS", "syncDiffViewControls", "escapeHtml", "renderDiffFileHeader", "isPngDiff", "whitespaceChangedRows", "inlineChangesForRows", "fileContext", "splitRows", "renderSplitSide", "renderUnifiedRow", "highlightRenderedCode", "hydrateDiffImages", "renderConversationBadges", "renderGitHubReviewThreads", "SPLIT_PANE_MIN", "SPLIT_PANE_MAX", `${source}; return renderDiff;`)(
     state, elements, { escape: (s: string) => s }, () => {}, (s: string) => s, () => "", () => false,
     () => new Set(), () => new Map(), () => 3, () => [[null, {}]],
     (_file: unknown, _row: unknown, side: string) => `<div data-side="${side}"></div>`,
-    () => '<div data-side="new">new code</div>', () => {}, () => {}, () => {}, 20, 80,
+    () => '<div data-side="new">new code</div>', () => {}, () => {}, () => {}, () => {}, 20, 80,
   );
   const file = { path: "new.ts", status: "added", hunks: [{ header: "@@ -0,0 +1 @@", rows: [{}] }] };
   render([file]);

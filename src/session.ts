@@ -7,12 +7,12 @@ import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadComparisonBetweenTrees, loadDiffFileWithContext, loadDiffImage, loadDiffText, loadRepositoryFile, removeCheckpointRef, removeProposalWorkspace, writeCheckpointRef, writeProposalFile, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
-import { publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
+import { extractAcceptanceCriteria, publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
 import type { FindingDisposition } from "./types.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewerTaskContext, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
 import { isBriefingSectionOrder } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
@@ -760,6 +760,7 @@ export class ReviewSession {
       bridge.prepareClose(persisted.status, persisted.comments);
     }
     await session.persist();
+    await session.resumeReviewerTaskAssessment();
     if (session.status !== "open") bridge?.publishClose();
     return session;
   }
@@ -1930,6 +1931,104 @@ export class ReviewSession {
     return operation;
   }
 
+  async saveReviewerTask(body: string) {
+    return this.serialize(async () => {
+      this.ensureOpen();
+      if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
+      const description = body.trim();
+      if (!description || description.length > 100_000 || description.includes("\u0000")) {
+        throw new ReviewError("The task description is empty, malformed, or exceeds the safe limit.");
+      }
+      const linkedIssue = this.pullRequest.linkedIssue;
+      if (linkedIssue?.access === "available" && linkedIssue.criteriaStatus === "found") {
+        throw new ReviewError("This pull request already has explicit acceptance criteria from its linked issue.");
+      }
+      const acceptanceCriteria = extractAcceptanceCriteria(description);
+      const task: ReviewerTaskContext = {
+        body: description,
+        criteriaStatus: acceptanceCriteria.length ? "found" : "not-found",
+        acceptanceCriteria,
+        ...(acceptanceCriteria.length ? { assessmentPending: true } : {}),
+        updatedAt: new Date().toISOString(),
+      };
+      const previous = structuredClone(this.pullRequest.reviewerTask);
+      const previousRevision = this.revision;
+      this.pullRequest.reviewerTask = task;
+      this.revision += 1;
+      try {
+        await this.persist();
+      } catch (error) {
+        this.pullRequest.reviewerTask = previous;
+        this.revision = previousRevision;
+        throw error;
+      }
+      if (task.criteriaStatus !== "found") return this.snapshot();
+
+      const comparisonGeneration = this.comparisonGeneration;
+      if (!this.agent) {
+        this.selection = this.resolveSelection();
+        this.agent = this.createAgent();
+      }
+      this.startReviewerTaskAssessment(task, comparisonGeneration);
+      return this.snapshot();
+    });
+  }
+
+  private async resumeReviewerTaskAssessment(): Promise<void> {
+    const task = this.pullRequest?.reviewerTask;
+    if (this.status !== "open" || !task || task.criteriaStatus !== "found" || task.assessment || task.assessmentError) return;
+    if (!task.assessmentPending) {
+      task.assessmentPending = true;
+      this.revision += 1;
+      await this.persist();
+    }
+    if (!this.agent) {
+      this.selection = this.resolveSelection();
+      this.agent = this.createAgent();
+    }
+    this.startReviewerTaskAssessment(task, this.comparisonGeneration);
+  }
+
+  private startReviewerTaskAssessment(task: ReviewerTaskContext, comparisonGeneration: number): void {
+    const updatedAt = task.updatedAt;
+    const worker = this.createWorkerAgent();
+    worker.useComparison(this.comparison);
+    void (async () => {
+      try {
+        const generated = await worker.assessReviewerTask(this.comparison, task);
+        await this.serializeMutation(async () => {
+          const currentTask = this.pullRequest?.reviewerTask;
+          if (this.status !== "open" || currentTask?.updatedAt !== updatedAt) return;
+          try {
+            this.ensureComparisonCurrent(comparisonGeneration);
+            delete currentTask.assessmentPending;
+            currentTask.assessment = generated.value;
+            this.revision += 1;
+            await this.persistAgentResult(generated.receipts);
+          } catch {
+            delete currentTask.assessmentPending;
+            currentTask.assessment = undefined;
+            currentTask.assessmentError = "The review agent could not assess this task description. The description is saved; edit and try again when the agent is available.";
+            this.revision += 1;
+            await this.persist();
+          }
+        });
+      } catch {
+        await this.serializeMutation(async () => {
+          const currentTask = this.pullRequest?.reviewerTask;
+          if (this.status !== "open" || currentTask?.updatedAt !== updatedAt) return;
+          delete currentTask.assessmentPending;
+          currentTask.assessmentError = "The review agent could not assess this task description. The description is saved; edit and try again when the agent is available.";
+          this.revision += 1;
+          await this.persist();
+        });
+      } finally {
+        this.workerAgents.delete(worker);
+        worker.cancel();
+      }
+    })().catch(() => undefined);
+  }
+
   async refreshPullRequest() {
     return this.serializeMutation(async () => {
       if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
@@ -1953,6 +2052,9 @@ export class ReviewSession {
         const refreshed = await loadComparison(latest.workspaceRoot, latest.baseRefOid, this.preferences.contextLines);
         if (wasClosed && latest.headRefOid === previousContext.headRefOid) throw new ReviewError("The pull request has no new head revision to review.");
         if (wasClosed) latest.publication = undefined;
+        if (!(latest.linkedIssue?.access === "available" && latest.linkedIssue.criteriaStatus === "found")) {
+          latest.reviewerTask = previousContext.reviewerTask;
+        }
         this.pullRequest = latest;
         this.fullComparison = refreshed;
         await this.updateRevisionSummary(refreshed);

@@ -54,14 +54,14 @@ function harness(previous = snapshot()) {
     } },
   };
   const commentActions = app.slice(app.indexOf("async function saveInlineComment("), app.indexOf("async function askAgent("));
-  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", "renderMessages", `${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
+  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", "renderMessages", "renderReviewerTaskAssessmentStatus", `${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
   const actions = run(state, elements, { setInterval(fn: () => Promise<void>) { tick = fn; } },
     async () => structuredClone(next), () => state.session.status === "open",
     () => state.session.outline.phases.flatMap((phase) => phase.steps)[state.session.currentStepIndex],
     (text: string) => `<p>${text}</p>`, () => {},
     () => { renders += 1; diffNode.scrollTop = 0; state.diffCache.clear(); }, () => {},
     () => { commentRenders += 1; anchorPosition += commentHeightChange; }, () => { editorClosed = true; }, () => {},
-    () => {}, () => { tourRenders += 1; }, () => { focusCalls += 1; }, () => {}) as {
+    () => {}, () => { tourRenders += 1; }, () => { focusCalls += 1; }, () => {}, () => {}) as {
       classify: (a: unknown, b: unknown) => boolean;
       classifyNavigation: (a: unknown, b: unknown) => boolean;
       saveInlineComment: (form: unknown) => Promise<void>;

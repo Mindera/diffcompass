@@ -199,7 +199,32 @@ test("exports the bounded issue assessment with its model disclaimer", () => {
   expect(exportReview(session, "html").content).toContain("A request can be retried");
   expect(exportReview(session, "html").content).toContain("No merge conflict reported by GitHub.");
   expect(exportReview(session, "html").content).toContain("GitHub has not provided a stable merge status. This review snapshot does not include why.");
-  expect(exportReview(session, "html").content).toContain("Open run in GitHub");
+  expect(exportReview(session, "html").content).toContain("View run in GitHub");
+});
+
+test("exports a reviewer task without presenting it as GitHub data", () => {
+  const session = fixture();
+  session.pullRequest = {
+    repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
+    baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/widgets", workspaceRoot: "/tmp/widgets", refNamespace: "refs/code-review-tour/test",
+    commits: [], checks: [], threads: [], threadsTruncated: false, providerScope: { linkedIssue: "none", relatedResources: "not-requested" },
+    reviewerTask: {
+      body: "## Acceptance Criteria\n- [ ] A reviewer can save a local task",
+      criteriaStatus: "found",
+      acceptanceCriteria: [{ id: "criterion-1", text: "A reviewer can save a local task" }],
+      assessment: { items: [{ criterionId: "criterion-1", criterion: "A reviewer can save a local task", status: "implemented", evidence: "The session stores the reviewer task.", evidencePaths: ["src/session.ts"], basis: "model-assessment" }] },
+      updatedAt: "now",
+    },
+    updatedAt: "now",
+  } as unknown as NonNullable<ReviewSession["pullRequest"]>;
+  const markdown = exportReview(session, "markdown").content;
+  const html = exportReview(session, "html").content;
+  expect(markdown).toContain("## Task-to-implementation assessment");
+  expect(markdown).toContain("reviewer-supplied task description, stored locally");
+  expect(markdown).toContain("not sent to GitHub");
+  expect(markdown).toContain("A reviewer can save a local task");
+  expect(html).toContain("Task-to-implementation assessment");
+  expect(html).toContain("No issue, pull request, comment, or other provider resource was requested");
 });
 
 test("HTML export is a self-contained interactive copy of the review tour", () => {

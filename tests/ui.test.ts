@@ -196,7 +196,7 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(app).toContain("function updateCurrentStepReturnVisibility()");
   expect(app).toContain('elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate');
   expect(app).toContain('elements["current-step-return"].addEventListener("click", () => void focusCurrentStep())');
-  expect(styles).toContain(".current-step-return { position: fixed;");
+  expect(styles).toContain(".current-step-return, .pull-request-return { position: fixed;");
   expect(renderTour).not.toContain("scrollIntoView");
   expect(renderTour).not.toContain("showChangedFile");
   expect(app).not.toContain("Planning tour · 0s");
@@ -592,6 +592,51 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(app).toContain('label: "Implementation journey"');
 });
 
+test("rendered pull request Markdown permits safe screenshot images and evidence excerpts skip imports", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const escapeHtml = (value: unknown) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+  const inlineSource = app.slice(app.indexOf("function renderInlineChangeText"), app.indexOf("function markdownTableCells"));
+  const renderInlineMarkdown = new Function("escapeHtml", `${inlineSource}; return renderInlineMarkdown;`)(escapeHtml) as (value: string) => string;
+  expect(renderInlineMarkdown('<img width="360" alt="Legal screen" src="https://github.com/user-attachments/assets/example">')).toContain('class="markdown-inline-image"');
+  expect(renderInlineMarkdown('<img src="javascript:alert(1)">')).toContain("&lt;img");
+
+  const excerptSource = app.slice(app.indexOf("const ISSUE_ASSESSMENT_EXCERPT_LIMIT"), app.indexOf("function issueAssessmentPathExplanation"));
+  const { issueAssessmentExcerpt, issueAssessmentProofExcerpts } = new Function("state", `${excerptSource}; return { issueAssessmentExcerpt, issueAssessmentProofExcerpts };`)({ session: { comparison: { files: [] } } }) as {
+    issueAssessmentExcerpt: (path: string, content: string, terms: string[]) => { startLine: number; lines: string[] };
+    issueAssessmentProofExcerpts: (item: unknown, path: string, content: string, terms: string[]) => Array<{ role?: string; startLine: number; lines: string[] }>;
+  };
+  const excerpt = issueAssessmentExcerpt("LegalNavHost.kt", [
+    "package example",
+    "import example.LegalScene",
+    "import example.ProfileScreen",
+    "data object Terms : ProfileDestination",
+    "onTermsClick = { navController.navigate(ProfileDestination.Terms) }",
+  ].join("\n"), ["profile", "terms"]);
+  expect(excerpt.startLine).toBe(5);
+  expect(excerpt.lines.join("\n")).not.toContain("import example.LegalScene");
+  expect(excerpt.lines.join("\n")).not.toContain("data object Terms");
+
+  const proof = issueAssessmentProofExcerpts({
+    criterion: "Entries are sorted by creation date",
+    evidence: "The implementation sorts incoming entries before returning the ordered result.",
+    pathExplanations: [{ explanation: "This function receives entries, orders them, and returns the result." }],
+  }, "EntrySorter.kt", [
+    "import example.Entry",
+    "fun sortEntries(entries: List<Entry>): List<Entry> {",
+    "  val ordered = entries.sortedBy { it.createdAt }",
+    "  return ordered",
+    "}",
+  ].join("\n"), ["entries", "sort", "ordered"]);
+  expect(proof.map((excerpt) => excerpt.role)).toEqual(["Input", "Transformation", "Output"]);
+  expect(proof[1].lines.join("\n")).toContain("sortedBy");
+  expect(proof[2].lines.join("\n")).toContain("return ordered");
+});
+
 test("GitHub issue assessment discloses its bounded provider scope and model basis", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public", "index.html"), "utf8"),
@@ -604,7 +649,15 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain("statuses are not verified test results");
   expect(app).toContain("issue.access !== \"available\"");
   expect(app).toContain("function issueAssessmentItems(items)");
-  expect(app).toContain("function linkedIssueSummary(issue)");
+  expect(app).toContain("function linkedIssueSummary(issue, reviewerTask)");
+  expect(app).toContain("function reviewerTaskSummary(issue, task)");
+  expect(app).toContain("Task-to-implementation assessment");
+  expect(app).toContain("not sent to GitHub");
+  expect(app).toContain('data-reviewer-task-edit');
+  expect(app).toContain('data-reviewer-task-toggle');
+  expect(app).toContain("Collapse task");
+  expect(app).toContain("Expand task");
+  expect(app).toContain('api("/api/pull-request/reviewer-task"');
   expect(app).toContain('class="pull-request-context"');
   expect(app).toContain('class="linked-issue-criteria"');
   expect(app).toContain('data-pull-request-width aria-pressed="${state.pullRequestWide}"');
@@ -630,13 +683,29 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(app).toContain("elements[\"pull-request-content\"].addEventListener(\"click\", handleIssueAssessmentClick)");
   expect(html).toContain('id="issue-assessment-dialog"');
   expect(html).toContain('id="close-issue-assessment"');
+  expect(html).toContain('id="reviewer-task-dialog"');
+  expect(html).toContain('id="reviewer-task-body"');
+  expect(html).toContain('data-reviewer-task-mode="preview"');
+  expect(html).toContain('id="reviewer-task-preview"');
+  expect(html).toContain("Tab indents selected lines");
+  expect(app).toContain("function updateReviewerTaskPreview()");
+  expect(app).toContain("function handleReviewerTaskEditorKeydown(event)");
+  expect(app).toContain('elements["reviewer-task-body"].addEventListener("keydown", handleReviewerTaskEditorKeydown)');
+  expect(app).toContain("assessmentPending");
   expect(styles).toContain(".issue-criterion.implemented");
   expect(styles).toContain(".issue-criterion.missing");
   expect(styles).toContain(".issue-criterion.unclear");
   expect(styles).toContain(".issue-criterion summary");
+  expect(styles).toContain(".issue-criteria, .issue-criterion, .issue-criterion summary, .issue-criterion-title { min-width: 0; max-width: 100%; }");
+  expect(styles).toContain(".issue-criterion-title { overflow-wrap: anywhere; white-space: normal;");
+  expect(styles).toContain("@container (max-width: 560px) { .issue-criterion summary { grid-template-columns: 12px minmax(0, 1fr); }");
   expect(styles).toContain(".issue-assessment-evidence");
   expect(styles).toContain(".issue-evidence-file");
+  expect(styles).toContain(".issue-evidence-file { display: inline; max-width: 100%;");
+  expect(styles).toContain("overflow-wrap: anywhere; word-break: break-word;");
   expect(styles).toContain(".issue-assessment-dialog");
+  expect(styles).toContain(".reviewer-task-dialog");
+  expect(styles).toContain(".reviewer-task-preview");
   expect(styles).toContain(".issue-assessment-code-excerpt");
   expect(styles).toContain(".issue-assessment-code-excerpts");
   expect(styles).toContain(".issue-assessment-excerpt-heading");
@@ -645,15 +714,18 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(styles).toContain(".pull-request-context { display: grid;");
   expect(styles).toContain(".pull-request-content.wide { max-width: none; }");
   expect(styles).toContain(".pull-request-header-actions");
-  expect(styles).toContain("@media (max-width: 700px) { .pull-request-context");
+  expect(styles).toContain("grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));");
+  expect(styles).toContain(".pull-request-content > .panel-heading { height: auto;");
+  expect(styles).toContain(".reviewer-task-heading h3 { margin: 0; white-space: nowrap; }");
+  expect(styles).toContain(".reviewer-task-actions { display: flex;");
 
-  const summarySource = app.slice(app.indexOf("function linkedIssueSummary(issue)"), app.indexOf("async function api("));
-  const linkedIssueSummary = new Function("escapeHtml", `${summarySource}; return linkedIssueSummary;`)((value: unknown) => String(value)
+  const summarySource = app.slice(app.indexOf("function reviewerTaskSummary(issue, task)"), app.indexOf("async function api("));
+  const linkedIssueSummary = new Function("escapeHtml", "state", `${summarySource}; return linkedIssueSummary;`)((value: unknown) => String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")) as (issue: unknown) => string;
+    .replaceAll("'", "&#039;"), { reviewerTaskCollapsed: false }) as (issue: unknown, reviewerTask?: unknown) => string;
   const linked = linkedIssueSummary({
     number: 12,
     title: "Bounded linked issue",
@@ -666,13 +738,20 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(linked).toContain("Only explicit criteria are retained");
   expect(linked).toContain("related issues and earlier pull requests: not requested");
 
+  const manual = linkedIssueSummary(undefined, {
+    criteriaStatus: "found",
+    acceptanceCriteria: [{ id: "criterion-1", text: "A reviewer can supply this task locally" }],
+  });
+  expect(manual).toContain("Reviewer task");
+  expect(manual).toContain("not sent to GitHub");
+
   const escape = (value: unknown) => String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-  const assessmentSource = app.slice(app.indexOf("function issueEvidencePathLinks(paths)"), app.indexOf("function linkedIssueSummary(issue)"));
+  const assessmentSource = app.slice(app.indexOf("function issueEvidencePathLinks(paths)"), app.indexOf("function reviewerTaskSummary(issue, task)"));
   const issueAssessmentItems = new Function("escapeHtml", "renderInlineMarkdown", `${assessmentSource}; return issueAssessmentItems;`)(escape, escape) as (items: unknown[]) => string;
   const assessmentMarkup = issueAssessmentItems([{
     criterionId: "criterion-1",
@@ -685,7 +764,7 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(assessmentMarkup).toContain('data-issue-evidence-file="tests/github.test.ts"');
   expect(assessmentMarkup).toContain('data-issue-assessment-explain="criterion-1"');
 
-  const excerptSource = app.slice(app.indexOf("const ISSUE_ASSESSMENT_EXCERPT_LIMIT"), app.indexOf("function linkedIssueSummary(issue)"));
+  const excerptSource = app.slice(app.indexOf("const ISSUE_ASSESSMENT_EXCERPT_LIMIT"), app.indexOf("function reviewerTaskSummary(issue, task)"));
   const issueAssessmentExcerpt = new Function("state", `${excerptSource}; return issueAssessmentExcerpt;`)({
     session: {
       comparison: {
@@ -718,10 +797,68 @@ test("GitHub issue assessment discloses its bounded provider scope and model bas
   expect(closes).toBe(1);
 });
 
+test("reviewer task editor keeps Tab inside the Markdown source and indents selected lines", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function updateReviewerTaskIndentation"), app.indexOf("async function saveReviewerTask"));
+  const InputEvent = class { constructor(readonly type: string) {} };
+  const updateIndentation = new Function("Event", `${source}; return updateReviewerTaskIndentation;`)(InputEvent) as (textarea: {
+    value: string;
+    selectionStart: number;
+    selectionEnd: number;
+    setSelectionRange: (start: number, end: number) => void;
+    dispatchEvent: (event: { type: string }) => void;
+  }, outdent: boolean) => void;
+  const events: string[] = [];
+  const textarea = {
+    value: "first line\nsecond line",
+    selectionStart: 0,
+    selectionEnd: "first line\nsecond line".length,
+    setSelectionRange(start: number, end: number) {
+      this.selectionStart = start;
+      this.selectionEnd = end;
+    },
+    dispatchEvent(event: { type: string }) { events.push(event.type); },
+  };
+
+  updateIndentation(textarea, false);
+  expect(textarea).toMatchObject({ value: "  first line\n  second line", selectionStart: 2, selectionEnd: 26 });
+  updateIndentation(textarea, true);
+  expect(textarea).toMatchObject({ value: "first line\nsecond line", selectionStart: 0, selectionEnd: 22 });
+  expect(events).toEqual(["input", "input"]);
+});
+
+test("saving a reviewer task closes its dialog before the background assessment responds", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("async function saveReviewerTask()"), app.indexOf("async function api("));
+  let closed = 0;
+  let resolveRequest: (value: unknown) => void = () => undefined;
+  const state = { busy: false, session: { status: "open" } } as { busy: boolean; session: unknown };
+  const elements = {
+    "reviewer-task-body": { value: "## Acceptance Criteria\n- [ ] Persist the task" },
+    "reviewer-task-dialog": { close: () => { closed += 1; } },
+  };
+  const saveReviewerTask = new Function("state", "elements", "reviewIsOpen", "setBusy", "api", "renderSession", "toast", `${source}; return saveReviewerTask;`)(
+    state,
+    elements,
+    () => true,
+    (busy: boolean) => { state.busy = busy; },
+    () => new Promise((resolve) => { resolveRequest = resolve; }),
+    () => undefined,
+    () => undefined,
+  ) as () => Promise<void>;
+
+  const saving = saveReviewerTask();
+  expect(closed).toBe(1);
+  expect(state.busy).toBe(true);
+  resolveRequest({ pullRequest: { reviewerTask: { assessmentPending: true } } });
+  await saving;
+  expect(state.busy).toBe(false);
+});
+
 test("pull request description controls switch the rendered and raw source views", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
   const source = app.slice(app.indexOf("function setPullRequestDescriptionMode("), app.indexOf("async function api("));
-  const state = { prDescriptionMode: "rendered" };
+  const state = { prDescriptionMode: "rendered", prDescriptionCollapsed: false };
   let pullRequestRenders = 0;
   let overviewRenders = 0;
   let focused = false;
@@ -740,20 +877,39 @@ test("pull request description controls switch the rendered and raw source views
   expect(pullRequestRenders).toBe(1);
   expect(overviewRenders).toBe(1);
   expect(focused).toBe(true);
+
+  setMode({
+    target: { closest: (selector: string) => selector === "[data-pr-description-toggle]" ? { dataset: { prDescriptionToggle: "" } } : null },
+    currentTarget: { querySelector: () => ({ focus: () => { focused = true; } }) },
+  });
+
+  expect(state.prDescriptionCollapsed).toBe(true);
+  expect(pullRequestRenders).toBe(2);
+  expect(overviewRenders).toBe(2);
   expect(app).toContain('aria-label="Raw Markdown source"');
+  expect(app).toContain("data-pr-description-toggle");
+  expect(app).toContain("Collapse description");
+  expect(app).toContain("Expand description");
   expect(app).toContain('elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode)');
   expect(app).toContain('elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode)');
 });
 
 test("pull request content can use and persist the full available width", async () => {
-  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
   const source = app.slice(app.indexOf("function setPullRequestContentWidth("), app.indexOf("function initializeUiPreferences("));
   const classes = new Set<string>();
+  const workspaceClasses = new Set<string>();
   const writes: Array<[string, string]> = [];
   const state = { pullRequestWide: false };
   const setWidth = new Function("state", "elements", "window", "preferenceKey", `${source}; return setPullRequestContentWidth;`)(
     state,
-    { "pull-request-content": { classList: { toggle: (name: string, enabled: boolean) => { if (enabled) classes.add(name); else classes.delete(name); } } } },
+    {
+      "pull-request-content": { classList: { toggle: (name: string, enabled: boolean) => { if (enabled) classes.add(name); else classes.delete(name); } } },
+      workspace: { classList: { toggle: (name: string, enabled: boolean) => { if (enabled) workspaceClasses.add(name); else workspaceClasses.delete(name); } } },
+    },
     { localStorage: { setItem: (key: string, value: string) => writes.push([key, value]) } },
     (name: string) => `review-tour:test:${name}`,
   ) as (wide: boolean, persist?: boolean) => void;
@@ -762,32 +918,95 @@ test("pull request content can use and persist the full available width", async 
 
   expect(state.pullRequestWide).toBe(true);
   expect(classes.has("wide")).toBe(true);
+  expect(workspaceClasses.has("pull-request-wide")).toBe(true);
   expect(writes).toEqual([["review-tour:test:pull-request-wide", "true"]]);
+  expect(styles).toContain(".workspace.pull-request-wide");
+  expect(styles).toContain(".workspace.pull-request-wide .file-panel,");
+  expect(styles).toContain(".workspace.pull-request-wide .agent-panel { display: none; }");
 });
 
-test("GitHub check snapshots explain known state without inventing a provider reason", async () => {
+test("GitHub check snapshots explain known state, can be updated, and link commit revisions", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public", "app.js"), "utf8"),
     readFile(join(root, "public", "styles.css"), "utf8"),
   ]);
   const source = app.slice(app.indexOf("function githubStatusLabel("), app.indexOf("function renderPullRequest("));
-  const helpers = new Function(`${source}; return { githubCheckStatus, githubMergeabilitySummary };`)() as {
+  const helpers = new Function(`${source}; return { githubCheckStatus, githubPullRequestStatus, githubCommitUrl };`)() as {
     githubCheckStatus: (state: string) => { label: string; explanation: string };
-    githubMergeabilitySummary: (pullRequest: { mergeable?: string; mergeStateStatus?: string }) => string[];
+    githubPullRequestStatus: (pullRequest: { state?: string; mergeable?: string; mergeStateStatus?: string }) => { heading: string; details: string[] };
+    githubCommitUrl: (pullRequest: { repository: string; number: number; url: string }, oid: string) => string;
   };
 
   expect(helpers.githubCheckStatus("IN_PROGRESS")).toEqual({ label: "Running", explanation: "GitHub has not reported a final result for this check." });
   expect(helpers.githubCheckStatus("FAILURE")).toEqual({ label: "Needs attention", explanation: "GitHub reported Failure. Open the check run for provider details." });
-  expect(helpers.githubMergeabilitySummary({ mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE" })).toEqual([
-    "No merge conflict reported by GitHub.",
-    "GitHub has not provided a stable merge status. This review snapshot does not include why.",
-  ]);
+  expect(helpers.githubPullRequestStatus({ mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE" })).toEqual({
+    heading: "Mergeability",
+    details: ["No merge conflict reported by GitHub.", "GitHub has not provided a stable merge status. This review snapshot does not include why."],
+  });
+  expect(helpers.githubPullRequestStatus({ state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })).toEqual({
+    heading: "Pull request status",
+    details: ["This pull request has been merged. Mergeability is no longer applicable."],
+  });
+  expect(helpers.githubCommitUrl({ repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7" }, "a".repeat(40))).toBe(`https://github.com/acme/widgets/commit/${"a".repeat(40)}`);
+  expect(helpers.githubCommitUrl({ repository: "acme/widgets", number: 7, url: "https://example.test/acme/widgets/pull/7" }, "a".repeat(40))).toBe("");
   expect(app).toContain("function githubChecksSummary(pullRequest)");
   expect(app).toContain("Snapshot captured when this review was loaded.");
-  expect(app).toContain("This review did not fetch check or workflow details.");
-  expect(app).toContain('target="_blank" rel="noreferrer">Open run in GitHub</a>');
+  expect(app).toContain("data-github-snapshot-refresh");
+  expect(app).toContain("function refreshGitHubSnapshot(event)");
+  expect(app).toContain("githubSnapshotRefreshing");
+  expect(app).toContain("Updating snapshot…");
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", refreshGitHubSnapshot)');
+  expect(app).toContain("function githubCommitUrl(pullRequest, oid)");
+  expect(app).toContain("github-commit-link");
+  expect(app).toContain("this review does not fetch check or workflow details.");
+  expect(app).toContain('target="_blank" rel="noreferrer">View run in GitHub</a>');
   expect(styles).toContain(".github-checks {");
   expect(styles).toContain(".github-check-list {");
+  expect(styles).toContain(".github-checks-actions {");
+  expect(styles).toContain(".github-snapshot-progress {");
+});
+
+test("pull request file links retain their reading position and provide a return control", async () => {
+  const [app, html, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "index.html"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  const source = app.slice(app.indexOf("function rememberPullRequestReturn()"), app.indexOf("let currentStepReturnFrame"));
+  const state = { activeTab: "pull-request", tabScrollPositions: new Map<string, number>(), pullRequestReturn: null as { scrollTop: number } | null, session: { pullRequest: {} } };
+  const elements = { "diff-panel": { scrollTop: 1_240 } };
+  const activations: string[] = [];
+  const helpers = new Function("state", "elements", "activateReviewTab", `${source}; return { rememberPullRequestReturn, returnToPullRequest };`)(
+    state, elements, (tab: string) => activations.push(tab),
+  ) as { rememberPullRequestReturn: () => boolean; returnToPullRequest: () => void };
+
+  expect(helpers.rememberPullRequestReturn()).toBe(true);
+  expect(state.tabScrollPositions.get("pull-request")).toBe(1_240);
+  state.activeTab = "diff";
+  helpers.returnToPullRequest();
+  expect(state.pullRequestReturn).toBeNull();
+  expect(activations).toEqual(["pull-request"]);
+  expect(html).toContain('id="pull-request-return"');
+  expect(app).toContain('elements["pull-request-return"].addEventListener("click", returnToPullRequest)');
+  expect(styles).toContain(".current-step-return, .pull-request-return {");
+});
+
+test("GitHub review threads open their file and remain visible beside the diff", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  expect(app).toContain("function githubReviewThreadCard(thread)");
+  expect(app).toContain('data-github-thread-jump="${escapeHtml(thread.id)}"');
+  expect(app).toContain("function renderGitHubReviewThreads()");
+  expect(app).toContain('inline.className = `github-thread-inline ${thread.resolved ? "resolved" : "open"}`');
+  expect(app).toContain("function handleGitHubReviewThreadClick(event)");
+  expect(app).toContain('void showAnalysisFile(thread.path, thread.line, thread.side ?? "new")');
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", handleGitHubReviewThreadClick)');
+  expect(app).toContain("Reply in GitHub");
+  expect(styles).toContain(".github-thread-inline {");
+  expect(styles).toContain(".split-github-thread {");
+  expect(styles).toContain(".github-thread-card .comment-jump");
 });
 
 test("agent-launched tours introduce the change before navigating to the first stop", async () => {

@@ -26,12 +26,12 @@ function metadata(head = "b".repeat(40), base = "a".repeat(40)) {
   };
 }
 
-function githubRunner(options: { head?: string; base?: string; localRepository?: string; reviews?: unknown[]; post?: (body: string) => void } = {}): GitHubRunner {
+function githubRunner(options: { head?: string; base?: string; localRepository?: string; reviews?: unknown[]; threads?: unknown[]; post?: (body: string) => void } = {}): GitHubRunner {
   return (async (command, _cwd, _accepted, processOptions) => {
     let value: unknown;
     if (command.slice(0, 3).join(" ") === "gh repo view") value = { nameWithOwner: options.localRepository ?? "acme/widgets" };
     else if (command.slice(0, 3).join(" ") === "gh pr view") value = metadata(options.head, options.base);
-    else if (command.includes("graphql")) value = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } };
+    else if (command.includes("graphql")) value = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: options.threads ?? [] } } } } };
     else if (command.at(-1)?.includes("reviews?per_page")) value = options.reviews ?? [];
     else if (command.includes("--method")) { options.post?.(processOptions?.input ?? ""); value = { id: 42, html_url: "https://github.com/acme/widgets/pull/7#pullrequestreview-42" }; }
     else throw new Error(`Unexpected command: ${command.join(" ")}`);
@@ -55,6 +55,7 @@ test("metadata loading fails closed on repository mismatch and invalid JSON", as
 
 test("metadata loading preserves mergeability for review briefings", async () => {
   const context = await loadPullRequestContext("/tmp", "7", undefined, githubRunner());
+  expect(context.state).toBeUndefined();
   expect(context.mergeable).toBeUndefined();
   expect(context.mergeStateStatus).toBeUndefined();
   const runner = githubRunner();
@@ -66,12 +67,52 @@ test("metadata loading preserves mergeability for review briefings", async () =>
   const loaded = await loadPullRequestContext("/tmp", "7", undefined, withMergeability);
   expect(loaded).toMatchObject({ mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" });
 
+  const merged = (async (command, cwd, accepted, options) => {
+    const result = await runner(command, cwd, accepted, options);
+    if (command.slice(0, 3).join(" ") === "gh pr view") result.stdout = JSON.stringify({ ...metadata(), state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" });
+    return result;
+  }) as GitHubRunner;
+  expect((await loadPullRequestContext("/tmp", "7", undefined, merged)).state).toBe("MERGED");
+
   const inProgress = (async (command, cwd, accepted, options) => {
     const result = await runner(command, cwd, accepted, options);
     if (command.slice(0, 3).join(" ") === "gh pr view") result.stdout = JSON.stringify({ ...metadata(), statusCheckRollup: [{ name: "CI", conclusion: "", status: "IN_PROGRESS" }] });
     return result;
   }) as GitHubRunner;
   expect((await loadPullRequestContext("/tmp", "7", undefined, inProgress)).checks).toEqual([{ name: "CI", state: "IN_PROGRESS", url: undefined }]);
+});
+
+test("metadata loading keeps the original review-thread location after its diff anchor is outdated", async () => {
+  const context = await loadPullRequestContext("/tmp", "7", undefined, githubRunner({
+    threads: [{
+      id: "thread-1", isResolved: true, path: "feature/legal/LegalDataMapper.kt",
+      line: null, startLine: null, diffSide: "RIGHT",
+      originalLine: 42, originalStartLine: null,
+      comments: { nodes: [{ id: "comment-1", author: { login: "reviewer" }, body: "Please simplify this.", url: "https://github.com/acme/widgets/pull/7#discussion_r1" }] },
+    }],
+  }));
+
+  expect(context.threads).toEqual([expect.objectContaining({
+    id: "thread-1", path: "feature/legal/LegalDataMapper.kt", line: 42, side: "new", resolved: true,
+  })]);
+});
+
+test("metadata loading keeps usable commit author labels when GitHub leaves logins blank", async () => {
+  const runner = githubRunner();
+  const blankLogin = (async (command, cwd, accepted, options) => {
+    const result = await runner(command, cwd, accepted, options);
+    if (command.slice(0, 3).join(" ") === "gh pr view") {
+      result.stdout = JSON.stringify({
+        ...metadata(),
+        commits: [{ oid: "b".repeat(40), messageHeadline: "change", authors: [{ login: "", name: "Pedro Seruca" }, { login: "", name: "" }, null] }],
+      });
+    }
+    return result;
+  }) as GitHubRunner;
+
+  expect((await loadPullRequestContext("/tmp", "7", undefined, blankLogin)).commits).toEqual([
+    { oid: "b".repeat(40), headline: "change", authors: ["Pedro Seruca"] },
+  ]);
 });
 
 test("extracts only bounded explicit acceptance criteria", () => {
@@ -82,6 +123,10 @@ test("extracts only bounded explicit acceptance criteria", () => {
   expect(extractAcceptanceCriteria("AC1: Return a stable error\nAC2 - Preserve the original status")).toEqual([
     { id: "criterion-1", text: "Return a stable error" },
     { id: "criterion-2", text: "Preserve the original status" },
+  ]);
+  expect(extractAcceptanceCriteria("Goal: Render legal documents\n\nAC:\n- A profile CTA opens each document\n- Content comes from the CMS")).toEqual([
+    { id: "criterion-1", text: "A profile CTA opens each document" },
+    { id: "criterion-2", text: "Content comes from the CMS" },
   ]);
   expect(extractAcceptanceCriteria("# Implementation checklist\n- [ ] Ship the feature\n\n## Notes\n- [ ] This is not an acceptance criterion")).toEqual([]);
   expect(extractAcceptanceCriteria("## Acceptance Criteria\n- [ ] A request can be retried\n  - [ ] Add a retry metric\n- [ ] Errors include a request id")).toEqual([

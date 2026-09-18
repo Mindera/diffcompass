@@ -497,6 +497,108 @@ test("pull request tours enable findings unless the caller explicitly disables t
   });
 });
 
+test("a reviewer task stays local and regenerates only its acceptance-criteria assessment", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const head = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository, {
+    base: head,
+    pullRequest: {
+      repository: "acme/widgets",
+      number: 7,
+      url: "https://github.com/acme/widgets/pull/7",
+      title: "PR without a linked issue",
+      body: "",
+      author: "reviewer",
+      baseRefName: "main",
+      baseRefOid: head,
+      headRefName: "feature",
+      headRefOid: head,
+      sourceRepositoryRoot: repository,
+      workspaceRoot: repository,
+      refNamespace: "refs/code-review-tour/test",
+      commits: [], checks: [], threads: [], threadsTruncated: false,
+      providerScope: { linkedIssue: "none", relatedResources: "not-requested" },
+      updatedAt: new Date().toISOString(),
+    },
+  }));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const saved = await session.saveReviewerTask("## Acceptance Criteria\n- [ ] The changed value is retained");
+    expect(saved.outline?.title).toBe("A resumed review");
+    expect(saved.pullRequest?.reviewerTask).toMatchObject({
+      criteriaStatus: "found",
+      assessmentPending: true,
+      acceptanceCriteria: [{ id: "criterion-1", text: "The changed value is retained" }],
+    });
+    const [event] = await session.bridge!.eventsAfter(7, 1_000);
+    if (!event || event.type !== "agent.prompt") throw new Error("Expected reviewer-task assessment prompt.");
+    expect(event.kind).toBe("issue.assessment");
+    expect(event.prompt).toContain("did not come from GitHub");
+    expect(event.prompt).toContain("Do not plan or change the tour");
+    await session.bridge!.respond(event.id, JSON.stringify({
+      items: [{ criterionId: "criterion-1", criterion: "The changed value is retained", status: "implemented", evidence: "app.ts contains the changed value.", evidencePaths: ["app.ts"], pathExplanations: [{ path: "app.ts", explanation: "The changed value is retained here." }], basis: "model-assessment" }],
+    }));
+    await session.bridge!.ack(event.id);
+    for (let attempt = 0; attempt < 20 && !session.snapshot().pullRequest?.reviewerTask?.assessment; attempt += 1) await Bun.sleep(5);
+    expect(session.snapshot().pullRequest?.reviewerTask).toMatchObject({
+      criteriaStatus: "found",
+      acceptanceCriteria: [{ id: "criterion-1", text: "The changed value is retained" }],
+      assessment: { items: [{ status: "implemented", evidencePaths: ["app.ts"] }] },
+    });
+    const persisted = await loadPersistedSession(stateFile);
+    expect(persisted.pullRequest?.reviewerTask?.body).toContain("Acceptance Criteria");
+    expect(persisted.pullRequest?.providerScope).toEqual({ linkedIssue: "none", relatedResources: "not-requested" });
+  } finally { await session.dispose(); }
+});
+
+test("resuming an incomplete reviewer task assessment continues it without restarting the tour", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  const head = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository, {
+    base: head,
+    pullRequest: {
+      repository: "acme/widgets",
+      number: 7,
+      url: "https://github.com/acme/widgets/pull/7",
+      title: "PR without a linked issue",
+      body: "",
+      author: "reviewer",
+      baseRefName: "main",
+      baseRefOid: head,
+      headRefName: "feature",
+      headRefOid: head,
+      sourceRepositoryRoot: repository,
+      workspaceRoot: repository,
+      refNamespace: "refs/code-review-tour/test",
+      commits: [], checks: [], threads: [], threadsTruncated: false,
+      providerScope: { linkedIssue: "none", relatedResources: "not-requested" },
+      reviewerTask: {
+        body: "## Acceptance Criteria\n- [ ] The changed value is retained",
+        criteriaStatus: "found",
+        acceptanceCriteria: [{ id: "criterion-1", text: "The changed value is retained" }],
+        updatedAt: new Date().toISOString(),
+      },
+      updatedAt: new Date().toISOString(),
+    },
+  }));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    expect(session.snapshot().outline?.title).toBe("A resumed review");
+    expect(session.snapshot().pullRequest?.reviewerTask?.assessmentPending).toBe(true);
+    const [event] = await session.bridge!.eventsAfter(7, 1_000);
+    if (!event || event.type !== "agent.prompt") throw new Error("Expected resumed reviewer-task assessment prompt.");
+    expect(event.kind).toBe("issue.assessment");
+    await session.bridge!.respond(event.id, JSON.stringify({
+      items: [{ criterionId: "criterion-1", criterion: "The changed value is retained", status: "implemented", evidence: "app.ts contains the changed value.", evidencePaths: ["app.ts"], pathExplanations: [{ path: "app.ts", explanation: "The changed value is retained here." }], basis: "model-assessment" }],
+    }));
+    await session.bridge!.ack(event.id);
+    for (let attempt = 0; attempt < 20 && !session.snapshot().pullRequest?.reviewerTask?.assessment; attempt += 1) await Bun.sleep(5);
+    expect(session.snapshot().pullRequest?.reviewerTask).toMatchObject({
+      assessment: { items: [{ status: "implemented", evidencePaths: ["app.ts"] }] },
+    });
+  } finally { await session.dispose(); }
+});
+
 test("a resumed open attached session retains its stop and drives the rehydrated agent bridge", async () => {
   const { repository, stateFile } = await repositoryFixture();
   await savePersistedSession(stateFile, persistedAttachedSession(repository));

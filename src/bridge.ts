@@ -16,6 +16,7 @@ export const DEFAULT_FALLBACK_INACTIVITY_MS: Record<BridgePromptEvent["kind"], n
   "tour.outline": 5 * 60 * 1_000,
   "tour.explanation": 90_000,
   "review.question": 90_000,
+  "issue.assessment": 5 * 60 * 1_000,
 };
 
 export interface BridgeClosedEvent {

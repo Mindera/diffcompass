@@ -27,7 +27,7 @@ export function extractAcceptanceCriteria(body: string): LinkedIssueContext["acc
   if (body.length > ISSUE_BODY_LIMIT || body.includes("\u0000")) return [];
   const lines = body.split(/\r?\n/);
   const criteria: Array<{ id: string; text: string }> = [];
-  const section = lines.findIndex((line) => /^\s*(?:#{1,6}\s*)?acceptance criteria\s*:?\s*$/i.test(line));
+  const section = lines.findIndex((line) => /^\s*(?:#{1,6}\s*)?(?:acceptance criteria|ac)\s*:?\s*$/i.test(line));
   const candidates = section >= 0
     ? (() => {
       const result: string[] = [];
@@ -146,7 +146,7 @@ async function jsonCommand(runner: Runner, command: string[], cwd: string, input
   return value as Record<string, unknown>;
 }
 
-const THREAD_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage}nodes{id isResolved path line startLine diffSide comments(first:50){nodes{id body url author{login}}}}}}}}`;
+const THREAD_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage}nodes{id isResolved path line startLine diffSide originalLine originalStartLine comments(first:50){nodes{id body url author{login}}}}}}}}`;
 
 export async function loadPullRequestContext(
   sourceRepositoryRoot: string,
@@ -161,7 +161,7 @@ export async function loadPullRequestContext(
   if (repository.toLocaleLowerCase() !== localRepository.toLocaleLowerCase()) {
     throw new ReviewError(`The pull request belongs to ${repository}, but this checkout belongs to ${localRepository || "an unknown repository"}.`);
   }
-  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,closingIssuesReferences";
+  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision,state,mergeable,mergeStateStatus,closingIssuesReferences";
   const raw = await jsonCommand(runner, ["gh", "pr", "view", String(parsed.number), "--repo", repository, "--json", fields], sourceRepositoryRoot);
   const [owner, name] = repository.split("/");
   const threadRaw = await jsonCommand(runner, [
@@ -201,11 +201,11 @@ export async function loadPullRequestContext(
     if (!commit || typeof commit !== "object" || Array.isArray(commit)) throw new ReviewError("GitHub returned an invalid pull request commit.");
     const item = commit as Record<string, unknown>;
     if (typeof item.oid !== "string" || !/^[0-9a-f]{40,64}$/.test(item.oid) || typeof item.messageHeadline !== "string" || item.messageHeadline.length > 8_000) throw new ReviewError("GitHub returned an invalid pull request commit.");
-    const authors = Array.isArray(item.authors) ? item.authors.slice(0, 20).map((candidate) => {
-      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new ReviewError("GitHub returned an invalid commit author.");
-      const value = (candidate as Record<string, unknown>).login ?? (candidate as Record<string, unknown>).name;
-      if (typeof value !== "string" || !value || value.length > 500) throw new ReviewError("GitHub returned an invalid commit author.");
-      return value;
+    const authors = Array.isArray(item.authors) ? item.authors.slice(0, 20).flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const author = candidate as Record<string, unknown>;
+      const value = [author.login, author.name].find((name): name is string => typeof name === "string" && Boolean(name.trim()) && name.trim().length <= 500);
+      return value ? [value.trim()] : [];
     }) : [];
     return { oid: item.oid, headline: item.messageHeadline, authors };
   });
@@ -229,11 +229,14 @@ export async function loadPullRequestContext(
     const comments = (item.comments as Record<string, unknown> | undefined)?.nodes;
     if (typeof item.id !== "string" || !item.id || item.id.length > 500 || typeof item.path !== "string" || !item.path || item.path.length > 4_096 ||
       typeof item.isResolved !== "boolean" || !Array.isArray(comments)) throw new ReviewError("GitHub returned an invalid review thread.");
+    const originalLocation = [item.line, item.startLine, item.originalLine, item.originalStartLine]
+      .find((line) => Number.isInteger(line) && Number(line) > 0);
+    const diffSide = item.diffSide;
     return {
       id: item.id,
       path: item.path,
-      line: Number.isInteger(item.line ?? item.startLine) ? Number(item.line ?? item.startLine) : undefined,
-      side: item.diffSide === "LEFT" ? "old" as const : item.diffSide === "RIGHT" ? "new" as const : undefined,
+      line: originalLocation === undefined ? undefined : Number(originalLocation),
+      side: diffSide === "LEFT" ? "old" as const : diffSide === "RIGHT" ? "new" as const : undefined,
       resolved: Boolean(item.isResolved),
       comments: Array.isArray(comments) ? comments.slice(0, 50).map((comment) => {
         if (!comment || typeof comment !== "object" || Array.isArray(comment)) throw new ReviewError("GitHub returned an invalid review thread comment.");
@@ -286,6 +289,7 @@ export async function loadPullRequestContext(
     workspaceRoot: "",
     refNamespace,
     reviewDecision: typeof raw.reviewDecision === "string" && raw.reviewDecision ? raw.reviewDecision : undefined,
+    state: raw.state === "OPEN" || raw.state === "CLOSED" || raw.state === "MERGED" ? raw.state : undefined,
     mergeable: raw.mergeable === "MERGEABLE" || raw.mergeable === "CONFLICTING" || raw.mergeable === "UNKNOWN" ? raw.mergeable : undefined,
     mergeStateStatus: typeof raw.mergeStateStatus === "string" && raw.mergeStateStatus ? raw.mergeStateStatus : undefined,
     commits,

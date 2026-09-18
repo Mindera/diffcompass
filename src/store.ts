@@ -168,6 +168,28 @@ function validIssueAssessment(value: unknown): boolean {
   });
 }
 
+function validReviewerTask(value: unknown): boolean {
+  if (!record(value) || !boundedString(value.body, 100_000) || !value.body.trim() ||
+    !["found", "not-found"].includes(String(value.criteriaStatus)) || !Array.isArray(value.acceptanceCriteria) ||
+    value.acceptanceCriteria.length > 20 || !nonEmptyString(value.updatedAt, 64)) return false;
+  const criteria: Array<{ id: string; text: string }> = [];
+  const ids = new Set<string>();
+  for (const candidate of value.acceptanceCriteria) {
+    if (!record(candidate) || !nonEmptyString(candidate.id, 128) || ids.has(candidate.id) || !nonEmptyString(candidate.text, 4_000)) return false;
+    ids.add(candidate.id);
+    criteria.push({ id: candidate.id, text: candidate.text });
+  }
+  if ((value.criteriaStatus === "found") !== (criteria.length > 0)) return false;
+  if (value.assessmentPending !== undefined && typeof value.assessmentPending !== "boolean") return false;
+  if (value.assessment !== undefined) {
+    if (!record(value.assessment) || !Array.isArray(value.assessment.items) ||
+      !validIssueAssessment({ issueNumber: 1, issueUrl: "reviewer-task", items: value.assessment.items }) ||
+      value.assessment.items.length !== criteria.length || value.assessment.items.some((item) =>
+        !record(item) || criteria.find((criterion) => criterion.id === item.criterionId)?.text !== item.criterion)) return false;
+  }
+  return value.assessmentError === undefined || nonEmptyString(value.assessmentError, 2_000);
+}
+
 function validPullRequest(value: unknown): boolean {
   if (!record(value)) return false;
   const validOid = (candidate: unknown) => typeof candidate === "string" && /^[0-9a-f]{40,64}$/.test(candidate);
@@ -178,6 +200,7 @@ function validPullRequest(value: unknown): boolean {
     nonEmptyString(value.baseRefName, 4_096) && validOid(value.baseRefOid) && nonEmptyString(value.headRefName, 4_096) && validOid(value.headRefOid) &&
     nonEmptyString(value.sourceRepositoryRoot, 4_096) && nonEmptyString(value.workspaceRoot, 4_096) && nonEmptyString(value.refNamespace, 4_096) &&
     (value.reviewDecision === undefined || nonEmptyString(value.reviewDecision, 500)) &&
+    (value.state === undefined || ["OPEN", "CLOSED", "MERGED"].includes(String(value.state))) &&
     (value.mergeable === undefined || ["MERGEABLE", "CONFLICTING", "UNKNOWN"].includes(String(value.mergeable))) &&
     (value.mergeStateStatus === undefined || nonEmptyString(value.mergeStateStatus, 500)) &&
     Array.isArray(value.commits) && value.commits.length <= 500 && value.commits.every((commit) => record(commit) && validOid(commit.oid) &&
@@ -196,6 +219,8 @@ function validPullRequest(value: unknown): boolean {
       (value.linkedIssue.state === undefined || nonEmptyString(value.linkedIssue.state, 500)) && ["available", "inaccessible", "unavailable"].includes(String(value.linkedIssue.access)) &&
       ["found", "not-found", "malformed", "unavailable"].includes(String(value.linkedIssue.criteriaStatus)) && Array.isArray(value.linkedIssue.acceptanceCriteria) &&
       value.linkedIssue.acceptanceCriteria.length <= 20 && value.linkedIssue.acceptanceCriteria.every((criterion: unknown) => record(criterion) && nonEmptyString(criterion.id, 128) && nonEmptyString(criterion.text, 4_000)))) &&
+    (value.reviewerTask === undefined || (validReviewerTask(value.reviewerTask) &&
+      (!record(value.linkedIssue) || value.linkedIssue.access !== "available" || value.linkedIssue.criteriaStatus !== "found"))) &&
     (value.providerScope === undefined || (record(value.providerScope) && ["same-repository-closing-issue", "none", "inaccessible", "unavailable"].includes(String(value.providerScope.linkedIssue)) && value.providerScope.relatedResources === "not-requested")) &&
     nonEmptyString(value.updatedAt, 64) &&
     (publication === undefined || (record(publication) && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(publication.intentId)) &&
@@ -338,7 +363,7 @@ function validBridgePrompt(value: unknown): boolean {
   if (!record(value) || !record(value.event)) return false;
   const event = value.event;
   return Number.isInteger(event.sequence) && Number(event.sequence) > 0 && nonEmptyString(event.id, 128) &&
-    event.type === "agent.prompt" && ["tour.outline", "tour.explanation", "review.question"].includes(String(event.kind)) &&
+    event.type === "agent.prompt" && ["tour.outline", "tour.explanation", "review.question", "issue.assessment"].includes(String(event.kind)) &&
     nonEmptyString(event.prompt, 500_000) && nonEmptyString(event.createdAt, 64) &&
     (value.response === undefined || nonEmptyString(value.response, 500_000)) &&
     typeof value.acknowledged === "boolean" && typeof value.committed === "boolean";
@@ -482,6 +507,14 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       session.outline.issueAssessment.issueNumber !== session.pullRequest.linkedIssue.number || session.outline.issueAssessment.issueUrl !== session.pullRequest.linkedIssue.url ||
       session.outline.issueAssessment.items.length !== session.pullRequest.linkedIssue.acceptanceCriteria.length ||
       session.outline.issueAssessment.items.some((item) => session.pullRequest!.linkedIssue!.acceptanceCriteria.find((criterion) => criterion.id === item.criterionId)?.text !== item.criterion))) ||
+    (session.pullRequest?.reviewerTask !== undefined && (
+      (session.pullRequest.linkedIssue?.access === "available" && session.pullRequest.linkedIssue.criteriaStatus === "found") ||
+      (session.pullRequest.reviewerTask.assessment !== undefined && (
+        session.pullRequest.reviewerTask.criteriaStatus !== "found" ||
+        session.pullRequest.reviewerTask.assessment.items.length !== session.pullRequest.reviewerTask.acceptanceCriteria.length ||
+        session.pullRequest.reviewerTask.assessment.items.some((item) => session.pullRequest!.reviewerTask!.acceptanceCriteria.find((criterion) => criterion.id === item.criterionId)?.text !== item.criterion
+      ))
+    ))) ||
     (terminal !== undefined && (
       session.bridgeToken === undefined || session.bridgeSequence === undefined || terminal.sequence > session.bridgeSequence ||
       terminal.outcome !== session.status

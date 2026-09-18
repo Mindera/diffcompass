@@ -245,6 +245,7 @@
         <div id="pull-request-view" class="review-view hidden" role="tabpanel" aria-labelledby="pull-request-tab">
           <div id="pull-request-content" class="pull-request-content"></div>
         </div>
+        <button id="pull-request-return" class="button pull-request-return hidden" type="button">↩ Return to pull request</button>
         <button id="current-step-return" class="button current-step-return hidden" type="button">↩ Current step</button>
       </section>
 
@@ -321,6 +322,11 @@
                 <summary><span class="planning-spinner" aria-hidden="true"></span><span id="agent-activity-title">Agent activity</span></summary>
                 <div id="agent-activity-body" class="agent-activity-body"></div>
               </details>
+              <section id="reviewer-task-assessment-status" class="reviewer-task-assessment-status hidden" aria-live="polite">
+                <span id="reviewer-task-assessment-status-title" class="eyebrow">Task assessment</span>
+                <p id="reviewer-task-assessment-status-body"></p>
+                <button id="view-reviewer-task-assessment" class="text-button hidden" type="button">View assessment</button>
+              </section>
               <section id="step-discussion" class="step-discussion" aria-label="Current stop discussion">
                 <div><span class="eyebrow">Current stop</span><p id="step-discussion-scope">Comments here stay attached to this tour stop.</p></div>
                 <button id="comment-stop" class="button secondary" type="button">Add stop comment</button>
@@ -504,6 +510,24 @@
       <h2 id="issue-assessment-title">How this assessment is grounded</h2>
       <div id="issue-assessment-description" class="issue-assessment-dialog-content"></div>
       <div class="dialog-actions"><button id="close-issue-assessment" class="button secondary" type="button">Close</button></div>
+    </dialog>
+
+    <dialog id="reviewer-task-dialog" class="reviewer-task-dialog" aria-labelledby="reviewer-task-title" aria-describedby="reviewer-task-description">
+      <form id="reviewer-task-form">
+        <div class="eyebrow">Local review context</div>
+        <h2 id="reviewer-task-title">Add task description</h2>
+        <p id="reviewer-task-description" class="dialog-description">Write the task in Markdown, then preview it before saving. Use a <code>## Acceptance Criteria</code> or <code>AC:</code> list, or numbered <code>AC1:</code> lines. The description is stored in this review session and supplied to the review agent; it is not sent to GitHub or used to fetch provider resources.</p>
+        <div class="reviewer-task-field">
+          <div class="reviewer-task-editor-heading"><label for="reviewer-task-body">Task description</label><span>Tab indents selected lines · Shift+Tab removes indentation</span></div>
+          <div class="description-mode reviewer-task-mode" role="group" aria-label="Task description editor">
+            <button class="text-button active" type="button" data-reviewer-task-mode="write" aria-pressed="true">Write</button>
+            <button class="text-button" type="button" data-reviewer-task-mode="preview" aria-pressed="false">Preview</button>
+          </div>
+          <textarea id="reviewer-task-body" name="body" rows="14" maxlength="100000" required placeholder="## Acceptance Criteria&#10;- [ ] Describe the observable requirement"></textarea>
+          <div id="reviewer-task-preview" class="reviewer-task-preview rendered-markdown" tabindex="0" aria-label="Task description Markdown preview" hidden></div>
+        </div>
+        <div class="dialog-actions"><button id="cancel-reviewer-task" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Save and assess</button></div>
+      </form>
     </dialog>
 
     <dialog id="html-export-dialog" aria-labelledby="html-export-title" aria-describedby="html-export-description">

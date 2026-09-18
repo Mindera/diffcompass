@@ -1,5 +1,5 @@
 import type { ReviewSession } from "./session.ts";
-import type { CallFlow, DiffFile, DiffRow, FindingDisposition, IssueAssessment, LinkedIssueContext, ReviewArchitecture, ReviewComment, ReviewFinding } from "./types.ts";
+import type { CallFlow, DiffFile, DiffRow, FindingDisposition, IssueAssessment, LinkedIssueContext, ReviewerTaskContext, ReviewArchitecture, ReviewComment, ReviewFinding } from "./types.ts";
 import type { HighlightGroup, HighlightToken } from "./highlight.ts";
 import { buildNeedsAttention } from "./attention.ts";
 // @ts-expect-error Bun's text loader embeds Mermaid in the self-contained HTML export.
@@ -90,7 +90,19 @@ function markdownArchitecture(label: string, architecture: ReviewArchitecture): 
   return [`### ${label}: ${markdownText(architecture.title)}`, "", markdownText(architecture.summary), "", "Relationship changes:", "", ...architecture.dependencyChanges.map((change) => `- ${markdownText(change)}`), "", "Affected changed files:", "", ...architecture.affectedFiles.map((path) => `- ${markdownText(path)}`), "", markdownFence("mermaid", architecture.mermaid), ""];
 }
 
-function markdownIssueAssessment(issue: LinkedIssueContext | undefined, assessment: IssueAssessment | undefined): string[] {
+function markdownIssueAssessment(issue: LinkedIssueContext | undefined, assessment: IssueAssessment | undefined, reviewerTask?: ReviewerTaskContext): string[] {
+  if (reviewerTask) {
+    const lines = ["## Task-to-implementation assessment", "", "Source: reviewer-supplied task description, stored locally in this review session.", "", "Provider scope: this task description was not sent to GitHub. No issue, pull request, comment, or other provider resource was requested for this assessment.", "", "### Task description", "", markdownFence("markdown", reviewerTask.body), ""];
+    if (reviewerTask.criteriaStatus === "not-found") return [...lines, "No explicit acceptance criteria were found in the saved task description.", ""];
+    if (reviewerTask.assessmentError) return [...lines, reviewerTask.assessmentError, ""];
+    if (reviewerTask.assessmentPending) return [...lines, "Assessing the saved acceptance criteria in the background.", ""];
+    if (!reviewerTask.assessment) return [...lines, "The saved task is ready to assess when a review agent is available.", ""];
+    lines.push("Model assessment based on cited repository paths; statuses are not verified test results.", "");
+    for (const item of reviewerTask.assessment.items) {
+      lines.push(`### ${markdownText(item.status)}: ${markdownText(item.criterion)}`, "", markdownText(item.evidence), "", `Repository evidence: ${item.evidencePaths.length ? item.evidencePaths.map(markdownText).join(", ") : "none cited"}`, "");
+    }
+    return lines;
+  }
   if (!issue) return ["## Issue-to-implementation assessment", "", "No linked issue was reported for this pull request. No issue or related provider resources were fetched.", "", "Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.", ""];
   const lines = ["## Issue-to-implementation assessment", "", `Source: [#${issue.number} ${markdownText(issue.title)}](${issue.url})`, "", "Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.", ""];
   if (issue.access !== "available") return [...lines, `The linked issue is ${issue.access}; its content was not included.`, ""];
@@ -128,14 +140,20 @@ function githubMergeabilitySummary(mergeable: string | undefined, mergeStateStat
   return details;
 }
 
+function githubPullRequestStatusSummary(state: string | undefined, mergeable: string | undefined, mergeStateStatus: string | undefined): { heading: string; details: string[] } {
+  if (state === "MERGED") return { heading: "Pull request status", details: ["This pull request has been merged. Mergeability is no longer applicable."] };
+  return { heading: "Mergeability", details: githubMergeabilitySummary(mergeable, mergeStateStatus) };
+}
+
 function markdownGitHubChecks(session: ReviewSession): string[] {
   const pullRequest = session.pullRequest;
   if (!pullRequest) return [];
   const lines = ["## GitHub checks", "", "Snapshot captured when this review was loaded. These statuses do not include a provider-supplied reason; this review did not fetch check or workflow details.", ""];
-  for (const detail of githubMergeabilitySummary(pullRequest.mergeable, pullRequest.mergeStateStatus)) lines.push(`- Mergeability: ${detail}`);
+  const pullRequestStatus = githubPullRequestStatusSummary(pullRequest.state, pullRequest.mergeable, pullRequest.mergeStateStatus);
+  for (const detail of pullRequestStatus.details) lines.push(`- ${pullRequestStatus.heading}: ${detail}`);
   for (const check of pullRequest.checks) {
     const status = githubCheckStatus(check.state);
-    lines.push(`- ${markdownText(check.name)} — **${status.label}**. ${status.explanation}${check.url ? ` [Open run in GitHub](${check.url})` : ""}`);
+    lines.push(`- ${markdownText(check.name)} — **${status.label}**. ${status.explanation}${check.url ? ` [View run in GitHub](${check.url})` : ""}`);
   }
   if (pullRequest.checks.length === 0) lines.push("- GitHub reported no checks for this pull request.");
   return [...lines, ""];
@@ -168,7 +186,7 @@ function markdown(session: ReviewSession): string {
     lines.push("");
   }
   lines.push("## First-pass review time", "", `About ${briefing.estimate.minutes} minutes for a first pass, based on the visible diff and review signals. This is a rough planning aid, not a risk score or quality rating.`, "", "Contributing factors:", "", ...briefing.estimate.factors.map((factor) => `- ${markdownText(factor.label)}: +${factor.minutes} min — ${markdownText(factor.detail)} (${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"})`), "");
-  if (session.pullRequest) lines.push(...markdownGitHubChecks(session), ...markdownIssueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment));
+  if (session.pullRequest) lines.push(...markdownGitHubChecks(session), ...markdownIssueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment, session.pullRequest.reviewerTask));
   if (outline?.phases.length) {
     lines.push("## Tour", "");
     let stopNumber = 0;
@@ -605,7 +623,15 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   const anchor = root.anchor ? `<code>${escapeHtml(commentLocation({ id: "export", path: root.anchor.path, side: root.anchor.side, line: root.anchor.line, endLine: root.anchor.endLine, body: "", lineContent: root.anchor.content, status: "active", createdAt: "", updatedAt: "" }))}</code>${root.anchor.selectedText ? `<blockquote>${escapeHtml(root.anchor.selectedText)}</blockquote>` : ""}` : "";
   return `<article class="comment"><strong>${escapeHtml(step ? `Tour stop: ${step.title}` : "Review-wide question")}</strong>${anchor}<p>${inlineHtml(root.body)}</p>${replies.map((reply) => `<p><strong>${reply.role === "agent" ? "Agent" : "Reviewer"}:</strong> ${inlineHtml(reply.body)}</p>`).join("")}</article>`;
   }).join("");
-  const issueAssessment = (issue: LinkedIssueContext | undefined, assessment: IssueAssessment | undefined) => {
+  const issueAssessment = (issue: LinkedIssueContext | undefined, assessment: IssueAssessment | undefined, reviewerTask?: ReviewerTaskContext) => {
+    if (reviewerTask) {
+      const intro = `<section class="issue-assessment"><h3>Task-to-implementation assessment</h3><p>Source: reviewer-supplied task description, stored locally in this review session.</p><p>Provider scope: this task description was not sent to GitHub. No issue, pull request, comment, or other provider resource was requested for this assessment.</p><details><summary>Task description</summary><pre>${escapeHtml(reviewerTask.body)}</pre></details>`;
+      if (reviewerTask.criteriaStatus === "not-found") return `${intro}<p>No explicit acceptance criteria were found in the saved task description.</p></section>`;
+      if (reviewerTask.assessmentError) return `${intro}<p>${escapeHtml(reviewerTask.assessmentError)}</p></section>`;
+      if (reviewerTask.assessmentPending) return `${intro}<p>Assessing the saved acceptance criteria in the background.</p></section>`;
+      if (!reviewerTask.assessment) return `${intro}<p>The saved task is ready to assess when a review agent is available.</p></section>`;
+      return `${intro}<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p>${reviewerTask.assessment.items.map((item) => `<article class="issue-criterion ${escapeHtml(item.status)}"><strong>${escapeHtml(item.criterion)}</strong><span class="issue-status">${escapeHtml(item.status)}</span><p>${inlineHtml(item.evidence)}</p><small>Repository evidence: ${item.evidencePaths.map(escapeHtml).join(", ") || "none cited"}</small></article>`).join("")}</section>`;
+    }
     if (!issue) return `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3><p>No linked issue was reported. No issue or related provider resources were fetched.</p><p>Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.</p></section>`;
     const intro = `<section class="issue-assessment"><h3>Issue-to-implementation assessment</h3><p><a href="${escapeHtml(issue.url)}" rel="noreferrer">#${issue.number} ${escapeHtml(issue.title)}</a></p><p>Provider scope: one same-repository closing issue; related issues and earlier pull requests were not requested. Only issue metadata and explicit criteria are retained.</p>`;
     if (issue.access !== "available") return `${intro}<p>The linked issue is ${escapeHtml(issue.access)}; its content was not included.</p></section>`;
@@ -615,16 +641,16 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
     return `${intro}<p class="assessment-disclaimer">Model assessment based on cited repository paths; statuses are not verified test results.</p>${assessment.items.map((item) => `<article class="issue-criterion ${escapeHtml(item.status)}"><strong>${escapeHtml(item.criterion)}</strong><span class="issue-status">${escapeHtml(item.status)}</span><p>${inlineHtml(item.evidence)}</p><small>Repository evidence: ${item.evidencePaths.map(escapeHtml).join(", ") || "none cited"}</small></article>`).join("")}</section>`;
   };
   const githubChecks = (pullRequest: NonNullable<ReviewSession["pullRequest"]>) => {
-    const mergeability = githubMergeabilitySummary(pullRequest.mergeable, pullRequest.mergeStateStatus);
+    const pullRequestStatus = githubPullRequestStatusSummary(pullRequest.state, pullRequest.mergeable, pullRequest.mergeStateStatus);
     const checks = pullRequest.checks.length === 0
       ? '<p>GitHub reported no checks for this pull request.</p>'
       : `<ul class="github-check-export-list">${pullRequest.checks.map((check) => {
         const status = githubCheckStatus(check.state);
-        return `<li class="github-check-export-item"><div><strong>${escapeHtml(check.name)}</strong><p><span class="github-check-export-status">${escapeHtml(status.label)}</span>${escapeHtml(status.explanation)}</p></div>${check.url ? `<a href="${escapeHtml(check.url)}" target="_blank" rel="noreferrer">Open run in GitHub</a>` : '<span class="muted">No check-run link was included.</span>'}</li>`;
+        return `<li class="github-check-export-item"><div><strong>${escapeHtml(check.name)}</strong><p><span class="github-check-export-status">${escapeHtml(status.label)}</span>${escapeHtml(status.explanation)}</p></div>${check.url ? `<a href="${escapeHtml(check.url)}" target="_blank" rel="noreferrer">View run in GitHub</a>` : '<span class="muted">No check-run link was included.</span>'}</li>`;
       }).join("")}</ul>`;
-    return `<section class="github-checks-export"><header><div><h3>GitHub checks</h3><p>Snapshot captured when this review was loaded.</p></div><a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">Open pull request in GitHub</a></header>${mergeability.length ? `<section class="github-mergeability-export"><h4>Mergeability</h4>${mergeability.map((detail) => `<p>${escapeHtml(detail)}</p>`).join("")}</section>` : ""}${checks}<p class="github-check-export-boundary">These statuses do not include a provider-supplied reason. This review did not fetch check or workflow details.</p></section>`;
+    return `<section class="github-checks-export"><header><div><h3>GitHub checks</h3><p>Snapshot captured when this review was loaded.</p></div><a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">View pull request in GitHub</a></header>${pullRequestStatus.details.length ? `<section class="github-mergeability-export"><h4>${pullRequestStatus.heading}</h4>${pullRequestStatus.details.map((detail) => `<p>${escapeHtml(detail)}</p>`).join("")}</section>` : ""}${checks}<p class="github-check-export-boundary">These statuses do not include a provider-supplied reason. This review did not fetch check or workflow details.</p></section>`;
   };
-  const pr = session.pullRequest ? `<section id="pull-request-metadata" class="pr-description"><span class="eyebrow">Pull request #${session.pullRequest.number} · ${escapeHtml(session.pullRequest.author)}</span><h2>${escapeHtml(session.pullRequest.title)}</h2><div class="prose">${renderedMarkdown(session.pullRequest.body || "No pull request description was provided.")}</div>${githubChecks(session.pullRequest)}${issueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment)}</section>` : "";
+  const pr = session.pullRequest ? `<section id="pull-request-metadata" class="pr-description"><span class="eyebrow">Pull request #${session.pullRequest.number} · ${escapeHtml(session.pullRequest.author)}</span><h2>${escapeHtml(session.pullRequest.title)}</h2><div class="prose">${renderedMarkdown(session.pullRequest.body || "No pull request description was provided.")}</div>${githubChecks(session.pullRequest)}${issueAssessment(session.pullRequest.linkedIssue, outline?.issueAssessment, session.pullRequest.reviewerTask)}</section>` : "";
   const fileButtons = session.comparison.files.map((file) => `<button type="button" class="file-button" data-file="${escapeHtml(file.path)}"><span class="status ${escapeHtml(file.status)}">${escapeHtml(file.status.slice(0, 1).toUpperCase())}</span><span><strong>${escapeHtml(file.path)}</strong><small>${escapeHtml(file.status)}</small></span><span class="file-stats"><b>+${file.additions}</b> <i>−${file.deletions}</i></span></button>`).join("");
   const diffs = `${briefingSection}${estimateSection}${session.comparison.files.map((file, index) => `<section class="exported-diff" data-diff-file="${escapeHtml(file.path)}" hidden>${fileDiff(file, findings, session, index, highlighted, markdownPreviews.get(file.path))}</section>`).join("")}` + (questions ? `</section><section class="view comments" data-view-panel="questions" hidden><h2>Questions</h2>${questions}` : "");
   const allFindings = findings.map(findingCard).join("");
