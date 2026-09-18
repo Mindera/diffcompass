@@ -850,7 +850,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .architecture-legend i.touched { border-color: var(--architecture-touched); }
 .architecture-legend i.removed { border-color: var(--architecture-removed); border-style: dashed; }
 .architecture-legend i.external { border-color: var(--architecture-external); border-width: 1px; border-style: dashed; }
-.adaptive-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 16px; color: var(--text-soft); font-size: 10px; font-weight: 650; }
+.adaptive-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 16px; margin: 0 0 12px; color: var(--text-soft); font-size: 10px; font-weight: 650; }
 .adaptive-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .adaptive-legend i { box-sizing: border-box; width: 18px; height: 12px; border: 2px solid var(--accent); border-radius: 3px; background: var(--surface-card); }
 .adaptive-legend i.state-start { border-radius: 50%; border-color: var(--green); }

@@ -1136,6 +1136,7 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain('`${architectureLegend()}${architectures.map');
   expect(styles).toContain(".architecture-diagram.dragging");
   expect(styles).toContain(".architecture-legend { grid-column: 1 / -1;");
+  expect(styles).toContain(".adaptive-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 16px; margin: 0 0 12px;");
   expect(styles).toContain(".architecture-legend i.removed { border-color: var(--architecture-removed); border-style: dashed; }");
   expect(styles).toContain(".architecture-viewer-dialog[open]");
   expect(styles).toContain(".architecture-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));");

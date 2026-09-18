@@ -260,7 +260,7 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain("App lifecycle");
   expect(artifact.content).toContain('data-view="adaptive"');
   expect(artifact.content).toContain('data-view-panel="adaptive"');
-  expect(artifact.content).toContain('class="adaptive-legend"');
+  expect(artifact.content).toContain('class="adaptive-legend" style="margin-bottom:12px"');
   expect(artifact.content).toContain('id="architecture-viewer"');
   expect(artifact.content).toContain('id="focus-mode-toggle"');
   expect(artifact.content).toContain('id="shortcuts-button"');
