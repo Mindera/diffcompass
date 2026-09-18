@@ -115,6 +115,54 @@ export interface TourOutline {
   callFlows: CallFlow[];
   flows: ReviewFlow[];
   findings: ReviewFinding[];
+  issueAssessment?: IssueAssessment;
+}
+
+export type IssueAccess = "available" | "inaccessible" | "unavailable";
+export type IssueCriteriaStatus = "found" | "not-found" | "malformed" | "unavailable";
+
+export interface AcceptanceCriterion {
+  id: string;
+  text: string;
+}
+
+export interface LinkedIssueContext {
+  repository: string;
+  number: number;
+  url: string;
+  title: string;
+  author?: string;
+  state?: string;
+  access: IssueAccess;
+  criteriaStatus: IssueCriteriaStatus;
+  acceptanceCriteria: AcceptanceCriterion[];
+}
+
+export interface IssueAssessmentItem {
+  criterionId: string;
+  criterion: string;
+  status: "implemented" | "missing" | "unclear";
+  evidence: string;
+  evidencePaths: string[];
+  pathExplanations?: Array<{ path: string; explanation: string }>;
+  basis: "model-assessment";
+}
+
+export interface IssueAssessment {
+  issueNumber: number;
+  issueUrl: string;
+  items: IssueAssessmentItem[];
+}
+
+/** A reviewer-owned fallback when GitHub has no usable linked issue. It is never provider data. */
+export interface ReviewerTaskContext {
+  body: string;
+  criteriaStatus: "found" | "not-found";
+  acceptanceCriteria: AcceptanceCriterion[];
+  assessmentPending?: boolean;
+  assessment?: { items: IssueAssessmentItem[] };
+  assessmentError?: string;
+  updatedAt: string;
 }
 
 export interface CallFlowLocation {
@@ -299,6 +347,8 @@ export interface PullRequestContext {
   workspaceRoot: string;
   refNamespace: string;
   reviewDecision?: string;
+  /** GitHub's current pull request state, when it is available in the snapshot. */
+  state?: "OPEN" | "CLOSED" | "MERGED";
   /** GitHub's mergeability metadata is absent while GitHub is still calculating it. */
   mergeable?: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
   mergeStateStatus?: string;
@@ -313,6 +363,12 @@ export interface PullRequestContext {
     comments: Array<{ id: string; author: string; body: string; url: string }>;
   }>;
   threadsTruncated: boolean;
+  linkedIssue?: LinkedIssueContext;
+  reviewerTask?: ReviewerTaskContext;
+  providerScope?: {
+    linkedIssue: "same-repository-closing-issue" | "none" | "inaccessible" | "unavailable";
+    relatedResources: "not-requested";
+  };
   publication?: {
     intentId: string;
     outcome: Extract<ReviewOutcome, "accepted" | "feedback">;
@@ -451,7 +507,7 @@ export interface AgentSelection {
 
 export interface AgentRunActivity {
   id: string;
-  kind: "tour.outline" | "tour.explanation" | "review.question";
+  kind: "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment";
   label: string;
   status: "waiting" | "running" | "completed" | "failed";
   prompt: string;
@@ -479,7 +535,7 @@ export interface PersistedReviewSession {
       sequence: number;
       id: string;
       type: "agent.prompt";
-      kind: "tour.outline" | "tour.explanation" | "review.question";
+      kind: "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment";
       prompt: string;
       createdAt: string;
     };

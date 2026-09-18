@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPullRequestWorkspace, loadPullRequestContext, parsePullRequestIdentifier, publishPullRequestReview, removePullRequestWorkspace, updatePullRequestWorkspace, type GitHubRunner } from "../src/github.ts";
+import { createPullRequestWorkspace, extractAcceptanceCriteria, loadPullRequestContext, parsePullRequestIdentifier, publishPullRequestReview, removePullRequestWorkspace, updatePullRequestWorkspace, type GitHubRunner } from "../src/github.ts";
 import { runProcess } from "../src/process.ts";
 import type { PullRequestContext, ReviewComment } from "../src/types.ts";
 
@@ -26,12 +26,12 @@ function metadata(head = "b".repeat(40), base = "a".repeat(40)) {
   };
 }
 
-function githubRunner(options: { head?: string; base?: string; localRepository?: string; reviews?: unknown[]; post?: (body: string) => void } = {}): GitHubRunner {
+function githubRunner(options: { head?: string; base?: string; localRepository?: string; reviews?: unknown[]; threads?: unknown[]; post?: (body: string) => void } = {}): GitHubRunner {
   return (async (command, _cwd, _accepted, processOptions) => {
     let value: unknown;
     if (command.slice(0, 3).join(" ") === "gh repo view") value = { nameWithOwner: options.localRepository ?? "acme/widgets" };
     else if (command.slice(0, 3).join(" ") === "gh pr view") value = metadata(options.head, options.base);
-    else if (command.includes("graphql")) value = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } };
+    else if (command.includes("graphql")) value = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: options.threads ?? [] } } } } };
     else if (command.at(-1)?.includes("reviews?per_page")) value = options.reviews ?? [];
     else if (command.includes("--method")) { options.post?.(processOptions?.input ?? ""); value = { id: 42, html_url: "https://github.com/acme/widgets/pull/7#pullrequestreview-42" }; }
     else throw new Error(`Unexpected command: ${command.join(" ")}`);
@@ -55,6 +55,7 @@ test("metadata loading fails closed on repository mismatch and invalid JSON", as
 
 test("metadata loading preserves mergeability for review briefings", async () => {
   const context = await loadPullRequestContext("/tmp", "7", undefined, githubRunner());
+  expect(context.state).toBeUndefined();
   expect(context.mergeable).toBeUndefined();
   expect(context.mergeStateStatus).toBeUndefined();
   const runner = githubRunner();
@@ -65,6 +66,125 @@ test("metadata loading preserves mergeability for review briefings", async () =>
   }) as GitHubRunner;
   const loaded = await loadPullRequestContext("/tmp", "7", undefined, withMergeability);
   expect(loaded).toMatchObject({ mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" });
+
+  const merged = (async (command, cwd, accepted, options) => {
+    const result = await runner(command, cwd, accepted, options);
+    if (command.slice(0, 3).join(" ") === "gh pr view") result.stdout = JSON.stringify({ ...metadata(), state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" });
+    return result;
+  }) as GitHubRunner;
+  expect((await loadPullRequestContext("/tmp", "7", undefined, merged)).state).toBe("MERGED");
+
+  const inProgress = (async (command, cwd, accepted, options) => {
+    const result = await runner(command, cwd, accepted, options);
+    if (command.slice(0, 3).join(" ") === "gh pr view") result.stdout = JSON.stringify({ ...metadata(), statusCheckRollup: [{ name: "CI", conclusion: "", status: "IN_PROGRESS" }] });
+    return result;
+  }) as GitHubRunner;
+  expect((await loadPullRequestContext("/tmp", "7", undefined, inProgress)).checks).toEqual([{ name: "CI", state: "IN_PROGRESS", url: undefined }]);
+});
+
+test("metadata loading keeps the original review-thread location after its diff anchor is outdated", async () => {
+  const context = await loadPullRequestContext("/tmp", "7", undefined, githubRunner({
+    threads: [{
+      id: "thread-1", isResolved: true, path: "feature/legal/LegalDataMapper.kt",
+      line: null, startLine: null, diffSide: "RIGHT",
+      originalLine: 42, originalStartLine: null,
+      comments: { nodes: [{ id: "comment-1", author: { login: "reviewer" }, body: "Please simplify this.", url: "https://github.com/acme/widgets/pull/7#discussion_r1" }] },
+    }],
+  }));
+
+  expect(context.threads).toEqual([expect.objectContaining({
+    id: "thread-1", path: "feature/legal/LegalDataMapper.kt", line: 42, side: "new", resolved: true,
+  })]);
+});
+
+test("metadata loading keeps usable commit author labels when GitHub leaves logins blank", async () => {
+  const runner = githubRunner();
+  const blankLogin = (async (command, cwd, accepted, options) => {
+    const result = await runner(command, cwd, accepted, options);
+    if (command.slice(0, 3).join(" ") === "gh pr view") {
+      result.stdout = JSON.stringify({
+        ...metadata(),
+        commits: [{ oid: "b".repeat(40), messageHeadline: "change", authors: [{ login: "", name: "Pedro Seruca" }, { login: "", name: "" }, null] }],
+      });
+    }
+    return result;
+  }) as GitHubRunner;
+
+  expect((await loadPullRequestContext("/tmp", "7", undefined, blankLogin)).commits).toEqual([
+    { oid: "b".repeat(40), headline: "change", authors: ["Pedro Seruca"] },
+  ]);
+});
+
+test("extracts only bounded explicit acceptance criteria", () => {
+  expect(extractAcceptanceCriteria(`# Acceptance Criteria\n\n- [ ] Users can retry a failed request\n- [x] Errors include a request id\n\nImplementation notes\n- This is not a criterion`)).toEqual([
+    { id: "criterion-1", text: "Users can retry a failed request" },
+    { id: "criterion-2", text: "Errors include a request id" },
+  ]);
+  expect(extractAcceptanceCriteria("AC1: Return a stable error\nAC2 - Preserve the original status")).toEqual([
+    { id: "criterion-1", text: "Return a stable error" },
+    { id: "criterion-2", text: "Preserve the original status" },
+  ]);
+  expect(extractAcceptanceCriteria("Goal: Render legal documents\n\nAC:\n- A profile CTA opens each document\n- Content comes from the CMS")).toEqual([
+    { id: "criterion-1", text: "A profile CTA opens each document" },
+    { id: "criterion-2", text: "Content comes from the CMS" },
+  ]);
+  expect(extractAcceptanceCriteria("# Implementation checklist\n- [ ] Ship the feature\n\n## Notes\n- [ ] This is not an acceptance criterion")).toEqual([]);
+  expect(extractAcceptanceCriteria("## Acceptance Criteria\n- [ ] A request can be retried\n  - [ ] Add a retry metric\n- [ ] Errors include a request id")).toEqual([
+    { id: "criterion-1", text: "A request can be retried" },
+    { id: "criterion-2", text: "Errors include a request id" },
+  ]);
+  expect(extractAcceptanceCriteria("No explicit acceptance criteria here")).toEqual([]);
+  expect(extractAcceptanceCriteria(`\u0000${"x".repeat(100_000)}`)).toEqual([]);
+});
+
+test("loads one same-repository linked issue and degrades when issue access is unavailable", async () => {
+  const commands: string[][] = [];
+  const runner = (async (command, cwd, accepted, options) => {
+    commands.push(command);
+    if (command.slice(0, 3).join(" ") === "gh repo view") return { stdout: JSON.stringify({ nameWithOwner: "acme/widgets" }), stderr: "", exitCode: 0 };
+    if (command.slice(0, 3).join(" ") === "gh pr view") return { stdout: JSON.stringify({ ...metadata(), closingIssuesReferences: [{ number: 12, title: "Retry requests", url: "https://github.com/acme/widgets/issues/12" }] }), stderr: "", exitCode: 0 };
+    if (command[0] === "gh" && command[1] === "issue") return { stdout: JSON.stringify({ number: 12, title: "Retry requests", body: "## Acceptance Criteria\n- [ ] A request can be retried", url: "https://github.com/acme/widgets/issues/12", state: "OPEN", author: { login: "issue-author" } }), stderr: "", exitCode: 0 };
+    if (command.includes("graphql")) return { stdout: JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }), stderr: "", exitCode: 0 };
+    throw new Error(`Unexpected command: ${command.join(" ")}`);
+  }) as GitHubRunner;
+  const context = await loadPullRequestContext("/tmp", "7", undefined, runner);
+  expect(context.linkedIssue).toMatchObject({ number: 12, access: "available", criteriaStatus: "found", acceptanceCriteria: [{ text: "A request can be retried" }] });
+  expect(context.providerScope).toEqual({ linkedIssue: "same-repository-closing-issue", relatedResources: "not-requested" });
+  expect(commands.filter((command) => command[1] === "issue")).toHaveLength(1);
+
+  const inaccessible = (async (command, cwd, accepted, options) => {
+    if (command[0] === "gh" && command[1] === "issue") throw new Error("HTTP 404: not found");
+    return runner(command, cwd, accepted, options);
+  }) as GitHubRunner;
+  const degraded = await loadPullRequestContext("/tmp", "7", undefined, inaccessible);
+  expect(degraded.linkedIssue).toMatchObject({ number: 12, access: "inaccessible", criteriaStatus: "unavailable" });
+  expect(degraded.providerScope?.relatedResources).toBe("not-requested");
+
+  const malformed = (async (command, cwd, accepted, options) => {
+    if (command[0] === "gh" && command[1] === "issue") return { stdout: JSON.stringify({ number: 12, title: "Retry requests", body: null, url: "https://github.com/acme/widgets/issues/12" }), stderr: "", exitCode: 0 };
+    return runner(command, cwd, accepted, options);
+  }) as GitHubRunner;
+  const malformedContext = await loadPullRequestContext("/tmp", "7", undefined, malformed);
+  expect(malformedContext.linkedIssue).toMatchObject({ access: "available", criteriaStatus: "malformed", acceptanceCriteria: [] });
+
+  const foreignReferenceCommands: string[][] = [];
+  const foreignReference = (async (command, cwd, accepted, options) => {
+    foreignReferenceCommands.push(command);
+    if (command.slice(0, 3).join(" ") === "gh pr view") return { stdout: JSON.stringify({ ...metadata(), closingIssuesReferences: [{ number: 12, title: "Foreign issue", url: "https://github.com/other/repository/issues/12" }] }), stderr: "", exitCode: 0 };
+    if (command[0] === "gh" && command[1] === "issue") throw new Error("An unbound issue reference must not be fetched.");
+    return runner(command, cwd, accepted, options);
+  }) as GitHubRunner;
+  const noLinkedIssue = await loadPullRequestContext("/tmp", "7", undefined, foreignReference);
+  expect(noLinkedIssue.linkedIssue).toBeUndefined();
+  expect(noLinkedIssue.providerScope).toEqual({ linkedIssue: "none", relatedResources: "not-requested" });
+  expect(foreignReferenceCommands.filter((command) => command[1] === "issue")).toHaveLength(0);
+
+  const mismatchedIssueUrl = (async (command, cwd, accepted, options) => {
+    if (command[0] === "gh" && command[1] === "issue") return { stdout: JSON.stringify({ number: 12, title: "Retry requests", body: "## Acceptance Criteria\n- [ ] A request can be retried", url: "https://github.com/other/repository/issues/12" }), stderr: "", exitCode: 0 };
+    return runner(command, cwd, accepted, options);
+  }) as GitHubRunner;
+  const rejectedIssue = await loadPullRequestContext("/tmp", "7", undefined, mismatchedIssueUrl);
+  expect(rejectedIssue.linkedIssue).toMatchObject({ number: 12, access: "unavailable", criteriaStatus: "unavailable", acceptanceCriteria: [] });
 });
 
 async function git(cwd: string, ...args: string[]) { return runProcess(["git", ...args], cwd); }

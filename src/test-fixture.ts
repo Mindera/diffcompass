@@ -6,8 +6,8 @@ import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import type { PersistedReviewSession } from "./types.ts";
 
-const FIXTURE_SCHEMA = 1;
-const FIXTURE_DIRECTORY = "code-review-tour-test-fixture-v1";
+const FIXTURE_SCHEMA = 2;
+const FIXTURE_DIRECTORY = "code-review-tour-test-fixture-v2";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
 function pngCrc32(bytes: Uint8Array): number {
@@ -174,12 +174,12 @@ async function git(repository: string, ...args: string[]): Promise<string> {
   return (await runProcess(["git", ...args], repository)).stdout.trim();
 }
 
-function persistedFixture(repositoryRoot: string, browserToken: string): PersistedReviewSession {
+function persistedFixture(repositoryRoot: string, browserToken: string, baseOid: string, headOid: string): PersistedReviewSession {
   return {
     schemaVersion: 2,
     name: "Complete product tour fixture",
     repositoryRoot,
-    base: "origin/main",
+    base: baseOid,
     browserToken,
     outline: {
       title: "Discounted checkout and receipt output",
@@ -319,6 +319,43 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
         pinScope: "symbol",
         status: "open",
       }],
+      issueAssessment: {
+        issueNumber: 24,
+        issueUrl: "https://github.com/fixture/checkout/issues/24",
+        items: [{
+          criterionId: "criterion-1",
+          criterion: "Discounts use a fractional percentage.",
+          status: "implemented",
+          evidence: "The changed discount calculation multiplies the amount by the supplied fractional percentage.",
+          evidencePaths: ["src/cart.ts"],
+          pathExplanations: [{ path: "src/cart.ts", explanation: "The changed calculation applies the supplied fractional percentage to the amount." }],
+          basis: "model-assessment",
+        }, {
+          criterionId: "criterion-2",
+          criterion: "Receipt output shows totals with two decimal places.",
+          status: "implemented",
+          evidence: "The changed receipt formatter renders the amount with toFixed(2).",
+          evidencePaths: ["src/receipt.ts"],
+          pathExplanations: [{ path: "src/receipt.ts", explanation: "The formatter renders the calculated amount with two decimal places." }],
+          basis: "model-assessment",
+        }, {
+          criterionId: "criterion-3",
+          criterion: "Reject discounts outside the supported fractional range.",
+          status: "missing",
+          evidence: "The changed discount contract accepts a number but does not add range validation.",
+          evidencePaths: ["src/cart.ts"],
+          pathExplanations: [{ path: "src/cart.ts", explanation: "The changed input path accepts the discount value without a range guard." }],
+          basis: "model-assessment",
+        }, {
+          criterionId: "criterion-4",
+          criterion: "Localize receipt output for the shopper's currency.",
+          status: "unclear",
+          evidence: "The changed paths do not establish a currency or localization contract.",
+          evidencePaths: [],
+          pathExplanations: [],
+          basis: "model-assessment",
+        }],
+      },
     },
     currentStepIndex: 0,
     comments: [{
@@ -391,6 +428,46 @@ function persistedFixture(repositoryRoot: string, browserToken: string): Persist
       },
     },
     findingGenerationEnabled: true,
+    pullRequest: {
+      repository: "fixture/checkout",
+      number: 42,
+      url: "https://github.com/fixture/checkout/pull/42",
+      title: "Add discounted receipt output",
+      body: "Fixes #24\n\nAdds a discount-aware receipt formatter.",
+      author: "fixture-author",
+      baseRefName: "main",
+      baseRefOid: baseOid,
+      headRefName: "fixture-tour",
+      headRefOid: headOid,
+      sourceRepositoryRoot: repositoryRoot,
+      workspaceRoot: repositoryRoot,
+      refNamespace: "refs/code-review-tour/fixture",
+      reviewDecision: "REVIEW_REQUIRED",
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      commits: [{ oid: headOid, headline: "Add discounted receipt output", authors: ["fixture-author"] }],
+      checks: [{ name: "fixture tests", state: "SUCCESS" }],
+      threads: [],
+      threadsTruncated: false,
+      linkedIssue: {
+        repository: "fixture/checkout",
+        number: 24,
+        url: "https://github.com/fixture/checkout/issues/24",
+        title: "Support discounted receipt output",
+        author: "fixture-author",
+        state: "OPEN",
+        access: "available",
+        criteriaStatus: "found",
+        acceptanceCriteria: [
+          { id: "criterion-1", text: "Discounts use a fractional percentage." },
+          { id: "criterion-2", text: "Receipt output shows totals with two decimal places." },
+          { id: "criterion-3", text: "Reject discounts outside the supported fractional range." },
+          { id: "criterion-4", text: "Localize receipt output for the shopper's currency." },
+        ],
+      },
+      providerScope: { linkedIssue: "same-repository-closing-issue", relatedResources: "not-requested" },
+      updatedAt: FIXTURE_TIME,
+    },
     revision: 4,
     status: "open",
     selection: {
@@ -447,7 +524,10 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
   await git(repository, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
   await git(repository, "switch", "-c", "fixture-tour");
   await writeFiles(repository, workingFiles);
+  await git(repository, "add", ".");
+  await git(repository, "commit", "-m", "fixture pull request");
+  const headOid = await git(repository, "rev-parse", "HEAD");
   const canonicalRepository = await realpath(repository);
-  await savePersistedSession(stateFile, persistedFixture(canonicalRepository, crypto.randomUUID()));
+  await savePersistedSession(stateFile, persistedFixture(canonicalRepository, crypto.randomUUID(), baseOid, headOid));
   return { root, repository: canonicalRepository, stateFile: await realpath(stateFile), created: true };
 }

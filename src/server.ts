@@ -41,7 +41,7 @@ const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
-  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -58,6 +58,14 @@ function errorResponse(error: unknown): Response {
   if (error instanceof ReviewError) return json({ error: error.message }, 409);
   if (error instanceof ProcessError) {
     console.error(error);
+    const githubReviewPublication = error.command[0] === "gh" &&
+      error.command.includes("api") &&
+      error.command.some((part) => /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews$/.test(part)) &&
+      error.command.includes("--method") && error.command.includes("POST");
+    const githubStatus = /\(HTTP (\d{3})\)/.exec(error.stderr)?.[1];
+    if (githubReviewPublication && githubStatus === "422") {
+      return json({ error: "GitHub rejected this review (HTTP 422). It was not published. GitHub can reject approvals on your own pull request." }, 422);
+    }
     return json({ error: "The agent command failed. Check the server terminal for details." }, 502);
   }
   const requestId = crypto.randomUUID();
@@ -558,6 +566,11 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         await readJsonObject(request);
         return json(await session.refreshPullRequest());
       }
+      if (request.method === "POST" && url.pathname === "/api/pull-request/reviewer-task") {
+        const input = await readJsonObject(request, 128 * 1024);
+        exactKeys(input, ["body"]);
+        return json(await session.saveReviewerTask(requiredString(input.body, "body", 100_000)));
+      }
       if (request.method === "POST" && url.pathname === "/api/github/review") {
         const input = await readJsonObject(request);
         exactKeys(input, ["outcome", "headOid", "confirm", "decision", "note"]);
@@ -570,12 +583,16 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/close") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["outcome", "decision", "note"]);
+        exactKeys(input, ["outcome", "decision", "note", "localOnly"]);
         const outcome = parseOutcome(input.outcome);
         const decision = input.decision === undefined
           ? (outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel")
           : enumValue(input.decision, "decision", ["approve", "approve-with-comments", "request-changes", "cancel"]);
-        return json(await session.close(outcome, { decision, note: optionalString(input.note, "note", 8_000) }));
+        const localOnly = input.localOnly === true;
+        if (localOnly && (outcome !== "accepted" || !["approve", "approve-with-comments"].includes(decision))) {
+          throw new HttpError(422, "Local-only closure is available only for pull request approval.");
+        }
+        return json(await session.close(outcome, { decision, note: optionalString(input.note, "note", 8_000), localOnly }));
       }
       if (url.pathname.startsWith("/api/")) throw new HttpError(404, "API endpoint not found.");
 

@@ -24,7 +24,7 @@
         <button id="findings-tab" class="tab" data-tab="findings" role="tab" aria-selected="false" aria-controls="findings-view" tabindex="-1">Findings <span id="findings-tab-count" class="tab-count hidden">0</span></button>
         <button id="activity-tab" class="tab" data-tab="activity" role="tab" aria-selected="false" aria-controls="activity-view" tabindex="-1">Activity <span id="activity-tab-count" class="tab-count hidden">0</span></button>
         <button id="conversations-tab" class="tab" data-tab="conversations" role="tab" aria-selected="false" aria-controls="conversations-view" tabindex="-1">Conversations</button>
-        <button id="screenshots-tab" class="tab hidden" data-tab="screenshots" role="tab" aria-selected="false" aria-controls="screenshots-view" tabindex="-1">Media <span id="screenshots-tab-count" class="tab-count">0</span></button>
+        <button id="screenshots-tab" class="tab" data-tab="screenshots" role="tab" aria-selected="false" aria-controls="screenshots-view" tabindex="-1">Media <span id="screenshots-tab-count" class="tab-count hidden">0</span></button>
         <button id="pull-request-tab" class="tab hidden" data-tab="pull-request" role="tab" aria-selected="false" aria-controls="pull-request-view" tabindex="-1">Pull request</button>
       </div>
       <div class="actions">
@@ -245,6 +245,7 @@
         <div id="pull-request-view" class="review-view hidden" role="tabpanel" aria-labelledby="pull-request-tab">
           <div id="pull-request-content" class="pull-request-content"></div>
         </div>
+        <button id="pull-request-return" class="button pull-request-return hidden" type="button">↩ Return to pull request</button>
         <button id="current-step-return" class="button current-step-return hidden" type="button">↩ Current step</button>
       </section>
 
@@ -321,6 +322,11 @@
                 <summary><span class="planning-spinner" aria-hidden="true"></span><span id="agent-activity-title">Agent activity</span></summary>
                 <div id="agent-activity-body" class="agent-activity-body"></div>
               </details>
+              <section id="reviewer-task-assessment-status" class="reviewer-task-assessment-status hidden" aria-live="polite">
+                <span id="reviewer-task-assessment-status-title" class="eyebrow">Task assessment</span>
+                <p id="reviewer-task-assessment-status-body"></p>
+                <button id="view-reviewer-task-assessment" class="text-button hidden" type="button">View assessment</button>
+              </section>
               <section id="step-discussion" class="step-discussion" aria-label="Current stop discussion">
                 <div><span class="eyebrow">Current stop</span><p id="step-discussion-scope">Comments here stay attached to this tour stop.</p></div>
                 <button id="comment-stop" class="button secondary" type="button">Add stop comment</button>
@@ -407,6 +413,23 @@
       </form>
     </dialog>
 
+    <dialog id="github-review-confirmation-dialog" class="github-review-confirmation-dialog" aria-labelledby="github-review-confirmation-title" aria-describedby="github-review-confirmation-description">
+      <form id="github-review-confirmation-form">
+        <div class="eyebrow">GitHub publication</div>
+        <h2 id="github-review-confirmation-title">Publish approval?</h2>
+        <p id="github-review-confirmation-description" class="dialog-description"></p>
+        <dl class="github-review-confirmation-summary">
+          <div><dt>Action</dt><dd id="github-review-confirmation-action"></dd></div>
+          <div><dt>Pull request</dt><dd id="github-review-confirmation-pull-request"></dd></div>
+          <div><dt>Revision</dt><dd><code id="github-review-confirmation-revision"></code></dd></div>
+          <div><dt>Inline comments</dt><dd id="github-review-confirmation-comments"></dd></div>
+        </dl>
+        <label id="github-review-confirmation-local-only-option" class="github-review-confirmation-local-only"><input id="github-review-confirmation-local-only" type="checkbox"> <span><strong>Approve tour without approving the pull request</strong><small>Closes this local review as approved. No GitHub review is created.</small></span></label>
+        <p id="github-review-confirmation-note" class="github-review-confirmation-note">This action publishes a GitHub review. Only the selected inline comments are included.</p>
+        <div class="dialog-actions"><button id="cancel-github-review-confirmation" class="button secondary" type="button">Cancel</button><button id="submit-github-review-confirmation" class="button primary" type="submit">Publish approval</button></div>
+      </form>
+    </dialog>
+
     <dialog id="checkpoint-dialog" class="checkpoint-dialog" aria-labelledby="checkpoint-title" aria-describedby="checkpoint-description">
       <form id="checkpoint-form">
         <div class="eyebrow">Review checkpoint</div>
@@ -480,6 +503,31 @@
         <div id="architecture-viewer-diagram" class="sequence-diagram architecture-diagram" role="img" tabindex="0"></div>
         <p id="architecture-viewer-help" class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
       </div>
+    </dialog>
+
+    <dialog id="issue-assessment-dialog" class="issue-assessment-dialog" aria-labelledby="issue-assessment-title" aria-describedby="issue-assessment-description">
+      <div class="eyebrow">Model assessment</div>
+      <h2 id="issue-assessment-title">How this assessment is grounded</h2>
+      <div id="issue-assessment-description" class="issue-assessment-dialog-content"></div>
+      <div class="dialog-actions"><button id="close-issue-assessment" class="button secondary" type="button">Close</button></div>
+    </dialog>
+
+    <dialog id="reviewer-task-dialog" class="reviewer-task-dialog" aria-labelledby="reviewer-task-title" aria-describedby="reviewer-task-description">
+      <form id="reviewer-task-form">
+        <div class="eyebrow">Local review context</div>
+        <h2 id="reviewer-task-title">Add task description</h2>
+        <p id="reviewer-task-description" class="dialog-description">Write the task in Markdown, then preview it before saving. Use a <code>## Acceptance Criteria</code> or <code>AC:</code> list, or numbered <code>AC1:</code> lines. The description is stored in this review session and supplied to the review agent; it is not sent to GitHub or used to fetch provider resources.</p>
+        <div class="reviewer-task-field">
+          <div class="reviewer-task-editor-heading"><label for="reviewer-task-body">Task description</label><span>Tab indents selected lines · Shift+Tab removes indentation</span></div>
+          <div class="description-mode reviewer-task-mode" role="group" aria-label="Task description editor">
+            <button class="text-button active" type="button" data-reviewer-task-mode="write" aria-pressed="true">Write</button>
+            <button class="text-button" type="button" data-reviewer-task-mode="preview" aria-pressed="false">Preview</button>
+          </div>
+          <textarea id="reviewer-task-body" name="body" rows="14" maxlength="100000" required placeholder="## Acceptance Criteria&#10;- [ ] Describe the observable requirement"></textarea>
+          <div id="reviewer-task-preview" class="reviewer-task-preview rendered-markdown" tabindex="0" aria-label="Task description Markdown preview" hidden></div>
+        </div>
+        <div class="dialog-actions"><button id="cancel-reviewer-task" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Save and assess</button></div>
+      </form>
     </dialog>
 
     <dialog id="html-export-dialog" aria-labelledby="html-export-title" aria-describedby="html-export-description">

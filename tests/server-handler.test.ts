@@ -45,6 +45,28 @@ test("session API exposes the evidence briefing without a second agent pass", as
   expect(payload.needsAttention.estimate.factors.length).toBeGreaterThan(1);
 });
 
+test("reviewer task input is authenticated, bounded, and retained locally", async () => {
+  const { session, fetch } = fixture();
+  (session as unknown as { pullRequest: unknown }).pullRequest = {
+    repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "reviewer",
+    baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/widgets", workspaceRoot: "/private/tmp/review-tour-handler", refNamespace: "refs/code-review-tour/test",
+    commits: [], checks: [], threads: [], threadsTruncated: false, providerScope: { linkedIssue: "none", relatedResources: "not-requested" }, updatedAt: "now",
+  };
+  const saved = await fetch(authorizedRequest(session, "/api/pull-request/reviewer-task", {
+    body: "A local description without explicit acceptance criteria.",
+  }));
+  expect(saved.status).toBe(200);
+  expect((await saved.json()).pullRequest.reviewerTask).toMatchObject({
+    body: "A local description without explicit acceptance criteria.",
+    criteriaStatus: "not-found",
+    acceptanceCriteria: [],
+  });
+  const malformed = await fetch(authorizedRequest(session, "/api/pull-request/reviewer-task", {
+    body: "valid", unexpected: true,
+  }));
+  expect(malformed.status).toBe(422);
+});
+
 test("update endpoints expose availability and require an authenticated click to install", async () => {
   const { session } = fixture();
   let installs = 0;
@@ -212,6 +234,7 @@ test("review shell permits authenticated video blobs without loosening script or
     const [name, ...sources] = directive.trim().split(/\s+/);
     return [name, sources];
   }));
+  expect(directives.get("img-src")).toContain("https:");
   expect(directives.get("media-src")).toEqual(["'self'", "blob:"]);
   expect(directives.get("script-src")).toEqual(["'self'"]);
   expect(directives.get("connect-src")).toEqual(["'self'"]);

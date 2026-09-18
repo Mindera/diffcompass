@@ -2,12 +2,119 @@ import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { ReviewError } from "./errors.ts";
 import { runProcess } from "./process.ts";
-import type { PullRequestContext, ReviewComment, ReviewOutcome } from "./types.ts";
+import type { LinkedIssueContext, PullRequestContext, ReviewComment, ReviewOutcome } from "./types.ts";
 
 export type GitHubRunner = typeof runProcess;
 type Runner = GitHubRunner;
 
 interface PullRequestIdentifier { repository?: string; number: number }
+
+const ISSUE_BODY_LIMIT = 100_000;
+
+function isCanonicalIssueUrl(value: unknown, repository: string, number: number): boolean {
+  if (typeof value !== "string" || !value || value.length > 4_096) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.host === "github.com" && !url.username && !url.password && !url.search && !url.hash &&
+      url.pathname.toLocaleLowerCase() === `/${repository}/issues/${number}`.toLocaleLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/** Extract only explicit, checklist-like acceptance criteria from an issue body. */
+export function extractAcceptanceCriteria(body: string): LinkedIssueContext["acceptanceCriteria"] {
+  if (body.length > ISSUE_BODY_LIMIT || body.includes("\u0000")) return [];
+  const lines = body.split(/\r?\n/);
+  const criteria: Array<{ id: string; text: string }> = [];
+  const section = lines.findIndex((line) => /^\s*(?:#{1,6}\s*)?(?:acceptance criteria|ac)\s*:?\s*$/i.test(line));
+  const candidates = section >= 0
+    ? (() => {
+      const result: string[] = [];
+      let started = false;
+      let listIndent: number | undefined;
+      for (const line of lines.slice(section + 1)) {
+        if (/^\s*#{1,6}\s+/.test(line)) break;
+        if (!line.trim()) continue;
+        const match = /^(\s*)(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?(.+)$/.exec(line) ?? /^(\s*)\[[ xX]\]\s+(.+)$/.exec(line);
+        if (!match) {
+          if (started) break;
+          continue;
+        }
+        const indent = match[1]!.length;
+        if (listIndent === undefined) listIndent = indent;
+        if (indent !== listIndent) {
+          if (indent < listIndent) break;
+          continue;
+        }
+        result.push(match[2]!);
+        started = true;
+      }
+      return result;
+    })()
+    : lines.map((line) => /^(?:AC|criterion)\s*\d+\s*[:.)-]\s*(.+)$/i.exec(line.trim())?.[1]).filter((line): line is string => Boolean(line));
+  for (const text of candidates) {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized || normalized.length > 4_000 || criteria.some((candidate) => candidate.text === normalized)) continue;
+    criteria.push({ id: `criterion-${criteria.length + 1}`, text: normalized });
+    if (criteria.length >= 20) break;
+  }
+  return criteria;
+}
+
+function issueAccessError(error: unknown): "inaccessible" | "unavailable" {
+  const message = error instanceof Error ? error.message.toLocaleLowerCase() : String(error).toLocaleLowerCase();
+  return /not found|could not resolve|permission|forbidden|authentication|unauthorized|resource not accessible/.test(message) ? "inaccessible" : "unavailable";
+}
+
+function issueFallback(repository: string, number: number, title: string, access: LinkedIssueContext["access"]): LinkedIssueContext {
+  return {
+    repository,
+    number,
+    url: `https://github.com/${repository}/issues/${number}`,
+    title: title || `Linked issue #${number}`,
+    access,
+    criteriaStatus: "unavailable",
+    acceptanceCriteria: [],
+  };
+}
+
+async function loadLinkedIssue(
+  runner: Runner,
+  cwd: string,
+  repository: string,
+  reference: Record<string, unknown>,
+): Promise<LinkedIssueContext> {
+  const number = typeof reference.number === "number" ? reference.number : 0;
+  const title = typeof reference.title === "string" && reference.title.length <= 8_000 ? reference.title : "";
+  if (!Number.isInteger(number) || Number(number) <= 0) return issueFallback(repository, 1, title, "unavailable");
+  try {
+    const raw = await jsonCommand(runner, ["gh", "issue", "view", String(number), "--repo", repository, "--json", "number,title,body,url,state,author"], cwd);
+    if (raw.number !== number || !isCanonicalIssueUrl(raw.url, repository, number)) {
+      return issueFallback(repository, number, title, "unavailable");
+    }
+    const body = raw.body;
+    const bodyMalformed = typeof body !== "string" || body.length > ISSUE_BODY_LIMIT || body.includes("\u0000");
+    const acceptanceCriteria = bodyMalformed ? [] : extractAcceptanceCriteria(body);
+    const issueTitle = typeof raw.title === "string" && raw.title.length > 0 && raw.title.length <= 8_000 ? raw.title : title || `Linked issue #${number}`;
+    const author = raw.author && typeof raw.author === "object" && !Array.isArray(raw.author) && typeof (raw.author as Record<string, unknown>).login === "string"
+      ? (raw.author as Record<string, unknown>).login as string : undefined;
+    const state = typeof raw.state === "string" && raw.state.length <= 500 ? raw.state : undefined;
+    return {
+      repository,
+      number,
+      url: `https://github.com/${repository}/issues/${number}`,
+      title: issueTitle,
+      ...(author ? { author } : {}),
+      ...(state ? { state } : {}),
+      access: "available",
+      criteriaStatus: bodyMalformed ? "malformed" : acceptanceCriteria.length ? "found" : "not-found",
+      acceptanceCriteria,
+    };
+  } catch (error) {
+    return issueFallback(repository, number, title, issueAccessError(error));
+  }
+}
 
 export function parsePullRequestIdentifier(value: string): PullRequestIdentifier {
   if (/^[1-9]\d{0,9}$/.test(value)) return { number: Number(value) };
@@ -39,7 +146,7 @@ async function jsonCommand(runner: Runner, command: string[], cwd: string, input
   return value as Record<string, unknown>;
 }
 
-const THREAD_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage}nodes{id isResolved path line startLine diffSide comments(first:50){nodes{id body url author{login}}}}}}}}`;
+const THREAD_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage}nodes{id isResolved path line startLine diffSide originalLine originalStartLine comments(first:50){nodes{id body url author{login}}}}}}}}`;
 
 export async function loadPullRequestContext(
   sourceRepositoryRoot: string,
@@ -54,7 +161,7 @@ export async function loadPullRequestContext(
   if (repository.toLocaleLowerCase() !== localRepository.toLocaleLowerCase()) {
     throw new ReviewError(`The pull request belongs to ${repository}, but this checkout belongs to ${localRepository || "an unknown repository"}.`);
   }
-  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus";
+  const fields = "number,title,body,url,author,baseRefName,baseRefOid,headRefName,headRefOid,commits,statusCheckRollup,reviewDecision,state,mergeable,mergeStateStatus,closingIssuesReferences";
   const raw = await jsonCommand(runner, ["gh", "pr", "view", String(parsed.number), "--repo", repository, "--json", fields], sourceRepositoryRoot);
   const [owner, name] = repository.split("/");
   const threadRaw = await jsonCommand(runner, [
@@ -94,19 +201,19 @@ export async function loadPullRequestContext(
     if (!commit || typeof commit !== "object" || Array.isArray(commit)) throw new ReviewError("GitHub returned an invalid pull request commit.");
     const item = commit as Record<string, unknown>;
     if (typeof item.oid !== "string" || !/^[0-9a-f]{40,64}$/.test(item.oid) || typeof item.messageHeadline !== "string" || item.messageHeadline.length > 8_000) throw new ReviewError("GitHub returned an invalid pull request commit.");
-    const authors = Array.isArray(item.authors) ? item.authors.slice(0, 20).map((candidate) => {
-      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new ReviewError("GitHub returned an invalid commit author.");
-      const value = (candidate as Record<string, unknown>).login ?? (candidate as Record<string, unknown>).name;
-      if (typeof value !== "string" || !value || value.length > 500) throw new ReviewError("GitHub returned an invalid commit author.");
-      return value;
+    const authors = Array.isArray(item.authors) ? item.authors.slice(0, 20).flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const author = candidate as Record<string, unknown>;
+      const value = [author.login, author.name].find((name): name is string => typeof name === "string" && Boolean(name.trim()) && name.trim().length <= 500);
+      return value ? [value.trim()] : [];
     }) : [];
     return { oid: item.oid, headline: item.messageHeadline, authors };
   });
   const checks = raw.statusCheckRollup.slice(0, 500).map((check) => {
     if (!check || typeof check !== "object" || Array.isArray(check)) throw new ReviewError("GitHub returned an invalid status check.");
     const item = check as Record<string, unknown>;
-    const nameValue = item.name ?? item.context;
-    const stateValue = item.conclusion ?? item.state ?? item.status;
+    const nameValue = [item.name, item.context].find((value): value is string => typeof value === "string" && value.length > 0);
+    const stateValue = [item.conclusion, item.state, item.status].find((value): value is string => typeof value === "string" && value.length > 0);
     if (typeof nameValue !== "string" || !nameValue || nameValue.length > 8_000 || typeof stateValue !== "string" || !stateValue || stateValue.length > 500) throw new ReviewError("GitHub returned an invalid status check.");
     const urlValue = item.detailsUrl ?? item.targetUrl;
     if (urlValue !== undefined && (typeof urlValue !== "string" || urlValue.length > 4_096)) throw new ReviewError("GitHub returned an invalid status check URL.");
@@ -122,11 +229,14 @@ export async function loadPullRequestContext(
     const comments = (item.comments as Record<string, unknown> | undefined)?.nodes;
     if (typeof item.id !== "string" || !item.id || item.id.length > 500 || typeof item.path !== "string" || !item.path || item.path.length > 4_096 ||
       typeof item.isResolved !== "boolean" || !Array.isArray(comments)) throw new ReviewError("GitHub returned an invalid review thread.");
+    const originalLocation = [item.line, item.startLine, item.originalLine, item.originalStartLine]
+      .find((line) => Number.isInteger(line) && Number(line) > 0);
+    const diffSide = item.diffSide;
     return {
       id: item.id,
       path: item.path,
-      line: Number.isInteger(item.line ?? item.startLine) ? Number(item.line ?? item.startLine) : undefined,
-      side: item.diffSide === "LEFT" ? "old" as const : item.diffSide === "RIGHT" ? "new" as const : undefined,
+      line: originalLocation === undefined ? undefined : Number(originalLocation),
+      side: diffSide === "LEFT" ? "old" as const : diffSide === "RIGHT" ? "new" as const : undefined,
       resolved: Boolean(item.isResolved),
       comments: Array.isArray(comments) ? comments.slice(0, 50).map((comment) => {
         if (!comment || typeof comment !== "object" || Array.isArray(comment)) throw new ReviewError("GitHub returned an invalid review thread comment.");
@@ -140,6 +250,30 @@ export async function loadPullRequestContext(
       }) : [],
     };
   });
+  const issueReferences = raw.closingIssuesReferences;
+  let linkedIssue: LinkedIssueContext | undefined;
+  let linkedIssueScope: NonNullable<PullRequestContext["providerScope"]>["linkedIssue"] = "none";
+  if (issueReferences !== undefined) {
+    const references = Array.isArray(issueReferences)
+      ? issueReferences.slice(0, 20)
+      : issueReferences && typeof issueReferences === "object" && !Array.isArray(issueReferences) && Array.isArray((issueReferences as Record<string, unknown>).nodes)
+        ? ((issueReferences as Record<string, unknown>).nodes as unknown[]).slice(0, 20)
+        : [];
+    const reference = references.find((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+      const item = candidate as Record<string, unknown>;
+      const referenceRepository = item.repository && typeof item.repository === "object" && !Array.isArray(item.repository)
+        ? (item.repository as Record<string, unknown>).nameWithOwner : undefined;
+      return Number.isInteger(item.number) && Number(item.number) > 0 &&
+        isCanonicalIssueUrl(item.url, repository, Number(item.number)) &&
+        (referenceRepository === undefined || (typeof referenceRepository === "string" && referenceRepository.toLocaleLowerCase() === repository.toLocaleLowerCase()));
+    }) as Record<string, unknown> | undefined;
+    if (reference) {
+      linkedIssueScope = "same-repository-closing-issue";
+      linkedIssue = await loadLinkedIssue(runner, sourceRepositoryRoot, repository, reference);
+      if (linkedIssue.access !== "available") linkedIssueScope = linkedIssue.access;
+    }
+  }
   return {
     repository,
     number: Number(raw.number ?? parsed.number),
@@ -155,12 +289,15 @@ export async function loadPullRequestContext(
     workspaceRoot: "",
     refNamespace,
     reviewDecision: typeof raw.reviewDecision === "string" && raw.reviewDecision ? raw.reviewDecision : undefined,
+    state: raw.state === "OPEN" || raw.state === "CLOSED" || raw.state === "MERGED" ? raw.state : undefined,
     mergeable: raw.mergeable === "MERGEABLE" || raw.mergeable === "CONFLICTING" || raw.mergeable === "UNKNOWN" ? raw.mergeable : undefined,
     mergeStateStatus: typeof raw.mergeStateStatus === "string" && raw.mergeStateStatus ? raw.mergeStateStatus : undefined,
     commits,
     checks,
     threads,
     threadsTruncated: (pageInfo as Record<string, unknown>).hasNextPage as boolean,
+    ...(linkedIssue ? { linkedIssue } : {}),
+    providerScope: { linkedIssue: linkedIssueScope, relatedResources: "not-requested" },
     updatedAt: new Date().toISOString(),
   };
 }

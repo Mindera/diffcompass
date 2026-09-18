@@ -196,7 +196,7 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(app).toContain("function updateCurrentStepReturnVisibility()");
   expect(app).toContain('elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate');
   expect(app).toContain('elements["current-step-return"].addEventListener("click", () => void focusCurrentStep())');
-  expect(styles).toContain(".current-step-return { position: fixed;");
+  expect(styles).toContain(".current-step-return, .pull-request-return { position: fixed;");
   expect(renderTour).not.toContain("scrollIntoView");
   expect(renderTour).not.toContain("showChangedFile");
   expect(app).not.toContain("Planning tour · 0s");
@@ -268,6 +268,17 @@ test("questions support removable line and file context while review decisions a
   expect(html).toContain(">Close review</button>");
   expect(app).toContain('openReviewDecision("approve-with-comments")');
   expect(app).toContain('openReviewDecision("request-changes")');
+  expect(html).toContain('id="github-review-confirmation-dialog"');
+  expect(html).toContain('id="github-review-confirmation-pull-request"');
+  expect(html).toContain('id="github-review-confirmation-revision"');
+  expect(html).toContain('id="github-review-confirmation-comments"');
+  expect(html).toContain('id="github-review-confirmation-local-only"');
+  expect(html).toContain("Approve tour without approving the pull request");
+  expect(app).toContain("function openGitHubReviewConfirmation(outcome, decision, note)");
+  expect(app).toContain("function updateGitHubReviewConfirmation()");
+  expect(app).toContain('elements["github-review-confirmation-dialog"].showModal()');
+  expect(app).toContain('void close(pending.outcome, pending.decision, pending.note, true, publishToGitHub)');
+  expect(styles).toContain(".github-review-confirmation-summary");
   expect(app).toContain('window.confirm("Close this review without approving or requesting changes?")');
   expect(app).toContain('void close("cancelled", "cancel")');
 });
@@ -579,6 +590,423 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(app).toContain('elements["review-overview-title"].textContent = outline.title');
   expect(app).toContain('label: `${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`');
   expect(app).toContain('label: "Implementation journey"');
+});
+
+test("rendered pull request Markdown permits safe screenshot images and evidence excerpts skip imports", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const escapeHtml = (value: unknown) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+  const inlineSource = app.slice(app.indexOf("function renderInlineChangeText"), app.indexOf("function markdownTableCells"));
+  const renderInlineMarkdown = new Function("escapeHtml", `${inlineSource}; return renderInlineMarkdown;`)(escapeHtml) as (value: string) => string;
+  expect(renderInlineMarkdown('<img width="360" alt="Legal screen" src="https://github.com/user-attachments/assets/example">')).toContain('class="markdown-inline-image"');
+  expect(renderInlineMarkdown('<img src="javascript:alert(1)">')).toContain("&lt;img");
+
+  const excerptSource = app.slice(app.indexOf("const ISSUE_ASSESSMENT_EXCERPT_LIMIT"), app.indexOf("function issueAssessmentPathExplanation"));
+  const { issueAssessmentExcerpt, issueAssessmentProofExcerpts } = new Function("state", `${excerptSource}; return { issueAssessmentExcerpt, issueAssessmentProofExcerpts };`)({ session: { comparison: { files: [] } } }) as {
+    issueAssessmentExcerpt: (path: string, content: string, terms: string[]) => { startLine: number; lines: string[] };
+    issueAssessmentProofExcerpts: (item: unknown, path: string, content: string, terms: string[]) => Array<{ role?: string; startLine: number; lines: string[] }>;
+  };
+  const excerpt = issueAssessmentExcerpt("LegalNavHost.kt", [
+    "package example",
+    "import example.LegalScene",
+    "import example.ProfileScreen",
+    "data object Terms : ProfileDestination",
+    "onTermsClick = { navController.navigate(ProfileDestination.Terms) }",
+  ].join("\n"), ["profile", "terms"]);
+  expect(excerpt.startLine).toBe(5);
+  expect(excerpt.lines.join("\n")).not.toContain("import example.LegalScene");
+  expect(excerpt.lines.join("\n")).not.toContain("data object Terms");
+
+  const proof = issueAssessmentProofExcerpts({
+    criterion: "Entries are sorted by creation date",
+    evidence: "The implementation sorts incoming entries before returning the ordered result.",
+    pathExplanations: [{ explanation: "This function receives entries, orders them, and returns the result." }],
+  }, "EntrySorter.kt", [
+    "import example.Entry",
+    "fun sortEntries(entries: List<Entry>): List<Entry> {",
+    "  val ordered = entries.sortedBy { it.createdAt }",
+    "  return ordered",
+    "}",
+  ].join("\n"), ["entries", "sort", "ordered"]);
+  expect(proof.map((excerpt) => excerpt.role)).toEqual(["Input", "Transformation", "Output"]);
+  expect(proof[1].lines.join("\n")).toContain("sortedBy");
+  expect(proof[2].lines.join("\n")).toContain("return ordered");
+});
+
+test("GitHub issue assessment discloses its bounded provider scope and model basis", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public", "index.html"), "utf8"),
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  expect(app).toContain("Issue-to-implementation assessment");
+  expect(app).toContain("related issues and earlier pull requests: not requested");
+  expect(app).toContain("Only issue metadata and explicit criteria are retained");
+  expect(app).toContain("statuses are not verified test results");
+  expect(app).toContain("issue.access !== \"available\"");
+  expect(app).toContain("function issueAssessmentItems(items)");
+  expect(app).toContain("function linkedIssueSummary(issue, reviewerTask)");
+  expect(app).toContain("function reviewerTaskSummary(issue, task)");
+  expect(app).toContain("Task-to-implementation assessment");
+  expect(app).toContain("not sent to GitHub");
+  expect(app).toContain('data-reviewer-task-edit');
+  expect(app).toContain('data-reviewer-task-toggle');
+  expect(app).toContain("Collapse task");
+  expect(app).toContain("Expand task");
+  expect(app).toContain('api("/api/pull-request/reviewer-task"');
+  expect(app).toContain('class="pull-request-context"');
+  expect(app).toContain('class="linked-issue-criteria"');
+  expect(app).toContain('data-pull-request-width aria-pressed="${state.pullRequestWide}"');
+  expect(app).toContain('window.localStorage.setItem(preferenceKey("pull-request-wide"), String(state.pullRequestWide))');
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", togglePullRequestContentWidth)');
+  expect(app).toContain('<details class="issue-criterion ${escapeHtml(item.status)}">');
+  expect(app).toContain("issueAssessmentItems(assessment.items)");
+  expect(app).toContain("function issueEvidencePathLinks(paths)");
+  expect(app).toContain('data-issue-evidence-file="${escapeHtml(path)}"');
+  expect(app).toContain('data-issue-assessment-explain="${escapeHtml(item.criterionId)}"');
+  expect(app).toContain("function openIssueAssessmentExplanation(item, returnTarget)");
+  expect(app).toContain("This is a model explanation based on cited repository paths. It is not a verified test result.");
+  expect(app).toContain("const ISSUE_ASSESSMENT_EXCERPT_LIMIT = 3;");
+  expect(app).toContain("function issueAssessmentExcerpt(path, content, terms)");
+  expect(app).toContain("function issueAssessmentPathExplanation(item, path)");
+  expect(app).toContain("async function hydrateIssueAssessmentCodeExcerpts(item, requestId)");
+  expect(app).toContain('data-issue-assessment-excerpt-highlight="${escapeHtml(id)}"');
+  expect(app).toContain('api(`/api/files?path=${encodeURIComponent(path)}`)');
+  expect(app).toContain('body: JSON.stringify({ groups, theme: state.syntaxTheme })');
+  expect(app).toContain("function dismissIssueAssessmentOnBackdrop(event)");
+  expect(app).toContain('elements["issue-assessment-dialog"].addEventListener("click", dismissIssueAssessmentOnBackdrop)');
+  expect(app).toContain("async function showIssueEvidenceFile(path)");
+  expect(app).toContain("elements[\"pull-request-content\"].addEventListener(\"click\", handleIssueAssessmentClick)");
+  expect(html).toContain('id="issue-assessment-dialog"');
+  expect(html).toContain('id="close-issue-assessment"');
+  expect(html).toContain('id="reviewer-task-dialog"');
+  expect(html).toContain('id="reviewer-task-body"');
+  expect(html).toContain('data-reviewer-task-mode="preview"');
+  expect(html).toContain('id="reviewer-task-preview"');
+  expect(html).toContain("Tab indents selected lines");
+  expect(app).toContain("function updateReviewerTaskPreview()");
+  expect(app).toContain("function handleReviewerTaskEditorKeydown(event)");
+  expect(app).toContain('elements["reviewer-task-body"].addEventListener("keydown", handleReviewerTaskEditorKeydown)');
+  expect(app).toContain("assessmentPending");
+  expect(styles).toContain(".issue-criterion.implemented");
+  expect(styles).toContain(".issue-criterion.missing");
+  expect(styles).toContain(".issue-criterion.unclear");
+  expect(styles).toContain(".issue-criterion summary");
+  expect(styles).toContain(".issue-criteria, .issue-criterion, .issue-criterion summary, .issue-criterion-title { min-width: 0; max-width: 100%; }");
+  expect(styles).toContain(".issue-criterion-title { overflow-wrap: anywhere; white-space: normal;");
+  expect(styles).toContain("@container (max-width: 560px) { .issue-criterion summary { grid-template-columns: 12px minmax(0, 1fr); }");
+  expect(styles).toContain(".issue-assessment-evidence");
+  expect(styles).toContain(".issue-evidence-file");
+  expect(styles).toContain(".issue-evidence-file { display: inline; max-width: 100%;");
+  expect(styles).toContain("overflow-wrap: anywhere; word-break: break-word;");
+  expect(styles).toContain(".issue-assessment-dialog");
+  expect(styles).toContain(".reviewer-task-dialog");
+  expect(styles).toContain(".reviewer-task-preview");
+  expect(styles).toContain(".issue-assessment-code-excerpt");
+  expect(styles).toContain(".issue-assessment-code-excerpts");
+  expect(styles).toContain(".issue-assessment-excerpt-heading");
+  expect(styles).toContain("white-space: pre-wrap");
+  expect(styles).toContain("overflow-wrap: anywhere");
+  expect(styles).toContain(".pull-request-context { display: grid;");
+  expect(styles).toContain(".pull-request-content.wide { max-width: none; }");
+  expect(styles).toContain(".pull-request-header-actions");
+  expect(styles).toContain("grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));");
+  expect(styles).toContain(".pull-request-content > .panel-heading { height: auto;");
+  expect(styles).toContain(".reviewer-task-heading h3 { margin: 0; white-space: nowrap; }");
+  expect(styles).toContain(".reviewer-task-actions { display: flex;");
+
+  const summarySource = app.slice(app.indexOf("function reviewerTaskSummary(issue, task)"), app.indexOf("async function api("));
+  const linkedIssueSummary = new Function("escapeHtml", "state", `${summarySource}; return linkedIssueSummary;`)((value: unknown) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;"), { reviewerTaskCollapsed: false }) as (issue: unknown, reviewerTask?: unknown) => string;
+  const linked = linkedIssueSummary({
+    number: 12,
+    title: "Bounded linked issue",
+    url: "https://github.com/example/repo/issues/12",
+    access: "available",
+    criteriaStatus: "found",
+    acceptanceCriteria: [{ id: "criterion-1", text: "Only explicit criteria are retained" }],
+  });
+  expect(linked).toContain("Linked issue");
+  expect(linked).toContain("Only explicit criteria are retained");
+  expect(linked).toContain("related issues and earlier pull requests: not requested");
+
+  const manual = linkedIssueSummary(undefined, {
+    criteriaStatus: "found",
+    acceptanceCriteria: [{ id: "criterion-1", text: "A reviewer can supply this task locally" }],
+  });
+  expect(manual).toContain("Reviewer task");
+  expect(manual).toContain("not sent to GitHub");
+
+  const escape = (value: unknown) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+  const assessmentSource = app.slice(app.indexOf("function issueEvidencePathLinks(paths)"), app.indexOf("function reviewerTaskSummary(issue, task)"));
+  const issueAssessmentItems = new Function("escapeHtml", "renderInlineMarkdown", `${assessmentSource}; return issueAssessmentItems;`)(escape, escape) as (items: unknown[]) => string;
+  const assessmentMarkup = issueAssessmentItems([{
+    criterionId: "criterion-1",
+    criterion: "Only explicit criteria are retained",
+    status: "implemented",
+    evidence: "src/github.ts bounds parsing to explicit criteria.",
+    evidencePaths: ["src/github.ts", "tests/github.test.ts"],
+  }]);
+  expect(assessmentMarkup).toContain('data-issue-evidence-file="src/github.ts"');
+  expect(assessmentMarkup).toContain('data-issue-evidence-file="tests/github.test.ts"');
+  expect(assessmentMarkup).toContain('data-issue-assessment-explain="criterion-1"');
+
+  const excerptSource = app.slice(app.indexOf("const ISSUE_ASSESSMENT_EXCERPT_LIMIT"), app.indexOf("function reviewerTaskSummary(issue, task)"));
+  const issueAssessmentExcerpt = new Function("state", `${excerptSource}; return issueAssessmentExcerpt;`)({
+    session: {
+      comparison: {
+        files: [{ path: "src/assessment.ts", hunks: [{ rows: [{ kind: "addition", newLine: 12, content: 'const status = "implemented";' }] }] }],
+      },
+    },
+  }) as (path: string, content: string, terms: string[]) => { path: string; startLine: number; lines: string[] };
+  const excerpt = issueAssessmentExcerpt("src/assessment.ts", Array.from({ length: 25 }, (_, index) => index === 11 ? 'const status = "implemented";' : `const line${index + 1} = true;`).join("\n"), ["implemented"]);
+  expect(excerpt).toMatchObject({ path: "src/assessment.ts", startLine: 4 });
+  expect(excerpt.lines).toHaveLength(15);
+  expect(excerpt.lines).toContain('const status = "implemented";');
+
+  const excerptMarkupSource = app.slice(app.indexOf("function issueAssessmentPathExplanation(item, path)"), app.indexOf("function issueAssessmentExcerptSection(item)"));
+  const { issueAssessmentExcerptMarkup } = new Function("escapeHtml", `${excerptMarkupSource}; return { issueAssessmentExcerptMarkup };`)(escape) as {
+    issueAssessmentExcerptMarkup: (excerpt: { path: string; startLine: number; lines: string[] }, id: string, explanation: string) => string;
+  };
+  expect(issueAssessmentExcerptMarkup(excerpt, "excerpt", "The changed status is validated here.")).toContain("How it contributes:");
+  expect(issueAssessmentExcerptMarkup(excerpt, "excerpt", "The changed status is validated here.")).toContain("The changed status is validated here.");
+
+  const backdropSource = app.slice(app.indexOf("function dismissIssueAssessmentOnBackdrop(event)"), app.indexOf("async function showIssueEvidenceFile(path)"));
+  let closes = 0;
+  const dialog = {
+    getBoundingClientRect: () => ({ left: 20, right: 100, top: 30, bottom: 80 }),
+    close: () => { closes += 1; },
+  };
+  const dismissIssueAssessmentOnBackdrop = new Function("elements", `${backdropSource}; return dismissIssueAssessmentOnBackdrop;`)({ "issue-assessment-dialog": dialog }) as (event: { target: unknown; clientX: number; clientY: number }) => void;
+  dismissIssueAssessmentOnBackdrop({ target: dialog, clientX: 10, clientY: 20 });
+  dismissIssueAssessmentOnBackdrop({ target: dialog, clientX: 60, clientY: 50 });
+  dismissIssueAssessmentOnBackdrop({ target: {}, clientX: 10, clientY: 20 });
+  expect(closes).toBe(1);
+});
+
+test("reviewer task editor keeps Tab inside the Markdown source and indents selected lines", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function updateReviewerTaskIndentation"), app.indexOf("async function saveReviewerTask"));
+  const InputEvent = class { constructor(readonly type: string) {} };
+  const updateIndentation = new Function("Event", `${source}; return updateReviewerTaskIndentation;`)(InputEvent) as (textarea: {
+    value: string;
+    selectionStart: number;
+    selectionEnd: number;
+    setSelectionRange: (start: number, end: number) => void;
+    dispatchEvent: (event: { type: string }) => void;
+  }, outdent: boolean) => void;
+  const events: string[] = [];
+  const textarea = {
+    value: "first line\nsecond line",
+    selectionStart: 0,
+    selectionEnd: "first line\nsecond line".length,
+    setSelectionRange(start: number, end: number) {
+      this.selectionStart = start;
+      this.selectionEnd = end;
+    },
+    dispatchEvent(event: { type: string }) { events.push(event.type); },
+  };
+
+  updateIndentation(textarea, false);
+  expect(textarea).toMatchObject({ value: "  first line\n  second line", selectionStart: 2, selectionEnd: 26 });
+  updateIndentation(textarea, true);
+  expect(textarea).toMatchObject({ value: "first line\nsecond line", selectionStart: 0, selectionEnd: 22 });
+  expect(events).toEqual(["input", "input"]);
+});
+
+test("saving a reviewer task closes its dialog before the background assessment responds", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("async function saveReviewerTask()"), app.indexOf("async function api("));
+  let closed = 0;
+  let resolveRequest: (value: unknown) => void = () => undefined;
+  const state = { busy: false, session: { status: "open" } } as { busy: boolean; session: unknown };
+  const elements = {
+    "reviewer-task-body": { value: "## Acceptance Criteria\n- [ ] Persist the task" },
+    "reviewer-task-dialog": { close: () => { closed += 1; } },
+  };
+  const saveReviewerTask = new Function("state", "elements", "reviewIsOpen", "setBusy", "api", "renderSession", "toast", `${source}; return saveReviewerTask;`)(
+    state,
+    elements,
+    () => true,
+    (busy: boolean) => { state.busy = busy; },
+    () => new Promise((resolve) => { resolveRequest = resolve; }),
+    () => undefined,
+    () => undefined,
+  ) as () => Promise<void>;
+
+  const saving = saveReviewerTask();
+  expect(closed).toBe(1);
+  expect(state.busy).toBe(true);
+  resolveRequest({ pullRequest: { reviewerTask: { assessmentPending: true } } });
+  await saving;
+  expect(state.busy).toBe(false);
+});
+
+test("pull request description controls switch the rendered and raw source views", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function setPullRequestDescriptionMode("), app.indexOf("async function api("));
+  const state = { prDescriptionMode: "rendered", prDescriptionCollapsed: false };
+  let pullRequestRenders = 0;
+  let overviewRenders = 0;
+  let focused = false;
+  const setMode = new Function("state", "renderPullRequest", "renderReviewOverview", `${source}; return setPullRequestDescriptionMode;`)(
+    state,
+    () => { pullRequestRenders += 1; },
+    () => { overviewRenders += 1; },
+  ) as (event: { target: { closest: (selector: string) => unknown }; currentTarget: { querySelector: (selector: string) => { focus: (options: FocusOptions) => void } | null } }) => void;
+
+  setMode({
+    target: { closest: () => ({ dataset: { prDescriptionMode: "source" } }) },
+    currentTarget: { querySelector: () => ({ focus: () => { focused = true; } }) },
+  });
+
+  expect(state.prDescriptionMode).toBe("source");
+  expect(pullRequestRenders).toBe(1);
+  expect(overviewRenders).toBe(1);
+  expect(focused).toBe(true);
+
+  setMode({
+    target: { closest: (selector: string) => selector === "[data-pr-description-toggle]" ? { dataset: { prDescriptionToggle: "" } } : null },
+    currentTarget: { querySelector: () => ({ focus: () => { focused = true; } }) },
+  });
+
+  expect(state.prDescriptionCollapsed).toBe(true);
+  expect(pullRequestRenders).toBe(2);
+  expect(overviewRenders).toBe(2);
+  expect(app).toContain('aria-label="Raw Markdown source"');
+  expect(app).toContain("data-pr-description-toggle");
+  expect(app).toContain("Collapse description");
+  expect(app).toContain("Expand description");
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", setPullRequestDescriptionMode)');
+  expect(app).toContain('elements["pull-request-description"].addEventListener("click", setPullRequestDescriptionMode)');
+});
+
+test("pull request content can use and persist the full available width", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  const source = app.slice(app.indexOf("function setPullRequestContentWidth("), app.indexOf("function initializeUiPreferences("));
+  const classes = new Set<string>();
+  const workspaceClasses = new Set<string>();
+  const writes: Array<[string, string]> = [];
+  const state = { pullRequestWide: false };
+  const setWidth = new Function("state", "elements", "window", "preferenceKey", `${source}; return setPullRequestContentWidth;`)(
+    state,
+    {
+      "pull-request-content": { classList: { toggle: (name: string, enabled: boolean) => { if (enabled) classes.add(name); else classes.delete(name); } } },
+      workspace: { classList: { toggle: (name: string, enabled: boolean) => { if (enabled) workspaceClasses.add(name); else workspaceClasses.delete(name); } } },
+    },
+    { localStorage: { setItem: (key: string, value: string) => writes.push([key, value]) } },
+    (name: string) => `review-tour:test:${name}`,
+  ) as (wide: boolean, persist?: boolean) => void;
+
+  setWidth(true, true);
+
+  expect(state.pullRequestWide).toBe(true);
+  expect(classes.has("wide")).toBe(true);
+  expect(workspaceClasses.has("pull-request-wide")).toBe(true);
+  expect(writes).toEqual([["review-tour:test:pull-request-wide", "true"]]);
+  expect(styles).toContain(".workspace.pull-request-wide");
+  expect(styles).toContain(".workspace.pull-request-wide .file-panel,");
+  expect(styles).toContain(".workspace.pull-request-wide .agent-panel { display: none; }");
+});
+
+test("GitHub check snapshots explain known state, can be updated, and link commit revisions", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  const source = app.slice(app.indexOf("function githubStatusLabel("), app.indexOf("function renderPullRequest("));
+  const helpers = new Function(`${source}; return { githubCheckStatus, githubPullRequestStatus, githubCommitUrl };`)() as {
+    githubCheckStatus: (state: string) => { label: string; explanation: string };
+    githubPullRequestStatus: (pullRequest: { state?: string; mergeable?: string; mergeStateStatus?: string }) => { heading: string; details: string[] };
+    githubCommitUrl: (pullRequest: { repository: string; number: number; url: string }, oid: string) => string;
+  };
+
+  expect(helpers.githubCheckStatus("IN_PROGRESS")).toEqual({ label: "Running", explanation: "GitHub has not reported a final result for this check." });
+  expect(helpers.githubCheckStatus("FAILURE")).toEqual({ label: "Needs attention", explanation: "GitHub reported Failure. Open the check run for provider details." });
+  expect(helpers.githubPullRequestStatus({ mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE" })).toEqual({
+    heading: "Mergeability",
+    details: ["No merge conflict reported by GitHub.", "GitHub has not provided a stable merge status. This review snapshot does not include why."],
+  });
+  expect(helpers.githubPullRequestStatus({ state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })).toEqual({
+    heading: "Pull request status",
+    details: ["This pull request has been merged. Mergeability is no longer applicable."],
+  });
+  expect(helpers.githubCommitUrl({ repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7" }, "a".repeat(40))).toBe(`https://github.com/acme/widgets/commit/${"a".repeat(40)}`);
+  expect(helpers.githubCommitUrl({ repository: "acme/widgets", number: 7, url: "https://example.test/acme/widgets/pull/7" }, "a".repeat(40))).toBe("");
+  expect(app).toContain("function githubChecksSummary(pullRequest)");
+  expect(app).toContain("Snapshot captured when this review was loaded.");
+  expect(app).toContain("data-github-snapshot-refresh");
+  expect(app).toContain("function refreshGitHubSnapshot(event)");
+  expect(app).toContain("githubSnapshotRefreshing");
+  expect(app).toContain("Updating snapshot…");
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", refreshGitHubSnapshot)');
+  expect(app).toContain("function githubCommitUrl(pullRequest, oid)");
+  expect(app).toContain("github-commit-link");
+  expect(app).toContain("this review does not fetch check or workflow details.");
+  expect(app).toContain('target="_blank" rel="noreferrer">View run in GitHub</a>');
+  expect(styles).toContain(".github-checks {");
+  expect(styles).toContain(".github-check-list {");
+  expect(styles).toContain(".github-checks-actions {");
+  expect(styles).toContain(".github-snapshot-progress {");
+});
+
+test("pull request file links retain their reading position and provide a return control", async () => {
+  const [app, html, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "index.html"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  const source = app.slice(app.indexOf("function rememberPullRequestReturn()"), app.indexOf("let currentStepReturnFrame"));
+  const state = { activeTab: "pull-request", tabScrollPositions: new Map<string, number>(), pullRequestReturn: null as { scrollTop: number } | null, session: { pullRequest: {} } };
+  const elements = { "diff-panel": { scrollTop: 1_240 } };
+  const activations: string[] = [];
+  const helpers = new Function("state", "elements", "activateReviewTab", `${source}; return { rememberPullRequestReturn, returnToPullRequest };`)(
+    state, elements, (tab: string) => activations.push(tab),
+  ) as { rememberPullRequestReturn: () => boolean; returnToPullRequest: () => void };
+
+  expect(helpers.rememberPullRequestReturn()).toBe(true);
+  expect(state.tabScrollPositions.get("pull-request")).toBe(1_240);
+  state.activeTab = "diff";
+  helpers.returnToPullRequest();
+  expect(state.pullRequestReturn).toBeNull();
+  expect(activations).toEqual(["pull-request"]);
+  expect(html).toContain('id="pull-request-return"');
+  expect(app).toContain('elements["pull-request-return"].addEventListener("click", returnToPullRequest)');
+  expect(styles).toContain(".current-step-return, .pull-request-return {");
+});
+
+test("GitHub review threads open their file and remain visible beside the diff", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  expect(app).toContain("function githubReviewThreadCard(thread)");
+  expect(app).toContain('data-github-thread-jump="${escapeHtml(thread.id)}"');
+  expect(app).toContain("function renderGitHubReviewThreads()");
+  expect(app).toContain('inline.className = `github-thread-inline ${thread.resolved ? "resolved" : "open"}`');
+  expect(app).toContain("function handleGitHubReviewThreadClick(event)");
+  expect(app).toContain('void showAnalysisFile(thread.path, thread.line, thread.side ?? "new")');
+  expect(app).toContain('elements["pull-request-content"].addEventListener("click", handleGitHubReviewThreadClick)');
+  expect(app).toContain("Reply in GitHub");
+  expect(styles).toContain(".github-thread-inline {");
+  expect(styles).toContain(".split-github-thread {");
+  expect(styles).toContain(".github-thread-card .comment-jump");
 });
 
 test("agent-launched tours introduce the change before navigating to the first stop", async () => {
@@ -1094,21 +1522,27 @@ test("split diff panes are resizable and synchronize horizontal scrolling per si
   expect(app).toContain("event.preventDefault()");
 });
 
-test("images and videos are exposed through a conditional authenticated media tab", async () => {
+test("images and videos are exposed through an authenticated media tab with an empty state", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain('id="screenshots-tab" class="tab hidden"');
+  expect(html).toContain('id="screenshots-tab" class="tab"');
   expect(html).toContain('id="screenshots-view" class="review-view hidden"');
-  expect(html).toContain('>Media <span id="screenshots-tab-count"');
+  expect(html).toContain('>Media <span id="screenshots-tab-count" class="tab-count hidden">0</span>');
   expect(app).toContain("function changedImageMedia()");
   expect(app).toContain("const mediaCount = screenshots.length + changedImages.length");
+  expect(app).toContain('"conversations", "screenshots", ...(state.session?.pullRequest');
+  expect(app).toContain('elements["screenshots-tab-count"].classList.toggle("hidden", mediaCount === 0)');
+  expect(app).toContain('No media is available for this review.');
   expect(app).toContain('"X-Review-Tour-Token": state.apiToken');
   expect(app).toContain('apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`)');
   expect(app).toContain('apiBlob(`/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`)');
   expect(app).toContain('shot.mimeType === "video/mp4"');
   expect(styles).toContain(".screenshot-gallery { display: grid;");
+  expect(styles).toContain(".media-empty { grid-column: 1 / -1; }");
   expect(styles).toContain(".changed-image-media > a");
+  expect(styles).toContain(".tab { flex: 0 0 auto;");
+  expect(styles).toContain("font-size: 13px;");
 });

@@ -30,6 +30,13 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   expect(persisted.outline?.callFlows[0]?.edges).toHaveLength(2);
   expect(persisted.outline?.flows).toHaveLength(1);
   expect(persisted.outline?.findings.map((finding) => finding.priority)).toEqual(["P1", "P3"]);
+  expect(persisted.pullRequest).toMatchObject({
+    repository: "fixture/checkout",
+    number: 42,
+    linkedIssue: { number: 24, access: "available", criteriaStatus: "found" },
+    providerScope: { linkedIssue: "same-repository-closing-issue", relatedResources: "not-requested" },
+  });
+  expect(persisted.outline?.issueAssessment?.items.map((item) => item.status)).toEqual(["implemented", "implemented", "missing", "unclear"]);
   expect(persisted.comments).toHaveLength(1);
   expect(persisted.activities).toHaveLength(1);
 
@@ -40,7 +47,7 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   });
   expect(session.snapshot().needsAttention.signals.map((signal) => signal.kind)).toEqual(["finding", "public-contract", "public-contract", "tests"]);
   expect(session.snapshot().needsAttention.estimate.factors.some((factor) => factor.label === "P0/P1 findings")).toBe(true);
-  expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "docs/checkout-guide.md", "screens/receipt.png", "src/cart.ts", "docs/preview.md", "src/receipt.ts"]);
+  expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "docs/checkout-guide.md", "docs/preview.md", "screens/receipt.png", "src/cart.ts", "src/receipt.ts"]);
   expect(session.comparison.files.find((file) => file.path === "docs/checkout-guide.md")?.status).toBe("modified");
   expect(session.currentStepIndex).toBe(0);
   await session.dispose();
