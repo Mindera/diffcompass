@@ -1126,12 +1126,18 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(app).toContain("function changeArchitectureDiagramView(key, action)");
   expect(app).toContain('svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`');
   expect(app).toContain("function registerArchitectureDiagramInteractions(container)");
+  expect(app).toContain("function interactiveDiagramKey(diagram)");
+  expect(app).toContain(".architecture-diagram[data-adaptive-diagram]");
+  expect(app).toContain("event.ctrlKey");
+  expect(app).toContain("Math.exp(-event.deltaY * 0.01)");
   expect(app).toContain('const expandButton = event.target.closest("[data-diagram-expand]")');
   expect(app).toContain("openArchitectureDiagramViewer(expandButton.dataset.diagramExpand)");
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["tour-intro-architecture"])');
   expect(app).toContain("registerArchitectureDiagramInteractions(elements.architecture)");
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["adaptive-view"])');
   expect(app).toContain('registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"])');
+  expect(app).toContain('briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)');
+  expect(app).toContain('elements.flows.querySelector(`[data-flow-index="${state.session.outline.flows.indexOf(sequence)}"]`)');
   expect(app).toContain('aria-label="Architecture diagram legend"');
   expect(app).toContain('`${architectureLegend()}${architectures.map');
   expect(styles).toContain(".architecture-diagram.dragging");

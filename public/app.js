@@ -2878,6 +2878,7 @@ const ARCHITECTURE_ZOOM_MIN = 0.5;
 const ARCHITECTURE_ZOOM_MAX = 3;
 const ARCHITECTURE_ZOOM_STEP = 0.25;
 const ARCHITECTURE_PAN_STEP = 40;
+const DIAGRAM_INTERACTION_HELP = "Drag to move · Pinch or use +/− to zoom · 0 resets";
 
 function architectureDiagramView(key) {
   if (!state.architectureDiagramViews.has(key)) state.architectureDiagramViews.set(key, { scale: 1, x: 0, y: 0 });
@@ -2933,8 +2934,8 @@ function architectureCard(architecture, label, key) {
     <p>${escapeHtml(architecture.summary)}</p>
     <div class="architecture-diagram-shell" data-architecture-key="${key}">
       ${architectureDiagramControls(label)}
-      <div class="sequence-diagram architecture-diagram mermaid-render" data-architecture-diagram="${key}" role="img" tabindex="0" aria-label="${escapeHtml(`${label}: ${architecture.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`)}"><span class="loading">Rendering diagram…</span></div>
-      <p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p>
+      <div class="sequence-diagram architecture-diagram mermaid-render" data-architecture-diagram="${key}" role="img" tabindex="0" aria-label="${escapeHtml(`${label}: ${architecture.title}. Drag to move; use arrow keys, a pinch gesture, or the controls to zoom.`)}"><span class="loading">Rendering diagram…</span></div>
+      <p class="diagram-help">${DIAGRAM_INTERACTION_HELP}</p>
     </div>
     <div class="flow-warning hidden" data-architecture-error="${key}">The architecture diagram source is invalid or unsupported.</div>
     <div class="dependency-changes"><strong>Relationship changes</strong><ul>${architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul></div>
@@ -2980,7 +2981,7 @@ function adaptiveCard(diagram, label, key) {
   return '<article class="flow-card architecture-card adaptive-card">' +
     '<header class="architecture-card-heading"><div><span class="architecture-label">' + escapeHtml(label) + '</span><h2>' + escapeHtml(diagram.title) + '</h2></div><button class="diagram-expand-button" type="button" data-diagram-expand="' + escapeHtml(key) + '" aria-label="Expand ' + escapeHtml(label) + ' diagram" title="Open diagram viewer"><span aria-hidden="true">⛶</span> Expand</button></header>' +
     '<p>' + escapeHtml(diagram.summary) + '</p><div class="adaptive-evidence"><strong>Why this view is included</strong><p>' + escapeHtml(diagram.materiallyImprovesUnderstanding) + '</p><details><summary>Repository evidence</summary><ul>' + evidence + '</ul></details></div>' +
-    '<div class="architecture-diagram-shell" data-architecture-key="' + escapeHtml(key) + '">' + architectureDiagramControls(label) + '<div class="sequence-diagram architecture-diagram mermaid-render" data-adaptive-diagram="' + escapeHtml(key) + '" role="img" tabindex="0" aria-label="' + escapeHtml(label + ': ' + diagram.title + '. Drag to move; use arrow keys to move and plus or minus to zoom.') + '"><span class="loading">Rendering diagram…</span></div><p class="diagram-help">Drag to move · Arrow keys move · +/− zoom · 0 resets</p></div>' +
+    '<div class="architecture-diagram-shell" data-architecture-key="' + escapeHtml(key) + '">' + architectureDiagramControls(label) + '<div class="sequence-diagram architecture-diagram mermaid-render" data-adaptive-diagram="' + escapeHtml(key) + '" role="img" tabindex="0" aria-label="' + escapeHtml(label + ': ' + diagram.title + '. Drag to move; use arrow keys, a pinch gesture, or the controls to zoom.') + '"><span class="loading">Rendering diagram…</span></div><p class="diagram-help">' + DIAGRAM_INTERACTION_HELP + '</p></div>' +
     '<div class="flow-warning hidden" data-adaptive-error="' + escapeHtml(key) + '">The adaptive diagram source is invalid or unsupported. The saved evidence remains available below.</div><details class="flow-impact architecture-impact"><summary class="blast">affects ' + diagram.affectedFiles.length + '</summary><div class="flow-impact-list"><strong>Affected changed files</strong>' + affected + '</div></details><details class="mermaid-source"><summary>Mermaid source</summary><pre>' + escapeHtml(diagram.mermaid) + '</pre></details></article>';
 }
 
@@ -3023,7 +3024,7 @@ function openArchitectureDiagramViewer(key) {
   }
   const viewerKey = `viewer-${key}`;
   state.architectureDiagramViews.set(viewerKey, { x: 0, y: 0, scale: 1 });
-  elements["architecture-viewer-eyebrow"].textContent = "Component diagram";
+  elements["architecture-viewer-eyebrow"].textContent = architecture.value.kind === "state-machine" ? "State machine" : architecture.value.kind === "data-model" ? "Data model / ER" : "Component diagram";
   elements["architecture-viewer-title"].textContent = architecture.value.title;
   elements["architecture-viewer-controls"].innerHTML = architectureDiagramControls(architecture.label);
   elements["architecture-viewer-legend"].innerHTML = architecture.value.kind ? adaptiveLegend(architecture.value.kind) : architectureLegend();
@@ -3033,7 +3034,7 @@ function openArchitectureDiagramViewer(key) {
   elements["architecture-viewer-diagram"].className = "sequence-diagram architecture-diagram";
   elements["architecture-viewer-diagram"].setAttribute("role", "img");
   elements["architecture-viewer-help"].classList.remove("hidden");
-  elements["architecture-viewer-diagram"].setAttribute("aria-label", `${architecture.label}: ${architecture.value.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
+  elements["architecture-viewer-diagram"].setAttribute("aria-label", `${architecture.label}: ${architecture.value.title}. Drag to move; use arrow keys, a pinch gesture, or the controls to zoom.`);
   elements["architecture-viewer-diagram"].innerHTML = source.innerHTML;
   elements["architecture-viewer-dialog"].showModal();
   applyArchitectureDiagramView(viewerKey);
@@ -3045,6 +3046,7 @@ function openBriefingDiagramViewer(kind, id) {
   const callFlow = kind === "call-flow" ? state.session.outline?.callFlows.find((flow) => flow.id === id) : null;
   const source = sequence
     ? elements["tour-intro-sequence"].querySelector(`[data-tour-intro-flow-index="${state.session.outline.flows.indexOf(sequence)}"]`)
+      ?? elements.flows.querySelector(`[data-flow-index="${state.session.outline.flows.indexOf(sequence)}"]`)
     : callFlow ? elements["tour-intro-call-flows"].querySelector(`[data-tour-intro-call-flow="${CSS.escape(id)}"]`) : null;
   if ((!sequence && !callFlow) || (sequence && (!source || !source.querySelector("svg")))) {
     toast(`The ${sequence ? "sequence diagram" : "call flow"} is not ready yet.`);
@@ -3063,7 +3065,7 @@ function openBriefingDiagramViewer(kind, id) {
     elements["architecture-viewer-diagram"].dataset.architectureDiagram = viewerKey;
     elements["architecture-viewer-diagram"].className = "sequence-diagram architecture-diagram";
     elements["architecture-viewer-diagram"].setAttribute("role", "img");
-    elements["architecture-viewer-diagram"].setAttribute("aria-label", `Sequence diagram: ${sequence.title}. Drag to move; use arrow keys to move and plus or minus to zoom.`);
+    elements["architecture-viewer-diagram"].setAttribute("aria-label", `Sequence diagram: ${sequence.title}. Drag to move; use arrow keys, a pinch gesture, or the controls to zoom.`);
     elements["architecture-viewer-help"].classList.remove("hidden");
   } else {
     elements["architecture-viewer-controls"].innerHTML = "";
@@ -3252,7 +3254,7 @@ function renderSequenceDiagrams() {
       ? affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")
       : '<p class="muted">Exact files were not captured for this saved tour. Regenerate this diagram to add them.</p>';
     return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
-      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details><button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
+      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details>${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}<button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
       <div class="sequence-diagram mermaid-render" data-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
       <div class="flow-warning hidden" data-flow-error>The diagram source is invalid or unsupported. Inspect or edit it below.</div>
@@ -5798,6 +5800,11 @@ elements["conversation-list"].addEventListener("click", (event) => {
 elements["screenshots-tab"].addEventListener("click", () => activateReviewTab("screenshots", renderScreenshots));
 elements["pull-request-tab"].addEventListener("click", () => activateReviewTab("pull-request", renderPullRequest));
 elements.flows.addEventListener("click", (event) => {
+  const expand = event.target.closest("[data-briefing-diagram-expand]");
+  if (expand) {
+    openBriefingDiagramViewer(expand.dataset.briefingDiagramExpand, expand.dataset.briefingDiagramId);
+    return;
+  }
   const fileButton = event.target.closest("[data-flow-file]");
   if (fileButton) {
     void showAnalysisFile(fileButton.dataset.flowFile);
@@ -5843,6 +5850,10 @@ function finishArchitectureDiagramDrag(event) {
   state.architectureDiagramDrag = null;
 }
 
+function interactiveDiagramKey(diagram) {
+  return diagram?.dataset.architectureDiagram ?? diagram?.dataset.adaptiveDiagram;
+}
+
 function registerArchitectureDiagramInteractions(container) {
   container.addEventListener("click", (event) => {
     const briefingExpandButton = event.target.closest("[data-briefing-diagram-expand]");
@@ -5865,11 +5876,12 @@ function registerArchitectureDiagramInteractions(container) {
     if (fileButton) void showAnalysisFile(fileButton.dataset.flowFile);
   });
   container.addEventListener("pointerdown", (event) => {
-    const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
-    if (!diagram || event.button !== 0) return;
-    const view = architectureDiagramView(diagram.dataset.architectureDiagram);
+    const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram], .architecture-diagram[data-adaptive-diagram]");
+    const key = interactiveDiagramKey(diagram);
+    if (!diagram || !key || event.button !== 0) return;
+    const view = architectureDiagramView(key);
     state.architectureDiagramDrag = {
-      key: diagram.dataset.architectureDiagram,
+      key,
       pointerId: event.pointerId,
       diagram,
       startX: event.clientX,
@@ -5891,13 +5903,23 @@ function registerArchitectureDiagramInteractions(container) {
   });
   container.addEventListener("pointerup", finishArchitectureDiagramDrag);
   container.addEventListener("pointercancel", finishArchitectureDiagramDrag);
+  container.addEventListener("wheel", (event) => {
+    const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram], .architecture-diagram[data-adaptive-diagram]");
+    const key = interactiveDiagramKey(diagram);
+    if (!diagram || !key || !event.ctrlKey) return;
+    event.preventDefault();
+    const view = architectureDiagramView(key);
+    view.scale = Math.min(ARCHITECTURE_ZOOM_MAX, Math.max(ARCHITECTURE_ZOOM_MIN, view.scale * Math.exp(-event.deltaY * 0.01)));
+    applyArchitectureDiagramView(key);
+  }, { passive: false });
   container.addEventListener("keydown", (event) => {
-    const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram]");
-    if (!diagram) return;
+    const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram], .architecture-diagram[data-adaptive-diagram]");
+    const key = interactiveDiagramKey(diagram);
+    if (!diagram || !key) return;
     const action = ({ ArrowLeft: "move-left", ArrowRight: "move-right", ArrowUp: "move-up", ArrowDown: "move-down", "+": "zoom-in", "=": "zoom-in", "-": "zoom-out", "0": "reset" })[event.key];
     if (!action) return;
     event.preventDefault();
-    changeArchitectureDiagramView(diagram.dataset.architectureDiagram, action);
+    changeArchitectureDiagramView(key, action);
   });
 }
 
