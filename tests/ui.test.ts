@@ -1233,6 +1233,11 @@ test("topbar controls stay compact around a labelled settings menu", async () =>
   expect(html).toContain('<span>Theme</span><select id="theme-select"');
   expect(styles).toContain(".topbar .button { padding: 6px 9px;");
   expect(styles).toContain(".actions { justify-content: flex-end; gap: 5px;");
+  expect(styles).toContain("grid-template-rows: 54px 44px;");
+  expect(styles).toContain(".topbar > .tabs { grid-column: 1 / -1; grid-row: 2; }");
+  expect(styles).toContain(".topbar > .actions { grid-column: 2; grid-row: 1; }");
+  expect(styles).toContain("height: calc(100vh - 98px);");
+  expect(styles).toContain(".focus-mode .topbar { height: 58px; grid-template-rows: 58px; }");
   expect(html).toContain('id="update-button" class="button update-button hidden"');
   expect(app).toContain('void checkForUpdate()');
   expect(app).toContain('elements["update-button"].addEventListener("click", installUpdate)');

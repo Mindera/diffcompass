@@ -207,9 +207,11 @@ button { color: inherit; }
 }
 
 .topbar {
-  height: 58px;
+  height: 98px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto max-content;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 54px 44px;
+  column-gap: 12px;
   align-items: center;
   padding: 0 18px;
   border-bottom: 1px solid var(--border);
@@ -217,6 +219,9 @@ button { color: inherit; }
 }
 
 .brand, .actions, .tabs, .panel-heading, .agent-heading, .nav-buttons { display: flex; align-items: center; }
+.topbar > .brand { grid-column: 1; grid-row: 1; }
+.topbar > .actions { grid-column: 2; grid-row: 1; }
+.topbar > .tabs { grid-column: 1 / -1; grid-row: 2; }
 .brand { gap: 10px; min-width: 0; }
 .brand { overflow: hidden; }
 .brand strong { flex-shrink: 0; white-space: nowrap; }
@@ -268,7 +273,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .workspace {
   --file-panel-width: 240px;
   --agent-panel-width: 420px;
-  height: calc(100vh - 58px);
+  height: calc(100vh - 98px);
   display: grid;
   grid-template-columns: var(--file-panel-width) minmax(420px, 1fr) var(--agent-panel-width);
 }
@@ -1069,7 +1074,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .activity-verification p { margin: 6px 0 0; }
 .activity-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; font-size: 11px; }
 .proposal-label { color: var(--warning); font-weight: 700; text-transform: uppercase; }
-.closed-banner { position: fixed; z-index: 10; top: 66px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 10px; max-width: min(680px, calc(100vw - 32px)); border: 1px solid var(--banner-border); border-radius: 8px; background: var(--banner-background); color: var(--banner-text); padding: 9px 13px; font-size: 12px; text-align: center; box-shadow: 0 10px 28px var(--shadow); }
+.closed-banner { position: fixed; z-index: 10; top: 106px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 10px; max-width: min(680px, calc(100vw - 32px)); border: 1px solid var(--banner-border); border-radius: 8px; background: var(--banner-background); color: var(--banner-text); padding: 9px 13px; font-size: 12px; text-align: center; box-shadow: 0 10px 28px var(--shadow); }
 .closed-banner-action { flex: 0 0 auto; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; color: inherit; background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
 .closed-banner-action:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
 .closed-banner-action:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
@@ -1288,12 +1293,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 }
 
 @media (min-width: 901px) and (max-width: 1500px) {
-  .topbar { height: 98px; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 54px 44px; column-gap: 12px; }
-  .topbar > .actions { grid-column: 2; grid-row: 1; }
-  .topbar > .tabs { grid-column: 1 / -1; grid-row: 2; min-width: 0; overflow-x: auto; }
   .topbar .tab { flex: 0 0 auto; white-space: nowrap; }
-  .workspace { height: calc(100vh - 98px); }
-  .closed-banner { top: 106px; }
 }
 
 @media (max-width: 1050px) {
@@ -1302,6 +1302,9 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 }
 
 @media (min-width: 901px) {
+  .focus-mode .topbar { height: 58px; grid-template-rows: 58px; }
+  .focus-mode .workspace { height: calc(100vh - 58px); }
+  .focus-mode .closed-banner { top: 66px; }
   .workspace.file-pane-collapsed { grid-template-columns: 40px minmax(420px, 1fr) var(--agent-panel-width); }
   .workspace.agent-pane-collapsed { grid-template-columns: var(--file-panel-width) minmax(420px, 1fr) 40px; }
   .workspace.file-pane-collapsed.agent-pane-collapsed { grid-template-columns: 40px minmax(420px, 1fr) 40px; }
