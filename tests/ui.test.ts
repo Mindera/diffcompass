@@ -1150,6 +1150,26 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(styles).toContain("touch-action: none");
 });
 
+test("diagram zoom can scale a tall chart down to a comfortable viewer fit", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("const ARCHITECTURE_ZOOM_MIN"), app.indexOf("function architectureCard("));
+  const state = { architectureDiagramViews: new Map() };
+  const controls = new Function(
+    "state",
+    "document",
+    "CSS",
+    `${source}; return { architectureDiagramView, changeArchitectureDiagramView };`,
+  )(state, { querySelector: () => null }, { escape: (value: string) => value }) as {
+    architectureDiagramView(key: string): { scale: number };
+    changeArchitectureDiagramView(key: string, action: string): void;
+  };
+
+  for (let index = 0; index < 4; index += 1) controls.changeArchitectureDiagramView("tall-state-machine", "zoom-out");
+  expect(controls.architectureDiagramView("tall-state-machine").scale).toBe(0.25);
+  controls.changeArchitectureDiagramView("tall-state-machine", "zoom-out");
+  expect(controls.architectureDiagramView("tall-state-machine").scale).toBe(0.25);
+});
+
 test("symbol peek does not retain state after leaving its review page", async () => {
   const app = await readFile(join(root, "public/app.js"), "utf8");
   const close = app.slice(app.indexOf("function closeSymbolPeek()"), app.indexOf("async function showActivityFile"));
