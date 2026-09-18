@@ -69,9 +69,10 @@ test("line markers opt in without removing line actions or comment indicators", 
   expect(syncs).toBe(2);
 });
 
-test("tablet tabs have a separate row and the title cannot wrap into them", () => {
+test("desktop tabs have a separate row and the title cannot wrap into them", () => {
   expect(styles).toContain('.brand strong { flex-shrink: 0; white-space: nowrap; }');
-  expect(styles).toContain('@media (min-width: 901px) and (max-width: 1500px)');
+  expect(styles).toContain('grid-template-rows: 54px 44px;');
   expect(styles).toContain('.topbar > .tabs { grid-column: 1 / -1; grid-row: 2;');
-  expect(styles).toContain('.workspace { height: calc(100vh - 98px); }');
+  expect(styles).toContain('.topbar > .actions { grid-column: 2; grid-row: 1; }');
+  expect(styles).toContain('height: calc(100vh - 98px);');
 });
