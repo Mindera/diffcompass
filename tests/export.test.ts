@@ -131,6 +131,28 @@ test("exports accepted findings as risk accepted", () => {
   expect(exportReview(session, "html").content).toContain("Disposition: Risk accepted");
 });
 
+test("exports finding evidence as labelled, scannable facts", () => {
+  const session = fixture();
+  session.outline!.findings = [{
+    id: "structured-evidence", phaseId: "behavior", stepId: "one", path: "app.ts", side: "new", line: 2,
+    lineContent: "const changed = 2;", message: "An empty value produces an unusable record.", category: "correctness",
+    severity: "high", confidence: "high",
+    evidence: "Observation: `load` accepts an empty value.\nCausal path: The empty value reaches `save` unchanged.\nImpact: The persisted record cannot be reopened.\nCoverage: No changed test exercises an empty value.",
+    priority: "P2", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open",
+  }];
+
+  const markdown = exportReview(session, "markdown").content;
+  expect(markdown).toContain("Evidence trail:");
+  expect(markdown).toContain("- **Observation:** `load` accepts an empty value.");
+  expect(markdown).toContain("- **Causal path:** The empty value reaches `save` unchanged.");
+
+  const html = exportReview(session, "html").content;
+  expect(html).toContain("Evidence trail · high confidence");
+  expect(html).toContain('class="finding-evidence-list"');
+  expect(html).toContain("<strong>Impact</strong>");
+  expect(html).toContain("The persisted record cannot be reopened.");
+});
+
 test("exports fixed findings as fixed verified", () => {
   const session = fixture();
   session.outline!.findings = [{

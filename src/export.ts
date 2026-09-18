@@ -34,6 +34,30 @@ function findingDisposition(finding: ReviewFinding): string {
         : "Open";
 }
 
+const findingEvidenceLabels = new Map([
+  ["observation", "Observation"], ["changed code", "Changed code"],
+  ["causal path", "Causal path"], ["execution path", "Causal path"], ["runtime path", "Causal path"],
+  ["impact", "Impact"], ["outcome", "Impact"],
+  ["coverage", "Coverage"], ["test coverage", "Coverage"],
+]);
+
+function findingEvidenceParts(evidence: string): Array<{ label: string; body: string }> {
+  let chunks = evidence.trim().split(/\n+/).map((part) => part.replace(/^\s*[-*•]\s+/, "").trim()).filter(Boolean);
+  if (chunks.length === 1) {
+    const sentences = chunks[0]!.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g)?.map((part) => part.trim()).filter(Boolean) ?? [];
+    if (sentences.length > 1) chunks = sentences;
+  }
+  return chunks.map((part, index) => {
+    const labelled = /^([^:]{1,32}):\s+(.+)$/.exec(part);
+    const label = labelled ? findingEvidenceLabels.get(labelled[1]!.trim().toLowerCase()) : undefined;
+    return { label: label ?? (chunks.length === 1 ? "Evidence" : `Evidence ${index + 1}`), body: label ? labelled![2]!.trim() : part };
+  });
+}
+
+function findingEvidenceHtml(evidence: string): string {
+  return `<ol class="finding-evidence-list">${findingEvidenceParts(evidence).map((part) => `<li><strong>${escapeHtml(part.label)}</strong><div>${inlineHtml(part.body)}</div></li>`).join("")}</ol>`;
+}
+
 function markdownFence(language: string, content: string): string {
   const longest = Math.max(2, ...[...content.matchAll(/`+/g)].map((match) => match[0].length));
   const fence = "`".repeat(longest + 1);
@@ -131,7 +155,7 @@ function markdown(session: ReviewSession): string {
   if (outline?.findings.length) {
     lines.push("## Findings", "");
     for (const finding of outline.findings) {
-      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Scope: ${markdownText(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${markdownText(finding.stepId)}` : ""}; disposition: ${findingDisposition(finding)}; severity: ${finding.severity}; confidence: ${finding.confidence}`, "", markdownText(finding.message), "", `Evidence: ${markdownText(finding.evidence)}`, ...(finding.reviewerNote ? ["", `Reviewer note: ${markdownText(finding.reviewerNote)}`] : []), "");
+      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Scope: ${markdownText(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${markdownText(finding.stepId)}` : ""}; disposition: ${findingDisposition(finding)}; severity: ${finding.severity}; confidence: ${finding.confidence}`, "", markdownText(finding.message), "", "Evidence trail:", "", ...findingEvidenceParts(finding.evidence).map((part) => `- **${markdownText(part.label)}:** ${markdownText(part.body)}`), ...(finding.reviewerNote ? ["", `Reviewer note: ${markdownText(finding.reviewerNote)}`] : []), "");
     }
   }
   if (session.comments.length) {
@@ -464,7 +488,7 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   }
   const filesByPath = new Map(session.comparison.files.map((file) => [file.path, file]));
   let stopNumber = 0;
-  const findingCard = (finding: ReviewFinding) => `<article class="finding ${finding.priority.toLowerCase()} ${finding.disposition ? escapeHtml(finding.disposition) : ""}"><header><span>${finding.priority}</span><strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong></header><code>${escapeHtml(finding.path)}:${finding.line}</code><p>${inlineHtml(finding.message)}</p><div class="finding-disposition">Disposition: ${escapeHtml(findingDisposition(finding))}</div>${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${inlineHtml(finding.reviewerNote)}</p></div>` : ""}<details><summary>Evidence · ${escapeHtml(finding.confidence)} confidence</summary><p>${inlineHtml(finding.evidence)}</p></details></article>`;
+  const findingCard = (finding: ReviewFinding) => `<article class="finding ${finding.priority.toLowerCase()} ${finding.disposition ? escapeHtml(finding.disposition) : ""}"><header><span>${finding.priority}</span><strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong></header><code>${escapeHtml(finding.path)}:${finding.line}</code><p>${inlineHtml(finding.message)}</p><div class="finding-disposition">Disposition: ${escapeHtml(findingDisposition(finding))}</div>${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${inlineHtml(finding.reviewerNote)}</p></div>` : ""}<details><summary>Evidence trail · ${escapeHtml(finding.confidence)} confidence</summary>${findingEvidenceHtml(finding.evidence)}</details></article>`;
   const briefingTarget = (signal: (typeof briefing.signals)[number]) => {
     const target = signal.target;
     if (target.kind === "file") return `<button type="button" data-open-file="${escapeHtml(target.path)}">Open ${escapeHtml(target.path)}${target.line ? `:${target.line}` : ""}</button>`;
@@ -472,10 +496,11 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
     if (target.kind === "call-flow") return `<button type="button" data-view="calls">Open call flow</button>`;
     return `<button type="button" data-view="diff">Open ${escapeHtml(target.section.replaceAll("-", " "))} section</button>`;
   };
+  const findingEvidenceStyles = `<style>.finding-evidence-list{display:grid;gap:6px;margin:8px 0 2px;padding:0;list-style:none}.finding-evidence-list li{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px;border:1px solid var(--line);border-radius:6px;padding:7px;background:var(--code)}.finding-evidence-list li>strong{color:var(--soft);font-size:8px;text-transform:uppercase}.finding-evidence-list li>div{min-width:0;color:#cbd5e3;overflow-wrap:anywhere}@media(max-width:600px){.finding-evidence-list li{grid-template-columns:1fr;gap:2px}}</style>`;
   const briefingStyles = `<style>.attention-briefing,.review-estimate{max-width:1050px;margin:0 auto;padding:18px 24px;border-bottom:1px solid var(--line)}.attention-briefing h2,.review-estimate h2{margin:4px 0;font-size:16px}.attention-briefing>.muted,.review-estimate>.muted{margin:6px 0;color:var(--soft);font-size:11px}.attention-list{display:grid;gap:8px;margin-top:12px}.attention-item{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:10px;background:var(--item)}.attention-item.finding,.attention-item.github-check,.attention-item.merge-conflict{border-left-color:var(--red)}.attention-item header{display:flex;justify-content:space-between;gap:10px}.attention-item header small{color:var(--soft);font-size:9px}.attention-item p{margin:4px 0;color:var(--soft);font-size:10px}.attention-item details{color:var(--soft);font-size:9px}.attention-item button{border:0;padding:2px 0;color:var(--accent);background:transparent;font-size:10px;cursor:pointer}.review-estimate details{margin-top:12px;color:var(--soft);font-size:10px}.review-estimate details p{margin:7px 0}.review-estimate small{color:var(--soft)}@media(max-width:600px){.attention-item header{align-items:flex-start;flex-direction:column;gap:2px}}</style>`;
   const findingCount = briefing.signals.filter((signal) => signal.kind === "finding").length;
   const briefingNote = `${briefing.signals.length} review cues shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 findings. Other cues point to contracts, tests, flows, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
-  const briefingSection = briefingStyles + (briefing.signals.length > 0 ? `<section class="attention-briefing" aria-labelledby="attention-title"><span class="eyebrow">Evidence briefing</span><h2 id="attention-title">Needs your attention</h2><p class="muted">${escapeHtml(briefingNote)}</p><div class="attention-list">${briefing.signals.map((signal) => `<article class="attention-item ${signal.kind}"><header><strong>${escapeHtml(signal.title)}</strong><small>${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</small></header><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details>${briefingTarget(signal)}</article>`).join("")}</div></section>` : "");
+  const briefingSection = findingEvidenceStyles + briefingStyles + (briefing.signals.length > 0 ? `<section class="attention-briefing" aria-labelledby="attention-title"><span class="eyebrow">Evidence briefing</span><h2 id="attention-title">Needs your attention</h2><p class="muted">${escapeHtml(briefingNote)}</p><div class="attention-list">${briefing.signals.map((signal) => `<article class="attention-item ${signal.kind}"><header><strong>${escapeHtml(signal.title)}</strong><small>${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</small></header><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details>${briefingTarget(signal)}</article>`).join("")}</div></section>` : "");
   const estimateSection = `<section class="review-estimate" aria-labelledby="estimate-title"><span class="eyebrow">Review effort</span><h2 id="estimate-title">How much time might this review take? About ${briefing.estimate.minutes} minutes</h2><p class="muted">A rough first-pass planning aid based on the visible diff and review signals, not a risk score or quality rating.</p><details><summary>Why this estimate?</summary><div>${briefing.estimate.factors.map((factor) => `<p><strong>${escapeHtml(factor.label)} · +${factor.minutes} min</strong><br><small>${escapeHtml(factor.detail)} · ${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"}</small></p>`).join("")}</div></details></section>`;
   const architectureLegend = '<div class="architecture-legend" aria-label="Diagram colour legend"><span><i class="new"></i>New</span><span><i class="changed"></i>Changed</span><span><i class="removed"></i>Removed</span><span><i class="external"></i>Outside this change</span></div>';
   const diagramControls = '<div class="diagram-controls"><span>Move</span><button type="button" data-diagram-action="move-left" aria-label="Move diagram left">←</button><button type="button" data-diagram-action="move-up" aria-label="Move diagram up">↑</button><button type="button" data-diagram-action="move-down" aria-label="Move diagram down">↓</button><button type="button" data-diagram-action="move-right" aria-label="Move diagram right">→</button><span>Zoom</span><button type="button" data-diagram-action="zoom-out" aria-label="Zoom out">−</button><button type="button" class="diagram-zoom" data-diagram-action="reset">100%</button><button type="button" data-diagram-action="zoom-in" aria-label="Zoom in">+</button></div>';

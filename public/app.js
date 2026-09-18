@@ -1830,7 +1830,16 @@ function renderModelOptions() {
     ? `Policy: ${policy.instructions.length} instruction${policy.instructions.length === 1 ? "" : "s"}; findings ${policy.findings.enabled ? `${policy.findings.minimumSeverity}+ in ${policy.findings.categories.join(", ") || "no categories"}` : "disabled"}.`
     : "";
   elements["agent-note"].textContent = [adapter ? adapter.note ?? "" : "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.", policyNote].filter(Boolean).join(" ");
-  elements["agent-name"].textContent = adapter?.label ?? "No agent detected";
+  const model = adapter?.models.find((candidate) => candidate.id === selected) ?? adapter?.models[0];
+  const reasoning = state.session.agentSelection?.adapterId === adapter?.id && state.session.agentSelection?.modelId === model?.id
+    ? state.session.agentSelection.reasoningEffort
+    : model?.defaultReasoningEffort;
+  const modelIdentity = model?.id === "current-session" ? "Current agent session" : model?.id;
+  const agentIdentity = adapter
+    ? [adapter.label, modelIdentity, reasoning].filter(Boolean).join(" · ")
+    : "No agent detected";
+  elements["agent-name"].textContent = agentIdentity;
+  elements["agent-name"].title = agentIdentity;
   renderReasoningOptions();
 }
 
@@ -2025,6 +2034,37 @@ function renderReviewOverview() {
   }
 }
 
+const findingEvidenceLabels = new Map([
+  ["observation", "Observation"],
+  ["changed code", "Changed code"],
+  ["causal path", "Causal path"],
+  ["execution path", "Causal path"],
+  ["runtime path", "Causal path"],
+  ["impact", "Impact"],
+  ["outcome", "Impact"],
+  ["coverage", "Coverage"],
+  ["test coverage", "Coverage"],
+]);
+
+function findingEvidenceParts(evidence) {
+  const value = String(evidence ?? "").trim();
+  if (!value) return [];
+  let chunks = value.split(/\n+/).map((part) => part.replace(/^\s*[-*•]\s+/, "").trim()).filter(Boolean);
+  if (chunks.length === 1) {
+    const sentences = chunks[0].match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g)?.map((part) => part.trim()).filter(Boolean) ?? [];
+    if (sentences.length > 1) chunks = sentences;
+  }
+  return chunks.map((part, index) => {
+    const labelled = /^([^:]{1,32}):\s+(.+)$/.exec(part);
+    const label = labelled ? findingEvidenceLabels.get(labelled[1].trim().toLowerCase()) : undefined;
+    return { label: label ?? (chunks.length === 1 ? "Evidence" : `Evidence ${index + 1}`), body: label ? labelled[2].trim() : part };
+  });
+}
+
+function renderFindingEvidence(evidence) {
+  return `<ol class="finding-evidence-list">${findingEvidenceParts(evidence).map((part) => `<li><strong>${escapeHtml(part.label)}</strong><div>${renderInlineMarkdown(part.body)}</div></li>`).join("")}</ol>`;
+}
+
 function findingCards(findings, compact = false) {
   const disabled = reviewIsOpen() ? "" : " disabled";
   const ordered = [...findings].sort((left, right) => left.priority.localeCompare(right.priority) || left.path.localeCompare(right.path) || left.line - right.line);
@@ -2039,7 +2079,7 @@ function findingCards(findings, compact = false) {
       const body = `<div class="finding-heading"><button class="comment-jump" data-action="jump" type="button">${escapeHtml(finding.path)}:${finding.line}</button><span class="finding-priority">${finding.priority}</span></div>
       <strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong>
       <p>${renderInlineMarkdown(finding.message)}</p>
-      <details><summary>Evidence · ${escapeHtml(finding.confidence)} confidence</summary><p>${renderInlineMarkdown(finding.evidence)}</p></details>
+      <details class="finding-evidence"><summary>Evidence trail · ${escapeHtml(finding.confidence)} confidence</summary>${renderFindingEvidence(finding.evidence)}</details>
       <div class="finding-badges"><span>${finding.introduced === true ? "introduced" : finding.introduced === false ? "pre-existing" : "attribution unknown"}</span><span>${finding.tested ? "tested" : "untested"}</span><span>blast ${finding.blastRadiusSize}</span><span>${escapeHtml(finding.pinScope)} pin</span>${finding.recallGuard ? "<span>recall-protected</span>" : ""}${disposition ? `<span class="finding-disposition ${escapeHtml(disposition)}">${escapeHtml(findingDispositionLabel(disposition))}</span>` : ""}${finding.outdated ? '<span class="finding-reassessment">Needs reassessment</span>' : ""}</div>
       ${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${renderInlineMarkdown(finding.reviewerNote)}</p></div>` : ""}
       <div class="comment-actions">
@@ -2147,6 +2187,13 @@ function flowProvenanceCopy(provenance) {
   if (provenance === "verified") return { label: "Verified", detail: "Every link was traced in the changed code." };
   if (provenance === "partial") return { label: "Partly verified", detail: "Some links were traced; the remaining links are informed inferences." };
   return { label: "Unverified", detail: "The flow is plausible, but it was not traced end-to-end in the changed code." };
+}
+
+function flowProvenanceLegend() {
+  return `<div class="provenance-legend" role="list" aria-label="Diagram verification legend">${["verified", "partial", "unverified"].map((provenance) => {
+    const copy = flowProvenanceCopy(provenance);
+    return `<span role="listitem"><i class="provenance ${provenance}">${escapeHtml(copy.label)}</i><span>${escapeHtml(copy.detail)}</span></span>`;
+  }).join("")}</div>`;
 }
 
 function renderCallTree(flow, mode) {
@@ -2524,7 +2571,7 @@ function renderSequenceDiagrams() {
   elements["flows-empty"].textContent = state.session.outline
     ? "No goal-critical, high-blast runtime flow was identified for this change."
     : "Start the tour to generate grounded sequence diagrams.";
-  elements.flows.innerHTML = flows.map((flow, index) => {
+  const cards = flows.map((flow, index) => {
     const provenance = flowProvenanceCopy(flow.provenance);
     const affectedFiles = flow.affectedFiles ?? [];
     const affectedCount = affectedFiles.length || flow.blastRadiusSize;
@@ -2539,6 +2586,7 @@ function renderSequenceDiagrams() {
       <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
     </article>`;
   }).join("");
+  elements.flows.innerHTML = flows.length > 0 ? `${flowProvenanceLegend()}${cards}` : "";
   void renderFlowDiagrams(architectureEntries(), flows, generation);
 }
 

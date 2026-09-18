@@ -461,6 +461,10 @@ test("syntax highlighting is local and Mermaid diagrams render as strict SVG wit
   expect(styles).toContain('.syntax-token.sl-d73a49');
   expect(styles).toContain('.syntax-token.sd-f97583');
   expect(styles).toContain(".sequence-diagram svg");
+  expect(app).toContain('function flowProvenanceLegend()');
+  expect(app).toContain('aria-label="Diagram verification legend"');
+  expect(styles).toContain('.flow-card header > div:first-child { display: flex;');
+  expect(styles).toContain('.provenance-legend > span { display: grid;');
 });
 
 test("phase files start collapsed and scoped findings are separated from the complete findings view", async () => {
@@ -500,6 +504,9 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(app).toContain('finding.outdated ? "(needs reassessment) " : ""');
   expect(app).toContain('finding.outdated ? " needs-reassessment" : ""');
   expect(app).toContain("evidence.open = true");
+  expect(app).toContain("function findingEvidenceParts(evidence)");
+  expect(app).toContain('class="finding-evidence-list"');
+  expect(app).toContain("Evidence trail · ${escapeHtml(finding.confidence)} confidence");
   expect(app).toContain('const findingDispositionLabels = {');
   expect(app).toContain('accepted: "Risk accepted"');
   expect(app).toContain('fixed: "Fixed (verified)"');
@@ -525,6 +532,15 @@ test("phase files start collapsed and scoped findings are separated from the com
   expect(styles).toContain(".finding-badges .finding-disposition.deferred");
   expect(styles).toContain(".finding-badges .finding-disposition.obsolete-after-refresh");
   expect(styles).toContain(".finding-item.obsolete-after-refresh");
+  expect(styles).toContain(".finding-evidence-list li");
+});
+
+test("the agent header preserves the selected triggering model and effort", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+
+  expect(app).toContain('const modelIdentity = model?.id === "current-session" ? "Current agent session" : model?.id');
+  expect(app).toContain('[adapter.label, modelIdentity, reasoning].filter(Boolean).join(" · ")');
+  expect(app).toContain('elements["agent-name"].title = agentIdentity;');
 });
 
 test("current stop findings can be collapsed without hiding their count", async () => {

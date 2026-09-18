@@ -374,6 +374,7 @@ test("audits release-path candidates to a concrete causal finding before returni
   expect(outlineEvent.prompt).toContain("Order phases and stops by causal dependency");
   expect(outlineEvent.prompt).toContain("Each later stop adds one concrete fact");
   expect(outlineEvent.prompt).toContain("not a generic instruction to inspect, see, or check code");
+  expect(outlineEvent.prompt).toContain('"Observation: ...", "Causal path: ...", "Impact: ...", and "Coverage: ..."');
   await bridge.respond(outlineEvent.id, JSON.stringify({
     title: "Delivery review", summary: "Review notification delivery.", flows: [],
     phases: [{ id: "delivery", title: "Delivery", summary: "Inspect delivery settings.", fileChanges: [{ path: "ios/App.entitlements", summary: "Selects the notification environment." }], steps: [{ id: "entitlement", title: "Notification environment", objective: "The entitlement selects the shipped notification environment.", anchor: { path: "ios/App.entitlements", side: "new", startLine: 1, endLine: 1 } }] }],
@@ -385,6 +386,7 @@ test("audits release-path candidates to a concrete causal finding before returni
   expect(auditEvent?.prompt).toContain("trace the changed source or configuration through its actual consumers");
   expect(auditEvent?.prompt).toContain("release/deployment automation");
   expect(auditEvent?.prompt).toContain('do not leave an "unless" or "confirm whether" escape hatch');
+  expect(auditEvent?.prompt).toContain("do not combine the facts into one paragraph");
   await bridge.respond(auditEvent!.id, JSON.stringify({ candidateDecisions: [{
     id: "sandbox-push", disposition: "revised", reason: "The release automation resolves the candidate's condition.",
   }], findings: [{
