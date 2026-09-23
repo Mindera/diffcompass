@@ -1,8 +1,10 @@
 import type { DiffFile, GitComparison, PullRequestContext, ReviewBriefing, ReviewBriefingSignal, TourOutline } from "./types.ts";
+import { structuralReachCountForPriority } from "./structural-blast-radius.ts";
 
 export interface BriefingOptions {
   includeFindings?: boolean;
   includeCallFlows?: boolean;
+  includeStructuralBlastRadius?: boolean;
 }
 
 const TEST_PATH = /(^|\/)(?:test|tests|spec|specs|__tests__)(\/|$)|(?:^|[._-])(?:test|spec)(?:[._-]|$)|Tests?\.(?:swift|kt|java)$/i;
@@ -68,6 +70,25 @@ function callFlowSignals(outline: TourOutline | undefined, includeCallFlows: boo
     basis: flow.provenance === "verified" ? "repository-evidence" as const : "bounded-heuristic" as const,
     target: { kind: "call-flow" as const, callFlowId: flow.id },
   }));
+}
+
+function structuralBlastRadiusSignals(outline: TourOutline | undefined, includeStructuralBlastRadius: boolean): ReviewBriefingSignal[] {
+  if (!includeStructuralBlastRadius) return [];
+  return (outline?.structuralBlastRadii ?? [])
+    .flatMap((radius) => {
+      const reachable = structuralReachCountForPriority(radius);
+      if (reachable < 8 || !radius.nearbyTestGaps.some((gap) => gap.kind !== "coverage-unknown")) return [];
+      const exact = radius.coverage?.reportedCounts === "exact";
+      return [{
+      id: `structural-blast-radius:${radius.id}`,
+      kind: "structural-blast-radius" as const,
+      title: "Broad untested structural reach",
+      detail: `${radius.symbol.symbol} ${exact ? "reports" : "has at least"} ${reachable} reachable structural nodes and ${radius.nearbyTestGaps.length} nearby test ${radius.nearbyTestGaps.length === 1 ? "gap" : "gaps"}.`,
+      evidence: `${radius.provider}; ${radius.confidence} confidence; ${radius.provenance} provenance; ${exact ? "exact provider total" : "known lower bound"}. Static reach is not proof of runtime impact.`,
+      basis: radius.provenance === "verified" ? "repository-evidence" as const : "bounded-heuristic" as const,
+      target: { kind: "structural-blast-radius" as const, structuralBlastRadiusId: radius.id },
+      } satisfies ReviewBriefingSignal];
+    });
 }
 
 function testSignals(comparison: GitComparison): ReviewBriefingSignal[] {
@@ -162,6 +183,7 @@ function estimate(comparison: GitComparison, signals: ReviewBriefingSignal[]): R
   if (count("finding") > 0) factors.push({ label: "P0/P1 findings", minutes: count("finding") * 3, detail: `${count("finding")} unresolved high-priority finding${count("finding") === 1 ? "" : "s"}`, basis: "repository-evidence" });
   if (count("public-contract") > 0) factors.push({ label: "Public contracts", minutes: count("public-contract") * 2, detail: `${count("public-contract")} changed exported/public declaration${count("public-contract") === 1 ? "" : "s"}`, basis: "bounded-heuristic" });
   if (count("call-flow") > 0) factors.push({ label: "Call-flow breadth", minutes: count("call-flow") * 3, detail: `${count("call-flow")} broad call flow${count("call-flow") === 1 ? "" : "s"}`, basis: "repository-evidence" });
+  if (count("structural-blast-radius") > 0) factors.push({ label: "Structural reach", minutes: count("structural-blast-radius") * 3, detail: `${count("structural-blast-radius")} broad untested static reach${count("structural-blast-radius") === 1 ? "" : "es"}`, basis: "bounded-heuristic" });
   if (count("tests") > 0) factors.push({ label: "Test surface", minutes: count("tests") * 2, detail: "Changed or missing tests need a focused pass", basis: "bounded-heuristic" });
   if (count("stale-analysis") > 0) factors.push({ label: "Stale analysis", minutes: count("stale-analysis"), detail: `${count("stale-analysis")} saved explanation or finding needs re-checking`, basis: "repository-evidence" });
   const githubRisk = count("github-check") + count("merge-conflict");
@@ -172,10 +194,12 @@ function estimate(comparison: GitComparison, signals: ReviewBriefingSignal[]): R
 export function buildNeedsAttention(comparison: GitComparison, outline?: TourOutline, pullRequest?: PullRequestContext, options: BriefingOptions = {}): ReviewBriefing {
   const includeFindings = options.includeFindings !== false;
   const includeCallFlows = options.includeCallFlows !== false;
+  const includeStructuralBlastRadius = options.includeStructuralBlastRadius !== false;
   const signals = [
     ...findingSignals(outline, includeFindings),
     ...publicContractSignals(comparison),
     ...callFlowSignals(outline, includeCallFlows),
+    ...structuralBlastRadiusSignals(outline, includeStructuralBlastRadius),
     ...testSignals(comparison),
     ...staleSignals(outline, includeFindings),
     ...githubSignals(pullRequest),

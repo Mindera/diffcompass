@@ -3,6 +3,7 @@ import { ReviewError } from "./errors.ts";
 import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./agent.ts";
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
+import { validateStructuralBlastRadii } from "./structural-blast-radius.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadComparisonBetweenTrees, loadDiffFileWithContext, loadDiffImage, loadDiffText, loadRepositoryFile, removeCheckpointRef, removeProposalWorkspace, writeCheckpointRef, writeProposalFile, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
@@ -207,6 +208,7 @@ export class ReviewSession {
       ? {
           ...structuredClone(persisted.outline),
           callFlows: validateCallFlows(persisted.outline.callFlows ?? [], this.comparison),
+          structuralBlastRadii: validateStructuralBlastRadii(persisted.outline.structuralBlastRadii ?? [], this.comparison),
           flows: persisted.outline.flows ?? [],
           dryRunPlans: persisted.outline.dryRunPlans ? validateDryRunPlans(persisted.outline.dryRunPlans, { callFlows: persisted.outline.callFlows ?? [], flows: persisted.outline.flows ?? [] }, this.comparison) : [],
           findings: persisted.outline.findings ?? [],

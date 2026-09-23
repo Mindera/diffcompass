@@ -229,8 +229,8 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "POST" && url.pathname === "/api/export") {
         const format = enumValue(url.searchParams.get("format"), "format", ["markdown", "html"]) as ExportFormat;
         const input = await readJsonObject(request);
-        exactKeys(input, ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams", "includeDryRuns", "diffWrap"]);
-        for (const key of ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams", "includeDryRuns"] as const) {
+        exactKeys(input, ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeStructuralBlastRadius", "includeDiagrams", "includeDryRuns", "diffWrap"]);
+        for (const key of ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeStructuralBlastRadius", "includeDiagrams", "includeDryRuns"] as const) {
           if (input[key] !== undefined && typeof input[key] !== "boolean") throw new HttpError(422, `${key} must be a boolean.`);
         }
         if (input.diffWrap !== undefined && input.diffWrap !== "scroll" && input.diffWrap !== "wrap") throw new HttpError(422, "diffWrap must be scroll or wrap.");
@@ -255,6 +255,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         const artifact = exportReview(session, format, {
           includeFindings: input.includeFindings !== false,
           includeCallFlows: input.includeCallFlows !== false,
+          includeStructuralBlastRadius: input.includeStructuralBlastRadius !== false,
           includeDiagrams: input.includeDiagrams !== false,
           includeDryRuns: input.includeDryRuns !== false,
           diffWrap: input.diffWrap as "scroll" | "wrap" | undefined,

@@ -21,6 +21,22 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
 
   expect(created.created).toBe(true);
   expect(persisted.outline?.phases).toHaveLength(2);
+  expect(persisted.outline?.structuralBlastRadii?.map((radius) => [radius.symbol.symbol, radius.coverage?.state])).toEqual([
+    ["total", "complete"], ["subtotal", "complete"], ["Discount", "partial"], ["receipt", "unavailable"],
+  ]);
+  expect(persisted.outline?.structuralBlastRadii?.map((radius) => [radius.symbol.symbol, radius.testEvidence?.state])).toEqual([
+    ["total", "relevant-tests-found"], ["subtotal", "relevant-tests-found"], ["Discount", "limited"], ["receipt", "not-assessed"],
+  ]);
+  expect(persisted.outline?.structuralBlastRadii?.[0]?.testEvidence?.relevantTests).toMatchObject([
+    { path: "tests/cart.test.ts", side: "new", line: 5 },
+  ]);
+  expect(persisted.outline?.structuralBlastRadii?.[0]?.testEvidence?.checkedSources[0]?.detail).toBe("Checks the formatted receipt amount when a discount is supplied.");
+  expect(persisted.outline?.structuralBlastRadii?.[0]?.testEvidence?.relevantTests[0]?.detail).toBe("The receipt calls total.");
+  const subtotalRadius = persisted.outline?.structuralBlastRadii?.find((radius) => radius.symbol.symbol === "subtotal");
+  expect(subtotalRadius?.reportedReachableNodeCount).toBe(3);
+  expect(subtotalRadius?.nodes.map((node) => node.id)).toEqual([
+    "src/cart.ts:new:10:subtotal", "src/cart.ts:new:14:total", "src/receipt.ts:new:3:receipt", "fixture:external:checkout",
+  ]);
   expect(persisted.outline?.phases.flatMap((phase) => phase.steps)).toHaveLength(4);
   expect(persisted.outline?.phases.flatMap((phase) => phase.steps).map((step) => Boolean(step.explanation))).toEqual([true, false, false, false]);
   expect(persisted.outline?.architecture?.dependencyChanges).toHaveLength(2);
@@ -55,7 +71,7 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   });
   expect(session.snapshot().needsAttention.signals.map((signal) => signal.kind)).toEqual(["finding", "public-contract", "public-contract", "tests"]);
   expect(session.snapshot().needsAttention.estimate.factors.some((factor) => factor.label === "P0/P1 findings")).toBe(true);
-  expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "docs/checkout-guide.md", "docs/preview.md", "screens/receipt.png", "src/cart.ts", "src/receipt.ts"]);
+  expect(session.comparison.files.map((file) => file.path)).toEqual(["README.md", "docs/checkout-guide.md", "docs/preview.md", "screens/receipt.png", "src/cart.ts", "src/receipt.ts", "tests/cart.test.ts"]);
   expect(session.comparison.files.find((file) => file.path === "docs/checkout-guide.md")?.status).toBe("modified");
   expect(session.currentStepIndex).toBe(0);
   await session.dispose();

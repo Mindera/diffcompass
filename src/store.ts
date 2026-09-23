@@ -161,6 +161,14 @@ function validOutline(value: unknown): boolean {
     });
     if (!validPlans) return false;
   }
+  if (value.structuralBlastRadii !== undefined && !validStructuralBlastRadii(value.structuralBlastRadii)) return false;
+  const structuralNodeIds = new Set(
+    Array.isArray(value.structuralBlastRadii)
+      ? value.structuralBlastRadii.flatMap((radius) => record(radius) && Array.isArray(radius.nodes)
+        ? radius.nodes.flatMap((node) => record(node) && typeof node.id === "string" ? [node.id] : [])
+        : [])
+      : [],
+  );
   const findingIds = new Set<string>();
   return value.findings.every((finding) => record(finding) && nonEmptyString(finding.id, 128) && !findingIds.has(finding.id) && Boolean(findingIds.add(finding.id)) &&
       (finding.phaseId === undefined || (nonEmptyString(finding.phaseId, 128) && phaseIds.has(finding.phaseId))) &&
@@ -180,12 +188,136 @@ function validOutline(value: unknown): boolean {
       (finding.introduced === null || typeof finding.introduced === "boolean") && typeof finding.recallGuard === "boolean" &&
       Number.isInteger(finding.blastRadiusSize) && Number(finding.blastRadiusSize) >= 0 &&
       typeof finding.tested === "boolean" && ["line", "symbol", "file"].includes(String(finding.pinScope)) &&
+      (finding.pinnedSymbolIds === undefined || (Array.isArray(finding.pinnedSymbolIds) && finding.pinnedSymbolIds.length <= 80 && finding.pinnedSymbolIds.every((id) => nonEmptyString(id, 256) && structuralNodeIds.has(id)) && new Set(finding.pinnedSymbolIds).size === finding.pinnedSymbolIds.length)) &&
       ["open", "dismissed", "accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh", "converted-to-feedback"].includes(String(finding.status)) &&
       (finding.disposition === undefined || ["accepted", "false-positive", "intentional", "deferred", "fixed", "obsolete-after-refresh"].includes(String(finding.disposition))) &&
       (finding.disposition === undefined || finding.status === finding.disposition) &&
       (finding.reviewerNote === undefined || nonEmptyString(finding.reviewerNote, 8_000)) &&
       (finding.commentId === undefined || nonEmptyString(finding.commentId, 128)) &&
       (finding.outdated === undefined || typeof finding.outdated === "boolean"));
+}
+
+function validStructuralLocation(value: unknown): boolean {
+  return record(value) && nonEmptyString(value.path, 4_096) && ["old", "new"].includes(String(value.side)) && Number.isInteger(value.line) && Number(value.line) > 0;
+}
+
+function validStructuralNode(value: unknown, root = false): boolean {
+  if (!record(value) || !nonEmptyString(value.id, 256) || !nonEmptyString(value.symbol, 2_000) ||
+    !["function", "method", "constructor", "component", "type", "module", "external"].includes(String(value.kind)) ||
+    (value.location !== undefined && !validStructuralLocation(value.location))) return false;
+  return (!root || value.location !== undefined) && (value.kind === "external" || value.location !== undefined);
+}
+
+function validStructuralTestSource(value: unknown): boolean {
+  return record(value) && nonEmptyString(value.path, 4_096) && ["old", "new"].includes(String(value.side)) &&
+    Number.isInteger(value.line) && Number(value.line) > 0 && nonEmptyString(value.detail, 4_000);
+}
+
+function validStructuralTestEvidence(value: unknown): boolean {
+  if (!record(value) || !["not-assessed", "relevant-tests-found", "none-found", "limited"].includes(String(value.state)) ||
+    (value.searchScope !== undefined && !nonEmptyString(value.searchScope, 4_000)) ||
+    !Array.isArray(value.checkedSources) || value.checkedSources.length > 30 || !value.checkedSources.every(validStructuralTestSource) ||
+    !Array.isArray(value.relevantTests) || value.relevantTests.length > 30 || !value.relevantTests.every(validStructuralTestSource) ||
+    (value.remainingUncertainty !== undefined && !nonEmptyString(value.remainingUncertainty, 4_000))) return false;
+  const anchors = (sources: unknown[]) => new Set(sources.map((source) => record(source) ? `${source.path}:${source.side}:${source.line}` : "")).size === sources.length;
+  if (!anchors(value.checkedSources) || !anchors(value.relevantTests)) return false;
+  if (value.state === "not-assessed") return value.searchScope === undefined && value.checkedSources.length === 0 && value.relevantTests.length === 0 && value.remainingUncertainty === undefined;
+  if (!nonEmptyString(value.searchScope, 4_000)) return false;
+  if (value.state === "relevant-tests-found" && value.relevantTests.length === 0) return false;
+  if (value.state === "none-found" && value.relevantTests.length > 0) return false;
+  return value.state !== "limited" || nonEmptyString(value.remainingUncertainty, 4_000);
+}
+
+function structuralNodesReachRoot(nodeIds: Set<string>, edges: unknown[], rootId: string): boolean {
+  const targets = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (!record(edge)) continue;
+    const from = String(edge.from);
+    const to = String(edge.to);
+    targets.set(from, [...(targets.get(from) ?? []), to]);
+  }
+  return [...nodeIds].every((nodeId) => {
+    if (nodeId === rootId) return true;
+    const seen = new Set([nodeId]);
+    const pending = [nodeId];
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      for (const next of targets.get(current) ?? []) {
+        if (next === rootId) return true;
+        if (!seen.has(next)) { seen.add(next); pending.push(next); }
+      }
+    }
+    return false;
+  });
+}
+
+function validStructuralBlastRadii(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > 500) return false;
+  const radiusIds = new Set<string>();
+  const changedRootIds = new Set<string>();
+  const sourceNodes = new Map<string, Record<string, unknown>>();
+  return value.every((radius) => {
+    if (!record(radius) || !nonEmptyString(radius.id, 256) || radiusIds.has(radius.id) ||
+      !validStructuralNode(radius.symbol, true) || !["codegraph", "language-server", "repository-search", "unavailable"].includes(String(radius.provider)) ||
+      !["high", "medium", "low", "unresolved"].includes(String(radius.confidence)) || !["verified", "partial", "unverified"].includes(String(radius.provenance)) ||
+      !nonEmptyString(radius.summary, 12_000) || !Array.isArray(radius.nodes) || radius.nodes.length < 1 || radius.nodes.length > 80 ||
+      !Array.isArray(radius.edges) || radius.edges.length > 160 || !Array.isArray(radius.directCallerIds) || radius.directCallerIds.length > 80 ||
+      !Number.isInteger(radius.reportedDirectCallerCount) || Number(radius.reportedDirectCallerCount) < 0 ||
+      !Number.isInteger(radius.reportedReachableNodeCount) || Number(radius.reportedReachableNodeCount) < 0 ||
+      !Number.isInteger(radius.reportedImpactedFileCount) || Number(radius.reportedImpactedFileCount) < 0 ||
+      !Array.isArray(radius.impactedFiles) || radius.impactedFiles.length > 200 || !radius.impactedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(radius.impactedFiles).size !== radius.impactedFiles.length ||
+      (radius.testEvidence !== undefined && !validStructuralTestEvidence(radius.testEvidence)) ||
+      !Array.isArray(radius.nearbyTestGaps) || radius.nearbyTestGaps.length > 50) return false;
+    radiusIds.add(radius.id);
+    if ((radius.provider === "unavailable") !== (radius.confidence === "unresolved") || (radius.provider === "unavailable" && radius.provenance !== "unverified")) return false;
+    const coverage = radius.coverage;
+    if (coverage !== undefined) {
+      if (!record(coverage) || !["complete", "partial", "unavailable", "unknown"].includes(String(coverage.state)) ||
+        !["exact", "lower-bound", "not-reported"].includes(String(coverage.reportedCounts)) ||
+        (coverage.omissionReason !== undefined && !nonEmptyString(coverage.omissionReason, 4_000)) ||
+        (coverage.state === "partial" && !nonEmptyString(coverage.omissionReason, 4_000)) ||
+        (coverage.state === "unknown" && !nonEmptyString(coverage.omissionReason, 4_000)) ||
+        (coverage.state === "complete" && coverage.reportedCounts !== "exact") ||
+        (coverage.state === "unavailable" && coverage.reportedCounts !== "not-reported") ||
+        (radius.provider === "unavailable" && coverage.state !== "unavailable") ||
+        (radius.provider !== "unavailable" && coverage.state === "unavailable")) return false;
+    }
+    const root = radius.symbol as Record<string, unknown>;
+    if (changedRootIds.has(String(root.id))) return false;
+    changedRootIds.add(String(root.id));
+    const nodeIds = new Set<string>();
+    if (!radius.nodes.every((node) => {
+      if (!validStructuralNode(node)) return false;
+      const candidate = node as Record<string, unknown>;
+      const id = String(candidate.id);
+      if (nodeIds.has(id)) return false;
+      nodeIds.add(id);
+      const prior = sourceNodes.get(id);
+      if (prior && (prior.symbol !== candidate.symbol || prior.kind !== candidate.kind || JSON.stringify(prior.location) !== JSON.stringify(candidate.location))) return false;
+      sourceNodes.set(id, candidate);
+      return true;
+    })) return false;
+    const rootNode = radius.nodes.find((node) => record(node) && node.id === root.id);
+    if (!record(rootNode) || rootNode.symbol !== root.symbol || rootNode.kind !== root.kind || JSON.stringify(rootNode.location) !== JSON.stringify(root.location)) return false;
+    const edgeIds = new Set<string>();
+    if (!radius.edges.every((edge) => record(edge) && nonEmptyString(edge.id, 256) && !edgeIds.has(edge.id) && Boolean(edgeIds.add(edge.id)) &&
+      nonEmptyString(edge.from, 256) && nodeIds.has(edge.from) && nonEmptyString(edge.to, 256) && nodeIds.has(edge.to) && edge.from !== edge.to && ["calls", "references"].includes(String(edge.relationship)))) return false;
+    if (!structuralNodesReachRoot(nodeIds, radius.edges, String(root.id))) return false;
+    const directCallerIds = radius.directCallerIds as string[];
+    const impactedFiles = radius.impactedFiles as string[];
+    const direct = new Set(radius.edges.filter((edge) => record(edge) && edge.to === root.id).map((edge) => String((edge as Record<string, unknown>).from)));
+    if (directCallerIds.some((id) => !nonEmptyString(id, 256) || id === root.id || !nodeIds.has(id)) || new Set(directCallerIds).size !== directCallerIds.length || direct.size !== directCallerIds.length || directCallerIds.some((id) => !direct.has(id))) return false;
+    if (Number(radius.reportedDirectCallerCount) < directCallerIds.length || Number(radius.reportedReachableNodeCount) < radius.nodes.length - 1 || Number(radius.reportedImpactedFileCount) < impactedFiles.length) return false;
+    if (record(coverage) && coverage.state === "complete" && (
+      Number(radius.reportedDirectCallerCount) !== directCallerIds.length ||
+      Number(radius.reportedReachableNodeCount) !== radius.nodes.length - 1 ||
+      Number(radius.reportedImpactedFileCount) !== impactedFiles.length
+    )) return false;
+    const visiblePaths = radius.nodes.filter(record).map((node) => record(node.location) ? node.location.path : undefined).filter((path): path is string => typeof path === "string");
+    if (visiblePaths.some((path) => !impactedFiles.includes(path))) return false;
+    if (!radius.nearbyTestGaps.every((gap) => record(gap) && ["no-nearby-tests", "changed-symbol-not-covered", "impacted-path-not-covered", "coverage-unknown"].includes(String(gap.kind)) && nonEmptyString(gap.detail, 8_000) && Array.isArray(gap.nearbyTestFiles) && gap.nearbyTestFiles.length <= 50 && gap.nearbyTestFiles.every((path) => nonEmptyString(path, 4_096)) && new Set(gap.nearbyTestFiles).size === gap.nearbyTestFiles.length)) return false;
+    return radius.provider !== "unavailable" || (radius.nodes.length === 1 && radius.edges.length === 0 && directCallerIds.length === 0 && Number(radius.reportedDirectCallerCount) === 0 && Number(radius.reportedReachableNodeCount) === 0);
+  });
 }
 
 function validCallLocation(value: unknown, side: "old" | "new"): boolean {

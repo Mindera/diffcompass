@@ -168,6 +168,7 @@ test("exports finding dispositions and reviewer notes in Markdown and self-conta
     blastRadiusSize: 1,
     tested: false,
     pinScope: "line",
+    pinnedSymbolIds: ["app.ts:new:1:fence"],
     status: "false-positive",
     disposition: "false-positive",
     reviewerNote: "The surrounding validation makes this safe.",
@@ -175,10 +176,13 @@ test("exports finding dispositions and reviewer notes in Markdown and self-conta
 
   const markdown = exportReview(session, "markdown");
   expect(markdown.content).toContain("disposition: False positive");
+  expect(markdown.content).toContain("Symbols linked to this finding: `app.ts:new:1:fence`");
   expect(markdown.content).toContain("Reviewer note: The surrounding validation makes this safe.");
 
   const html = exportReview(session, "html");
   expect(html.content).toContain("Disposition: False positive");
+  expect(html.content).toContain("Symbols linked to this finding");
+  expect(html.content).toContain("app.ts:new:1:fence");
   expect(html.content).toContain("The surrounding validation makes this safe.");
 });
 
@@ -455,6 +459,92 @@ test("HTML export preserves interactive call-tree modes", () => {
   expect(artifact.content).toContain('data-call-mode="after"');
   expect(artifact.content).toContain('class="call-tree-legend"');
   expect(artifact.content).toContain('class="call-node modified entrypoint"');
+});
+
+test("exports structural provider limits, isolated identities, and test-gap evidence", () => {
+  const session = fixture();
+  session.outline!.structuralBlastRadii = [{
+    id: "app-radius", symbol: { id: "app.ts:new:1:fence", symbol: "fence", kind: "function", location: { path: "app.ts", side: "new", line: 1 } },
+    provider: "repository-search", confidence: "low", provenance: "partial", summary: "Static reach only, not proof of runtime impact.",
+    nodes: [
+      { id: "app.ts:new:1:fence", symbol: "fence", kind: "function", location: { path: "app.ts", side: "new", line: 1 } },
+      { id: "app.ts:new:2:consumer", symbol: "consumer", kind: "function", location: { path: "app.ts", side: "new", line: 2 } },
+    ],
+    edges: [{ id: "consumer-fence", from: "app.ts:new:2:consumer", to: "app.ts:new:1:fence", relationship: "calls" }],
+    directCallerIds: ["app.ts:new:2:consumer"], reportedDirectCallerCount: 4, reportedReachableNodeCount: 10, reportedImpactedFileCount: 1, impactedFiles: ["app.ts"],
+    coverage: { state: "partial", reportedCounts: "exact", omissionReason: "The provider returned aggregate totals without every identity." },
+    testEvidence: {
+      state: "relevant-tests-found", searchScope: "Inspected tests/fence.test.ts for fence callers.",
+      checkedSources: [{ path: "tests/fence.test.ts", side: "new", line: 8, detail: "The test source calls consumer." }],
+      relevantTests: [{ path: "tests/fence.test.ts", side: "new", line: 8, detail: "consumer reaches fence in the saved graph." }],
+      remainingUncertainty: "The source does not establish failure-path behavior.",
+    },
+    nearbyTestGaps: [{ kind: "no-nearby-tests", detail: "No nearby test covers fence.", nearbyTestFiles: [] }],
+  }];
+  session.outline!.findings = [{
+    id: "structural-finding", phaseId: "behavior", stepId: "one", path: "app.ts", side: "new", line: 1, lineContent: "const fence = ```;",
+    message: "The changed fence is structurally broad.", category: "testing", severity: "medium", confidence: "low", evidence: "The static provider found bounded caller reach.",
+    priority: "P1", introduced: true, recallGuard: false, blastRadiusSize: 10, tested: false, pinScope: "symbol", pinnedSymbolIds: ["app.ts:new:1:fence"], status: "open",
+  }];
+  const markdown = exportReview(session, "markdown");
+  expect(markdown.content).toContain("## What could this change affect?");
+  expect(markdown.content).toContain("What depends on `fence`?");
+  expect(markdown.content).toContain("After changes");
+  expect(markdown.content).toContain("These functions call fence, directly or indirectly.");
+  expect(markdown.content).toContain("1 supplied of 4 reported");
+  expect(markdown.content).toContain("Incomplete provider result");
+  expect(markdown.content).toContain("How we found these connections:");
+  expect(markdown.content).toContain("We searched the code for places that use fence.");
+  expect(markdown.content).toContain("Other callers may exist that this search didn't find.");
+  expect(markdown.content).toContain("What the diagram shows:");
+  expect(markdown.content).toContain("Code that calls fence, directly or through another function.");
+  expect(markdown.content).toContain("Technical data (raw metadata and identities):");
+  expect(markdown.content).toContain("How it was found: repository-search");
+  expect(markdown.content).toContain("Source of this result: partial");
+  expect(markdown.content).toContain("Related tests:");
+  expect(markdown.content).toContain("tests/fence.test.ts:8 (new)");
+  expect(markdown.content).toContain("Based on reading the test code; no test-run result is available.");
+  expect(markdown.content).toContain("Search details:");
+  expect(markdown.content).toContain("Static relationships only; not confirmed runtime impact.");
+  expect(markdown.content).toContain("Symbols linked to this finding: `app.ts:new:1:fence`");
+  const html = exportReview(session, "html");
+  expect(html.content).toContain('data-view="structural"');
+  expect(html.content).toContain('data-view-panel="structural"');
+  expect(html.content).toContain("Analysis details");
+  expect(html.content).toContain("app.ts:new:1:fence");
+  expect(html.content).toContain("After changes");
+  expect(html.content).toContain("Static relationships only; not confirmed runtime impact.");
+  expect(html.content).toContain("How we found these connections");
+  expect(html.content).toContain("What the diagram shows");
+  expect(html.content).toContain("How it was found");
+  expect(html.content).toContain("Source of this result");
+  expect(html.content).toContain("Related tests");
+  expect(html.content).toContain("Search details");
+  expect(html.content).toContain('class="structural-technical-edge"');
+  expect(html.content).toContain('data-open-file="app.ts"');
+  expect(html.content).toContain('data-open-file="tests/fence.test.ts"');
+  expect(html.content).toContain("Symbols linked to this finding");
+  session.outline!.structuralBlastRadii![0]!.coverage = { state: "complete", reportedCounts: "exact" };
+  session.outline!.structuralBlastRadii![0]!.reportedDirectCallerCount = 1;
+  session.outline!.structuralBlastRadii![0]!.reportedReachableNodeCount = 1;
+  const completeHtml = exportReview(session, "html").content;
+  expect(completeHtml).not.toContain("All available results shown");
+  expect(completeHtml).toContain("1 caller, direct or indirect");
+  expect(completeHtml).toContain("Files involved");
+  session.outline!.structuralBlastRadii![0]!.coverage = { state: "partial", reportedCounts: "exact", omissionReason: "The provider returned aggregate totals without every identity." };
+  session.outline!.structuralBlastRadii![0]!.testEvidence = { state: "not-assessed", checkedSources: [], relevantTests: [] };
+  expect(exportReview(session, "markdown").content).toContain("Tests were not assessed for this symbol.");
+  session.outline!.structuralBlastRadii![0]!.testEvidence = { state: "none-found", searchScope: "Searched tests for fence.", checkedSources: [], relevantTests: [] };
+  expect(exportReview(session, "html").content).toContain("We did not find related test code in the recorded search.");
+  session.outline!.structuralBlastRadii![0]!.nodes.push({ id: "external", symbol: "external caller", kind: "external" });
+  session.outline!.structuralBlastRadii![0]!.edges.push({ id: "external-consumer", from: "external", to: "app.ts:new:2:consumer", relationship: "calls" });
+  const missingSource = exportReview(session, "markdown").content;
+  expect(missingSource).toContain("One caller has no source link.");
+  const reviewCopy = missingSource.slice(missingSource.indexOf("Analysis details:"), missingSource.indexOf("Technical data"));
+  expect(reviewCopy).not.toContain("Confidence:");
+  expect(reviewCopy).not.toContain("Result limit");
+  expect(reviewCopy).not.toContain("upstream caller/reference");
+  expect(exportReview(session, "html", { includeStructuralBlastRadius: false }).content).not.toContain('data-view="structural"');
 });
 
 test("HTML export can omit findings, call flows, and diagrams", () => {

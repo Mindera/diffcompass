@@ -83,6 +83,47 @@ test("persists a complete session atomically and with owner-only permissions whe
   }
 });
 
+test("persists bounded structural blast-radius evidence and accepts older outlines without it", async () => {
+  const path = await temporaryStateFile();
+  const session = persistedSession();
+  session.outline!.structuralBlastRadii = [{
+    id: "radius:app", symbol: { id: "src/app.ts:new:2:result", symbol: "result", kind: "function", location: { path: "src/app.ts", side: "new", line: 2 } },
+    provider: "repository-search", confidence: "low", provenance: "partial", summary: "Static reach only, not proof of runtime impact.",
+    nodes: [
+      { id: "src/app.ts:new:2:result", symbol: "result", kind: "function", location: { path: "src/app.ts", side: "new", line: 2 } },
+      { id: "src/consumer.ts:new:4:consume", symbol: "consume", kind: "function", location: { path: "src/consumer.ts", side: "new", line: 4 } },
+    ],
+    edges: [{ id: "consume-result", from: "src/consumer.ts:new:4:consume", to: "src/app.ts:new:2:result", relationship: "calls" }],
+    directCallerIds: ["src/consumer.ts:new:4:consume"], reportedDirectCallerCount: 4, reportedReachableNodeCount: 12, reportedImpactedFileCount: 3,
+    testEvidence: {
+      state: "limited", searchScope: "Inspected tests/result.test.ts for result references.", checkedSources: [], relevantTests: [],
+      remainingUncertainty: "No test source anchor was retained with this saved assessment.",
+    },
+    impactedFiles: ["src/app.ts", "src/consumer.ts"], nearbyTestGaps: [{ kind: "no-nearby-tests", detail: "No nearby test covers the changed branch.", nearbyTestFiles: [] }],
+  }];
+  session.outline!.findings = [{
+    id: "pinned-finding", phaseId: "behavior", stepId: "entrypoint", path: "src/app.ts", side: "new", line: 2, lineContent: "return result;",
+    message: "The changed result has broad static reach.", category: "testing", severity: "medium", confidence: "low", evidence: "Structural evidence identifies callers.",
+    priority: "P1", introduced: true, recallGuard: false, blastRadiusSize: 12, tested: false, pinScope: "symbol", pinnedSymbolIds: ["src/app.ts:new:2:result"], status: "open",
+  }];
+  await savePersistedSession(path, session);
+  await expect(loadPersistedSession(path)).resolves.toMatchObject({ outline: { structuralBlastRadii: [{ id: "radius:app", reportedReachableNodeCount: 12, directCallerIds: ["src/consumer.ts:new:4:consume"], testEvidence: { state: "limited" } }], findings: [{ pinnedSymbolIds: ["src/app.ts:new:2:result"] }] } });
+
+  const malformedPin = structuredClone(session);
+  malformedPin.outline!.findings[0]!.pinnedSymbolIds = ["missing:structural:node"];
+  await writeFile(path, JSON.stringify(malformedPin));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+
+  const disconnectedGraph = structuredClone(session);
+  disconnectedGraph.outline!.structuralBlastRadii![0]!.nodes.push({ id: "detached:external", symbol: "detached", kind: "external" });
+  await writeFile(path, JSON.stringify(disconnectedGraph));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+
+  const legacy = persistedSession();
+  await savePersistedSession(path, legacy);
+  await expect(loadPersistedSession(path)).resolves.toEqual(legacy);
+});
+
 test("persists optional diff preferences while accepting older sessions without them", async () => {
   const path = await temporaryStateFile();
   const session = persistedSession();

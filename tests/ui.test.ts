@@ -1734,3 +1734,307 @@ test("a dry-run input event immediately hides an obsolete trace without replacin
   expect(notice?.textContent).toContain("hidden while you edit");
   expect(editorReplacements).toBe(0);
 });
+
+test("structural blast radius presents analysed-symbol scope, completeness, and a graph-first picker", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="structural-blast-radius-tab"');
+  expect(html).toContain('id="structural-blast-radius-select"');
+  expect(html).toContain('id="structural-blast-radius-view"');
+  expect(html).toContain("Analysed symbol");
+  expect(html).toContain('id="structural-blast-radius-picker-count"');
+  expect(html).toContain('id="export-structural-blast-radius"');
+  expect(html).toContain("What could this change affect?");
+  expect(app).toContain("function renderStructuralBlastRadii()");
+  expect(app).toContain("function structuralBlastRadiusCard(radius)");
+  expect(app).toContain("function structuralGraphLayout(radius)");
+  expect(app).toContain("function changeStructuralGraphView(radiusId, action)");
+  expect(app).toContain("data-structural-graph-canvas");
+  expect(app).toContain("What depends on");
+  expect(app).toContain("Incomplete provider result");
+  expect(app).toContain("Structural provider unavailable");
+  expect(app).toContain("Arrows point toward the selected item");
+  expect(app).toContain("How we found these connections");
+  expect(app).toContain("What the diagram shows");
+  expect(app).not.toContain("All available results shown");
+  expect(app).toContain("function structuralReachCountCopy(radius, known, reported)");
+  expect(app).toContain("Related tests");
+  expect(app).toContain("Technical data ·");
+  expect(app).toContain("function structuralPickerOptionLabel(radius)");
+  expect(app).toContain('includeStructuralBlastRadius: elements["export-structural-blast-radius"].checked');
+  expect(app).toContain('data-structural-path');
+  expect(app).toContain("Symbols linked to this finding");
+  expect(styles).toContain(".structural-counts");
+  expect(styles).toContain(".structural-subgraph");
+  expect(styles).toContain(".structural-graph-shell");
+  expect(styles).toContain(".structural-completeness");
+  expect(styles).toContain(".structural-graph-legend");
+  expect(styles).toContain(".structural-graph-node.root rect");
+  expect(styles).toContain(".structural-technical-edge");
+  expect(styles).toContain(".finding-structural-pins");
+});
+
+test("structural graph layout draws callers left of the changed root", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralGraphLayout"), app.indexOf("function structuralGraphNodeLabel"));
+  const layout = new Function(`${source}; return structuralGraphLayout;`)() as (radius: unknown) => { positions: Map<string, { x: number; y: number }>; width: number; height: number };
+  const graph = layout({
+    symbol: { id: "src/cart.ts:new:14:total" },
+    nodes: [{ id: "src/cart.ts:new:14:total", symbol: "total" }, { id: "src/receipt.ts:new:3:receipt", symbol: "receipt" }, { id: "external:checkout", symbol: "checkout" }],
+    edges: [{ from: "src/receipt.ts:new:3:receipt", to: "src/cart.ts:new:14:total" }, { from: "external:checkout", to: "src/receipt.ts:new:3:receipt" }],
+  });
+  expect(graph.positions.get("src/cart.ts:new:14:total")!.x).toBeGreaterThan(graph.positions.get("src/receipt.ts:new:3:receipt")!.x);
+  expect(graph.positions.get("src/receipt.ts:new:3:receipt")!.x).toBeGreaterThan(graph.positions.get("external:checkout")!.x);
+  expect(graph.width).toBeGreaterThanOrEqual(480);
+  expect(graph.height).toBeGreaterThanOrEqual(150);
+  const horizontalPositions = [...graph.positions.values()].map((position) => position.x);
+  expect((Math.min(...horizontalPositions) + Math.max(...horizontalPositions)) / 2).toBe(graph.width / 2);
+});
+
+test("structural UI labels exact totals, lower bounds, and legacy completeness without inventing omitted identities", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralCoverage"), app.indexOf("function structuralGraphView"));
+  const helpers = new Function(`${source}; return { structuralCompletenessCopy, structuralCountCopy, structuralReachCountCopy, structuralSelectedLabel, structuralPickerOptionLabel, structuralRelationshipDescription, structuralComparisonSideCopy };`)() as {
+    structuralCompletenessCopy: (radius: unknown) => { title: string; detail: string; analysis?: string };
+    structuralCountCopy: (radius: unknown, known: number, reported: number, noun: string) => string;
+    structuralReachCountCopy: (radius: unknown, known: number, reported: number) => string;
+    structuralSelectedLabel: (radius: unknown) => string;
+    structuralPickerOptionLabel: (radius: unknown) => string;
+    structuralRelationshipDescription: (radius: unknown) => string;
+    structuralComparisonSideCopy: (side: string) => { label: string; hint: string };
+  };
+  const partial = {
+    provider: "repository-search",
+    nodes: [{ id: "root" }],
+    impactedFiles: ["src/a.ts"],
+    reportedReachableNodeCount: 5,
+    reportedImpactedFileCount: 3,
+    coverage: { state: "partial", reportedCounts: "exact", omissionReason: "Provider returned totals without identities." },
+    symbol: { symbol: "very.long.qualified.symbol.name", location: { path: "src/very/long/path/to/a.ts" } },
+  };
+  expect(helpers.structuralCompletenessCopy(partial).title).toBe("Incomplete provider result");
+  expect(helpers.structuralCompletenessCopy(partial).detail).toContain("Provider returned totals without identities.");
+  expect(helpers.structuralCountCopy(partial, 0, 2, "Direct callers")).toBe("Direct callers: 0 supplied of 2 reported");
+  expect(helpers.structuralPickerOptionLabel(partial)).toBe("very.long.qualified.symbol.name · src/very/long/path/to/a.ts");
+  const legacy = { ...partial, coverage: undefined };
+  expect(helpers.structuralCompletenessCopy(legacy).title).toBe("Completeness not recorded");
+  expect(helpers.structuralCountCopy(legacy, 1, 9, "Reachable nodes")).toBe("Reachable nodes: 1 supplied; total not reported");
+  const unavailable = { ...partial, provider: "unavailable", coverage: { state: "unavailable", reportedCounts: "not-reported" } };
+  expect(helpers.structuralCountCopy(unavailable, 0, 0, "Reachable nodes")).toBe("Reachable nodes: not analysed");
+  const complete = { ...partial, nodes: [{ id: "root" }, { id: "caller" }], coverage: { state: "complete", reportedCounts: "exact" } };
+  expect(helpers.structuralCompletenessCopy(complete).title).toBe("");
+  expect(helpers.structuralCompletenessCopy(complete).analysis).toContain("Other connections may still exist outside this analysis");
+  expect(helpers.structuralReachCountCopy({ ...complete, symbol: { symbol: "total", kind: "function" }, edges: [{ relationship: "calls" }] }, 2, 2)).toBe("2 callers, direct or indirect");
+  expect(helpers.structuralSelectedLabel({ ...complete, symbol: { symbol: "CartTotals", kind: "type" } })).toBe("Selected type");
+  expect(helpers.structuralRelationshipDescription({ ...partial, symbol: { symbol: "total", kind: "function" }, edges: [{ relationship: "calls" }] })).toBe("These functions call total, directly or indirectly.");
+  expect(helpers.structuralRelationshipDescription({ ...partial, symbol: { symbol: "CartTotals", kind: "type" }, edges: [{ relationship: "references" }] })).toBe("These symbols reference CartTotals, directly or indirectly.");
+  expect(helpers.structuralRelationshipDescription({ ...partial, symbol: { symbol: "total", kind: "function" }, edges: [{ relationship: "calls" }, { relationship: "references" }] })).toBe("These symbols call or reference total, directly or indirectly.");
+  expect(helpers.structuralComparisonSideCopy("old")).toEqual(expect.objectContaining({ label: "Before changes", hint: expect.stringContaining("old side") }));
+  expect(helpers.structuralComparisonSideCopy("new")).toEqual(expect.objectContaining({ label: "After changes", hint: expect.stringContaining("new side") }));
+});
+
+test("structural graph emits bounded interactive source nodes and controls", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function structuralBlastRadiusCard"));
+  const graph = new Function("state", "escapeHtml", `${source}; return structuralGraphSvg;`)({ structuralGraphViews: new Map() }, (value: unknown) => String(value)) as (radius: unknown) => string;
+  const markup = graph({
+    id: "radius:total",
+    symbol: { id: "src/cart.ts:new:14:total", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } },
+    nodes: [{ id: "src/cart.ts:new:14:total", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } }, { id: "src/receipt.ts:new:3:receipt", symbol: "receipt", kind: "function", location: { path: "src/receipt.ts", side: "new", line: 3 } }],
+    edges: [{ id: "receipt-total", from: "src/receipt.ts:new:3:receipt", to: "src/cart.ts:new:14:total", relationship: "calls" }],
+    directCallerIds: ["src/receipt.ts:new:3:receipt"],
+  });
+  expect(markup).toContain('data-structural-graph-canvas');
+  expect(markup).toContain('data-structural-graph-action="zoom-in"');
+  expect(markup).toContain('data-structural-path="src/receipt.ts"');
+  expect(markup).toContain('marker-end="url(#structural-arrow-radius-total)"');
+  expect(markup).toContain("Selected function");
+  expect(markup).toContain("Direct caller");
+  expect(markup).toContain("Static caller graph for selected total");
+});
+
+test("structural graph controls retain an independent view per analysed symbol", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralGraphView"), app.indexOf("function renderSequenceDiagrams"));
+  const attributes: string[] = [];
+  const graph = {
+    dataset: { structuralGraphRadius: "total" },
+    querySelector: () => ({ setAttribute: (_name: string, value: string) => attributes.push(value) }),
+  };
+  const state = { structuralGraphViews: new Map<string, { scale: number; x: number; y: number }>() };
+  const controls = new Function("state", "elements", `${source}; return { structuralGraphView, changeStructuralGraphView };`)(state, {
+    "structural-blast-radius": { querySelectorAll: () => [graph] },
+  }) as {
+    structuralGraphView: (id: string) => { scale: number; x: number; y: number };
+    changeStructuralGraphView: (id: string, action: string) => void;
+  };
+  controls.changeStructuralGraphView("total", "zoom-in");
+  controls.changeStructuralGraphView("subtotal", "zoom-out");
+  expect(controls.structuralGraphView("total").scale).toBe(1.2);
+  expect(controls.structuralGraphView("subtotal").scale).toBeCloseTo(0.833, 3);
+  controls.changeStructuralGraphView("total", "reset");
+  expect(controls.structuralGraphView("total")).toEqual({ scale: 1, x: 0, y: 0 });
+  expect(controls.structuralGraphView("subtotal").scale).toBeCloseTo(0.833, 3);
+  expect(attributes.at(-1)).toBe("translate(0 0) scale(1)");
+});
+
+test("structural cards group analysis and test evidence without exposing raw data by default", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function renderStructuralBlastRadii"));
+  const card = new Function("state", "escapeHtml", `${source}; return structuralBlastRadiusCard;`)({ structuralGraphViews: new Map(), structuralDisclosureStates: new Map() }, (value: unknown) => String(value)) as (radius: unknown) => string;
+  const markup = card({
+    id: "radius:total",
+    symbol: { id: "src/cart.ts:new:14:total", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } },
+    provider: "repository-search", confidence: "medium", provenance: "partial",
+    summary: "Static caller reach only.",
+    nodes: [{ id: "src/cart.ts:new:14:total", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } }, { id: "src/receipt.ts:new:3:receipt", symbol: "receipt", kind: "function", location: { path: "src/receipt.ts", side: "new", line: 3 } }],
+    edges: [{ id: "receipt-total", from: "src/receipt.ts:new:3:receipt", to: "src/cart.ts:new:14:total", relationship: "calls" }],
+    directCallerIds: ["src/receipt.ts:new:3:receipt"], reportedDirectCallerCount: 1, reportedReachableNodeCount: 1, reportedImpactedFileCount: 2,
+    coverage: { state: "complete", reportedCounts: "exact" }, impactedFiles: ["src/cart.ts", "src/receipt.ts"],
+    testEvidence: {
+      state: "relevant-tests-found", searchScope: "Inspected tests/cart.test.ts for receipt and total calls.",
+      checkedSources: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "The test calls receipt with a discount input." }],
+      relevantTests: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "That source call reaches total." }],
+      remainingUncertainty: "The source does not establish percentage edge cases.",
+    },
+    nearbyTestGaps: [],
+  });
+  expect(markup).toContain("What depends on");
+  expect(markup).toContain("After changes");
+  expect(markup).not.toContain("All available results shown");
+  expect(markup).toContain("1 caller, direct or indirect");
+  expect(markup).toContain("Files involved: 2 known");
+  expect(markup).toContain("The selected function is excluded from caller counts.");
+  const header = markup.slice(0, markup.indexOf("</header>") + "</header>".length);
+  expect(header).toContain("<h3>What depends on <code>");
+  expect(header).toContain("src/cart.ts:14");
+  expect(header).toContain('data-structural-path="src/cart.ts"');
+  expect(header).not.toContain("src/cart.ts:new:14:total");
+  expect(header).not.toContain("changed symbol");
+  expect(header).not.toContain("(new)");
+  expect(header).not.toContain("After snapshot");
+  expect(markup.indexOf("structural-graph-shell")).toBeLessThan(markup.indexOf("Analysis details"));
+  expect(markup).not.toContain('<details class="structural-section" open>');
+  expect(markup).toContain("How we found these connections");
+  expect(markup).toContain("We searched the code for places that use total.");
+  expect(markup).toContain("What the diagram shows");
+  expect(markup).toContain("Code that calls total, directly or through another function.");
+  expect(markup).toContain("Technical data · 2 nodes, 1 edges");
+  expect(markup).toContain("How it was found");
+  expect(markup).toContain("Source of this result");
+  expect(markup).toContain('class="structural-technical-edge"');
+  expect(markup).toContain("Related tests");
+  expect(markup).toContain('data-structural-path="tests/cart.test.ts"');
+  expect(markup).toContain("Based on reading the test code; no test-run result is available.");
+  expect(markup).toContain("Search details");
+  expect(markup).toContain("Contains selected function.");
+  expect(markup).toContain("Contains direct caller.");
+  const beforeTechnicalData = markup.slice(0, markup.indexOf("Technical data"));
+  expect(beforeTechnicalData).not.toContain("src/cart.ts:new:14:total");
+  expect(beforeTechnicalData).not.toContain("Saved summary");
+  expect(beforeTechnicalData).not.toContain("Confidence");
+  expect(beforeTechnicalData).not.toContain("provenance");
+  expect(beforeTechnicalData).not.toContain("upstream");
+});
+
+test("structural disclosures preserve an opened section for the selected result", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function renderStructuralBlastRadii"));
+  const state = { structuralGraphViews: new Map(), structuralDisclosureStates: new Map([["radius:total", { analysis: true, technical: true, files: true, tests: true, "test-search": true }]]) };
+  const card = new Function("state", "escapeHtml", `${source}; return structuralBlastRadiusCard;`)(state, (value: unknown) => String(value)) as (radius: unknown) => string;
+  const markup = card({
+    id: "radius:total", symbol: { id: "root", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } },
+    provider: "repository-search", confidence: "medium", provenance: "partial", nodes: [{ id: "root", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } }], edges: [], directCallerIds: [], reportedDirectCallerCount: 0, reportedReachableNodeCount: 0, reportedImpactedFileCount: 1, coverage: { state: "complete", reportedCounts: "exact" }, impactedFiles: ["src/cart.ts"],
+    testEvidence: { state: "none-found", searchScope: "Searched tests for total.", checkedSources: [], relevantTests: [] }, nearbyTestGaps: [],
+  });
+  expect(markup).toContain('data-structural-disclosure="analysis" open');
+  expect(markup).toContain('data-structural-disclosure="technical" open');
+  expect(markup).toContain('data-structural-disclosure="files" open');
+  expect(markup).toContain('data-structural-disclosure="tests" open');
+  expect(markup).toContain('data-structural-disclosure="test-search" open');
+});
+
+test("structural analysis uses evidence-sensitive plain language for missing and non-call connections", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralTestAssessment(radius)"), app.indexOf("function structuralPickerOptionLabel"));
+  const helpers = new Function("escapeHtml", `${source}; return { structuralAnalysisMarkup };`)((value: unknown) => String(value)) as {
+    structuralAnalysisMarkup: (radius: unknown, coverage: unknown, externalCount: number, nodes: string, edges: string) => string;
+  };
+  const calls = helpers.structuralAnalysisMarkup({
+    provider: "repository-search", confidence: "medium", provenance: "partial",
+    symbol: { symbol: "total", kind: "function" },
+    nodes: [{ id: "total" }, { id: "checkout" }], edges: [{ relationship: "calls" }],
+  }, { state: "partial", reportedCounts: "exact" }, 1, "", "");
+  expect(calls).toContain("We searched the code for places that use total.");
+  expect(calls).toContain("Other callers may exist that this search didn't find.");
+  expect(calls).toContain("Code that calls total, directly or through another function.");
+  expect(calls).toContain("One caller has no source link.");
+  expect(calls).not.toContain("couldn't locate the source");
+  const analysis = calls.slice(0, calls.indexOf("Technical data"));
+  expect(analysis).not.toContain("Confidence");
+  expect(analysis).not.toContain("partial provenance");
+  expect(analysis).not.toContain("Result limit");
+  expect(analysis).not.toContain("upstream");
+  const references = helpers.structuralAnalysisMarkup({
+    provider: "repository-search", confidence: "low", provenance: "partial",
+    symbol: { symbol: "CartTotals", kind: "type" },
+    nodes: [{ id: "CartTotals" }], edges: [{ relationship: "references" }],
+  }, { state: "unknown", reportedCounts: "not-reported" }, 0, "", "");
+  expect(references).toContain("We searched the code for places that refer to CartTotals.");
+  expect(references).toContain("Code that refers to CartTotals, directly or through another code symbol.");
+  expect(references).toContain("Other references may exist that this search didn't find.");
+  expect(references).not.toContain("functions call CartTotals");
+});
+
+test("structural test evidence distinguishes unassessed, none-found, and limited results", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function structuralTestAssessment(radius)"), app.indexOf("function structuralPickerOptionLabel"));
+  const helpers = new Function("escapeHtml", `${source}; return { structuralTestAssessment, structuralTestEvidenceMarkup };`)((value: unknown) => String(value)) as {
+    structuralTestAssessment: (radius: unknown) => { state: string };
+    structuralTestEvidenceMarkup: (radius: unknown) => string;
+  };
+  expect(helpers.structuralTestAssessment({ nearbyTestGaps: [] }).state).toBe("not-assessed");
+  expect(helpers.structuralTestEvidenceMarkup({ nearbyTestGaps: [] })).toContain("Tests were not assessed for this symbol.");
+  const noneFound = helpers.structuralTestEvidenceMarkup({
+    testEvidence: { state: "none-found", searchScope: "Searched tests for total.", checkedSources: [], relevantTests: [] }, nearbyTestGaps: [],
+  });
+  expect(noneFound).toContain("We did not find related test code in the recorded search.");
+  expect(noneFound).toContain("does not show that no tests exist, ran, or passed");
+  const limited = helpers.structuralTestEvidenceMarkup({
+    testEvidence: { state: "limited", searchScope: "Inspected tests/cart.test.ts.", checkedSources: [], relevantTests: [], remainingUncertainty: "Discount branch source was not found." }, nearbyTestGaps: [],
+  });
+  expect(limited).toContain("The test check was limited.");
+  expect(limited).toContain("Discount branch source was not found.");
+  const related = helpers.structuralTestEvidenceMarkup({
+    id: "radius:total",
+    testEvidence: {
+      state: "relevant-tests-found", searchScope: "Inspected tests/cart.test.ts for receipt and total calls.",
+      checkedSources: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "Checks a formatted amount." }],
+      relevantTests: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "The receipt calls total." }],
+      remainingUncertainty: "This source does not establish percentage edge cases.",
+    }, nearbyTestGaps: [],
+  });
+  expect((related.match(/data-structural-path="tests\/cart\.test\.ts"/g) ?? [])).toHaveLength(1);
+  expect(related).toContain("Checks a formatted amount. The receipt calls total.");
+  expect(related).toContain("Still unclear");
+  expect(related).toContain("Search details");
+  expect(related).toContain("Based on reading the test code; no test-run result is available.");
+});
+
+test("structural test source links open changed diffs or repository sources as appropriate", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("async function showAnalysisFile"), app.indexOf("function openFlowEditor"));
+  const changed: unknown[][] = [];
+  const repository: string[] = [];
+  const showAnalysisFile = new Function("state", "filteredChangedFiles", "renderSession", "showChangedFile", "showRepositoryFile", "toast", `${source}; return showAnalysisFile;`)({
+    tourMode: false,
+    session: { comparison: { files: [{ path: "src/cart.ts" }] } },
+  }, () => [], () => undefined, async (...args: unknown[]) => { changed.push(args); }, async (path: string) => { repository.push(path); }, () => undefined) as (path: string, line: number, side: string) => Promise<void>;
+  await showAnalysisFile("tests/cart.test.ts", 5, "new");
+  await showAnalysisFile("src/cart.ts", 14, "new");
+  expect(repository).toEqual(["tests/cart.test.ts"]);
+  expect(changed).toEqual([["src/cart.ts", 14, "new"]]);
+});

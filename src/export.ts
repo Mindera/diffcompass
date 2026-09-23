@@ -1,5 +1,5 @@
 import type { ReviewSession } from "./session.ts";
-import type { CallFlow, DiffFile, DiffRow, DryRunTrace, FindingDisposition, IssueAssessment, LinkedIssueContext, ReviewerTaskContext, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewComment, ReviewFinding } from "./types.ts";
+import type { CallFlow, DiffFile, DiffRow, DryRunTrace, FindingDisposition, IssueAssessment, LinkedIssueContext, ReviewerTaskContext, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewComment, ReviewFinding, StructuralBlastRadius } from "./types.ts";
 import type { HighlightGroup, HighlightToken } from "./highlight.ts";
 import { buildNeedsAttention } from "./attention.ts";
 // @ts-expect-error Bun's text loader embeds Mermaid in the self-contained HTML export.
@@ -9,6 +9,7 @@ export type ExportFormat = "markdown" | "html";
 export interface HtmlExportOptions {
   includeFindings?: boolean;
   includeCallFlows?: boolean;
+  includeStructuralBlastRadius?: boolean;
   includeDiagrams?: boolean;
   includeDryRuns?: boolean;
   diffWrap?: "scroll" | "wrap";
@@ -195,7 +196,264 @@ function markdownDryRuns(session: ReviewSession): string[] {
   return lines;
 }
 
-function markdown(session: ReviewSession, options: Pick<HtmlExportOptions, "includeDryRuns"> = {}): string {
+function structuralExportCoverage(radius: StructuralBlastRadius) {
+  return radius.coverage ?? {
+    state: radius.provider === "unavailable" ? "unavailable" : "unknown",
+    reportedCounts: "not-reported",
+    omissionReason: "Reason not supplied by this saved result.",
+  };
+}
+
+function structuralExportCompleteness(radius: StructuralBlastRadius): string {
+  const coverage = structuralExportCoverage(radius);
+  if (coverage.state === "complete") return "";
+  if (coverage.state === "partial") return `Incomplete provider result: ${coverage.omissionReason ?? "Reason not supplied by this saved result."}`;
+  if (coverage.state === "unavailable") return "Structural provider unavailable: only the changed symbol is saved; caller and broader affected-file reach were not analysed.";
+  return `Completeness not recorded: ${coverage.omissionReason ?? "Reason not supplied by this saved result."} Treat visible identities as a lower bound.`;
+}
+
+function structuralExportRelationshipDescription(radius: StructuralBlastRadius): string {
+  const relationships = new Set(radius.edges.map((edge) => edge.relationship));
+  const callable = ["function", "method", "constructor", "component"].includes(radius.symbol.kind);
+  if (relationships.size === 1 && relationships.has("calls")) {
+    return callable
+      ? `These functions call ${radius.symbol.symbol}, directly or indirectly.`
+      : `These symbols use ${radius.symbol.symbol}, directly or indirectly.`;
+  }
+  if (relationships.size === 1 && relationships.has("references")) return `These symbols reference ${radius.symbol.symbol}, directly or indirectly.`;
+  if (relationships.size > 1) return `These symbols call or reference ${radius.symbol.symbol}, directly or indirectly.`;
+  return `No caller or reference relationships were supplied for ${radius.symbol.symbol}.`;
+}
+
+function structuralExportTestAssessment(radius: StructuralBlastRadius) {
+  if (radius.testEvidence) return { ...radius.testEvidence, legacy: false };
+  const savedGaps = radius.nearbyTestGaps.filter((gap) => gap.kind !== "coverage-unknown");
+  if (savedGaps.length) return { state: "limited" as const, checkedSources: [], relevantTests: [], remainingUncertainty: "A saved test question exists, but it does not say what was checked.", legacy: true };
+  return { state: "not-assessed" as const, checkedSources: [], relevantTests: [], legacy: true };
+}
+
+function structuralExportTestAssessmentCopy(state: ReturnType<typeof structuralExportTestAssessment>["state"]): string {
+  return {
+    "not-assessed": "Tests were not assessed for this symbol.",
+    "relevant-tests-found": "We found test code related to this symbol.",
+    "none-found": "We did not find related test code in the recorded search.",
+    limited: "The test check was limited.",
+  }[state];
+}
+
+function structuralExportRelationshipKind(radius: StructuralBlastRadius): "calls" | "references" | "mixed" | "none" {
+  const relationships = new Set(radius.edges.map((edge) => edge.relationship));
+  if (relationships.size === 1 && relationships.has("calls")) return "calls";
+  if (relationships.size === 1 && relationships.has("references")) return "references";
+  if (relationships.size > 1) return "mixed";
+  return "none";
+}
+
+function structuralExportCallable(radius: StructuralBlastRadius): boolean {
+  return ["function", "method", "constructor", "component"].includes(radius.symbol.kind);
+}
+
+function structuralExportSelectedLabel(radius: StructuralBlastRadius): string {
+  const labels: Record<string, string> = {
+    function: "Selected function",
+    method: "Selected method",
+    constructor: "Selected constructor",
+    component: "Selected component",
+    type: "Selected type",
+    module: "Selected module",
+  };
+  return labels[radius.symbol.kind] ?? "Selected symbol";
+}
+
+function structuralExportConnectionLabels(radius: StructuralBlastRadius): { direct: string; indirect: string; noun: string } {
+  const kind = structuralExportRelationshipKind(radius);
+  if (kind === "calls" && structuralExportCallable(radius)) return { direct: "Direct caller", indirect: "Indirect caller", noun: "caller" };
+  if (kind === "references") return { direct: "Direct reference", indirect: "Indirect reference", noun: "reference" };
+  if (kind === "calls") return { direct: "Direct use", indirect: "Indirect use", noun: "use" };
+  return { direct: "Direct connection", indirect: "Indirect connection", noun: "connection" };
+}
+
+function structuralExportMethodCopy(radius: StructuralBlastRadius): string {
+  const kind = structuralExportRelationshipKind(radius);
+  const target = kind === "calls"
+    ? `places that use ${radius.symbol.symbol}`
+    : kind === "references"
+      ? `places that refer to ${radius.symbol.symbol}`
+      : kind === "mixed"
+        ? `places that use or refer to ${radius.symbol.symbol}`
+        : `connections to ${radius.symbol.symbol}`;
+  if (radius.provider === "repository-search") return `We searched the code for ${target}.`;
+  if (radius.provider === "codegraph") return `CodeGraph returned code connected to ${radius.symbol.symbol}.`;
+  if (radius.provider === "language-server") return `The language server returned code connected to ${radius.symbol.symbol}.`;
+  return `Structural analysis was unavailable for ${radius.symbol.symbol}.`;
+}
+
+function structuralExportPossibleMissingCopy(radius: StructuralBlastRadius, coverage: ReturnType<typeof structuralExportCoverage>): string | undefined {
+  if (coverage.state === "complete" || coverage.state === "unavailable") return undefined;
+  const kind = structuralExportRelationshipKind(radius);
+  const noun = kind === "calls" && structuralExportCallable(radius) ? "callers" : kind === "references" ? "references" : "connections";
+  return radius.provider === "repository-search"
+    ? `Other ${noun} may exist that this search didn't find.`
+    : `Other ${noun} may exist that this result didn't find.`;
+}
+
+function structuralExportDiagramCopy(radius: StructuralBlastRadius): string {
+  const kind = structuralExportRelationshipKind(radius);
+  if (kind === "calls") return structuralExportCallable(radius)
+    ? `Code that calls ${radius.symbol.symbol}, directly or through another function.`
+    : `Code that uses ${radius.symbol.symbol}, directly or through another code symbol.`;
+  if (kind === "references") return `Code that refers to ${radius.symbol.symbol}, directly or through another code symbol.`;
+  if (kind === "mixed") return `Code that calls or refers to ${radius.symbol.symbol}, directly or through another code symbol.`;
+  return "No caller or reference connections were saved in this diagram.";
+}
+
+function structuralExportMissingSourceCopy(radius: StructuralBlastRadius, unknownSourceCount: number): string | undefined {
+  if (!unknownSourceCount) return undefined;
+  const noun = structuralExportRelationshipKind(radius) === "calls" && structuralExportCallable(radius) ? "caller" : "connection";
+  return `${unknownSourceCount === 1 ? "One" : unknownSourceCount} ${noun}${unknownSourceCount === 1 ? " has" : "s have"} no source link.`;
+}
+
+function structuralExportTechnicalMetadata(radius: StructuralBlastRadius, coverage: ReturnType<typeof structuralExportCoverage>): string[] {
+  const countBasis = coverage.reportedCounts === "exact" ? "exact totals" : coverage.reportedCounts === "lower-bound" ? "lower bounds" : "totals not recorded";
+  return [
+    `- How it was found: ${radius.provider}`,
+    `- Confidence: ${radius.confidence}`,
+    `- Source of this result: ${radius.provenance}`,
+    `- Saved result: ${coverage.state} · ${countBasis}`,
+  ];
+}
+
+function structuralExportTestSources(assessment: ReturnType<typeof structuralExportTestAssessment>) {
+  const sources = new Map<string, { path: string; side: "old" | "new"; line: number; details: string[] }>();
+  for (const source of [...assessment.checkedSources, ...assessment.relevantTests]) {
+    const key = `${source.path}:${source.side}:${source.line}`;
+    const saved = sources.get(key) ?? { path: source.path, side: source.side, line: source.line, details: [] };
+    if (source.detail && !saved.details.includes(source.detail)) saved.details.push(source.detail);
+    sources.set(key, saved);
+  }
+  return [...sources.values()].map(({ details, ...source }) => ({ ...source, detail: details.join(" ") }));
+}
+
+function structuralExportTestEvidenceLines(radius: StructuralBlastRadius): string[] {
+  const assessment = structuralExportTestAssessment(radius);
+  const savedGaps = radius.nearbyTestGaps.filter((gap) => gap.kind !== "coverage-unknown");
+  const sources = structuralExportTestSources(assessment);
+  return [
+    "Related tests:",
+    "",
+    ...(assessment.state !== "relevant-tests-found" || !sources.length ? [markdownText(structuralExportTestAssessmentCopy(assessment.state)), ""] : []),
+    ...sources.map((source) => `- ${markdownText(`${source.path}:${source.line} (${source.side})`)} — ${markdownText(source.detail)}`),
+    ...(sources.length ? [""] : []),
+    ...(assessment.remainingUncertainty ? ["Still unclear:", `- ${markdownText(assessment.remainingUncertainty)}`, ""] : assessment.state === "none-found" ? ["Still unclear:", "- This only describes the recorded search. It does not show that no tests exist, ran, or passed.", ""] : []),
+    ...(savedGaps.length ? [assessment.legacy ? "Saved test questions:" : "Additional test questions:", ...savedGaps.flatMap((gap) => [`- ${markdownText(gap.detail)}`, ...gap.nearbyTestFiles.map((path) => `  - ${markdownText(path)}`)]), ""] : []),
+    ...(sources.length ? ["Based on reading the test code; no test-run result is available.", ""] : []),
+    ...(assessment.searchScope ? ["Search details:", `- ${markdownText(assessment.searchScope)}`, ""] : []),
+  ];
+}
+
+function structuralExportAnalysisLines(radius: StructuralBlastRadius): string[] {
+  const coverage = structuralExportCoverage(radius);
+  const unknownSourceCount = radius.nodes.filter((node) => node.kind === "external" && !node.location).length;
+  const possibleMissing = structuralExportPossibleMissingCopy(radius, coverage);
+  const missingSource = structuralExportMissingSourceCopy(radius, unknownSourceCount);
+  return [
+    "Analysis details:",
+    "",
+    "How we found these connections:",
+    `- ${markdownText(structuralExportMethodCopy(radius))}`,
+    ...(possibleMissing ? [`- ${markdownText(possibleMissing)}`] : []),
+    ...(coverage.state === "complete" ? ["- Every connection saved with this result is shown. Other connections may still exist outside this analysis."] : []),
+    "",
+    "What the diagram shows:",
+    `- ${markdownText(structuralExportDiagramCopy(radius))}`,
+    ...(missingSource ? [`- ${markdownText(missingSource)}`] : []),
+    "",
+    "Technical data (raw metadata and identities):",
+    ...structuralExportTechnicalMetadata(radius, coverage).map(markdownText),
+    ...radius.nodes.map((node) => `- Node: ${markdownText(node.id)}`),
+    ...(radius.edges.length ? radius.edges.map((edge) => `- Edge: ${markdownText(edge.id)} · ${markdownText(edge.from)} → ${markdownText(edge.to)} (${edge.relationship})`) : ["- No structural edges were reported."]),
+    "",
+  ];
+}
+
+function structuralExportCount(radius: StructuralBlastRadius, known: number, reported: number, noun: string): string {
+  const coverage = structuralExportCoverage(radius);
+  if (coverage.state === "unavailable") return `${noun}: not analysed`;
+  if (coverage.state === "complete") return `${noun}: ${known} known`;
+  if (coverage.reportedCounts === "exact") return `${noun}: ${known} supplied of ${reported} reported`;
+  if (coverage.reportedCounts === "lower-bound") return `${noun}: ${known} supplied; provider found at least ${reported}`;
+  return `${noun}: ${known} supplied; total not reported`;
+}
+
+function structuralExportReachCount(radius: StructuralBlastRadius, known: number, reported: number): string {
+  const coverage = structuralExportCoverage(radius);
+  const noun = structuralExportConnectionLabels(radius).noun;
+  const plural = known === 1 ? noun : `${noun}s`;
+  const value = `${known} ${plural}, direct or indirect`;
+  if (coverage.state === "unavailable") return `${noun[0].toUpperCase()}${noun.slice(1)}s, direct or indirect: not analysed`;
+  if (coverage.state === "complete") return value;
+  if (coverage.reportedCounts === "exact") return `${value} · ${known} supplied of ${reported} reported`;
+  if (coverage.reportedCounts === "lower-bound") return `${value} · ${known} supplied; provider found at least ${reported}`;
+  return `${value} · ${known} supplied; total not reported`;
+}
+
+function structuralExportFileRoles(radius: StructuralBlastRadius): Array<{ path: string; roles: string[] }> {
+  const roles = new Map(radius.impactedFiles.map((path) => [path, new Set<string>()]));
+  const add = (location: StructuralBlastRadius["symbol"]["location"] | StructuralBlastRadius["nodes"][number]["location"], role: string) => {
+    if (!location) return;
+    if (!roles.has(location.path)) roles.set(location.path, new Set());
+    roles.get(location.path)!.add(role);
+  };
+  add(radius.symbol.location, `Contains ${structuralExportSelectedLabel(radius).toLowerCase()}`);
+  for (const node of radius.nodes) {
+    if (node.id === radius.symbol.id) continue;
+    const direct = radius.directCallerIds.includes(node.id);
+    const relationships = new Set(radius.edges.filter((edge) => edge.from === node.id).map((edge) => edge.relationship));
+    for (const relationship of relationships) {
+      const label = relationship === "references"
+        ? (direct ? "Direct reference" : "Indirect reference")
+        : relationship === "calls"
+          ? (structuralExportCallable(radius) ? (direct ? "Direct caller" : "Indirect caller") : (direct ? "Direct use" : "Indirect use"))
+          : (direct ? "Direct connection" : "Indirect connection");
+      add(node.location, `Contains ${label.toLowerCase()}`);
+    }
+  }
+  return [...roles.entries()].map(([path, fileRoles]) => ({ path, roles: [...fileRoles] }));
+}
+
+function markdownStructuralBlastRadius(radius: StructuralBlastRadius): string[] {
+  const root = radius.symbol.location ? `${radius.symbol.location.path}:${radius.symbol.location.line}` : "Source unavailable";
+  const nodes = new Map(radius.nodes.map((node) => [node.id, node]));
+  const directCallers = radius.directCallerIds.map((id) => nodes.get(id)).filter((node): node is StructuralBlastRadius["nodes"][number] => Boolean(node));
+  const visibleReach = Math.max(0, radius.nodes.length - 1);
+  const graphEdges = radius.edges.map((edge) => `- ${markdownText(nodes.get(edge.from)?.symbol ?? edge.from)} → ${markdownText(nodes.get(edge.to)?.symbol ?? edge.to)} (${edge.relationship})`);
+  return [
+    `### What depends on \`${markdownText(radius.symbol.symbol)}\`?`,
+    "",
+    `Source: ${markdownText(root)} · ${radius.symbol.location?.side === "old" ? "Before changes" : "After changes"}. This is the corresponding code version in the comparison, not an execution step or screenshot.`,
+    "",
+    markdownText(structuralExportRelationshipDescription(radius)),
+    "",
+    ...(structuralExportCompleteness(radius) ? [markdownText(structuralExportCompleteness(radius)), ""] : []),
+    structuralExportCount(radius, directCallers.length, radius.reportedDirectCallerCount, `${structuralExportConnectionLabels(radius).direct}s`),
+    ...(directCallers.length ? directCallers.map((node) => `- ${markdownText(node.symbol)}${node.location ? ` — ${markdownText(`${node.location.path}:${node.location.line} (${node.location.side})`)}` : ""}`) : ["- None visible in this bounded subgraph."]),
+    "",
+    `${structuralExportReachCount(radius, visibleReach, radius.reportedReachableNodeCount)} (${structuralExportSelectedLabel(radius)} is excluded from these counts; saved external nodes are included when supplied).`,
+    ...(graphEdges.length ? graphEdges : ["- No structural edges were reported."]),
+    "",
+    "Static relationships only; not confirmed runtime impact.",
+    "",
+    structuralExportCount(radius, radius.impactedFiles.length, radius.reportedImpactedFileCount, "Files involved"),
+    "",
+    ...structuralExportAnalysisLines(radius),
+    "Files involved:",
+    ...structuralExportFileRoles(radius).map(({ path, roles }) => `- ${markdownText(path)} — ${markdownText(roles.length ? `${roles.join("; ")}.` : "Listed in the saved result.")}`),
+    "",
+    ...structuralExportTestEvidenceLines(radius),
+  ];
+}
+
+function markdown(session: ReviewSession, options: HtmlExportOptions = {}): string {
   const outline = session.outline;
   const briefing = buildNeedsAttention(session.comparison, outline, session.pullRequest);
   const lines = [
@@ -214,9 +472,9 @@ function markdown(session: ReviewSession, options: Pick<HtmlExportOptions, "incl
   ];
   if (briefing.signals.length > 0) {
     const findingCount = briefing.signals.filter((signal) => signal.kind === "finding").length;
-    lines.push("## Needs your attention", "", `${briefing.signals.length} review cues shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 findings. Other cues point to contracts, tests, flows, stale analysis, or GitHub status; lower-priority findings remain in Findings.`, "");
+    lines.push("## Needs your attention", "", `${briefing.signals.length} review cues shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 findings. Other cues point to contracts, tests, flows, structural reach, stale analysis, or GitHub status; lower-priority findings remain in Findings.`, "");
     for (const signal of briefing.signals) {
-      const target = signal.target.kind === "finding" ? `finding ${signal.target.findingId}` : signal.target.kind === "call-flow" ? `call flow ${signal.target.callFlowId}` : signal.target.kind === "file" ? `${signal.target.path}${signal.target.line ? `:${signal.target.line}` : ""}` : `${signal.target.section} section`;
+      const target = signal.target.kind === "finding" ? `finding ${signal.target.findingId}` : signal.target.kind === "call-flow" ? `call flow ${signal.target.callFlowId}` : signal.target.kind === "structural-blast-radius" ? `structural reach ${signal.target.structuralBlastRadiusId}` : signal.target.kind === "file" ? `${signal.target.path}${signal.target.line ? `:${signal.target.line}` : ""}` : `${signal.target.section} section`;
       lines.push(`- **${markdownText(signal.title)}** — ${markdownText(signal.detail)} (open ${markdownText(target)}; ${signal.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"})`, `  Evidence: ${markdownText(signal.evidence)}`);
     }
     lines.push("");
@@ -256,6 +514,10 @@ function markdown(session: ReviewSession, options: Pick<HtmlExportOptions, "incl
       lines.push("", "Affected changed files:", "", ...flow.affectedFiles.map((path) => `- ${markdownText(path)}`), "");
     }
   }
+  if (options.includeStructuralBlastRadius !== false && outline?.structuralBlastRadii?.length) {
+    lines.push("## What could this change affect?", "", "Static callers and references for the selected item—not the whole pull request or proof of runtime impact.", "");
+    for (const radius of outline.structuralBlastRadii) lines.push(...markdownStructuralBlastRadius(radius));
+  }
   if (outline?.flows.length) {
     lines.push("## Sequence diagrams", "");
     for (const flow of outline.flows) {
@@ -267,7 +529,7 @@ function markdown(session: ReviewSession, options: Pick<HtmlExportOptions, "incl
   if (outline?.findings.length) {
     lines.push("## Findings", "");
     for (const finding of outline.findings) {
-      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Scope: ${markdownText(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${markdownText(finding.stepId)}` : ""}; disposition: ${findingDisposition(finding)}; severity: ${finding.severity}; confidence: ${finding.confidence}`, "", markdownText(finding.message), "", "Evidence trail:", "", ...findingEvidenceParts(finding.evidence).map((part) => `- **${markdownText(part.label)}:** ${markdownText(part.body)}`), ...(finding.reviewerNote ? ["", `Reviewer note: ${markdownText(finding.reviewerNote)}`] : []), "");
+      lines.push(`### ${finding.priority}: ${markdownText(finding.category)} at ${markdownText(finding.path)}:${finding.line}`, "", `Scope: ${markdownText(finding.phaseId ?? "unscoped")}${finding.stepId ? ` / ${markdownText(finding.stepId)}` : ""}; disposition: ${findingDisposition(finding)}; severity: ${finding.severity}; confidence: ${finding.confidence}`, ...(finding.pinnedSymbolIds?.length ? [`Symbols linked to this finding: ${finding.pinnedSymbolIds.map((id) => `\`${markdownText(id)}\``).join(", ")}`] : []), "", markdownText(finding.message), "", "Evidence trail:", "", ...findingEvidenceParts(finding.evidence).map((part) => `- **${markdownText(part.label)}:** ${markdownText(part.body)}`), ...(finding.reviewerNote ? ["", `Reviewer note: ${markdownText(finding.reviewerNote)}`] : []), "");
     }
   }
   if (session.comments.length) {
@@ -306,6 +568,42 @@ function markdown(session: ReviewSession, options: Pick<HtmlExportOptions, "incl
 
 function escapeHtml(value: unknown): string {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function structuralExportTestSourceHtml(source: NonNullable<StructuralBlastRadius["testEvidence"]>["checkedSources"][number]): string {
+  const location = `${source.path}:${source.line}`;
+  return `<li><button type="button" data-open-file="${escapeHtml(source.path)}"><code>${escapeHtml(location)}</code></button><span>${escapeHtml(source.detail)}</span></li>`;
+}
+
+function structuralExportTestEvidenceHtml(radius: StructuralBlastRadius): string {
+  const assessment = structuralExportTestAssessment(radius);
+  const savedGaps = radius.nearbyTestGaps.filter((gap) => gap.kind !== "coverage-unknown");
+  const sources = structuralExportTestSources(assessment);
+  const related = sources.length ? `<ul>${sources.map(structuralExportTestSourceHtml).join("")}</ul>` : "";
+  const uncertainty = assessment.remainingUncertainty
+    ? `<section><h4>Still unclear</h4><p>${escapeHtml(assessment.remainingUncertainty)}</p></section>`
+    : assessment.state === "none-found"
+      ? "<section><h4>Still unclear</h4><p>This only describes the recorded search. It does not show that no tests exist, ran, or passed.</p></section>"
+      : "";
+  const saved = savedGaps.length ? `<section><h4>${assessment.legacy ? "Saved test questions" : "Additional test questions"}</h4><ul>${savedGaps.map((gap) => `<li><strong>${escapeHtml(gap.kind.replaceAll("-", " "))}</strong><span>${escapeHtml(gap.detail)}</span>${gap.nearbyTestFiles.length ? `<ul>${gap.nearbyTestFiles.map((path) => `<li><button type="button" data-open-file="${escapeHtml(path)}"><code>${escapeHtml(path)}</code></button></li>`).join("")}</ul>` : ""}</li>`).join("")}</ul></section>` : "";
+  const caveat = sources.length ? "<p class=\"call-tree-caption\">Based on reading the test code; no test-run result is available.</p>" : "";
+  const status = assessment.state !== "relevant-tests-found" || !sources.length ? `<p class="structural-test-status">${escapeHtml(structuralExportTestAssessmentCopy(assessment.state))}</p>` : "";
+  const search = assessment.searchScope ? `<details class="structural-test-search"><summary>Search details</summary><p>${escapeHtml(assessment.searchScope)}</p></details>` : "";
+  return `<div class="structural-test-evidence ${escapeHtml(assessment.state)}">${status}${related}${uncertainty}${saved}${caveat}${search}</div>`;
+}
+
+function structuralExportTechnicalMetadataHtml(radius: StructuralBlastRadius, coverage: ReturnType<typeof structuralExportCoverage>): string {
+  const countBasis = coverage.reportedCounts === "exact" ? "exact totals" : coverage.reportedCounts === "lower-bound" ? "lower bounds" : "totals not recorded";
+  return `<dl class="structural-technical-meta"><div><dt>How it was found</dt><dd>${escapeHtml(radius.provider)}</dd></div><div><dt>Confidence</dt><dd>${escapeHtml(radius.confidence)}</dd></div><div><dt>Source of this result</dt><dd>${escapeHtml(radius.provenance)}</dd></div><div><dt>Saved result</dt><dd>${escapeHtml(coverage.state)} · ${escapeHtml(countBasis)}</dd></div></dl>`;
+}
+
+function structuralExportAnalysisHtml(radius: StructuralBlastRadius, nodeList: string, edgeList: string): string {
+  const coverage = structuralExportCoverage(radius);
+  const unknownSourceCount = radius.nodes.filter((node) => node.kind === "external" && !node.location).length;
+  const possibleMissing = structuralExportPossibleMissingCopy(radius, coverage);
+  const missingSource = structuralExportMissingSourceCopy(radius, unknownSourceCount);
+  const complete = coverage.state === "complete" ? "<p>Every connection saved with this result is shown. Other connections may still exist outside this analysis.</p>" : "";
+  return `<details><summary>Analysis details</summary><div class="structural-analysis-layout"><section class="structural-analysis-block"><h4>How we found these connections</h4><p>${escapeHtml(structuralExportMethodCopy(radius))}</p>${possibleMissing ? `<p>${escapeHtml(possibleMissing)}</p>` : ""}${complete}</section><section class="structural-analysis-block"><h4>What the diagram shows</h4><p>${escapeHtml(structuralExportDiagramCopy(radius))}</p>${missingSource ? `<p>${escapeHtml(missingSource)}</p>` : ""}</section></div><details class="structural-technical-data"><summary>Technical data · ${radius.nodes.length} nodes, ${radius.edges.length} edges</summary>${structuralExportTechnicalMetadataHtml(radius, coverage)}<ol class="structural-node-list">${nodeList}</ol>${edgeList ? `<ol class="structural-edge-list">${edgeList}</ol>` : "<p class=\"call-tree-empty\">No structural edges were reported.</p>"}</details></details>`;
 }
 
 function dryRunJsonHtml(value: unknown): string {
@@ -612,11 +910,12 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   const outline = session.outline;
   const includeFindings = options.includeFindings !== false;
   const includeCallFlows = options.includeCallFlows !== false;
+  const includeStructuralBlastRadius = options.includeStructuralBlastRadius !== false;
   const includeDiagrams = options.includeDiagrams !== false;
   const includeDryRuns = options.includeDryRuns !== false;
   const diffWrap = options.diffWrap === "wrap" ? "wrap" : "scroll";
   const findings = includeFindings ? outline?.findings ?? [] : [];
-  const briefing = buildNeedsAttention(session.comparison, outline, session.pullRequest, { includeFindings, includeCallFlows });
+  const briefing = buildNeedsAttention(session.comparison, outline, session.pullRequest, { includeFindings, includeCallFlows, includeStructuralBlastRadius });
   const highlighted = new Map((options.highlightedGroups ?? []).map((group) => [group.id, group.lines]));
   const markdownPreviews = new Map<string, Partial<Record<"old" | "new", string>>>();
   for (const preview of options.markdownPreviews ?? []) {
@@ -626,20 +925,23 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   }
   const filesByPath = new Map(session.comparison.files.map((file) => [file.path, file]));
   let stopNumber = 0;
-  const findingCard = (finding: ReviewFinding) => `<article class="finding ${finding.priority.toLowerCase()} ${finding.disposition ? escapeHtml(finding.disposition) : ""}"><header><span>${finding.priority}</span><strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong></header><code>${escapeHtml(finding.path)}:${finding.line}</code><p>${inlineHtml(finding.message)}</p><div class="finding-disposition">Disposition: ${escapeHtml(findingDisposition(finding))}</div>${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${inlineHtml(finding.reviewerNote)}</p></div>` : ""}<details><summary>Evidence trail · ${escapeHtml(finding.confidence)} confidence</summary>${findingEvidenceHtml(finding.evidence)}</details></article>`;
+  const findingCard = (finding: ReviewFinding) => `<article class="finding ${finding.priority.toLowerCase()} ${finding.disposition ? escapeHtml(finding.disposition) : ""}"><header><span>${finding.priority}</span><strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong></header><code>${escapeHtml(finding.path)}:${finding.line}</code><p>${inlineHtml(finding.message)}</p><div class="finding-disposition">Disposition: ${escapeHtml(findingDisposition(finding))}</div>${finding.pinnedSymbolIds?.length ? `<details class="finding-structural-pins"><summary>Symbols linked to this finding</summary><ul>${finding.pinnedSymbolIds.map((id) => `<li><code>${escapeHtml(id)}</code></li>`).join("")}</ul></details>` : ""}${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${inlineHtml(finding.reviewerNote)}</p></div>` : ""}<details><summary>Evidence trail · ${escapeHtml(finding.confidence)} confidence</summary>${findingEvidenceHtml(finding.evidence)}</details></article>`;
   const briefingTarget = (signal: (typeof briefing.signals)[number]) => {
     const target = signal.target;
     if (target.kind === "file") return `<button type="button" data-open-file="${escapeHtml(target.path)}">Open ${escapeHtml(target.path)}${target.line ? `:${target.line}` : ""}</button>`;
     if (target.kind === "finding") return `<button type="button" data-view="findings">Open finding ${escapeHtml(target.findingId)}</button>`;
     if (target.kind === "call-flow") return `<button type="button" data-view="calls">Open call flow</button>`;
+    if (target.kind === "structural-blast-radius") return `<button type="button" data-view="structural">Open structural reach</button>`;
     return `<button type="button" data-view="diff">Open ${escapeHtml(target.section.replaceAll("-", " "))} section</button>`;
   };
   const findingEvidenceStyles = `<style>.finding-evidence-list{display:grid;gap:6px;margin:8px 0 2px;padding:0;list-style:none}.finding-evidence-list li{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px;border:1px solid var(--line);border-radius:6px;padding:7px;background:var(--code)}.finding-evidence-list li>strong{color:var(--soft);font-size:8px;text-transform:uppercase}.finding-evidence-list li>div{min-width:0;color:#cbd5e3;overflow-wrap:anywhere}@media(max-width:600px){.finding-evidence-list li{grid-template-columns:1fr;gap:2px}}</style>`;
+  const structuralExportStyles = `<style>.structural-blast-card>details{margin-top:10px}.structural-blast-card details{border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--code)}.structural-blast-card summary{cursor:pointer;color:var(--text);font-size:11px;font-weight:800}.structural-analysis-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:9px}.structural-analysis-block,.structural-technical-data{min-width:0;border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--raised)}.structural-analysis-block h4,.structural-test-evidence h4{margin:0 0 6px;color:var(--soft);font-size:9px;letter-spacing:.08em;text-transform:uppercase}.structural-analysis-block p,.structural-test-evidence p{margin:0;color:var(--soft);font-size:10px;line-height:1.45;overflow-wrap:anywhere}.structural-analysis-block p+p{margin-top:6px}.structural-technical-data{margin-top:9px}.structural-technical-data>summary{color:var(--soft);font-size:10px}.structural-technical-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 9px;margin:8px 0 0}.structural-technical-meta>div{display:grid;grid-template-columns:minmax(72px,.45fr) minmax(0,1fr);gap:7px}.structural-technical-meta dt{color:var(--soft);font-size:9px}.structural-technical-meta dd{min-width:0;margin:0;color:var(--text);font:9px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.structural-node-list,.structural-edge-list{display:grid;gap:6px;margin:8px 0 0;padding-left:18px}.structural-node-list li,.structural-edge-list li{min-width:0;color:var(--soft);font-size:10px;overflow-wrap:anywhere}.structural-technical-edge{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 6px}.structural-technical-edge code{overflow-wrap:anywhere}.structural-test-evidence{display:grid;gap:9px;margin-top:9px}.structural-test-evidence>section{min-width:0;border-left:2px solid var(--line);padding-left:8px}.structural-test-evidence ul{display:grid;gap:5px;margin:0;padding-left:16px}.structural-test-evidence li{min-width:0;color:var(--soft);font-size:10px;overflow-wrap:anywhere}.structural-test-status{color:var(--text)!important;font-size:11px!important;font-weight:800}.structural-test-evidence button,.structural-blast-card header button{border:0;padding:0;color:var(--accent);background:transparent;font:inherit;text-align:left;cursor:pointer}.structural-test-evidence button:hover,.structural-blast-card header button:hover{text-decoration:underline}@media(max-width:700px){.structural-analysis-layout,.structural-technical-meta{grid-template-columns:1fr}}</style>`;
+  const structuralExportPolishStyles = `<style>.structural-blast-card .call-flow-summary{flex-wrap:wrap}.structural-blast-card .flow-impact p{display:grid;gap:3px;margin:7px 0;color:var(--soft);font-size:10px;line-height:1.4}.structural-test-search{border:1px solid var(--line);border-radius:6px;padding:7px;background:var(--raised)}.structural-test-search>summary{color:var(--soft);cursor:pointer;font-size:10px;font-weight:700}.structural-test-search p{margin-top:6px!important}</style>`;
   const briefingStyles = `<style>.attention-briefing,.review-estimate{max-width:1050px;margin:0 auto;padding:18px 24px;border-bottom:1px solid var(--line)}.attention-briefing h2,.review-estimate h2{margin:4px 0;font-size:16px}.attention-briefing>.muted,.review-estimate>.muted{margin:6px 0;color:var(--soft);font-size:11px}.attention-list{display:grid;gap:8px;margin-top:12px}.attention-item{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:10px;background:var(--item)}.attention-item.finding,.attention-item.github-check,.attention-item.merge-conflict{border-left-color:var(--red)}.attention-item header{display:flex;justify-content:space-between;gap:10px}.attention-item header small{color:var(--soft);font-size:9px}.attention-item p{margin:4px 0;color:var(--soft);font-size:10px}.attention-item details{color:var(--soft);font-size:9px}.attention-item button{border:0;padding:2px 0;color:var(--accent);background:transparent;font-size:10px;cursor:pointer}.review-estimate details{margin-top:12px;color:var(--soft);font-size:10px}.review-estimate details p{margin:7px 0}.review-estimate small{color:var(--soft)}@media(max-width:600px){.attention-item header{align-items:flex-start;flex-direction:column;gap:2px}}</style>`;
   const githubCheckStyles = `<style>.github-checks-export{margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--item)}.github-checks-export h3,.github-checks-export h4{margin:0}.github-checks-export header,.github-check-export-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.github-checks-export header p,.github-checks-export p{margin:4px 0 0;color:var(--soft);font-size:11px;line-height:1.45}.github-checks-export a{color:var(--accent)}.github-mergeability-export{margin-top:12px;border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--raised)}.github-mergeability-export h4{color:var(--soft);font-size:10px;letter-spacing:.06em;text-transform:uppercase}.github-check-export-list{display:grid;gap:6px;margin:12px 0 0;padding:0;list-style:none}.github-check-export-item{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--raised)}.github-check-export-item strong{display:block;overflow-wrap:anywhere;font-size:12px}.github-check-export-status{display:inline-block;margin-right:6px;color:var(--text);font-weight:800}.github-check-export-boundary{border-top:1px solid var(--line);padding-top:9px}@media(max-width:600px){.github-checks-export header,.github-check-export-item{flex-direction:column}}</style>`;
   const findingCount = briefing.signals.filter((signal) => signal.kind === "finding").length;
-  const briefingNote = `${briefing.signals.length} review cues shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 findings. Other cues point to contracts, tests, flows, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
-  const briefingSection = findingEvidenceStyles + briefingStyles + githubCheckStyles + (briefing.signals.length > 0 ? `<section class="attention-briefing" aria-labelledby="attention-title"><span class="eyebrow">Evidence briefing</span><h2 id="attention-title">Needs your attention</h2><p class="muted">${escapeHtml(briefingNote)}</p><div class="attention-list">${briefing.signals.map((signal) => `<article class="attention-item ${signal.kind}"><header><strong>${escapeHtml(signal.title)}</strong><small>${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</small></header><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details>${briefingTarget(signal)}</article>`).join("")}</div></section>` : "");
+  const briefingNote = `${briefing.signals.length} review cues shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 findings. Other cues point to contracts, tests, flows, structural reach, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
+  const briefingSection = findingEvidenceStyles + structuralExportStyles + structuralExportPolishStyles + briefingStyles + githubCheckStyles + (briefing.signals.length > 0 ? `<section class="attention-briefing" aria-labelledby="attention-title"><span class="eyebrow">Evidence briefing</span><h2 id="attention-title">Needs your attention</h2><p class="muted">${escapeHtml(briefingNote)}</p><div class="attention-list">${briefing.signals.map((signal) => `<article class="attention-item ${signal.kind}"><header><strong>${escapeHtml(signal.title)}</strong><small>${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</small></header><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details>${briefingTarget(signal)}</article>`).join("")}</div></section>` : "");
   const estimateSection = `<section class="review-estimate" aria-labelledby="estimate-title"><span class="eyebrow">Review effort</span><h2 id="estimate-title">How much time might this review take? About ${briefing.estimate.minutes} minutes</h2><p class="muted">A rough first-pass planning aid based on the visible diff and review signals, not a risk score or quality rating.</p><details><summary>Why this estimate?</summary><div>${briefing.estimate.factors.map((factor) => `<p><strong>${escapeHtml(factor.label)} · +${factor.minutes} min</strong><br><small>${escapeHtml(factor.detail)} · ${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"}</small></p>`).join("")}</div></details></section>`;
   const architectureLegend = '<div class="architecture-legend" aria-label="Diagram colour legend"><span><i class="new"></i>New</span><span><i class="changed"></i>Changed</span><span><i class="removed"></i>Removed</span><span><i class="external"></i>Outside this change</span></div>';
   const diagramControls = '<div class="diagram-controls"><span>Move</span><button type="button" data-diagram-action="move-left" aria-label="Move diagram left">←</button><button type="button" data-diagram-action="move-up" aria-label="Move diagram up">↑</button><button type="button" data-diagram-action="move-down" aria-label="Move diagram down">↓</button><button type="button" data-diagram-action="move-right" aria-label="Move diagram right">→</button><span>Zoom</span><button type="button" data-diagram-action="zoom-out" aria-label="Zoom out">−</button><button type="button" class="diagram-zoom" data-diagram-action="reset">100%</button><button type="button" data-diagram-action="zoom-in" aria-label="Zoom in">+</button></div>';
@@ -698,6 +1000,24 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   }).join("") ?? "" : "";
   const dryRunTraces = includeDryRuns ? exportedDryRuns(session) : [];
   const dryRuns = dryRunTraces.length ? `${dryRunTraces.map(dryRunTraceHtml).join("")}${dryRunExportScript}` : "";
+  const structuralBlastRadii = includeStructuralBlastRadius ? (outline?.structuralBlastRadii ?? []).map((radius) => {
+    const nodes = new Map(radius.nodes.map((node) => [node.id, node]));
+    const direct = radius.directCallerIds.map((id) => nodes.get(id)).filter(Boolean);
+    const visibleReach = Math.max(0, radius.nodes.length - 1);
+    const nodeList = radius.nodes.map((node) => `<li><strong>${escapeHtml(node.symbol)}</strong> <small>${escapeHtml(node.id)}${node.location ? ` · ${escapeHtml(`${node.location.path}:${node.location.line} (${node.location.side})`)}` : ""}</small></li>`).join("");
+    const edgeList = radius.edges.map((edge) => `<li class="structural-technical-edge"><code>${escapeHtml(edge.id)}</code><span>${escapeHtml(nodes.get(edge.from)?.symbol ?? edge.from)} → ${escapeHtml(nodes.get(edge.to)?.symbol ?? edge.to)}</span><small>${escapeHtml(edge.relationship)}</small></li>`).join("");
+    const rootLocation = radius.symbol.location ? `${radius.symbol.location.path}:${radius.symbol.location.line}` : "Source unavailable";
+    const rootLocationMarkup = radius.symbol.location
+      ? `<button type="button" data-open-file="${escapeHtml(radius.symbol.location.path)}" title="Open ${escapeHtml(rootLocation)}">${escapeHtml(rootLocation)}</button>`
+      : escapeHtml(rootLocation);
+    const comparisonSide = radius.symbol.location?.side === "old" ? "Before changes" : "After changes";
+    const completeness = structuralExportCompleteness(radius);
+    const labels = structuralExportConnectionLabels(radius);
+    const countNoun = labels.noun === "caller" ? "caller" : labels.noun === "reference" ? "reference" : "connection";
+    const files = structuralExportFileRoles(radius);
+    const warning = completeness ? `<p class="structural-export-completeness"><strong>${escapeHtml(completeness.split(":")[0] ?? "Result completeness")}</strong> ${escapeHtml(completeness.replace(/^[^:]+:\s*/, ""))}</p>` : "";
+    return `<article class="call-flow-card structural-blast-card" data-structural-blast-radius="${escapeHtml(radius.id)}"><header><div><h3>What depends on <code>${escapeHtml(radius.symbol.symbol)}</code>?</h3><small>${rootLocationMarkup} · <span title="Code version from the ${radius.symbol.location?.side === "old" ? "old" : "new"} side of the comparison, not an execution step or screenshot.">${comparisonSide}</span></small></div></header><p class="structural-description">${escapeHtml(structuralExportRelationshipDescription(radius))}</p>${warning}<div class="call-flow-summary"><strong>${escapeHtml(structuralExportCount(radius, direct.length, radius.reportedDirectCallerCount, `${labels.direct}s`))}</strong><strong>${escapeHtml(structuralExportReachCount(radius, visibleReach, radius.reportedReachableNodeCount))}</strong><strong>${escapeHtml(structuralExportCount(radius, radius.impactedFiles.length, radius.reportedImpactedFileCount, "Files involved"))}</strong></div><p class="call-tree-caption">${escapeHtml(`${structuralExportSelectedLabel(radius)} is excluded from ${countNoun} counts.`)}</p><p class="call-tree-caption">Static relationships only; not confirmed runtime impact.</p><details class="flow-impact"><summary>Files involved · ${radius.impactedFiles.length}</summary><div>${files.map(({ path, roles }) => `<p><button type="button" data-open-file="${escapeHtml(path)}">${escapeHtml(path)}</button><span>${escapeHtml(roles.length ? `${roles.join("; ")}.` : "Listed in the saved result.")}</span></p>`).join("")}</div></details>${structuralExportAnalysisHtml(radius, nodeList, edgeList)}<details><summary>Related tests</summary>${structuralExportTestEvidenceHtml(radius)}</details></article>`;
+  }).join("") : "";
   const comments = session.comments.map((comment) => `<article class="comment"><code>${escapeHtml(commentLocation(comment))}</code><strong>${escapeHtml(commentScope(comment, session))}</strong>${comment.selectedText ? `<blockquote>${escapeHtml(comment.selectedText)}</blockquote>` : ""}<p>${inlineHtml(comment.body)}</p><span>${escapeHtml(comment.status)}</span></article>`).join("");
   const messages = session.messages ?? [];
   const questions = messages.filter((message) => message.role === "user" && (!message.threadId || message.threadId === message.id)).map((root) => {
@@ -739,6 +1059,15 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
   const diffs = `${briefingSection}${estimateSection}${session.comparison.files.map((file, index) => `<section class="exported-diff" data-diff-file="${escapeHtml(file.path)}" hidden>${fileDiff(file, findings, session, index, highlighted, markdownPreviews.get(file.path))}</section>`).join("")}` + (questions ? `</section><section class="view comments" data-view-panel="questions" hidden><h2>Questions</h2>${questions}` : "");
   const allFindings = findings.map(findingCard).join("");
   const tabs = [`<button type="button" data-view="diff" class="active">Diff <span>${session.comparison.files.length}</span></button>`, callFlows ? `<button type="button" data-view="calls">Call flows <span>${outline?.callFlows?.length ?? 0}</span></button>` : "", flows ? `<button type="button" data-view="sequences">Sequences <span>${outline?.flows.length ?? 0}</span></button>` : "", dryRuns ? `<button type="button" data-view="dry-runs">Dry runs <span>${dryRunTraces.length}</span></button>` : "", includeFindings ? `<button type="button" data-view="findings">Findings <span>${findings.length}</span></button>` : "", comments ? `<button type="button" data-view="feedback">Feedback <span>${session.comments.length}</span></button>` : "", questions ? `<button type="button" data-view="questions">Questions <span>${questions ? messages.filter((message) => message.role === "user" && (!message.threadId || message.threadId === message.id)).length : 0}</span></button>` : "", `<style>.focus-mode .tabs{display:flex}.focus-mode .tabs>[data-view]{display:none}.focus-mode .shortcut-help-dialog{display:none}.focus-mode .shortcut-help-dialog[open]{display:block}</style>`, `<button id="focus-mode-toggle" type="button" aria-pressed="false" title="Enter focus mode (Z)">Focus mode</button>`, `<button id="shortcuts-button" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">? Shortcuts</button>`, `<dialog id="shortcut-help-dialog" class="shortcut-help-dialog" aria-labelledby="shortcut-help-title" aria-describedby="shortcut-help-description"><div class="dialog-heading"><div><div class="eyebrow">Keyboard help</div><h2 id="shortcut-help-title">Review shortcuts</h2></div><button id="close-shortcut-help" type="button">Close</button></div><p id="shortcut-help-description">Shortcuts pause while typing or editing. Existing buttons remain available.</p><table class="shortcut-table"><tbody><tr><th scope="row"><kbd>J</kbd></th><td>Next tour stop</td></tr><tr><th scope="row"><kbd>K</kbd></th><td>Previous tour stop</td></tr><tr><th scope="row"><kbd>Z</kbd></th><td>Toggle focus mode</td></tr><tr><th scope="row"><kbd>?</kbd></th><td>Show this help</td></tr></tbody></table><p class="shortcut-help-note">Focus mode widens the diff and hides secondary review chrome. Use <strong>Exit focus</strong> or press <kbd>Z</kbd> to return.</p></dialog>`, `<script>window.addEventListener("DOMContentLoaded",()=>{const next=()=>document.getElementById("next"),previous=()=>document.getElementById("previous"),focus=document.getElementById("focus-mode-toggle"),help=document.getElementById("shortcuts-button"),dialog=document.getElementById("shortcut-help-dialog"),closeHelp=document.getElementById("close-shortcut-help");let returnFocus=null;const sync=()=>{const active=document.body.classList.contains("focus-mode");focus.setAttribute("aria-pressed",String(active));focus.textContent=active?"Exit focus":"Focus mode";focus.title=active?"Exit focus mode (Z)":"Enter focus mode (Z)"};const editable=target=>Boolean(target?.closest?.("input,textarea,select,[contenteditable='true'],[role='textbox']"));const modal=()=>Boolean(document.querySelector("dialog[open]"));const showHelp=()=>{if(dialog.open)return;returnFocus=document.activeElement;dialog.showModal();closeHelp.focus()};focus.addEventListener("click",()=>{document.body.classList.toggle("focus-mode");sync();focus.focus()});help.addEventListener("click",showHelp);closeHelp.addEventListener("click",()=>dialog.close());dialog.addEventListener("close",()=>{if(returnFocus?.isConnected)returnFocus.focus();returnFocus=null});document.addEventListener("keydown",event=>{if(event.defaultPrevented||event.repeat||editable(event.target)||modal())return;const system=event.ctrlKey||event.metaKey||event.altKey;if(event.key==="?"&&event.shiftKey&&!system){event.preventDefault();showHelp();return}if(system||event.shiftKey)return;const key=event.key.toLowerCase();if(key==="j"&&!next().disabled){event.preventDefault();next().click()}else if(key==="k"&&!previous().disabled){previous().click()}else if(key==="z"){event.preventDefault();focus.click()}});sync()});</script>`].join("");
+/*
+  const tabs = [`<button type="button" data-view="diff" class="active">Diff <span>${session.comparison.files.length}</span></button>`, callFlows ? `<button type="button" data-view="calls">Call flows <span>${outline?.callFlows?.length ?? 0}</span></button>` : "", structuralBlastRadii ? `<button type="button" data-view="structural">Structural reach <span>${outline?.structuralBlastRadii?.length ?? 0}</span></button>` : "", flows ? `<button type="button" data-view="sequences">Sequences <span>${outline?.flows.length ?? 0}</span></button>` : "", includeFindings ? `<button type="button" data-view="findings">Findings <span>${findings.length}</span></button>` : "", comments ? `<button type="button" data-view="feedback">Feedback <span>${session.comments.length}</span></button>` : "", questions ? `<button type="button" data-view="questions">Questions <span>${questions ? messages.filter((message) => message.role === "user" && (!message.threadId || message.threadId === message.id)).length : 0}</span></button>` : "", `<style>.focus-mode .tabs{display:flex}.focus-mode .tabs>[data-view]{display:none}.focus-mode .shortcut-help-dialog{display:none}.focus-mode .shortcut-help-dialog[open]{display:block}</style>`, `<button id="focus-mode-toggle" type="button" aria-pressed="false" title="Enter focus mode (Z)">Focus mode</button>`, `<button id="shortcuts-button" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">? Shortcuts</button>`, `<dialog id="shortcut-help-dialog" class="shortcut-help-dialog" aria-labelledby="shortcut-help-title" aria-describedby="shortcut-help-description"><div class="dialog-heading"><div><div class="eyebrow">Keyboard help</div><h2 id="shortcut-help-title">Review shortcuts</h2></div><button id="close-shortcut-help" type="button">Close</button></div><p id="shortcut-help-description">Shortcuts pause while typing or editing. Existing buttons remain available.</p><table class="shortcut-table"><tbody><tr><th scope="row"><kbd>J</kbd></th><td>Next tour stop</td></tr><tr><th scope="row"><kbd>K</kbd></th><td>Previous tour stop</td></tr><tr><th scope="row"><kbd>Z</kbd></th><td>Toggle focus mode</td></tr><tr><th scope="row"><kbd>?</kbd></th><td>Show this help</td></tr></tbody></table><p class="shortcut-help-note">Focus mode widens the diff and hides secondary review chrome. Use <strong>Exit focus</strong> or press <kbd>Z</kbd> to return.</p></dialog>`, `<script>window.addEventListener("DOMContentLoaded",()=>{const next=()=>document.getElementById("next"),previous=()=>document.getElementById("previous"),focus=document.getElementById("focus-mode-toggle"),help=document.getElementById("shortcuts-button"),dialog=document.getElementById("shortcut-help-dialog"),closeHelp=document.getElementById("close-shortcut-help");let returnFocus=null;const sync=()=>{const active=document.body.classList.contains("focus-mode");focus.setAttribute("aria-pressed",String(active));focus.textContent=active?"Exit focus":"Focus mode";focus.title=active?"Exit focus mode (Z)":"Enter focus mode (Z)"};const editable=target=>Boolean(target?.closest?.("input,textarea,select,[contenteditable='true'],[role='textbox']"));const modal=()=>Boolean(document.querySelector("dialog[open]"));const showHelp=()=>{if(dialog.open)return;returnFocus=document.activeElement;dialog.showModal();closeHelp.focus()};focus.addEventListener("click",()=>{document.body.classList.toggle("focus-mode");sync();focus.focus()});help.addEventListener("click",showHelp);closeHelp.addEventListener("click",()=>dialog.close());dialog.addEventListener("close",()=>{if(returnFocus?.isConnected)returnFocus.focus();returnFocus=null});document.addEventListener("keydown",event=>{if(event.defaultPrevented||event.repeat||editable(event.target)||modal())return;const system=event.ctrlKey||event.metaKey||event.altKey;if(event.key==="?"&&event.shiftKey&&!system){event.preventDefault();showHelp();return}if(system||event.shiftKey)return;const key=event.key.toLowerCase();if(key==="j"&&!next().disabled){event.preventDefault();next().click()}else if(key==="k"&&!previous().disabled){event.preventDefault();previous().click()}else if(key==="z"){event.preventDefault();focus.click()}});sync()});</script>`].join("");
+*/
+  const structuralExportPanel = structuralBlastRadii
+    ? `<section class="view" data-view-panel="structural" hidden><section class="overview-section"><span class="eyebrow">Static analysis</span><h2>What could this change affect?</h2><p class="call-tree-caption">Static callers and references for the selected item—not the whole pull request or proof of runtime impact.</p><div class="call-grid">${structuralBlastRadii}</div></section></section>`
+    : "";
+  const structuralExportScript = structuralExportPanel
+    ? `<script>(()=>{const view=document.querySelector('[data-view-panel="structural"]');if(!view)return;const heading=view.querySelector('h2'),caption=view.querySelector('.call-tree-caption');if(heading)heading.textContent="What could this change affect?";if(caption)caption.textContent="Static callers and references for the selected item—not the whole pull request or proof of runtime impact."})()</script>`
+    : "";
   return renderExport(`<!doctype html>
 <html lang="en" data-diff-wrap="${diffWrap}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(outline?.title ?? "Code review tour")}</title>
 <style>
@@ -753,6 +1082,10 @@ html[data-diff-wrap="wrap"] .diff-hunk{overflow-x:hidden}html[data-diff-wrap="wr
 .focus-mode .file-panel{display:none}.focus-mode .workspace{grid-template-columns:minmax(0,1fr) 420px}.focus-mode .tabs{display:none}.focus-mode .shortcut-help-dialog{display:block}.focus-mode .topbar-actions>*:not(#focus-mode-toggle):not(#shortcuts-button){display:none}.focus-mode .topbar{grid-template-columns:minmax(0,1fr) auto}.shortcut-help-dialog{width:min(560px,calc(100vw - 30px));border:1px solid var(--line);border-radius:10px;padding:18px;color:var(--text);background:var(--panel)}.shortcut-help-dialog::backdrop{background:#000a}.shortcut-help-dialog h2{margin:4px 0 0;font-size:18px}.shortcut-help-dialog p{color:var(--soft);font-size:11px;line-height:1.5}.shortcut-table{width:100%;margin-top:18px;border-collapse:collapse;font-size:12px}.shortcut-table th,.shortcut-table td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left}.shortcut-table th{width:86px;color:var(--text)}kbd{display:inline-block;min-width:1.5em;border:1px solid #40516b;border-bottom-width:2px;border-radius:5px;padding:2px 6px;color:var(--text);background:var(--raised);font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center}.shortcut-help-note{margin-bottom:0}.topbar-actions{display:flex;gap:6px;margin-left:auto}.topbar-actions button{border:1px solid var(--line);border-radius:7px;padding:6px 9px;color:var(--text);background:var(--raised);font-size:10px;cursor:pointer}.topbar-actions button[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px #8f92ff33}
 </style></head>
 <body><header class="topbar"><strong class="brand">Code Review Tour</strong><span class="comparison">${escapeHtml(session.comparison.repositoryName)} · ${escapeHtml(session.comparison.base)} → ${escapeHtml(session.comparison.branch ?? session.comparison.head.slice(0, 8))}</span><strong class="tour-title">${escapeHtml(outline?.title ?? `Code review: ${session.comparison.repositoryName}`)}</strong></header><nav class="tabs" aria-label="Review views">${tabs}</nav><main class="workspace"><aside class="file-panel"><header class="panel-heading"><span class="eyebrow">Changed files</span><span class="count">${session.comparison.files.length}</span></header><div class="file-list">${fileButtons}</div></aside><section class="diff-panel"><section class="view" data-view-panel="diff"><header class="review-overview"><span class="eyebrow">Guided tour</span><h1>${escapeHtml(outline?.title ?? `Code review: ${session.comparison.repositoryName}`)}</h1><p>${escapeHtml(outline?.summary ?? "No guided tour was generated.")}</p>${pr ? `<details class="pr-description"><summary>Pull request description</summary>${pr}</details>` : ""}${architecture ? `<details class="architecture"><summary>Architecture</summary><section class="overview-section"><div class="diagram-grid">${architectureLegend}${architecture}</div></section></details>` : ""}</header><div class="diff-toolbar"><span id="visible-file"></span><span>Split · Scroll</span></div>${diffs}</section>${callFlows ? `<section class="view" data-view-panel="calls" hidden><section class="overview-section"><span class="eyebrow">Analysis</span><h2>Call flows</h2><div class="call-grid">${callFlows}</div></section></section>` : ""}${flows ? `<section class="view" data-view-panel="sequences" hidden><section class="overview-section"><span class="eyebrow">Analysis</span><h2>Sequence diagrams</h2><div class="diagram-grid">${flows}</div></section></section>` : ""}${dryRuns ? `<section class="view comments" data-view-panel="dry-runs" hidden><h2>Dry runs</h2><p>Simulated from code, not executed/runtime verified.</p>${dryRuns}</section>` : ""}${includeFindings ? `<section class="view all-findings" data-view-panel="findings" hidden><h2>All findings</h2>${allFindings || '<p class="empty-copy">No evidence-backed findings were generated.</p>'}</section>` : ""}${comments ? `<section class="view comments" data-view-panel="feedback" hidden><h2>Reviewer feedback</h2>${comments}</section>` : ""}</section><aside class="agent-panel"><header class="agent-heading"><div><span class="eyebrow">Tour agent</span><br><strong>Static review</strong></div><span class="mode">read-only</span></header><div class="tour-progress"><span id="step-count"></span><progress id="progress" max="${stopNumber}" value="1"></progress></div><div class="tour-scroll">${stepPanels || '<p class="empty-copy">No tour stops were generated.</p>'}</div><footer class="tour-controls"><button id="previous" type="button">Previous</button><button id="next" class="next" type="button">Next</button></footer></aside></main><dialog id="architecture-viewer" class="architecture-viewer"><header class="viewer-header"><span class="eyebrow">Component diagram</span><strong id="architecture-viewer-title"></strong><button id="architecture-viewer-close" type="button">Close</button></header><div class="viewer-body">${architectureLegend}<div id="architecture-viewer-shell" class="diagram-shell">${diagramControls}<div id="architecture-viewer-diagram" class="mermaid architecture-diagram" tabindex="0"></div></div></div></dialog>
+<!--
+<body><header class="topbar"><strong class="brand">Code Review Tour</strong><span class="comparison">${escapeHtml(session.comparison.repositoryName)} · ${escapeHtml(session.comparison.base)} → ${escapeHtml(session.comparison.branch ?? session.comparison.head.slice(0, 8))}</span><strong class="tour-title">${escapeHtml(outline?.title ?? `Code review: ${session.comparison.repositoryName}`)}</strong></header><nav class="tabs" aria-label="Review views">${tabs}</nav><main class="workspace"><aside class="file-panel"><header class="panel-heading"><span class="eyebrow">Changed files</span><span class="count">${session.comparison.files.length}</span></header><div class="file-list">${fileButtons}</div></aside><section class="diff-panel"><section class="view" data-view-panel="diff"><header class="review-overview"><span class="eyebrow">Guided tour</span><h1>${escapeHtml(outline?.title ?? `Code review: ${session.comparison.repositoryName}`)}</h1><p>${escapeHtml(outline?.summary ?? "No guided tour was generated.")}</p>${pr ? `<details class="pr-description"><summary>Pull request description</summary>${pr}</details>` : ""}${architecture ? `<details class="architecture"><summary>Architecture</summary><section class="overview-section"><div class="diagram-grid">${architectureLegend}${architecture}</div></section></details>` : ""}</header><div class="diff-toolbar"><span id="visible-file"></span><span>Split · Scroll</span></div>${diffs}</section>${callFlows ? `<section class="view" data-view-panel="calls" hidden><section class="overview-section"><span class="eyebrow">Analysis</span><h2>Call flows</h2><div class="call-grid">${callFlows}</div></section></section>` : ""}${structuralBlastRadii ? `<section class="view" data-view-panel="structural" hidden><section class="overview-section"><span class="eyebrow">Static analysis</span><h2>Structural blast radius</h2><p class="call-tree-caption">Each card is an isolated static subgraph. Structural reach is not proof of runtime impact.</p><div class="call-grid">${structuralBlastRadii}</div></section></section>` : ""}${flows ? `<section class="view" data-view-panel="sequences" hidden><section class="overview-section"><span class="eyebrow">Analysis</span><h2>Sequence diagrams</h2><div class="diagram-grid">${flows}</div></section></section>` : ""}${includeFindings ? `<section class="view all-findings" data-view-panel="findings" hidden><h2>All findings</h2>${allFindings || '<p class="empty-copy">No evidence-backed findings were generated.</p>'}</section>` : ""}${comments ? `<section class="view comments" data-view-panel="feedback" hidden><h2>Reviewer feedback</h2>${comments}</section>` : ""}</section><aside class="agent-panel"><header class="agent-heading"><div><span class="eyebrow">Tour agent</span><br><strong>Static review</strong></div><span class="mode">read-only</span></header><div class="tour-progress"><span id="step-count"></span><progress id="progress" max="${stopNumber}" value="1"></progress></div><div class="tour-scroll">${stepPanels || '<p class="empty-copy">No tour stops were generated.</p>'}</div><footer class="tour-controls"><button id="previous" type="button">Previous</button><button id="next" class="next" type="button">Next</button></footer></aside></main><dialog id="architecture-viewer" class="architecture-viewer"><header class="viewer-header"><span class="eyebrow">Component diagram</span><strong id="architecture-viewer-title"></strong><button id="architecture-viewer-close" type="button">Close</button></header><div class="viewer-body">${architectureLegend}<div id="architecture-viewer-shell" class="diagram-shell">${diagramControls}<div id="architecture-viewer-diagram" class="mermaid architecture-diagram" tabindex="0"></div></div></div></dialog>
+-->
+${structuralExportScript}
 <script>(()=>{const steps=[...document.querySelectorAll('.tour-step')],files=[...document.querySelectorAll('[data-diff-file]')],fileButtons=[...document.querySelectorAll('[data-file]')],views=[...document.querySelectorAll('[data-view-panel]')],tabs=[...document.querySelectorAll('[data-view]')],viewer=document.getElementById('architecture-viewer');let current=0,drag=null;const showFile=path=>{files.forEach(node=>node.hidden=node.dataset.diffFile!==path);fileButtons.forEach(node=>node.classList.toggle('active',node.dataset.file===path));document.getElementById('visible-file').textContent=path||'No file selected'};const showView=name=>{views.forEach(node=>node.hidden=node.dataset.viewPanel!==name);tabs.forEach(node=>node.classList.toggle('active',node.dataset.view===name))};const applyDiagram=shell=>{const diagram=shell.querySelector('.architecture-diagram'),svg=diagram&&diagram.querySelector('svg'),scale=Number(shell.dataset.scale||1),x=Number(shell.dataset.x||0),y=Number(shell.dataset.y||0);if(svg)svg.style.transform='translate('+x+'px,'+y+'px) scale('+scale+')';const label=shell.querySelector('.diagram-zoom');if(label)label.textContent=Math.round(scale*100)+'%'};const changeDiagram=(shell,action)=>{let scale=Number(shell.dataset.scale||1),x=Number(shell.dataset.x||0),y=Number(shell.dataset.y||0);if(action==='zoom-in')scale=Math.min(3,scale+.25);if(action==='zoom-out')scale=Math.max(.5,scale-.25);if(action==='move-left')x-=40;if(action==='move-right')x+=40;if(action==='move-up')y-=40;if(action==='move-down')y+=40;if(action==='reset'){scale=1;x=0;y=0}shell.dataset.scale=String(scale);shell.dataset.x=String(x);shell.dataset.y=String(y);applyDiagram(shell)};const annotate=step=>{document.querySelectorAll('.tour-code-note').forEach(node=>node.remove());document.querySelectorAll('.tour-anchor,.tour-anchor-start,.tour-anchor-end').forEach(node=>node.classList.remove('tour-anchor','tour-anchor-start','tour-anchor-end'));steps.filter(candidate=>candidate.dataset.phase===step.dataset.phase).forEach(candidate=>{const rows=[...document.querySelectorAll('.diff-side[data-path="'+CSS.escape(candidate.dataset.path)+'"][data-side="'+candidate.dataset.side+'"]')].filter(node=>Number(node.dataset.line)>=Number(candidate.dataset.line)&&Number(node.dataset.line)<=Number(candidate.dataset.endLine)).map(node=>node.closest('.diff-row'));if(!rows.length)return;const index=Number(candidate.dataset.step),active=index===current,next=index===current+1;if(active){rows.forEach(node=>node.classList.add('tour-anchor'));rows[0].classList.add('tour-anchor-start');rows[rows.length-1].classList.add('tour-anchor-end')}const note=document.createElement('aside');note.className='tour-code-note'+(active?' active':next?' next':'');note.innerHTML='<span>'+(active?'Current stop':next?'Next stop':'Stop '+candidate.dataset.stopInPhase)+'</span><strong>'+candidate.querySelector('.step-card h3').textContent+'</strong><p>'+candidate.querySelector('.step-card .objective').textContent+'</p>';rows[0].insertAdjacentElement('beforebegin',note)});const target=document.querySelector('.tour-code-note.active')||document.querySelector('.tour-anchor');if(target)target.scrollIntoView({block:'center'})};const render=()=>{if(!steps.length)return;steps.forEach((node,index)=>node.hidden=index!==current);const step=steps[current],meta=step.querySelector('.step-meta');document.getElementById('step-count').textContent='Phase '+meta.dataset.phase+' of '+meta.dataset.phaseCount+': Stop '+meta.dataset.stop+' of '+meta.dataset.stopsInPhase+' (Step '+(current+1)+')';document.getElementById('progress').value=current+1;document.getElementById('previous').disabled=current===0;const next=document.getElementById('next');next.disabled=current===steps.length-1;next.textContent=current===steps.length-1?'Tour complete':'Next';showView('diff');showFile(step.dataset.path);annotate(step);document.querySelector('.tour-scroll').scrollTop=0};document.getElementById('previous').addEventListener('click',()=>{if(current>0){current--;render()}});document.getElementById('next').addEventListener('click',()=>{if(current<steps.length-1){current++;render()}});document.getElementById('architecture-viewer-close').addEventListener('click',()=>viewer.close());document.addEventListener('click',event=>{const file=event.target.closest('[data-file],[data-open-file]');if(file){showView('diff');showFile(file.dataset.file||file.dataset.openFile)}const tab=event.target.closest('[data-view]');if(tab)showView(tab.dataset.view);const action=event.target.closest('[data-diagram-action]');if(action)changeDiagram(action.closest('.diagram-shell'),action.dataset.diagramAction);const expand=event.target.closest('[data-diagram-expand]');if(expand){const source=document.querySelector('[data-diagram-key="'+expand.dataset.diagramExpand+'"] .architecture-diagram');document.getElementById('architecture-viewer-title').textContent=expand.closest('.diagram-card').querySelector('h3').textContent;document.getElementById('architecture-viewer-diagram').innerHTML=source.innerHTML;const shell=document.getElementById('architecture-viewer-shell');shell.dataset.scale='1';shell.dataset.x='0';shell.dataset.y='0';viewer.showModal();applyDiagram(shell)}});document.addEventListener('keydown',event=>{const diagram=event.target.closest('.architecture-diagram');if(!diagram)return;const actions={ArrowLeft:'move-left',ArrowRight:'move-right',ArrowUp:'move-up',ArrowDown:'move-down','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'reset'};if(actions[event.key]){event.preventDefault();changeDiagram(diagram.closest('.diagram-shell'),actions[event.key])}});document.addEventListener('pointerdown',event=>{const diagram=event.target.closest('.architecture-diagram');if(!diagram)return;drag={diagram,x:event.clientX,y:event.clientY};diagram.classList.add('dragging');diagram.setPointerCapture(event.pointerId)});document.addEventListener('pointermove',event=>{if(!drag)return;const shell=drag.diagram.closest('.diagram-shell');shell.dataset.x=String(Number(shell.dataset.x||0)+event.clientX-drag.x);shell.dataset.y=String(Number(shell.dataset.y||0)+event.clientY-drag.y);drag.x=event.clientX;drag.y=event.clientY;applyDiagram(shell)});document.addEventListener('pointerup',()=>{if(drag)drag.diagram.classList.remove('dragging');drag=null});render()})();</script>
 <script>(()=>{document.addEventListener('click',event=>{const mode=event.target.closest('[data-call-mode]');if(mode){const card=mode.closest('.call-flow-card');card.querySelectorAll('[data-call-mode]').forEach(node=>node.classList.toggle('active',node===mode));card.querySelectorAll('[data-call-tree]').forEach(node=>node.hidden=node.dataset.callTree!==mode.dataset.callMode)}const link=event.target.closest('[data-call-path]');if(!link)return;document.querySelectorAll('[data-view-panel]').forEach(node=>node.hidden=node.dataset.viewPanel!=='diff');document.querySelectorAll('[data-view]').forEach(node=>node.classList.toggle('active',node.dataset.view==='diff'));document.querySelectorAll('[data-diff-file]').forEach(node=>node.hidden=node.dataset.diffFile!==link.dataset.callPath);document.querySelectorAll('[data-file]').forEach(node=>node.classList.toggle('active',node.dataset.file===link.dataset.callPath));requestAnimationFrame(()=>{const row=document.querySelector('.diff-side[data-path="'+CSS.escape(link.dataset.callPath)+'"][data-side="'+link.dataset.callSide+'"][data-line="'+link.dataset.callLine+'"]');if(row)row.scrollIntoView({block:'center'})})})})();</script>
 <script>(()=>{document.addEventListener('click',event=>{const button=event.target.closest('[data-markdown-toggle]');if(!button)return;event.preventDefault();event.stopPropagation();const file=button.closest('.file-diff'),source=file.querySelector('.diff-source'),preview=file.querySelector('.markdown-diff'),showPreview=preview.hidden;source.hidden=showPreview;preview.hidden=!showPreview;button.textContent=showPreview?'Changes':'Preview'})})();</script>

@@ -115,11 +115,118 @@ export interface TourOutline {
   dataModel?: ReviewAdaptiveDiagram;
   phases: TourPhase[];
   callFlows: CallFlow[];
+  /** Static caller/reachability evidence for changed symbols. This is not a runtime trace. */
+  structuralBlastRadii?: StructuralBlastRadius[];
   flows: ReviewFlow[];
   /** Scenario suggestions only. Detailed execution traces are prepared on demand. */
   dryRunPlans?: DryRunPlan[];
   findings: ReviewFinding[];
   issueAssessment?: IssueAssessment;
+}
+
+/** The structural source used for one changed symbol. Providers can be incomplete. */
+export type StructuralProvider = "codegraph" | "language-server" | "repository-search" | "unavailable";
+export type StructuralConfidence = "high" | "medium" | "low" | "unresolved";
+export type StructuralResultCompleteness = "complete" | "partial" | "unavailable" | "unknown";
+export type StructuralCountBasis = "exact" | "lower-bound" | "not-reported";
+
+export interface StructuralLocation {
+  path: string;
+  side: "old" | "new";
+  line: number;
+}
+
+/**
+ * A source-level identity. `id` is deliberately independent from `symbol`, so two
+ * same-named methods in different files or scopes cannot be merged in the UI.
+ * The same source identity may occur in more than one isolated root subgraph.
+ */
+export interface StructuralBlastNode {
+  id: string;
+  symbol: string;
+  kind: "function" | "method" | "constructor" | "component" | "type" | "module" | "external";
+  location?: StructuralLocation;
+}
+
+/** Edges are oriented caller/reference source -> target. */
+export interface StructuralBlastEdge {
+  id: string;
+  from: string;
+  to: string;
+  relationship: "calls" | "references";
+}
+
+export interface StructuralTestGap {
+  kind: "no-nearby-tests" | "changed-symbol-not-covered" | "impacted-path-not-covered" | "coverage-unknown";
+  detail: string;
+  nearbyTestFiles: string[];
+}
+
+/** A source anchor inspected while assessing tests for one structural root. */
+export interface StructuralTestSource {
+  path: string;
+  side: "old" | "new";
+  line: number;
+  /** What this source text shows; never a claim that the test ran or passed. */
+  detail: string;
+}
+
+/**
+ * Bounded source-level test context for one structural root. This is not test
+ * execution, runtime coverage, or a coverage-runner result.
+ */
+export interface StructuralTestEvidence {
+  state: "not-assessed" | "relevant-tests-found" | "none-found" | "limited";
+  /** Exact files, symbols, or commands whose source/output was inspected. */
+  searchScope?: string;
+  checkedSources: StructuralTestSource[];
+  /** Test-source anchors whose code appears relevant to this symbol's behavior. */
+  relevantTests: StructuralTestSource[];
+  /** Known boundary of the assessment; required for a limited result. */
+  remainingUncertainty?: string;
+}
+
+/**
+ * Whether this saved graph includes every identity returned by its provider.
+ * `unknown` is retained for sessions saved before this field existed: it does
+ * not imply that the graph is complete or that omitted identities do not exist.
+ */
+export interface StructuralBlastCoverage {
+  state: StructuralResultCompleteness;
+  /** Whether reported counts are exact totals, only lower bounds, or absent. */
+  reportedCounts: StructuralCountBasis;
+  /** Why identities or totals are absent. Required for newly-produced partial results. */
+  omissionReason?: string;
+}
+
+/**
+ * A bounded structural subgraph for one changed symbol. Reported counts may be
+ * larger than the visible graph because a provider capped or grouped its result.
+ * Structural reach is an authored/static path, never proof of runtime impact.
+ */
+export interface StructuralBlastRadius {
+  id: string;
+  symbol: StructuralBlastNode;
+  provider: StructuralProvider;
+  confidence: StructuralConfidence;
+  provenance: "verified" | "partial" | "unverified";
+  summary: string;
+  /** Visible, selectable nodes for this symbol only. Includes `symbol`. */
+  nodes: StructuralBlastNode[];
+  edges: StructuralBlastEdge[];
+  /** Visible direct callers/references; each has an edge to `symbol.id`. */
+  directCallerIds: string[];
+  /** Total provider-reported counts, including nodes or files not rendered here. */
+  reportedDirectCallerCount: number;
+  reportedReachableNodeCount: number;
+  reportedImpactedFileCount: number;
+  /** Saved-result completeness and whether the reported counts are evidence-backed totals. */
+  coverage?: StructuralBlastCoverage;
+  /** Bounded known impacted files. The reported count may be larger. */
+  impactedFiles: string[];
+  /** Optional for sessions saved before bounded test-assessment evidence existed. */
+  testEvidence?: StructuralTestEvidence;
+  nearbyTestGaps: StructuralTestGap[];
 }
 
 export type IssueAccess = "available" | "inaccessible" | "unavailable";
@@ -370,6 +477,8 @@ export interface ReviewFinding {
   blastRadiusSize: number;
   tested: boolean;
   pinScope: "line" | "symbol" | "file";
+  /** Source identities from a structural blast result, when structural evidence exists. */
+  pinnedSymbolIds?: string[];
   /** Operational state. `dismissed` is accepted only while migrating old sessions. */
   status: "open" | FindingDisposition | "dismissed" | "converted-to-feedback";
   /** Reviewer-owned resolution preserved when the finding is refreshed or regenerated. */
@@ -507,11 +616,12 @@ export type ReviewBriefingTarget =
   | { kind: "finding"; findingId: string }
   | { kind: "file"; path: string; side?: "old" | "new"; line?: number }
   | { kind: "call-flow"; callFlowId: string }
-  | { kind: "review-section"; section: "findings" | "call-flows" | "pull-request" | "diff" };
+  | { kind: "structural-blast-radius"; structuralBlastRadiusId: string }
+  | { kind: "review-section"; section: "findings" | "call-flows" | "structural-blast-radius" | "pull-request" | "diff" };
 
 export interface ReviewBriefingSignal {
   id: string;
-  kind: "finding" | "public-contract" | "call-flow" | "tests" | "stale-analysis" | "github-check" | "merge-conflict";
+  kind: "finding" | "public-contract" | "call-flow" | "structural-blast-radius" | "tests" | "stale-analysis" | "github-check" | "merge-conflict";
   title: string;
   detail: string;
   evidence: string;

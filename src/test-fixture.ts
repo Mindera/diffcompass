@@ -8,7 +8,7 @@ import { loadComparison } from "./git.ts";
 import { comparisonFingerprint, dryRunFlowFingerprint } from "./dry-runs.ts";
 import type { GitComparison, PersistedReviewSession } from "./types.ts";
 
-const FIXTURE_SCHEMA = 3;
+const FIXTURE_SCHEMA = 5;
 const FIXTURE_DIRECTORY = "code-review-tour-test-fixture-v2";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
@@ -155,6 +155,13 @@ export function receipt(items: Item[], discount?: Discount): string {
   return \`Total: \${amount.toFixed(2)}\`;
 }
 `,
+  "tests/cart.test.ts": `import { expect, test } from "bun:test";
+import { receipt } from "../src/receipt.ts";
+
+test("formats a discounted receipt", () => {
+  expect(receipt([{ price: 10, quantity: 2 }], { percentage: 0.1 })).toBe("Total: 18.00");
+});
+`,
 };
 
 async function pathExists(path: string): Promise<boolean> {
@@ -289,6 +296,109 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
           anchor: { path: "README.md", side: "new", startLine: 1, endLine: 3 },
         }],
       }],
+      structuralBlastRadii: [{
+        id: "fixture-total-static-reach",
+        symbol: { id: "src/cart.ts:new:14:total", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } },
+        provider: "repository-search",
+        confidence: "medium",
+        provenance: "partial",
+        summary: "The saved graph follows upstream static callers into total; it does not model downstream callees or runtime execution.",
+        nodes: [
+          { id: "src/cart.ts:new:14:total", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } },
+          { id: "src/receipt.ts:new:3:receipt", symbol: "receipt", kind: "function", location: { path: "src/receipt.ts", side: "new", line: 3 } },
+          { id: "fixture:external:checkout", symbol: "checkout caller", kind: "external" },
+        ],
+        edges: [
+          { id: "fixture-receipt-to-total", from: "src/receipt.ts:new:3:receipt", to: "src/cart.ts:new:14:total", relationship: "calls" },
+          { id: "fixture-checkout-to-receipt", from: "fixture:external:checkout", to: "src/receipt.ts:new:3:receipt", relationship: "calls" },
+        ],
+        directCallerIds: ["src/receipt.ts:new:3:receipt"],
+        reportedDirectCallerCount: 1,
+        reportedReachableNodeCount: 2,
+        reportedImpactedFileCount: 2,
+        coverage: { state: "complete", reportedCounts: "exact" },
+        impactedFiles: ["src/cart.ts", "src/receipt.ts"],
+        testEvidence: {
+          state: "relevant-tests-found",
+          searchScope: "Inspected tests/cart.test.ts for receipt, total, subtotal, and Discount references.",
+          checkedSources: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "Checks the formatted receipt amount when a discount is supplied." }],
+          relevantTests: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "The receipt calls total." }],
+          remainingUncertainty: "This source does not establish behavior for zero, negative, or out-of-range percentages.",
+        },
+        nearbyTestGaps: [],
+      }, {
+        id: "fixture-subtotal-static-reach",
+        symbol: { id: "src/cart.ts:new:10:subtotal", symbol: "subtotal", kind: "function", location: { path: "src/cart.ts", side: "new", line: 10 } },
+        provider: "repository-search",
+        confidence: "medium",
+        provenance: "partial",
+        summary: "The saved graph follows upstream static callers into subtotal through total and receipt; it does not model runtime execution.",
+        nodes: [
+          { id: "src/cart.ts:new:10:subtotal", symbol: "subtotal", kind: "function", location: { path: "src/cart.ts", side: "new", line: 10 } },
+          { id: "src/cart.ts:new:14:total", symbol: "total", kind: "function", location: { path: "src/cart.ts", side: "new", line: 14 } },
+          { id: "src/receipt.ts:new:3:receipt", symbol: "receipt", kind: "function", location: { path: "src/receipt.ts", side: "new", line: 3 } },
+          { id: "fixture:external:checkout", symbol: "checkout caller", kind: "external" },
+        ],
+        edges: [
+          { id: "fixture-total-to-subtotal", from: "src/cart.ts:new:14:total", to: "src/cart.ts:new:10:subtotal", relationship: "calls" },
+          { id: "fixture-receipt-to-total-for-subtotal", from: "src/receipt.ts:new:3:receipt", to: "src/cart.ts:new:14:total", relationship: "calls" },
+          { id: "fixture-checkout-to-receipt-for-subtotal", from: "fixture:external:checkout", to: "src/receipt.ts:new:3:receipt", relationship: "calls" },
+        ],
+        directCallerIds: ["src/cart.ts:new:14:total"],
+        reportedDirectCallerCount: 1,
+        reportedReachableNodeCount: 3,
+        reportedImpactedFileCount: 2,
+        coverage: { state: "complete", reportedCounts: "exact" },
+        impactedFiles: ["src/cart.ts", "src/receipt.ts"],
+        testEvidence: {
+          state: "relevant-tests-found",
+          searchScope: "Inspected tests/cart.test.ts for receipt, total, and subtotal calls.",
+          checkedSources: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "The test calls receipt with a discount-shaped input." }],
+          relevantTests: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "Its receipt call reaches total, whose source calls subtotal." }],
+          remainingUncertainty: "This source only shows the discounted path; it does not establish other subtotal input cases.",
+        },
+        nearbyTestGaps: [],
+      }, {
+        id: "fixture-discount-partial-static-reach",
+        symbol: { id: "src/cart.ts:new:6:Discount", symbol: "Discount", kind: "type", location: { path: "src/cart.ts", side: "new", line: 6 } },
+        provider: "repository-search",
+        confidence: "low",
+        provenance: "partial",
+        summary: "The provider returned aggregate upstream-reference totals for Discount without every caller identity; this is not runtime evidence.",
+        nodes: [{ id: "src/cart.ts:new:6:Discount", symbol: "Discount", kind: "type", location: { path: "src/cart.ts", side: "new", line: 6 } }],
+        edges: [],
+        directCallerIds: [],
+        reportedDirectCallerCount: 2,
+        reportedReachableNodeCount: 4,
+        reportedImpactedFileCount: 1,
+        coverage: { state: "partial", reportedCounts: "exact", omissionReason: "The provider returned aggregate totals but did not supply the omitted reference identities." },
+        impactedFiles: ["src/cart.ts"],
+        testEvidence: {
+          state: "limited",
+          searchScope: "Inspected tests/cart.test.ts for Discount or percentage use.",
+          checkedSources: [{ path: "tests/cart.test.ts", side: "new", line: 5, detail: "The test passes a percentage object to receipt." }],
+          relevantTests: [],
+          remainingUncertainty: "The test source does not name Discount directly, and the partial provider omitted reference identities.",
+        },
+        nearbyTestGaps: [],
+      }, {
+        id: "fixture-receipt-unavailable-static-reach",
+        symbol: { id: "src/receipt.ts:new:3:receipt", symbol: "receipt", kind: "function", location: { path: "src/receipt.ts", side: "new", line: 3 } },
+        provider: "unavailable",
+        confidence: "unresolved",
+        provenance: "unverified",
+        summary: "No structural provider was available for receipt, so this is not evidence that receipt has no callers or runtime impact.",
+        nodes: [{ id: "src/receipt.ts:new:3:receipt", symbol: "receipt", kind: "function", location: { path: "src/receipt.ts", side: "new", line: 3 } }],
+        edges: [],
+        directCallerIds: [],
+        reportedDirectCallerCount: 0,
+        reportedReachableNodeCount: 0,
+        reportedImpactedFileCount: 1,
+        coverage: { state: "unavailable", reportedCounts: "not-reported" },
+        impactedFiles: ["src/receipt.ts"],
+        testEvidence: { state: "not-assessed", checkedSources: [], relevantTests: [] },
+        nearbyTestGaps: [],
+      }],
       flows: [{
         id: "checkout-flow",
         title: "Calculate and format a receipt",
@@ -359,9 +469,10 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
         priority: "P1",
         introduced: true,
         recallGuard: true,
-        blastRadiusSize: 2,
+        blastRadiusSize: 5,
         tested: false,
-        pinScope: "line",
+        pinScope: "symbol",
+        pinnedSymbolIds: ["src/cart.ts:new:14:total"],
         status: "open",
       }, {
         id: "rounding-contract",
