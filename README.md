@@ -1,369 +1,247 @@
 # Code Review Tour
 
-A local, agent-led walkthrough for Git changes. Review the code, understand the
-reasoning, ask questions on individual lines, and propose edits without leaving
-the browser. Code Review Tour works with local changes or an isolated GitHub
-pull-request checkout; applying a suggestion and publishing a GitHub review are
-explicit actions.
+A local, agent-led walkthrough for Git changes. Understand the change in an
+ordered tour, inspect the full diff, ask contextual questions, propose edits,
+and complete a local or GitHub review without leaving the browser.
 
 ![Code Review Tour with changed files, a split diff, conversations, and explicit review decisions](docs/images/overview.png)
 
-[Install](#install) · [Run](#run) · [Questions](#questions-and-conversations) ·
-[Edits](#comments-and-code-suggestions) · [GitHub](#github-pull-requests) ·
-[Analysis](#architecture-and-analysis) · [Media](#images-and-videos) ·
-[Development fixture](#reusable-test-fixture)
-
-Before the tour starts, choose the attached or installed agent, its model and
-reasoning level, and whether this run should include the component map, changed
-call flows, sequence diagrams, adaptive diagrams, and findings. All optional
-outputs are enabled by default; disabling one skips that generation work.
-
-The selected agent plans an ordered route through the change, anchors every stop
-to the relevant code, and stays available for follow-up questions.
-
-![Guided review with an inline stop annotation, highlighted code, phase context, and live agent explanation](docs/images/guided-tour.png)
-
-During the tour, the active stop is highlighted and summarized directly in the
-diff. The agent pane shows the current phase and a short explanation, while the
-file tree and code remain freely navigable. `Previous` and `Next` return the
-reviewer to the ordered route without locking ordinary browsing. At the final
-stop, `Finish tour` ends guided navigation without approving or closing the
-review. Questions remain available, and you can resume the tour later.
-
-## Features
-
-- compares the merge base of a parent branch with the current working tree;
-- includes committed, staged, unstaged, and untracked changes;
-- identifies the active repository and branch in the persistent top bar, using pull-request metadata when reviewing an isolated GitHub PR workspace;
-- renders the complete repository tree, unchanged source files, and the branch diff between independently resizable file and agent panes;
-- detects installed Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI agents;
-- lets the reviewer choose an available agent, model, and reasoning effort, plus whether to generate the component map, call-flow changes, sequence diagrams, adaptive diagrams, and findings;
-- asks the selected agent to organize the change into logical phases and precise code stops;
-- opens with a configurable evidence briefing that highlights review cues, estimates first-pass effort, and previews the component, sequence, and call-flow views available for the change;
-- prepares up to five upcoming stops by default, configurable from zero to five in Settings;
-- keeps line-, range-, stop-, and review-scoped conversations in a separate Questions area and Conversations tab, with speech-bubble badges that reopen threads without changing the tour stop;
-- lets reviewers remove selected code context or add up to eight repository files to a question;
-- supports Copy, Edit, Comment, and Ask agent for selected code ranges, with syntax-highlighted multi-line edit proposals and modified-Enter submission throughout review composers;
-- places a prominent tour annotation immediately before the active code while the agent gives a short, plain-language explanation in a separately scrollable panel;
-- keeps diff navigation reviewer-controlled, with a `Current step` shortcut when you scroll away from the active stop;
-- declares each phase's changed files and their role in a collapsed-on-entry section, with Git-derived additions and deletions;
-- separates stop-scoped and phase-scoped P0–P3 findings, with collapsed phase summaries matching the in-code pin tooltips, selected-finding highlighting, back-to-code navigation, and a complete Findings view for global and migrated analysis;
-- gives findings explicit Accepted, False positive, Intentional, Deferred, Fixed, and Obsolete after refresh dispositions, with optional reviewer notes preserved across refreshes;
-- presents finding evidence as labelled Observation, Causal path, Impact, and Coverage facts, and can queue a finding as an inline pull-request review comment;
-- syntax-highlights loaded diffs locally in both light and dark themes;
-- peeks definitions and usages for a selected symbol through a bounded repository search, with partial-name suggestions and a back trail into opened source;
-- previews changed Markdown as rendered Before/After documents while retaining addition/deletion highlights and line-anchored tour stops, including in self-contained HTML exports;
-- previews changed PNGs directly in the diff with Before/After images, accurate Added/Removed captions, full-size links, and image-level Comment and Ask agent actions (up to 20 MiB per image; live review only);
-- traces changed caller-to-callee edges from concrete entrypoints, compares their Before and After trees, and links every added or removed call back to its diff evidence;
-- renders Mermaid sequence diagrams as strict local SVG for goal-critical flows, with exact expandable affected-file lists, explicit fully traced, partly inferred, or unverified provenance wording, validated editing, source fallback, and agent regeneration;
-- adds evidence-gated state-machine and data-model/ER diagrams only when repository evidence supports them and the extra view materially improves understanding;
-- applies bounded repository review instructions, finding categories, and a minimum finding severity;
-- validates findings in a separate repository-aware pass that traces consequential candidates through their actual runtime, build, signing, CI, and delivery consumers and performs a focused recall audit before results are shown;
-- exports the complete tour, call flows, component/sequence/adaptive diagrams, findings, reviewer feedback, questions, changed-file state, Markdown previews, and diff as Markdown or self-contained HTML;
-- refreshes when repository files change and marks stale annotations as needing reassessment;
-- captures named checkpoints, classifies files changed since a checkpoint, and preserves a manageable revision history for focused re-review;
-- records agent-authored file changes, their triggering request, and verification in an Activity timeline;
-- prepares attached-agent edits in isolated worktrees with explicit Apply, Reject, and conflict-safe Undo controls;
-- persists review state atomically so the server can resume it after restart;
-- provides a session library to reopen, rename, archive, and delete saved tours;
-- follows the system light or dark appearance, with independent syntax palettes including GitHub, Vitesse, Review Tour, and three Catppuccin flavors;
-- adapts to narrow screens with a dismissible Files drawer and Tour/Questions pane controls;
-- checks for new releases without interrupting the review and shows an animated, one-click update control only when one is available;
-- renders very large diffs one file at a time in bounded 1,000-row chunks;
-- searches changed paths and code, filters by file or review status, and switches between a flat Git-style changed-path list and the full repository tree;
-- starts with a dense split diff on desktop and unified diff on narrow screens, expands hunk context on demand, and persists per-file reviewed state;
-- provides J/K tour navigation, Escape-to-cancel for drafts, discoverable shortcut help, and a focus mode that widens the diff without removing its explicit exit;
-- opens GitHub pull requests in isolated worktrees, shows their collapsible description above the diff plus metadata, checks, commits, review threads, and a bounded assessment of explicit criteria from one linked closing issue or a reviewer-supplied local task;
-- publishes an explicitly confirmed GitHub review containing the chosen decision, overall note, selected inline comments, and selected finding-derived comments;
-- exposes explicit `Approve`, `Approve with comments`, and `Request changes` decisions, with a review note for the latter two, plus `Close review` when the reviewer wants to end without a verdict.
-
-Standalone **agents** are read-only; reviewers can still create inline edit
-suggestions. In attached mode, the triggering agent—or its local fallback after
-a lost heartbeat—may edit only when the reviewer explicitly requests a concrete
-change. Suggestions are prepared in isolated worktrees: the reviewed working
-tree remains untouched until the reviewer presses `Apply`. Applying a suggestion
-does not commit or push code.
-
-## Briefing and revision checkpoints
-
-Before guided navigation begins, the briefing introduces the change and shows
-the enabled component diagrams, sequence diagrams, call flows, high-priority
-review cues, and a bounded first-pass effort estimate. Review cues explain why
-an area deserves attention; they are not additional findings or a quality
-score. Diagram previews can be expanded without starting the tour. In
-`Settings → Before the tour`, each section can be enabled, disabled, and
-reordered; those choices become the defaults for later sessions. `View
-briefing` reopens the same evidence after the tour starts.
-
-`Checkpoint` captures the current reviewed tree with an optional label. The
-revision history can return to or delete saved checkpoints, while `Full change`
-and `Since last review` switch the diff between the complete comparison and the
-files that are new, changed again, or resolved since the selected baseline.
-Files changed since the checkpoint reopen for review; unchanged reviewed files
-retain their state. Refresh and background preparation preserve the active tab,
-expanded files, drafts, and reading position.
-
-## Attached-agent mode
-
-Ask your agent to use the bundled [code-review-tour skill](skills/code-review-tour/SKILL.md).
-It launches the page and serves the authenticated bridge while you review:
-
-```sh
-code-review-tour --attached --start-tour --open --repo /path/to/repository
-```
-
-The launching agent must keep serving bridge events; running the command alone
-does not provide an attached responder. Start the server so it survives the
-caller's tool timeout and process-group cleanup. The skill documents the
-long-lived watcher, bounded polling alternative, and complete response shapes.
-Add [media evidence](#images-and-videos) with repeatable `--media PATH` arguments.
-
-Agents may optionally identify their current model and effort so the page starts
-with matching attached-session metadata:
-
-```sh
-code-review-tour --attached --start-tour --open --repo /path/to/repository \
-  --caller-model YOUR_CURRENT_MODEL \
-  --caller-reasoning high
-```
-
-Both caller flags are optional and independent. They label the triggering
-session; they do not start or switch to another model. If omitted, the picker
-continues to show `Current agent session` and the CLI default effort.
-
-Finding generation can be disabled for a session without adding configuration
-to the reviewed repository:
-
-```sh
-code-review-tour --attached --start-tour --open --no-findings \
-  --repo /path/to/repository
-```
-
-Without `--no-findings`, findings remain enabled by default. The flag is a
-session-only override and does not create or modify `.code-review-tour.json`.
-
-`--start-tour` completes the outline and first explanation before the single
-user-facing page opens, so an agent-triggered launch appears ready at stop one
-and never needs to drive a second browser or press the setup button. In this
-mode, `--attached --open` implies `--start-tour`; omitting the explicit flag
-cannot open an empty tour. A preparation failure leaves the server available
-for diagnosis but does not open the browser.
-In this mode, tour planning, step explanations, and reviewer questions are sent
-to the triggering agent through an authenticated loopback event bridge. Future
-stops are prepared concurrently within the configured prepare-ahead window (five by default), and
-a reviewer question is issued immediately without waiting for that background
-work. Attached-agent skills coordinate independent workers when the host supports
-them; every response is committed against its own bridge event. Browser and
-bridge capability tokens are separate, browser mutations require same-origin
-requests, and the bridge token is passed through an owner-only temporary file.
-Closing the review sends its decision, overall note, and collected line comments
-back to that same agent. The
-bundled skill at `skills/code-review-tour` contains the complete polling and
-response workflow; Codex, Claude, Gemini, and Copilot adapters remain available as standalone
-fallbacks in the picker.
-
-Feedback events also carry the exact Git tree that was reviewed. Workflows that
-apply the comments and immediately tour again pass that tree back through
-`--base`, which scopes the follow-up tour to the feedback-induced changes instead
-of showing the original diff a second time. `--base` therefore accepts a branch,
-commit, or captured Git tree without writing review metadata into the repository.
+[Install](#install) · [Run](#run) · [Capabilities](#capabilities) ·
+[GitHub PRs](#github-pull-requests) · [Configuration](#repository-defaults) ·
+[Development](#development)
 
 ## Install
 
-Release archives contain self-contained macOS, Linux, and Windows executables
-for Intel and ARM processors. Bun is not required after installation. Because
-the repository is private, authenticate GitHub CLI once with `gh auth login`.
-After that, installation on macOS, Linux, or WSL is one command:
+Releases contain self-contained binaries for macOS, Linux, and Windows on Intel
+and ARM. Bun is not required. This repository is private, so installation uses
+an authenticated GitHub account with repository access:
 
 ```sh
+gh auth login
 gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | bash
+code-review-tour doctor
 ```
 
-On Windows, run the equivalent command in PowerShell:
+Windows PowerShell:
 
 ```powershell
+gh auth login
 & ([scriptblock]::Create((gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.ps1 | Out-String)))
+code-review-tour doctor
 ```
 
-Then verify the installation with `code-review-tour doctor`. Both commands use
-your existing GitHub CLI authentication; no token is printed or embedded in
-shell history. Cloning the repository and running `./scripts/install.sh` or
-`.\scripts\install.ps1` remains supported for contributors who want to inspect
-the installer first.
+The installer downloads private release assets through authenticated `gh`,
+verifies their checksum, installs the command, and links the bundled skill into
+Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI. It never prints or embeds
+your token. Users without repository access cannot install private releases.
 
-The installer verifies the release checksum, installs the self-contained command under
-`${XDG_BIN_HOME:-~/.local/bin}`, and links the bundled skill into
-`${CODEX_HOME:-~/.codex}/skills`, `~/.claude/skills`, `~/.gemini/skills`, and
-`${COPILOT_HOME:-~/.copilot}/skills`. Re-run it to update to
-the latest release. Override those locations with
-`CODE_REVIEW_TOUR_BIN_ROOT`, `CODE_REVIEW_TOUR_INSTALL_ROOT`,
-`CODE_REVIEW_TOUR_CODEX_SKILL_ROOT`, `CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT`,
-`CODE_REVIEW_TOUR_GEMINI_SKILL_ROOT`, and
-`CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT`.
+| Need | Command or option |
+| --- | --- |
+| Binary only; do not install skills | Append `--minimal` or `--binary-only` (`-Minimal` on Windows) |
+| Pin a release | `CODE_REVIEW_TOUR_VERSION=v1.1.25` before `bash` |
+| Update | `code-review-tour update [--version vX.Y.Z]` |
+| Roll back | `code-review-tour rollback [--to X.Y.Z]` |
+| Preview uninstall | `code-review-tour uninstall --dry-run` |
+| Uninstall | `code-review-tour uninstall --yes` |
+| Also remove saved reviews | `code-review-tour uninstall --yes --purge` |
+| Custom install locations | `CODE_REVIEW_TOUR_BIN_ROOT`, `CODE_REVIEW_TOUR_INSTALL_ROOT`, and per-agent `*_SKILL_ROOT` variables |
 
-If an agent already has a real `code-review-tour` skill directory, the
-installer preserves it and exits with instructions instead of overwriting user
-files. Existing installer-managed symlinks are updated automatically.
-
-For a binary-only installation that leaves every agent skill untouched, pass
-`--minimal` (or `--binary-only`):
-
-```sh
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | bash -s -- --minimal
-```
-
-The PowerShell installer accepts the equivalent `-Minimal` or `-BinaryOnly`
-switch. It installs a small version-selecting command under
-`%LOCALAPPDATA%\code-review-tour\bin`,
-adds that directory to the user `PATH`, and uses explicitly marked skill copies
-because Windows symlinks can require elevated privileges.
-
-Installed releases manage their own lifecycle:
-
-```sh
-code-review-tour update
-code-review-tour update --version v1.1.25
-code-review-tour rollback
-code-review-tour rollback --to 1.1.3
-code-review-tour uninstall --dry-run
-code-review-tour uninstall --yes
-code-review-tour uninstall --yes --purge
-```
-
-Rollback only selects versions already present in the managed install root.
-Updates preserve a minimal installation unless `--no-minimal` is explicit.
-Uninstall preserves review sessions unless `--purge` is explicit, and it never
-removes an unmarked skill directory or an unrelated command.
-
-Pin a particular release by setting the version for the installer process:
-
-```sh
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | CODE_REVIEW_TOUR_VERSION=v1.1.25 bash
-```
-
-Once the repository is public, this bootstrap can switch from authenticated
-`gh api` to a conventional unauthenticated `curl` command.
+Updates preserve minimal installations unless `--no-minimal` is explicit.
+Uninstall preserves review sessions unless `--purge` is explicit and never
+removes unrelated commands or unmarked skill directories. Contributors can
+instead clone the repository and run `./scripts/install.sh` or
+`.\scripts\install.ps1`.
 
 ## Run
 
-An installed release requires Git and, for standalone mode, at least one
-authenticated Codex, Claude Code, Gemini, or GitHub Copilot CLI. Attached mode
-does not require a standalone agent CLI. For development from a checkout, Bun
-is also required.
+Review a branch or working tree against its merge base:
 
 ```sh
 code-review-tour --repo /path/to/repository --base origin/main --open
 ```
 
-From a development checkout, run `bun install --frozen-lockfile`, then
-`bun run src/cli.ts --repo /path/to/repository --base origin/main --open`.
-
-For a development-only command installation, run `bun install --global .` from this checkout.
-This provides `code-review-tour` in Bun's global binary directory (`bun pm bin
--g`); ensure that directory is on `PATH`. Attached-agent protocol operations
-use the internal `code-review-tour bridge` subcommand.
-Install or symlink `skills/code-review-tour` into the agent's skill directory
-to make requests such as “start a code review tour” trigger the attached flow
-automatically.
-
-The server binds only to `127.0.0.1`, chooses an available port from 47550–47599
-(falling back to an OS-assigned port), and prints the tokenized review URL.
-Use `--port PORT` to select one explicitly. Keep the URL private.
-
-For a trusted preview tool that opens only the bare origin, `--preview-redirect`
-redirects `/` to the tokenized `/t` page. Leave this option off otherwise: it
-lets anyone who can reach the server obtain browser access. Responsive layouts
-do not make the loopback server directly accessible from another device.
-
-Codex models and reasoning levels are loaded from the installed App Server's live
-`model/list` catalog. Claude Code has no model-list command, so its adapter uses
-the authenticated CLI default model and exposes the installed command's effort
-levels. Gemini exposes its documented `auto`, `pro`, `flash`, and `flash-lite`
-routing aliases. Copilot models are read from the installed CLI's help catalog,
-with `auto` as a safe fallback. Optional picker defaults can be supplied with
-`--agent codex|claude|gemini|copilot`,
-`--model MODEL`, and `--reasoning EFFORT`.
-See the [standalone adapter contract](docs/agent-adapters.md) for discovery,
-read-only execution, continuation, and output requirements.
-
-The server prints an owner-only session-state path. Resume it after a restart:
+Ask an agent with the bundled [code-review-tour skill](skills/code-review-tour/SKILL.md)
+to start an attached review, or launch one directly while the agent serves the
+bridge:
 
 ```sh
-code-review-tour --resume "/path/printed/by/the/server.json" --open
+code-review-tour --attached --start-tour --open --preview-redirect \
+  --repo /path/to/repository
 ```
 
-## Reusable test fixture
+Attached mode uses the launching agent for planning, explanations, questions,
+and explicitly requested edits. Standalone mode discovers authenticated Codex,
+Claude Code, Gemini CLI, and GitHub Copilot CLI installations. The setup screen
+selects the agent, model, reasoning effort, and optional analysis outputs.
 
-Development builds include a deterministic persisted tour outline with its first stop ready:
+Useful launch options:
 
-```bash
-bun run fixture --open
-```
+| Option | Purpose |
+| --- | --- |
+| `--base REF` | Compare against a branch, commit, or captured Git tree |
+| `--agent`, `--model`, `--reasoning` | Set standalone-agent defaults |
+| `--caller-model`, `--caller-reasoning` | Label an attached session without switching models |
+| `--no-findings` | Disable findings for this session |
+| `--media PATH` | Attach repeatable screenshot or video evidence |
+| `--port PORT` | Select the loopback port |
+| `--preview-redirect` | Redirect bare `/` to the tokenized page for trusted preview tools |
+| `--resume STATE.json --open` | Resume from the state path printed by the server |
 
-Every run recreates the owned disposable Git repository and canonical session
-under the system temporary directory. Stops after the first deliberately start
-without explanations, so the configured prepare-ahead window and agent progress
-UI can be tested without inheriting work from an earlier run. Preparing those
-later stops invokes the selected local agent and may use tokens.
+The server binds to `127.0.0.1`, normally on ports 47550–47599, and prints a
+tokenized URL. Keep that URL private. `--preview-redirect` exposes the browser
+token to anyone who can reach the loopback server, so use it only with trusted
+local preview tooling.
 
-The fixture contains two phases, four stops, inline feedback, structured
-findings, component/sequence/adaptive diagrams, a checkpoint, chat history, and
-an agent activity entry, plus a tiny changed PNG for before/after preview checks.
-It also seeds a simulated same-repository pull request and linked issue
-assessment; it does not call GitHub or retain an issue body. Sending a new
-question invokes the selected agent; the fixture does not fake new answers. It
-also includes both modified and newly added Markdown documents for checking the
-rendered before/after and added-file preview states.
-Use `bun run fixture --prepare-only` when a test only needs fresh
-repository and session files.
+![Guided review with an inline stop annotation, highlighted code, phase context, and live agent explanation](docs/images/guided-tour.png)
 
-README screenshots are captured from a separate copy of this fixture. They
-show example review content, not a live production repository.
+## Capabilities
+
+### Review workflow
+
+| Area | What it provides |
+| --- | --- |
+| Comparison | Merge-base comparison covering committed, staged, unstaged, and untracked changes; explicit parent support for stacked branches. |
+| Guided route | Agent-organized `Tour → Phases → Stops`, precise old/new anchors, inline stop cards, plain-language explanations, Previous/Next navigation, and configurable preparation of 0–5 upcoming stops. |
+| Briefing | Configurable and reorderable pre-tour summary with review cues, effort estimate, component diagrams, call flows, and sequence diagrams; expandable previews and `View briefing` after starting. |
+| Free navigation | Browse the repository and diff at any time; `Current step` returns to an off-screen stop. Finishing the tour leaves the review and questions open. |
+| Review state | Per-file reviewed status, test-only and status filters, `All files in this tour`, automatic stale-annotation detection, atomic persistence, and restart/resume. |
+| Checkpoints | Named snapshots, revision history, `Full change` / `Since last review`, reopened files that changed again, and preserved state for unchanged files. |
+| Workspace | Persistent repository/branch identity, independently resizable Files and agent panes, state-preserving refresh, and an About view with runtime/session details. |
+| Lifecycle | Saved-session library plus a non-blocking release check and one-click update control shown only when an update exists. |
+| Completion | Approve, Approve with comments, Request changes, or neutral Close review; optional policy requiring every changed file to be reviewed. |
+
+During an active tour, the file tree and diff show the changed files declared by
+the current phase. `Exit tour` restores the full comparison; `Resume tour`
+returns to the active stop.
+
+### Diff and navigation
+
+| Area | What it provides |
+| --- | --- |
+| Files | Search changed paths and code; flat changed-path or full repository tree; compact folders; unchanged source navigation; bounded 1,000-row rendering for large diffs. |
+| Presentation | Split or unified layout, scroll or wrap, local syntax highlighting, light/dark themes, optional `+`/`−` markers, and word-level changed-text highlighting. Desktop and mobile choices persist separately across sessions. |
+| Context | Progressive hunk expansion or full-file expansion while preserving the visible line, drafts, and reading position. |
+| Whitespace | Labels whitespace-only pairs, shows spaces and tabs without changing copied text, and summarizes affected pairs. |
+| Symbols | Bounded definition/usage Peek with partial-name suggestions, syntax-highlighted results, and a navigation back trail. |
+| Shortcuts | J/K stops, `?` help, Escape to cancel drafts, Z Focus mode, and Command+Enter on macOS or Ctrl+Enter elsewhere to submit multiline forms. |
+| Responsive UI | Files drawer, horizontally scrolling tabs, unified mobile default, touch-sized line actions, keyboard-aware forms, stacked image previews, and separate Tour/Questions controls. |
+
+Application appearance (`System`, `Light`, `Dark`) is independent of syntax
+themes (`GitHub`, `Vitesse`, `Review Tour`, and Catppuccin Frappé, Macchiato,
+or Mocha).
+
+### Questions, comments, and edits
+
+| Action | Scope and behavior |
+| --- | --- |
+| Click a line | Open an inline composer and choose Comment or Ask agent. |
+| Select lines | Copy, Edit, Comment, Ask agent, or Peek symbol; comments/questions quote the exact range. |
+| Add context | Remove selected code or attach up to eight repository text files (32 KiB each) to a new question. |
+| Conversations | Preserve editable line-, range-, stop-, and review-scoped threads; reopen or delete them from code badges or the Conversations tab without moving the tour. |
+| Reviewer edit | Create a syntax-highlighted, multiline replacement suggestion without changing the working tree. |
+| Agent edit | In attached mode, prepare explicitly requested changes in an isolated worktree for Apply, Reject, or conflict-safe Undo. |
+| Activity | Group proposed repository changes by request, affected files, diff totals, and agent-reported verification. |
+
+Suggestion bundles retain text, binary, added, deleted, and renamed files. They
+never commit or push automatically, and the review cannot be completed while a
+proposal is pending. The reviewed working tree stays untouched until `Apply`.
+
+### Findings and evidence
+
+| Capability | Behavior |
+| --- | --- |
+| Scope | Collapsible stop-, phase-, and review-level P0–P3 findings with code pins, summaries, selected highlighting, back-to-code navigation, and a complete Findings view. |
+| Validation | A separate repository-aware pass traces runtime, build, signing, CI, and delivery consumers, then performs a focused recall audit. Unsupported findings are removed; a malformed audit fails closed. |
+| Evidence | Labelled Observation, Causal path, Impact, and Coverage facts. |
+| Decisions | Accepted, False positive, Intentional, Deferred, Fixed, or Obsolete after refresh, with persistent reviewer notes. |
+| Policy | Repository instructions, category allowlists, and minimum severity enforced by the server as well as the prompt. |
+| GitHub | Queue selected findings as inline pull-request review comments. |
+
+### Architecture and analysis
+
+| View | What it shows |
+| --- | --- |
+| Component maps | Implemented behavior and implementation journey using plain-language components, labelled relationships, dependency changes, and new/touched/removed/external status. |
+| Call flows | Concrete changed entrypoints, Before/After/Changes call trees, added/removed edge counts, exact diff evidence, affected files, honest labels for dynamic dispatch, and single/all regeneration. |
+| Sequence diagrams | Goal-critical runtime interactions rendered locally from a validated Mermaid subset, with affected files, provenance, editable source, single/all regeneration, and source fallback. |
+| Adaptive diagrams | Evidence-gated state machines and data-model/ER views, repository observations, changed-file support, notation legends, and honest empty results when no extra diagram is justified. |
+
+Every diagram supports expansion; applicable views also support independent pan,
+zoom, keyboard/pinch movement, reset, and full-screen inspection. Mermaid is
+bundled locally and runs in strict mode—no CDN is loaded. Invalid component
+diagrams receive two bounded correction attempts; startup reports failure rather
+than silently dropping required architecture.
+
+### Markdown, images, and supplied media
+
+| Content | Support |
+| --- | --- |
+| Markdown diffs | Rendered Before/After documents with addition/deletion and exact changed-word highlights, syntax-highlighted fenced code, tables, and line-anchored tour stops. |
+| Changed PNGs | Before/After previews, Added/Removed captions, full-size viewing, and image-level Comment / Ask agent actions; up to 20 MiB per image in live review. |
+| Supplied evidence | Repeatable `--media` imports for PNG, JPEG, GIF, WebP, and MP4; up to 12 files, 15 MiB per image, or 100 MiB per video. |
+
+Supplied media is copied into session state, survives resume, and never modifies
+the reviewed repository. MP4 playback depends on browser codec support. PNG diff
+previews are not included in exports or pending-suggestion previews.
+
+### Exports
+
+`Settings → Export` downloads Markdown or a self-contained HTML review at any
+time, including after closure.
+
+| Included | Export behavior |
+| --- | --- |
+| Tour and diff | Complete route, changed-file state, stop markers, syntax-highlighted code, and selected wrap/scroll presentation. |
+| Rich views | Markdown previews plus component, call-flow, sequence, and adaptive diagrams with interactive navigation and inspection controls. |
+| Review record | Structured findings, reviewer feedback, comments, and questions. |
+| Privacy | No remote assets, session tokens, or repository filesystem paths. |
+| Safety | Agent, editing, commenting, and regeneration controls are omitted. |
 
 ## GitHub pull requests
 
-To review a GitHub pull request without checking out its branch, authenticate
-GitHub CLI and launch it from a matching repository checkout:
+Authenticate GitHub CLI and launch from a checkout of the same repository:
 
 ```sh
 gh auth login
 code-review-tour pr 106 --repo /path/to/repository --open
-code-review-tour pr https://github.com/OWNER/REPOSITORY/pull/106 --repo /path/to/repository --attached --start-tour --open
+code-review-tour pr https://github.com/OWNER/REPOSITORY/pull/106 \
+  --repo /path/to/repository --attached --start-tour --open
 ```
 
-The source checkout stays on its current branch. Code Review Tour fetches the
-pull request into a persistent isolated worktree, compares the exact base and
-head commits reported by GitHub, and retains that workspace for session resume.
-The Pull request tab shows a rendered/raw description, metadata, checks,
-commits, and the first 100 existing review threads. Its content can use the full
-review width when desired. Each local line comment can be included in or excluded from the
-GitHub review. Findings can likewise be added as selected inline review comments.
-Known check states are explained, check snapshots can be refreshed, and commit
-revisions link back to GitHub when the provider URL is trusted. Approving or
-requesting changes shows a final confirmation bound to the current head SHA;
-the server rechecks that SHA before publishing. A
-durable hidden marker makes a retry reuse the remote review instead of submitting
-a duplicate if the first response was interrupted. Remote updates apply only to
-a clean isolated worktree and stale local annotations are marked as needing reassessment.
+The source checkout stays on its branch. The PR is fetched into a persistent,
+isolated worktree and compared using GitHub's exact base and head commits.
 
-When GitHub reports a same-repository closing issue, Code Review Tour retains
-only its bounded metadata and explicit top-level acceptance criteria. The agent
-maps each criterion to cited repository paths and labels it satisfied, partial,
-missing, or unclear; this is a model assessment, not a verified test result.
-Related issues, earlier pull requests, and unstructured checklist prose are not
-fetched. If no usable linked issue exists, add a Markdown task description
-locally and run the same assessment without publishing that task to GitHub.
+| PR capability | Behavior |
+| --- | --- |
+| Context | Collapsible rendered/raw description, metadata, checks with explanations and refresh, linked commits, the first 100 review threads, and an optional full-width view. |
+| Issue assessment | Bounded assessment of explicit top-level acceptance criteria from one trusted, same-repository closing issue—or a reviewer-supplied local Markdown task—with Satisfied, Partial, Missing, or Unclear status. |
+| Review comments | Include or exclude line comments and finding-derived comments before publishing. |
+| Decisions | Explicit confirmation for Approve, Approve with comments, or Request changes, bound to a rechecked head SHA. |
+| Retry safety | A durable marker reuses a remote review instead of duplicating it after an interrupted response. |
+| Local-only exit | `Approve tour without approving the pull request` closes the local tour without publishing a GitHub review. |
 
-Applying a code suggestion changes only the isolated PR worktree. It does not
-push to the PR branch. Publishing a review sends the selected comments and
-review decision to GitHub, not the proposed code changes.
-`Approve tour without approving the pull request` remains available when the
-reviewer wants to close the local tour without creating a GitHub review.
+Suggestions modify only the isolated PR worktree and are never pushed to the PR
+branch. Remote refreshes require a clean isolated worktree and mark stale local
+annotations for reassessment. Issue assessment retains bounded metadata and
+criteria, not unrelated issues, old PRs, or unstructured checklist prose.
 
-## Saved sessions
+## Completing a review
 
-Saved tours can also be managed without handling state-file paths. Open the
-`Settings → Manage sessions` dialog, or use a session's displayed short ID:
+| Action | Result |
+| --- | --- |
+| Finish tour | Ends guided navigation while leaving the review and questions open. |
+| Approve | Closes as approved without an overall note; remove comments or use Approve with comments. |
+| Approve with comments | Adds an overall non-blocking note and selected inline comments. |
+| Request changes | Adds the required-change note and selected inline comments. |
+| Close review | Closes locally without a verdict or GitHub publication. |
+
+After completion, the page attempts to close after five seconds. If blocked by
+the browser, it remains read-only with manual-close guidance. Attached decisions
+return to the launching agent; GitHub publication always requires confirmation.
+
+## Sessions and retention
+
+Manage saved tours in `Settings → Manage sessions` or from the CLI:
 
 ```sh
 code-review-tour sessions
@@ -373,191 +251,26 @@ code-review-tour sessions rename 169dedd6 "Push notification review"
 code-review-tour sessions archive 169dedd6
 code-review-tour sessions unarchive 169dedd6
 code-review-tour sessions delete 169dedd6 --yes
-code-review-tour sessions prune --repo . --days 30 --max 50
-code-review-tour sessions prune --repo . --days 30 --max 50 --yes
+code-review-tour sessions prune --repo . --days 30 --max 50 [--yes]
 ```
 
-New state files live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/sessions`
-and are written atomically. A standalone server exits after the review is
-closed. An attached server waits until the triggering agent acknowledges the
-terminal outcome.
-
-## Questions and conversations
-
-Click a diff line to open its inline composer and choose `Comment` or `Ask
-agent`. Selecting one or more lines opens Copy, Edit, Comment, Ask agent, and
-Peek symbol actions; comments and questions quote the exact selected range.
-Stop comments remain attached to their named tour stop even if the diff moves.
-You can also start a review-wide `New question` in the Questions pane. During a
-desktop tour, the explanation stays above Questions;
-drag the divider to change their relative height. Exiting or finishing the
-tour gives that space to Questions without closing the review.
-
-Line questions leave a speech-bubble badge next to the code. Click it to reopen
-the thread, even when the same file appears in a later phase. Opening a
-conversation does not rewind the tour. The Conversations tab lists threads
-across all phases. If the captured line has changed, its badge is not attached
-to unrelated code; the conversation remains available in the list.
-
-Before sending a new question, remove its selected line with `×`, or choose
-`+ Add file` to browse and filter the repository tree. You can attach up to
-eight text files, each no larger than 32,000 bytes. A thread retains its original
-file selection and line context after the first message; start a new question
-to use different context. Follow-ups appear after the previous answer.
-Plain Enter inserts a newline; Command+Enter on macOS or Ctrl+Enter elsewhere
-submits comments, questions, review notes, and other multiline composers.
-
-## Comments and code suggestions
-
-Select a line and choose `Comment` to compose feedback directly beneath the
-code. Comments are separate from questions to the agent. Edit them inline;
-deleting a comment uses an in-page confirmation rather than a browser dialog.
-
-Choose `Edit` on selected new-side diff text to enter syntax-highlighted
-replacement code for one or more contiguous lines. This creates a reviewer
-suggestion, not an immediate working-tree change. The same controls are
-available whether the reviewed code came from an existing branch or was just
-written by an agent.
-
-The `Activity` tab groups repository changes by reviewer edit or attached-agent request. It shows
-the affected files, before/after diff totals, and the verification reported by
-the agent. Select a file to preview the proposed patch, then explicitly `Apply`
-or `Reject` it. Applied bundles can be undone while their captured context
-still matches; overlapping later edits stop the operation instead of being
-overwritten. Text, binary, added, deleted, and renamed files are retained in the
-bundle. A review cannot be accepted or closed with feedback while proposals are
-pending. Manual and background refreshes outside an active attached request are
-not attributed to the agent.
-
-Reviewer suggestions do not need an agent to generate the edit. Agent-authored
-suggestions require attached mode or its local fallback. Neither kind commits
-or pushes changes automatically.
-
-## Completing a review
-
-Finishing the tour and completing the review are separate actions:
-
-| Action | Result |
-| --- | --- |
-| Finish tour | Leaves guided navigation; questions and the review stay open. |
-| Approve | Closes the review as approved, without an overall note. Remove existing inline comments or use Approve with comments. |
-| Approve with comments | Asks for an overall non-blocking note, includes inline comments, and closes as approved. |
-| Request changes | Asks what must change, includes inline comments, and closes with feedback. |
-| Close review | Confirms, then closes the local review without approving or requesting changes. No review is published to GitHub. |
-
-Apply or reject pending suggestions before completing a review. Repository
-policy can also require every changed file to be marked reviewed. In a local
-attached review, the decision goes back to the launching agent. For a GitHub
-PR, an additional confirmation is required before publishing the review.
-After completion, the page attempts to close after a five-second countdown;
-if the browser blocks it, the page remains read-only with manual-close guidance.
-
-## Navigating the diff
-
-The left panel searches both changed paths and changed code. Combine it with
-file-status and reviewed/unreviewed filters. `Changed paths` groups changed files
-under expanded folder sections. Single-child folder chains are compacted into
-paths such as `.github/workflows`, while real branches remain nested. `Full
-repository` includes unchanged source navigation with the same compact folder
-chains. The sticky diff toolbar offers `Split / Unified` and `Scroll / Wrap`
-controls. Choices are remembered separately for desktop and mobile, and become
-the defaults for later review sessions. Switching preserves the visible source line
-and any inline comment or edit draft. Scroll is the default; Wrap fits long lines
-to the available width without changing their source line numbers. Unified uses
-one number gutter: old numbers for deletions, new numbers otherwise, with both
-references in the number's tooltip. Stronger inline backgrounds mark changed
-words and punctuation within paired removed/added lines while syntax colours
-remain intact. Each hunk can progressively load more surrounding
-context without making the initial session snapshot unbounded. Marking a file
-reviewed is stored with the session and survives server and browser restarts.
-`Test files only` narrows either tree mode, while `All files in this tour`
-combines reviewed and unreviewed paths declared by the guided route.
-
-Use `Expand context` for more surrounding lines or `Expand file` for the whole
-text file. Expansion and background preparation preserve your reading position.
-When the current tour stop is out of view, `Current step` takes you back to it.
-`Peek symbol` opens a bounded definition-and-usage search without hiding the
-source behind it. It supports partial identifier suggestions, syntax-highlighted
-results, a back trail, and opening a result while keeping the compact peek card
-available. Press J/K for next/previous tour stops, `?` for shortcut help, Escape
-to cancel an inline draft, and Z for Focus mode. Focus mode widens the diff and
-retains both its button and keyboard exit.
-
-Paired removed/added lines that differ only in leading or trailing spaces/tabs
-are labelled `whitespace only`. Dots show spaces and arrows show tabs on those
-lines, in both diff layouts; copying the code retains its original whitespace.
-A hunk summary counts these pairs. This describes the textual change, not its
-safety: indentation and whitespace can still affect behaviour. Internal
-whitespace changes (including spaces inside strings) are not classified this way.
-
-### Appearance and narrow screens
-
-Settings separates the application appearance (`System`, `Light`, or `Dark`)
-from syntax highlighting (`GitHub`, `Vitesse`, `Review Tour`, `Catppuccin Frappé`,
-`Catppuccin Macchiato`, or `Catppuccin Mocha`). It also contains the prepare-ahead
-selector, optional `+`/`−` line markers, file-tree mode, exports, and saved
-sessions. Clicking outside closes the settings menu. The top bar keeps
-repository identity and review actions above a separately scrollable navigation
-row so analysis tabs remain usable as capabilities are added.
-
-On narrow screens, the `Files` button opens the left pane as a dismissible
-drawer. Diffs start in unified mode; an explicit layout choice is remembered
-separately from desktop. Tabs scroll horizontally, file status and actions share
-the top header row with the wrapping file path below, and the code pane fills
-the space below the toolbar. The `Review` button groups Approve, Approve with
-comments, Request changes, and the neutral Close review action.
-Inline edit/comment forms stay within the visible code pane when code scrolls
-sideways. Line actions appear below the selected line with touch-sized controls;
-the code pane adapts to the visible viewport when the keyboard opens.
-`Tour` and `Questions` controls switch the agent pane's content rather
-than squeezing both into the same small area. PNG Before/After previews stack
-vertically on phone-sized screens. These are responsive browser layouts, not
-a separate mobile app or a remote-access service.
-
-## Images and videos
-
-### PNGs changed in Git
-
-Changed `.png` files render directly inside their diff frames. Modified and
-renamed images show Before/After previews; added or deleted images show the
-available side with Added or Removed rather than a misleading Before/After
-caption. Click a preview to open it full-size, or attach an image-level Comment
-or Ask agent discussion. The before image comes
-from the comparison baseline and the after image from the reviewed working
-tree. No `--media` argument is required for these previews.
-
-PNG diff previews are limited to 20 MiB per image. They are available in the
-live review, not in exported reports or pending-suggestion previews. Binary
-changes can still be retained and applied as part of a suggestion bundle.
-
-### Evidence supplied by the launching agent
-
-Use repeatable `--media PATH` arguments to include screenshots or recordings
-that demonstrate what the code built:
-
-```sh
-code-review-tour --attached --start-tour --open --repo /path/to/repository \
-  --media /tmp/android-home.png \
-  --media /tmp/ios-flow.mp4
-```
-
-The Media tab appears only when evidence was supplied. Files are copied into
-the persisted session, survive resume, and never modify the reviewed repository.
-Supported imports are PNG, JPEG, GIF, WebP, and MP4: up to 12 files per session,
-15 MiB per image, or 100 MiB per video. Video playback depends on the browser's
-support for the codecs inside the MP4; importing it does not transcode it.
-The old `--screenshot` argument is no longer accepted—use `--media` for both
-images and videos.
+Sessions live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/sessions`
+and are written atomically. Pruning previews by default, honors repository
+retention defaults, preserves archived sessions unless requested, and can remove
+stale tool-owned temporary directories with `--temp-hours N`. Process locks
+protect active sessions and proposal/bridge workspaces; paths and freshness are
+rechecked before deletion. PR worktrees are removed only from the tool-owned
+state directory and only when clean.
 
 ## Comparison base
 
-Base resolution order when `--base` is omitted:
+When `--base` is omitted, resolution uses:
 
 1. `branch.<current>.reviewTourBase` from local Git config;
 2. `origin/HEAD`;
 3. `origin/main`, `origin/master`, `main`, or `master`.
 
-For a stacked branch, set the parent explicitly or configure it:
+For a stacked branch:
 
 ```sh
 git config branch.my-feature.reviewTourBase parent-feature
@@ -565,7 +278,7 @@ git config branch.my-feature.reviewTourBase parent-feature
 
 ## Repository defaults
 
-Add `.code-review-tour.json` at the repository root to share review defaults:
+Add `.code-review-tour.json` at the repository root:
 
 ```json
 {
@@ -600,125 +313,76 @@ Add `.code-review-tour.json` at the repository root to share review defaults:
 }
 ```
 
-`contextLines` accepts 3–200. `closeOutcome` accepts `accepted` or
-`cancelled`. With `cancelled`, the UI shows only `Cancel review` instead of the
-three approval/feedback actions. A resumed session
-retains the settings it started with. For a new session, explicit CLI agent,
-model, reasoning, and base flags override repository defaults, which in turn
-override built-in and Git-inferred defaults. Unknown or mistyped settings fail
-closed so a misspelled policy cannot silently be ignored.
+| Setting | Bounds and precedence |
+| --- | --- |
+| `diff.contextLines` | 3–200 |
+| `review.closeOutcome` | `accepted` or `cancelled`; cancelled exposes only Cancel review |
+| `analysis.instructions` | Up to 32 distinct instructions, 2,000 characters each |
+| Finding categories | Up to 32 names |
+| Minimum severity | `low`, `medium`, `high`, or `critical` |
+| Precedence | Explicit CLI values → repository defaults → built-in/Git-inferred defaults |
 
-`analysis.instructions` accepts at most 32 distinct instructions of up to 2,000
-characters each. Finding analysis can be disabled, restricted to at most 32
-distinct category names, or filtered to `low`, `medium`, `high`, or `critical`
-minimum severity. The server enforces the category and severity policy on agent
-output in addition to including it in the planning prompt. Repository
-instructions cannot override read-only execution, evidence requirements, or the
-tour response contract.
+Unknown settings fail closed. Resumed sessions retain their original settings.
+Repository instructions cannot override read-only execution, evidence rules, or
+the response contract. Component maps, call flows, sequence diagrams, adaptive
+diagrams, and findings start enabled; disabling one skips its generation work.
 
-The tour start panel includes Component diagrams, Call flows, Sequence diagrams,
-Adaptive diagrams, and Findings by default. Turning any of them off skips that
-analysis instead of merely hiding its output.
-When findings are enabled, broad tour planning produces candidates and a second,
-authoritative audit validates their causal chain, removes unsupported guesses,
-and searches high-impact boundaries for omissions. A malformed audit fails the
-tour rather than presenting unvalidated findings.
+## Attached-agent protocol
 
-## Architecture and analysis
+The launching agent must keep serving authenticated bridge events; invoking the
+CLI alone does not provide a responder. The bundled skill documents the
+long-lived watcher, bounded polling fallback, and response schemas.
 
-The Call flows tab starts with a left-to-right component diagram modeled after ACE's
-implementation-plan architecture view. It uses plain-language component names,
-labels every relationship, and distinguishes new, touched, removed, and
-external components. A Dependency changes list makes added, removed, or reversed
-relationships explicit. Below it, each changed entrypoint expands into a
-caller-to-callee tree. `Changes`, `Before`, and `After` make rewired calls easy
-to compare, while call-site links return to the exact old or new diff line.
-Only added and removed calls with changed-file evidence are accepted; dynamic
-dispatch is labelled partly verified or unverified rather than presented as
-certain.
+- `--attached --open` implies `--start-tour`, preparing the outline and first
+  explanation before opening one user-facing page.
+- Future stops prepare concurrently inside the configured window; questions
+  bypass that queue.
+- Browser and bridge tokens are separate. Browser mutations require same-origin
+  requests; the bridge token uses an owner-only temporary file.
+- Closing sends the outcome, overall note, and feedback to the same agent.
+- Feedback includes the reviewed Git tree. Passing it back through `--base`
+  scopes a follow-up tour to feedback-induced changes.
+- A lost attached heartbeat may use the local fallback, but edits remain
+  request-gated and isolated.
 
-Component diagrams in the review overview's Architecture section, the tour
-introduction, and the Call flows tab include `Expand` to open a larger viewer,
-with independent pan, zoom, and reset controls.
+Standalone agents remain read-only, although reviewers can still author edit
+suggestions.
 
-Settings includes an About view with the running version, runtime, repository,
-comparison, review status, selected agent, and workspace mode.
+## Development
 
-When architecture is enabled, both the behaviour and implementation diagrams are
-required. Missing or invalid diagrams trigger up to two automatic correction
-requests with the validation errors; if correction fails, tour startup reports
-the error instead of silently hiding the Architecture section. Preview redirects
-also preserve the automatic tour introduction.
+```sh
+bun install --frozen-lockfile
+bun run src/cli.ts --repo /path/to/repository --base origin/main --open
+```
 
-The Sequence diagrams tab renders the documented Mermaid sequence subset as
-SVG using the locally bundled Mermaid runtime in strict mode; it never loads a CDN. The
-validated source stays available in a collapsed disclosure and opens
-automatically if rendering fails. Supported syntax includes participants and
-actors, standard message and destruction arrows, notes, activation, autonumber,
-and `alt`, `loop`, `opt`, `par`, `critical`, `break`, `rect`, and `box` blocks.
-Edits are validated and bounded before persistence. Use `Regenerate` on one
-sequence diagram or `Regenerate diagrams` to ask the active tour agent to
-re-inspect the current diff. Call flows can likewise be regenerated individually
-or as a complete set.
+For a development-only global command, run `bun install --global .` and ensure
+`bun pm bin -g` is on `PATH`. Internal attached operations use
+`code-review-tour bridge`. See [docs/agent-adapters.md](docs/agent-adapters.md)
+for standalone discovery, continuation, and read-only execution contracts.
 
-The Adaptive diagrams tab can contain a state machine for a lifecycle or a
-data-model/ER view for persistent relationships. These diagrams are deliberately
-evidence-gated: each one names changed files, retains repository observations,
-and explains why it adds understanding beyond the component, call-flow, and
-sequence views. Unsupported or weakly supported diagrams are omitted, so an
-empty tab is an honest result. State and data-model legends explain their
-notation. Every diagram supports independent drag, arrow-key or pinch movement,
-zoom down to a comfortable overview, reset, full-screen expansion, strict local
-Mermaid rendering, and source fallback.
+### Reusable test fixture
 
-Guided reviews are organized as `Tour → Phases → Stops`. A phase represents one
-coherent behavioral or architectural change and declares the changed files that
-participate in it. A stop is an exact old/new diff anchor with a short inline
-annotation and a deeper agent explanation. Previous and Next traverse the
-flattened stop route across phase boundaries. `Settings → Prepare ahead` controls
-the next zero to five stops (five by default); already prepared explanations
-remain available when the window is reduced. While tour mode is active, the file tree and diff show all
-and only the changed files declared by the current phase; moving across a phase
-boundary swaps that scope. `Exit tour` restores the baseline all-changes review,
-and `Resume tour` returns to the current stop. Findings shown below a stop are
-limited to that exact anchor, phase findings sit with the phase overview, and
-the Findings tab contains the complete set. Sessions created before v0.9 are
-migrated into a legacy phase without guessing finding scope.
+```sh
+bun run fixture --open
+```
 
-## Exports and retention
+Each run recreates a disposable Git repository and canonical persisted session
+under the system temporary directory. The fixture covers two phases, four stops,
+inline feedback, structured findings, component/sequence/adaptive diagrams, a
+checkpoint, conversations, activity, changed PNGs, modified and added Markdown,
+and simulated PR/issue context without calling GitHub. Later explanations begin
+unprepared so prepare-ahead behavior can be tested. Use
+`bun run fixture --prepare-only` when only the files and state are needed.
 
-Use `Settings → Export` at any point—including after closure—to download
-Markdown or a self-contained HTML artifact. Exports preserve the tour route,
-syntax-highlighted diff, Markdown previews, stop markers, structured finding
-evidence, call flows, component/sequence/adaptive diagrams, comments, questions,
-and selected wrap/scroll presentation when those sections are included. HTML
-exports remain interactive for navigation and diagram inspection but omit agent,
-edit, regeneration, and comment controls. Exports contain no remote assets,
-session tokens, or repository filesystem paths.
-
-Retention is always explicit. `sessions prune` previews its targets; add
-`--yes` to delete them. `--repo PATH` loads that repository's retention
-defaults and limits pruning to its sessions. CLI `--days` and `--max` override
-the file. Archived sessions are preserved unless `--include-archived` (or the
-matching repository setting) is enabled. `--temp-hours N` also targets stale
-tool-owned temporary directories. Active sessions and live proposal/bridge
-workspaces are process-locked and cannot be pruned; session files are rechecked
-immediately before deletion so concurrent changes fail safely.
-An expired pull-request session removes its associated worktree only when the
-path is inside the tool-owned state directory and the worktree is clean.
-
-## Verify
+### Verify and release
 
 ```sh
 bun run verify
 bun run build:release
 ```
 
-Pushing a `v*` tag runs the full verification suite, builds all six release
-archives, publishes checksums, and creates a GitHub Release. The package version
-and tag must match.
+Pushing a matching `v*` tag runs the full suite, builds all six platform
+archives, publishes checksums, and creates a GitHub Release.
 
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for shipped scope, upcoming milestones, and the
-remaining gaps between the current local tool and a complete review workflow.
+See [ROADMAP.md](ROADMAP.md) for shipped scope, upcoming work, and remaining
+review-workflow gaps.

@@ -1,152 +1,75 @@
 # Roadmap
 
-The roadmap is organized around usable outcomes rather than speculative dates.
-Items move into a release only when their interaction and verification scope are
-clear.
+This is the canonical roadmap. The [README](README.md#capabilities) documents
+current capabilities; [release history](docs/roadmap-history.md) preserves the
+earlier milestone record. In progress means implementation has started on an
+isolated branch, not that the feature has shipped.
 
-## Shipped in v0.1
+## In progress
 
-- Local branch-to-parent comparison, including committed and working-tree changes.
-- Repository tree, paged diffs, line comments, P0-P3 findings, and sequence flows.
-- Ordered tours with previous/next navigation and live follow-up questions.
-- Attached-agent bridge plus standalone Codex and Claude adapters.
-- Durable resumable sessions, repository refresh, cancellation, and safe close outcomes.
-- Self-contained macOS and Linux releases, checksum verification, diagnostics,
-  CI, and automatic Codex and Claude skill installation.
+| Feature | Branch | Outcome |
+| --- | --- | --- |
+| Structural blast radius | `feat/structural-blast-radius` | Inspect callers, structural reach, affected files, and test gaps per changed symbol. |
+| Dry run | `feat/review-dry-run` | Step through reviewed code with editable sample inputs, simulated values, and independent navigation. |
+| Skill extraction | `feat/skill-extraction` | Turn reusable review lessons into appropriate skill improvements during feedback handoff. |
+| Archify integration | `feat/archify-integration` | Optional validated interactive diagrams, with the local Mermaid renderer retained. |
 
-## Shipped in v0.2
+### Structural blast radius
 
-- Session library in the browser and CLI: list, reopen by short ID, rename,
-  archive, restore, and explicitly delete saved tours.
-- Durable agent change activity grouped by the triggering request, including
-  affected files, before/after diff totals, and reported verification.
-- Compatibility migration for early v0.1 session files that predate findings
-  and flow metadata.
-- System-aware light and dark themes with a persistent per-browser override.
+Add a per-changed-symbol view of what the change can structurally reach: direct callers, transitive impacted nodes, affected files, and nearby test gaps. Follow the `mobile-code-review` model by recording the structural provider, confidence, and provenance with every result; pin findings to changed or impacted symbols and use broad, untested reach as a review-prioritization signal.
 
-## Shipped in v0.5
+Keep the claim precise: graph reach is an authored or statically discovered dependency path, not proof of runtime impact. Show both the bounded graph rendered in the UI and the larger reported radius when the provider truncates visible nodes. Let reviewers select a changed symbol and inspect its isolated subgraph rather than collapsing same-named symbols into one node.
 
-- Strict repository-level defaults for parent branch, preferred agent/model,
-  diff layout and context, changed-file navigation, and successful-close policy.
-- Preview-first retention controls for repository sessions and stale temporary
-  data, with active-process locks and concurrent-change protection.
+### Dry run
 
-## Shipped in v0.3
+Provide a dedicated Dry runs tab for agent-simulated execution of the reviewed code. Share flow identities with call flows and sequence diagrams, suggest relevant scenarios, and let reviewers customize sample inputs and mocked responses. Show active code, value changes, branch decisions, and outputs with navigation independent of the tour.
 
-- Attached-agent edits run in an isolated proposal worktree, leaving the reviewed
-  working tree unchanged until explicit approval.
-- Activity patch previews plus Apply, Reject, and conflict-safe Undo controls for
-  text, binary, added, deleted, and renamed files.
-- Pending proposals block successful review closure, and later overlapping edits
-  fail closed instead of being overwritten.
+Enabled by default, with an option to skip generation entirely. Prepare detailed walkthroughs on demand, persist them for resume and offline exports, and invalidate them when inputs or source change. Archify may provide a synchronized visual map; actual code execution is outside this feature's scope. See the [agreed implementation specification](docs/dry-run-walkthrough-spec.md).
 
-## Shipped in v0.4
+### Archify integration
 
-- Search across changed paths and code plus file-status and reviewed-state filters.
-- Changed-files-only repository navigation and persistent per-file reviewed state.
-- Progressive hunk context expansion with bounded responses.
-- Unified and side-by-side diff layouts with comments, findings, and tour anchors
-  preserved on both sides.
+Support [Archify](https://github.com/tt-a1i/archify) as an optional diagram renderer for architecture, workflow, sequence, data-flow, and lifecycle views. Generate typed JSON IR from the same bounded repository evidence used by the tour, run Archify validation before displaying an artifact, and preserve the last valid diagram when a generated revision fails validation.
 
-## Shipped in v0.6
+Embed the resulting self-contained interactive HTML in the briefing and exported review where practical, including search, authored upstream/downstream reach, exact routes, and Before / Delta / After architecture views. Keep Code Review Tour's current validated Mermaid path as the built-in fallback; integration must not require network access or imply runtime impact from authored topology.
 
-- Open a tour from a GitHub pull request URL or number without manually preparing
-  the checkout and base reference.
-- Display pull request metadata, commits, existing review threads, and checks.
-- Publish selected comments and final review outcomes back to GitHub only after
-  explicit confirmation.
-- Track remote updates and reconcile comments when the pull request changes.
+### Skill extraction
 
-## Shipped in v0.7
+Add a feedback-handoff step that asks the receiving agent to assess whether reviewer comments, clarifications, requested changes, or corrected assumptions reveal a reusable lesson. When they do, the agent should propose or apply the lesson to the most relevant existing skill—or create a narrowly scoped skill when no suitable one exists—so the same class of mistake is less likely to recur.
 
-- A documented adapter contract for standalone local agents.
-- Read-only, resumable Gemini CLI and GitHub Copilot CLI adapters.
-- Gemini routing aliases and installed Copilot model-catalog discovery.
-- Automatic skill installation for Gemini CLI and GitHub Copilot CLI.
+Implement this by extending the Code Review Tour skill or introducing a companion feedback-processing skill. Extraction should require evidence from the completed review, distinguish general guidance from repository-specific convention and one-off preference, avoid duplicating existing instructions, and report what was extracted and where. Do not turn every comment into a rule or silently modify unrelated skills.
 
-## Shipped in v0.8
+## Delivered product refinements
 
-- Bounded repository-specific finding policies and review instructions, enforced
-  on generated findings as well as communicated to the selected agent.
-- Validated flow editing and single/all-flow regeneration, with broader Mermaid
-  sequence syntax.
-- Durable Markdown and self-contained, escaped HTML review artifacts.
+The initial seven workstreams are available in v1.1.25. This records the shipped
+scope, rather than treating every aspiration in the original proposals as done.
 
-## Shipped in v0.8.1
+| Workstream | Delivered scope |
+| --- | --- |
+| Revision-aware re-review | Source checkpoints, revision history, Full change / Since last review, and review-state reconciliation. |
+| Needs your attention | Configurable evidence briefing, review cues, effort estimate, and expandable diagrams. |
+| Finding lifecycle | Explicit dispositions, reviewer notes, structured evidence, and reassessment after refresh. |
+| Symbol Peek | Definitions/usages, navigation trail, and bounded provider discovery with repository-search fallback. |
+| Navigation and scoped discussion | Keyboard shortcuts, focus mode, and line/range/stop/review conversations. |
+| Adaptive diagrams | Evidence-gated state-machine and data-model views. |
+| Issue assessment | Explicit acceptance criteria from one trusted closing issue or a local task, with cited implementation evidence. |
 
-- Reviewer-controlled guided navigation: compact annotations stay beside the
-  active code, while only explicit tour controls jump between anchors.
-- Flat Git-style changed paths alongside the complete repository tree.
-- Dense split diffs by default, with one-sided rows isolated from global empty
-  states and a bounded, independently scrollable explanation panel.
-- Indeterminate planning activity plus collapsible, user-facing route notes.
-- Attached bridge long polls remain connected beyond Bun's default idle timeout.
+Fetching related issues and older PRs remains outside the current issue-assessment
+scope. Revisit it only with an explicit product decision about provider access
+and privacy.
 
-## Shipped in v0.9
+## Release hardening backlog
 
-- Guided tours are structured as logical phases containing precise code stops;
-  Previous and Next cross phase boundaries while free-form diff navigation stays
-  reviewer-controlled.
-- Each phase declares its changed files and their purpose, with additions and
-  deletions derived from Git rather than generated by the agent.
-- Findings are explicitly phase- or stop-scoped, with a complete Findings view;
-  migrated findings remain unscoped instead of receiving guessed associations.
-- Loaded diff and source rows use locally bundled, dual-theme Shiki syntax
-  highlighting with bounded authenticated requests and escaped token content.
-- Validated sequence flows render as real, theme-aware Mermaid SVG using a local
-  strict-mode runtime, with collapsed source and safe error fallback.
+| Item | Remaining work |
+| --- | --- |
+| Native platform CI | Execute verification on macOS and ARM runners, beyond the current Ubuntu/Windows jobs and cross-compilation. |
+| macOS distribution | Sign and notarize binaries. |
+| Public installation | Decide repository visibility and licensing, then add a public channel such as Homebrew. |
 
-## Post-v0.9 usability polish
+Binary-only installation, Windows packages and native Windows CI, versioned
+updates, rollback, and preview-first uninstall are already shipped.
 
-- Resizable, persistent file-pane width and a denser header with an explicit
-  Theme label.
-- Strong current-stop annotations placed before their code anchor, plus
-  plain-language explanations and preloaded next stops.
-- Finding pins expose summaries on hover or keyboard focus and open a clearly
-  selected Findings card with back-to-code navigation.
-- Flow provenance is worded as Verified, Partly verified, or Unverified, with
-  the evidence meaning explained in the UI.
-- Stable tour and pull request context appears above the diff, leaving the
-  agent pane focused on the current phase and stop.
-- Phase file lists start collapsed, the agent pane is resizable, and active
-  code ranges use a stronger bounded highlight in split and unified views.
-- Phase findings start collapsed and reuse the concise in-code pin summary;
-  sequence flows list their exact affected changed files and normalize Mermaid
-  message punctuation before rendering.
-- Tour startup exposes default-on controls for sequence diagrams and findings;
-  enabled findings receive a separate causal-validation and high-impact recall
-  pass before they are shown.
-
-## Release hardening
-
-- Consolidate the attached bridge into the main executable and provide a
-  binary-only installer mode. *(shipped in v1.0.0)*
-- Native CI execution on macOS and ARM runners, not only cross-compilation.
-- Windows x64/ARM64 packaging, PowerShell installation, and native Windows CI.
-  *(shipped in v1.0.0)*
-
-- Signed and notarized macOS binaries.
-- A public installation path such as Homebrew once repository visibility and
-  licensing are decided.
-- Versioned update, local rollback, and preview-first uninstall commands.
-  *(shipped in v1.0.0)*
-
-## Post-v1.0 code understanding
-
-- Changed call flows are a first-class, validated tour artifact, generated from
-  concrete entrypoints and represented as bounded caller-to-callee nodes and
-  edges rather than inferred from Mermaid text.
-- Added and removed calls link to exact old or new changed-file evidence, with
-  Before, After, and Changes views plus honest verified, partly verified, and
-  unverified provenance.
-- Component architecture remains with structural call changes, while runtime
-  interactions have their own explicitly named Sequence diagrams tab.
-- Call-flow generation is optional and default-on at tour startup, supports
-  single or complete regeneration, persists across sessions, and is included in
-  Markdown and HTML review exports.
-
-## Explicitly out of scope for now
+## Out of scope
 
 - Hosting repositories or source code on a remote Code Review Tour service.
 - Multi-user review rooms and real-time reviewer collaboration.
-- Autonomous code changes that were not explicitly requested by the reviewer.
+- Autonomous code changes that the reviewer did not request.
