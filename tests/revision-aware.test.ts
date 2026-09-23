@@ -73,7 +73,7 @@ test("manual checkpoints preserve unchanged reviewed files and reset changed fil
   await session.setFileReviewed("b.ts", true);
   const checkpoint = await session.createManualCheckpoint("first pass");
   expect(checkpoint.checkpoints).toHaveLength(1);
-  expect((await loadPersistedSession(stateFile)).schemaVersion).toBe(3);
+  expect((await loadPersistedSession(stateFile)).schemaVersion).toBe(4);
 
   await writeFile(join(repository, "a.ts"), "two\n");
   await writeFile(join(repository, "c.ts"), "new\n");
@@ -85,7 +85,7 @@ test("manual checkpoints preserve unchanged reviewed files and reset changed fil
   expect((await readFile(stateFile, "utf8"))).toContain('"comparisonView": "since-last-review"');
   const persisted = await loadPersistedSession(stateFile);
   await writeFile(stateFile, JSON.stringify({ ...persisted, schemaVersion: 2 }));
-  expect((await loadPersistedSession(stateFile)).schemaVersion).toBe(3);
+  expect((await loadPersistedSession(stateFile)).schemaVersion).toBe(4);
   const closed = await session.close("accepted", { decision: "approve" });
   expect(closed.status).toBe("accepted");
   expect(session.snapshot().checkpoints.at(-1)).toMatchObject({ kind: "decision", outcome: "accepted", decision: "approve" });

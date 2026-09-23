@@ -93,6 +93,45 @@ test("runtime preferences persist a bounded prepare-ahead window", async () => {
   expect(invalid.status).toBe(422);
 });
 
+test("dry-run endpoints are authenticated, use the renderer-independent behavior identity, and reject malformed input", async () => {
+  const { session, fetch } = fixture();
+  const calls: Array<{ method: string; args: unknown[] }> = [];
+  const dryRuns = session as unknown as {
+    prepareDryRunPlans: () => Promise<unknown>;
+    updateDryRunScenario: (kind: string, flowId: string, scenario: unknown) => Promise<unknown>;
+    prepareDryRun: (kind: string, flowId: string, scenarioId: string, detail?: string) => Promise<unknown>;
+    cancelDryRunPreparation: () => Promise<unknown>;
+  };
+  dryRuns.prepareDryRunPlans = async () => { calls.push({ method: "plans", args: [] }); return { planned: true }; };
+  dryRuns.updateDryRunScenario = async (...args) => { calls.push({ method: "scenario", args }); return { saved: true }; };
+  dryRuns.prepareDryRun = async (...args) => { calls.push({ method: "prepare", args }); return { prepared: true }; };
+  dryRuns.cancelDryRunPreparation = async () => { calls.push({ method: "cancel", args: [] }); return { cancelled: true }; };
+
+  const toggle = await fetch(authorizedRequest(session, "/api/dry-runs/enabled", { enabled: false }));
+  const planned = await fetch(authorizedRequest(session, "/api/dry-runs/plans", {}));
+  const saved = await fetch(authorizedRequest(session, "/api/dry-runs/scenarios", { flowKind: "behavior", flowId: "receipt", scenario: { id: "case" } }));
+  const prepared = await fetch(authorizedRequest(session, "/api/dry-runs/prepare", { flowKind: "behavior", flowId: "receipt", scenarioId: "case" }));
+  const detailed = await fetch(authorizedRequest(session, "/api/dry-runs/prepare", { flowKind: "behavior", flowId: "receipt", scenarioId: "case", detail: "detailed" }));
+  const cancelled = await fetch(authorizedRequest(session, "/api/dry-runs/cancel", {}));
+  expect(toggle.status).toBe(404);
+  expect(await planned.json()).toEqual({ planned: true });
+  expect(await saved.json()).toEqual({ saved: true });
+  expect(await prepared.json()).toEqual({ prepared: true });
+  expect(await detailed.json()).toEqual({ prepared: true });
+  expect(await cancelled.json()).toEqual({ cancelled: true });
+  expect(calls).toEqual([
+    { method: "plans", args: [] },
+    { method: "scenario", args: ["behavior", "receipt", { id: "case" }] },
+    { method: "prepare", args: ["behavior", "receipt", "case", "compact"] },
+    { method: "prepare", args: ["behavior", "receipt", "case", "detailed"] },
+    { method: "cancel", args: [] },
+  ]);
+
+  expect((await fetch(authorizedRequest(session, "/api/dry-runs/prepare", { flowKind: "sequence", flowId: "receipt", scenarioId: "case" }))).status).toBe(422);
+  expect((await fetch(authorizedRequest(session, "/api/dry-runs/prepare", { flowKind: "behavior", flowId: "receipt", scenarioId: "case", detail: "verbose" }))).status).toBe(422);
+  expect((await fetch(authorizedRequest(session, "/api/dry-runs/plans", { unexpected: true }))).status).toBe(422);
+});
+
 test("briefing preferences persist and require the complete bounded selection", async () => {
   const { session, fetch } = fixture();
   const updated = await fetch(authorizedRequest(session, "/api/preferences", {

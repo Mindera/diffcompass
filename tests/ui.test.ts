@@ -1579,3 +1579,158 @@ test("images and videos are exposed through an authenticated media tab with an e
   expect(styles).toContain(".tab { flex: 0 0 auto;");
   expect(styles).toContain("font-size: 13px;");
 });
+
+test("dry runs keep an independent simulated-execution state, comparison-scoped source excerpts, and unsaved scenario protection", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/styles.css"), "utf8"),
+  ]);
+  expect(html).toContain('id="dry-runs-tab" class="tab"');
+  expect(html).not.toContain('id="dry-runs-tab-count"');
+  expect(html).toContain('id="dry-runs-view" class="review-view hidden"');
+  expect(html).toContain('id="include-dry-runs" type="checkbox" checked');
+  expect(html).not.toContain('id="dry-runs-enable"');
+  expect(app).toContain("dryRunStepIndex");
+  expect(app).toContain("function renderDryRuns()");
+  expect(app).toContain("function dryRunScenarioWalkthroughState");
+  expect(app).toContain("function dryRunPlanWalkthroughLabel");
+  expect(app).toContain("data-dry-run-select=\"scenario\"");
+  expect(app).not.toContain("function setDryRunEnabled");
+  expect(app).toContain("Dry runs were not included in this tour");
+  expect(app).toContain('"dry-runs"');
+  expect(app).toContain("function dryRunComparisonKey()");
+  expect(app).toContain("function highlightDryRunSyntax()");
+  expect(app).toContain("data-dry-run-source-highlight");
+  expect(app).toContain("data-dry-run-json-highlight");
+  expect(app).toContain("state.dryRunSourceCache.clear()");
+  expect(app).toContain("cacheKey === dryRunSourceCacheKey(path)");
+  expect(app).toContain("Save scenario before prepare");
+  expect(app).toContain("dryRunScenarioExecutionKey(trace.scenario) !== dryRunScenarioExecutionKey(scenario)");
+  expect(app).toContain("function reflectDryRunDraftMismatch()");
+  expect(app).toContain("Save scenario before prepare");
+  expect(app).toContain("state.dryRunDraftForm[field.dataset.dryRunField] = field.value");
+  expect(app).toContain('if (action === "previous") { state.dryRunStepIndex');
+  expect(app).toContain('if (action === "next") { state.dryRunStepIndex += 1; renderDryRuns(); }');
+  expect(app).toContain("data-open-dry-run-flow");
+  expect(html).toContain("The reviewed program is not executed.");
+  expect(styles).toContain(".dry-run-navigation");
+  expect(styles).toContain(".dry-run-mismatch");
+  expect(styles).toContain(".dry-run-walkthrough-state");
+  expect(styles).toContain(".dry-run-code-line");
+});
+
+test("dry-run walkthrough prioritizes code, compact values and independent navigation without revealing the outcome early", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function dryRunValueSummary"), app.indexOf("function renderDryRuns()"));
+  const state = { dryRunStepIndex: 0 };
+  const render = new Function("state", "escapeHtml", "dryRunJson", "dryRunSourcePreview", `${source}; return renderDryRunStep;`)(
+    state, (value: unknown) => String(value), (value: unknown) => `<pre>${JSON.stringify(value)}</pre>`, () => '<pre>return total(items);</pre>',
+  );
+  const step = { title: "Receipt calls total", kind: "call", explanation: "Calculate the amount.", function: "receipt", source: { path: "receipt.ts", startLine: 4, endLine: 4, changed: true }, arguments: { items: [{ price: 10 }, { price: 5 }], discount: { percentage: 0.2 } }, locals: {}, valueChanges: [] };
+  const trace = { steps: [step, { ...step, title: "Format result", valueChanges: [{ name: "amount", before: 25, after: 20 }] }], outcome: { summary: "Receipt ready", value: "Total: 20.00" }, assumptions: [] };
+  const first = render(trace);
+  expect(first).toContain('aria-label="Simulation steps"');
+  expect(first).toContain("Step 1 of 2");
+  expect(first).toContain("return total(items);");
+  expect(first).toContain("<summary>2 items</summary>");
+  expect(first).not.toContain("<details open>");
+  expect(first).not.toContain("Current values");
+  expect(first).not.toContain("No value change");
+  expect(first).not.toContain("Total: 20.00");
+  state.dryRunStepIndex = 1;
+  const last = render(trace);
+  expect(last).toContain("Step 2 of 2");
+  expect(last).toContain("What changed");
+  expect(last).toContain("Total: 20.00");
+});
+
+test("dry-run scenario editor is closed initially and preparation remains outside it", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const styles = await readFile(join(root, "public", "styles.css"), "utf8");
+  expect(app).toContain("dryRunEditorOpen: false");
+  expect(app).toContain('data-dry-run-action="edit-inputs"');
+  expect(app).toContain('<section class="dry-run-editor"${state.dryRunEditorOpen ? "" : " hidden"}>');
+  expect(app).toContain('class="dry-run-prepare-bar"');
+  expect(app).toContain('data-dry-run-action="prepare-detailed"');
+  expect(app).toContain('data-dry-run-json-input="${name}"');
+  expect(app).toContain('data-dry-run-json-input-highlight');
+  expect(app).toContain('function prepareDryRun(detail = "compact")');
+  expect(app).toContain('Make it more granular');
+  expect(app).toContain('detail === "detailed" ? "detailed " : ""');
+  expect(styles).toContain(".dry-runs [hidden] { display: none !important; }");
+  expect(styles).toContain(".dry-run-navigation { position: sticky;");
+  expect(styles).toContain(".dry-run-detail-cta");
+  expect(styles).toContain(".dry-run-json-editor");
+});
+
+test("dry-run JSON editing retains native input behavior while its syntax preview follows drafts and scrolling", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function syncDryRunJsonEditor"), app.indexOf("function dryRunComparisonKey"));
+  let highlighted = 0;
+  const sync = new Function("highlightDryRunSyntax", `${source}; return syncDryRunJsonEditor;`)(() => { highlighted += 1; }) as (field: unknown) => void;
+  const code = { textContent: "" };
+  const preview = { scrollTop: 0, scrollLeft: 0 };
+  const editor = {
+    querySelector(selector: string) {
+      if (selector === "[data-dry-run-json-input-highlight]") return code;
+      if (selector === "[data-dry-run-json-input-preview]") return preview;
+      return null;
+    },
+  };
+  const field = {
+    value: '{"amount":',
+    scrollTop: 24,
+    scrollLeft: 8,
+    closest: (selector: string) => selector === ".dry-run-json-editor" ? editor : null,
+  };
+
+  sync(field);
+
+  expect(code.textContent).toBe('{"amount":');
+  expect(preview).toEqual({ scrollTop: 24, scrollLeft: 8 });
+  expect(highlighted).toBe(1);
+});
+
+test("a dry-run input event immediately hides an obsolete trace without replacing the focused draft editor", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function reflectDryRunDraftMismatch"), app.indexOf("function dryRunComparisonKey"));
+  let notice: { className?: string; dataset: Record<string, string>; textContent?: string } | undefined;
+  const badge = { hidden: true };
+  const warning = { hidden: true };
+  const prepare = { disabled: false, textContent: "Prepare simulated execution" };
+  const trace = { hidden: false, before: (node: typeof notice) => { notice = node; } };
+  let editorReplacements = 0;
+  const rootNode = {
+    querySelector(selector: string) {
+      if (selector === "[data-dry-run-draft-unsaved]") return badge;
+      if (selector === "[data-dry-run-draft-mismatch]") return warning;
+      if (selector === '[data-dry-run-action="prepare"]') return prepare;
+      if (selector === "[data-dry-run-trace]") return trace;
+      if (selector === "[data-dry-run-draft-trace-notice]") return notice ?? null;
+      return null;
+    },
+  } as { querySelector: (selector: string) => unknown; innerHTML?: string };
+  Object.defineProperty(rootNode, "innerHTML", { set: () => { editorReplacements += 1; } });
+  const state = { dryRunDraftDirty: false, dryRunDraftForm: null as Record<string, string> | null };
+  const onInput = new Function("state", "elements", "document", `${source}; return onDryRunEditorFieldChange;`)(state, { "dry-runs": rootNode }, {
+    createElement: () => ({ dataset: {} as Record<string, string> }),
+  }) as (event: { target: { closest: (selector: string) => unknown } }) => void;
+  const textarea = {
+    dataset: { dryRunField: "inputs" },
+    value: '{"amount":',
+    closest: (selector: string) => selector === "[data-dry-run-field]" ? textarea : null,
+  };
+
+  onInput({ target: textarea });
+
+  expect(state.dryRunDraftDirty).toBe(true);
+  expect(state.dryRunDraftForm).toEqual({ inputs: '{"amount":' });
+  expect(textarea.value).toBe('{"amount":');
+  expect(badge.hidden).toBe(false);
+  expect(warning.hidden).toBe(false);
+  expect(prepare).toEqual({ disabled: true, textContent: "Save scenario before prepare" });
+  expect(trace.hidden).toBe(true);
+  expect(notice?.textContent).toContain("hidden while you edit");
+  expect(editorReplacements).toBe(0);
+});

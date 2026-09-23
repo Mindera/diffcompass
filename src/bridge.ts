@@ -17,6 +17,8 @@ export const DEFAULT_FALLBACK_INACTIVITY_MS: Record<BridgePromptEvent["kind"], n
   "tour.explanation": 90_000,
   "review.question": 90_000,
   "issue.assessment": 5 * 60 * 1_000,
+  "dry-run.plan": 5 * 60 * 1_000,
+  "dry-run.trace": 5 * 60 * 1_000,
 };
 
 export interface BridgeClosedEvent {
@@ -166,6 +168,7 @@ export class AttachedAgentBridge implements AgentTransport {
     kind: BridgePromptKind,
     attachment?: { name: string; content: string },
     progress?: (update: { status: "waiting" | "running"; message: string }) => void,
+    signal?: AbortSignal,
   ): Promise<AgentTransportReply> {
     if (this.disposed) return Promise.reject(new ReviewError("The review is closed."));
     const restored = [...this.promptRecords.values()].find((record) => (
@@ -174,7 +177,7 @@ export class AttachedAgentBridge implements AgentTransport {
     if (restored?.response !== undefined) return { message: restored.response, receipt: restored.event.id };
     if (restored) {
       progress?.({ status: this.leases.has(restored.event.id) ? "running" : "waiting", message: this.leases.has(restored.event.id) ? "The triggering agent already claimed this prompt." : "Waiting for the triggering agent to claim this prompt." });
-      return this.waitForResponse(restored.event, progress, attachment);
+      return this.waitForResponse(restored.event, progress, attachment, signal);
     }
     const id = crypto.randomUUID();
     const event: BridgePromptEvent = {
@@ -198,16 +201,36 @@ export class AttachedAgentBridge implements AgentTransport {
     this.events.push(event);
     this.notify();
     progress?.({ status: "waiting", message: "Waiting for the triggering agent to claim this prompt." });
-    return this.waitForResponse(event, progress, attachment);
+    return this.waitForResponse(event, progress, attachment, signal);
   }
 
-  private waitForResponse(event: BridgePromptEvent, progress?: PendingPrompt["progress"], attachment?: PendingPrompt["attachment"]): Promise<AgentTransportReply> {
+  private waitForResponse(event: BridgePromptEvent, progress?: PendingPrompt["progress"], attachment?: PendingPrompt["attachment"], signal?: AbortSignal): Promise<AgentTransportReply> {
     const id = event.id;
     return new Promise<AgentTransportReply>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const clearPending = () => {
         const pending = this.pending.get(id);
         if (pending?.fallbackTimer) clearTimeout(pending.fallbackTimer);
+        if (pending) clearTimeout(pending.timer);
         this.pending.delete(id);
+        signal?.removeEventListener("abort", onAbort);
+      };
+      const onAbort = () => {
+        if (!this.pending.has(id) && this.promptRecords.get(id)?.response !== undefined) return;
+        clearPending();
+        const index = this.events.findIndex((candidate) => candidate.id === id);
+        if (index >= 0) this.events.splice(index, 1);
+        this.promptRecords.delete(id);
+        this.leases.delete(id);
+        void this.persistCheckpoint?.().catch(() => undefined);
+        this.notify();
+        reject(new ReviewError("The attached-agent request was cancelled."));
+      };
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      const timer = setTimeout(() => {
+        clearPending();
         const index = this.events.findIndex((candidate) => candidate.id === id);
         if (index >= 0) this.events.splice(index, 1);
         this.promptRecords.delete(id);
@@ -215,6 +238,7 @@ export class AttachedAgentBridge implements AgentTransport {
         reject(new Error("The attached agent did not answer within 30 minutes."));
       }, 30 * 60 * 1_000);
       this.pending.set(id, { resolve, reject, timer, progress, attachment });
+      signal?.addEventListener("abort", onAbort, { once: true });
       this.armFallback(id);
     });
   }

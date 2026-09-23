@@ -229,8 +229,8 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "POST" && url.pathname === "/api/export") {
         const format = enumValue(url.searchParams.get("format"), "format", ["markdown", "html"]) as ExportFormat;
         const input = await readJsonObject(request);
-        exactKeys(input, ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams", "diffWrap"]);
-        for (const key of ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams"] as const) {
+        exactKeys(input, ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams", "includeDryRuns", "diffWrap"]);
+        for (const key of ["prepareMissingSteps", "includeFindings", "includeCallFlows", "includeDiagrams", "includeDryRuns"] as const) {
           if (input[key] !== undefined && typeof input[key] !== "boolean") throw new HttpError(422, `${key} must be a boolean.`);
         }
         if (input.diffWrap !== undefined && input.diffWrap !== "scroll" && input.diffWrap !== "wrap") throw new HttpError(422, "diffWrap must be scroll or wrap.");
@@ -256,6 +256,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           includeFindings: input.includeFindings !== false,
           includeCallFlows: input.includeCallFlows !== false,
           includeDiagrams: input.includeDiagrams !== false,
+          includeDryRuns: input.includeDryRuns !== false,
           diffWrap: input.diffWrap as "scroll" | "wrap" | undefined,
           highlightedGroups,
           markdownPreviews,
@@ -450,9 +451,41 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         exactKeys(input, ["id"]);
         return json(await session.regenerateCallFlows(optionalString(input.id, "id", 128)));
       }
+      if (request.method === "POST" && url.pathname === "/api/dry-runs/plans") {
+        const input = await readJsonObject(request);
+        exactKeys(input, []);
+        return json(await session.prepareDryRunPlans());
+      }
+      if (request.method === "POST" && url.pathname === "/api/dry-runs/scenarios") {
+        const input = await readJsonObject(request, 96 * 1024);
+        exactKeys(input, ["flowKind", "flowId", "scenario"]);
+        if (input.flowKind !== "behavior") throw new HttpError(422, "flowKind must be behavior.");
+        return json(await session.updateDryRunScenario(
+          "behavior",
+          requiredString(input.flowId, "flowId", 128),
+          input.scenario,
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/api/dry-runs/prepare") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["flowKind", "flowId", "scenarioId", "detail"]);
+        if (input.flowKind !== "behavior") throw new HttpError(422, "flowKind must be behavior.");
+        if (input.detail !== undefined && input.detail !== "compact" && input.detail !== "detailed") throw new HttpError(422, "detail must be compact or detailed.");
+        return json(await session.prepareDryRun(
+          "behavior",
+          requiredString(input.flowId, "flowId", 128),
+          requiredString(input.scenarioId, "scenarioId", 128),
+          input.detail === "detailed" ? "detailed" : "compact",
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/api/dry-runs/cancel") {
+        const input = await readJsonObject(request);
+        exactKeys(input, []);
+        return json(await session.cancelDryRunPreparation());
+      }
       if (request.method === "POST" && url.pathname === "/api/agent/message") {
         const input = await readJsonObject(request, 32 * 1024);
-        exactKeys(input, ["body", "selectedContext", "threadId", "stepId", "anchor", "contextPaths"]);
+        exactKeys(input, ["body", "selectedContext", "threadId", "stepId", "anchor", "contextPaths", "dryRunContext"]);
         let anchor;
         if (input.anchor !== undefined) {
           if (!input.anchor || typeof input.anchor !== "object" || Array.isArray(input.anchor)) throw new ReviewError("anchor must be an object.");
@@ -477,6 +510,18 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         if (input.contextPaths !== undefined && (!Array.isArray(input.contextPaths) || input.contextPaths.length > 8 || input.contextPaths.some((path) => typeof path !== "string" || !path || path.length > 4_096))) {
           throw new HttpError(422, "contextPaths must contain at most 8 repository paths.");
         }
+        let dryRunContext;
+        if (input.dryRunContext !== undefined) {
+          if (!input.dryRunContext || typeof input.dryRunContext !== "object" || Array.isArray(input.dryRunContext)) throw new HttpError(422, "dryRunContext must be an object.");
+          const value = input.dryRunContext as Record<string, unknown>;
+          exactKeys(value, ["traceId", "flowId", "scenarioId", "stepId"]);
+          dryRunContext = {
+            traceId: requiredString(value.traceId, "dryRunContext.traceId", 128),
+            flowId: requiredString(value.flowId, "dryRunContext.flowId", 128),
+            scenarioId: requiredString(value.scenarioId, "dryRunContext.scenarioId", 128),
+            stepId: requiredString(value.stepId, "dryRunContext.stepId", 128),
+          };
+        }
         return json(await session.ask(
           requiredString(input.body, "body", 8_000),
           optionalString(input.selectedContext, "selectedContext", 16_000),
@@ -485,6 +530,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
             ...(input.stepId === null ? { stepId: null } : { stepId: optionalString(input.stepId, "stepId", 128) }),
             anchor,
             contextPaths: input.contextPaths as string[] | undefined,
+            dryRunContext,
           },
         ));
       }

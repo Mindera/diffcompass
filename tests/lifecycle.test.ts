@@ -392,6 +392,7 @@ test("attached sessions optionally display the caller model and effort", async (
     includeFlows: true,
     includeFindings: true,
     includeAdaptiveDiagrams: true,
+    includeDryRuns: true,
   });
 });
 
