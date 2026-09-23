@@ -103,7 +103,7 @@ test("persists optional diff preferences while accepting older sessions without 
   }
 });
 
-test("repairs Mermaid keyword IDs when loading an older session", async () => {
+test("repairs Mermaid keyword IDs in architecture and sequence flows when loading an older session", async () => {
   const path = await temporaryStateFile();
   const session = persistedSession();
   session.outline!.architecture = {
@@ -120,11 +120,29 @@ test("repairs Mermaid keyword IDs when loading an older session", async () => {
     dependencyChanges: ["Added Application → Dependency graph: creates"],
     affectedFiles: ["src/app.ts"],
   };
+  session.outline!.flows = [{
+    id: "image-preview",
+    title: "Image preview",
+    summary: "The screen renders an image box.",
+    mermaid: `sequenceDiagram
+  participant Screen as Preview screen
+  participant Box as Image box
+  Screen->>Box: render image
+  Note right of Box: Image box`,
+    provenance: "verified",
+    blastRadiusSize: 1,
+    affectedFiles: ["src/app.ts"],
+  }];
   await savePersistedSession(path, session);
 
   const loaded = await loadPersistedSession(path);
   expect(loaded.outline!.architecture!.mermaid).toContain('graph_component["Dependency graph"]:::new');
   expect(loaded.outline!.architecture!.mermaid).toContain("app -->|creates| graph_component");
+  expect(loaded.outline!.flows[0]!.mermaid).toBe(`sequenceDiagram
+  participant Screen as Preview screen
+  participant Box_participant as Image box
+  Screen->>Box_participant: render image
+  Note right of Box_participant: Image box`);
 });
 
 test("rejects unreadable JSON and unsupported persisted schemas", async () => {

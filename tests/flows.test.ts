@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { inspectSequenceDiagram, validateReviewFlow } from "../src/flows.ts";
+import { inspectSequenceDiagram, normalizeSequenceDiagram, validateReviewFlow } from "../src/flows.ts";
 
 const flow = (mermaid: string) => ({
   id: "checkout",
@@ -67,4 +67,99 @@ test("normalized message text is accepted by the bundled Mermaid parser", async 
     affectedFiles: ["src/startup.ts"],
   }).mermaid;
   await expect(mermaid.parse(normalized)).resolves.toBeTruthy();
+});
+
+test("repairs reserved sequence participant IDs without changing labels, prose, or controls", async () => {
+  const source = `sequenceDiagram
+  participant Screen as Preview screen
+  participant Box as Image box
+  Screen->>Box: render Box; safely
+  activate Box
+  Note over Box, Screen: Box label is unchanged
+  alt image box is available
+    Box-->>Screen: Box rendered
+  else image box is unavailable
+    Box--xScreen: Box missing
+  end
+  deactivate Box
+  destroy Box`;
+  const normalized = validateReviewFlow(flow(source)).mermaid;
+
+  expect(normalized).toBe(`sequenceDiagram
+  participant Screen as Preview screen
+  participant Box_participant as Image box
+  Screen->>Box_participant: render Box&#59; safely
+  activate Box_participant
+  Note over Box_participant, Screen: Box label is unchanged
+  alt image box is available
+    Box_participant-->>Screen: Box rendered
+  else image box is unavailable
+    Box_participant--xScreen: Box missing
+  end
+  deactivate Box_participant
+  destroy Box_participant`);
+
+  const moduleName = "mermaid";
+  const mermaid = (await import(moduleName)).default;
+  await expect(mermaid.parse(normalized)).resolves.toBeTruthy();
+});
+
+test("repairs reserved sequence IDs collision-free and idempotently", () => {
+  const source = `sequenceDiagram
+  participant Box as Image box
+  participant Box_participant as Existing image box
+  participant End
+  Box->>Box_participant: Box is the source
+  Note right of End: End is a participant
+  End-->>Box: done
+  end`;
+  const normalized = normalizeSequenceDiagram(source);
+
+  expect(normalized).toBe(`sequenceDiagram
+  participant Box_participant2 as Image box
+  participant Box_participant as Existing image box
+  participant End_participant as End
+  Box_participant2->>Box_participant: Box is the source
+  Note right of End_participant: End is a participant
+  End_participant-->>Box_participant2: done
+  end`);
+  expect(normalizeSequenceDiagram(normalized)).toBe(normalized);
+});
+
+test("avoids implicit actor references when selecting a repaired participant ID", () => {
+  const normalized = normalizeSequenceDiagram(`sequenceDiagram
+  participant Box
+  Screen->>Box_participant: render an existing image
+  Box->>Screen: render the new image`);
+
+  expect(normalized).toBe(`sequenceDiagram
+  participant Box_participant2 as Box
+  Screen->>Box_participant: render an existing image
+  Box_participant2->>Screen: render the new image`);
+});
+
+test("repairs reserved IDs declared by create participant", async () => {
+  const source = `sequenceDiagram
+  participant Screen as Preview screen
+  create participant Box as Image box
+  Screen->>Box: create image
+  Note right of Box: Image box`;
+  const normalized = validateReviewFlow(flow(source)).mermaid;
+
+  expect(normalized).toContain("create participant Box_participant as Image box");
+  expect(normalized).toContain("Screen->>Box_participant: create image");
+  expect(normalized).toContain("Note right of Box_participant: Image box");
+
+  const moduleName = "mermaid";
+  const mermaid = (await import(moduleName)).default;
+  await expect(mermaid.parse(normalized)).resolves.toBeTruthy();
+});
+
+test("preserves an unaliased create participant's visible label", () => {
+  const normalized = normalizeSequenceDiagram(`sequenceDiagram
+  create participant Box
+  Screen->>Box: create image`);
+
+  expect(normalized).toContain("create participant Box_participant as Box");
+  expect(normalized).toContain("Screen->>Box_participant: create image");
 });

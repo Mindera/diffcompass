@@ -5,16 +5,97 @@ const MESSAGE = /^([A-Za-z0-9_.-]+?)\s*(?:-{1,2}(?:>>|>|x|\)))\s*([A-Za-z0-9_.-]
 const NOTE = /^note\s+(?:left of|right of|over)\s+([A-Za-z0-9_.-]+)(?:\s*,\s*([A-Za-z0-9_.-]+))?\s*:\s*.+$/i;
 const CONTROL = /^(?:autonumber|activate\s+\S+|deactivate\s+\S+|(?:alt|else|loop|opt|par|and|critical|option|break|rect|box)\b.*|end|create\s+(?:participant|actor)\b.*|destroy\s+\S+)$/i;
 
+// Mermaid's sequence lexer treats these words as syntax before it gets a
+// chance to recognize an actor reference. They are fine in a participant
+// declaration, but fail when used later in a message or note (for example,
+// `participant Box as Image box` followed by `Screen->>Box`).
+const MERMAID_SEQUENCE_RESERVED_IDS = new Set([
+  "box", "participant", "actor", "create", "destroy", "as",
+  "loop", "rect", "opt", "alt", "else", "par", "par_over", "and",
+  "critical", "option", "break", "end", "links", "link", "properties",
+  "details", "over", "note", "activate", "deactivate", "sequencediagram",
+  "autonumber", "off",
+]);
+
+const DECLARATION_REFERENCE = /^(\s*(?:participant|actor)\s+)([A-Za-z0-9_.-]+)(\s+as\s+.+)?(\s*)$/i;
+const CREATE_DECLARATION_REFERENCE = /^(\s*create\s+(?:participant|actor)\s+)([A-Za-z0-9_.-]+)(\s+as\s+.+)?(\s*)$/i;
+const MESSAGE_REFERENCE = /^(\s*)([A-Za-z0-9_.-]+?)(\s*(?:-{1,2}(?:>>|>|x|\)))\s*)([A-Za-z0-9_.-]+)(\s*:\s*.+)$/;
+const NOTE_REFERENCE = /^(\s*note\s+(?:left of|right of|over)\s+)([A-Za-z0-9_.-]+)(?:(\s*,\s*)([A-Za-z0-9_.-]+))?(\s*:\s*.+)$/i;
+const ACTOR_CONTROL_REFERENCE = /^(\s*(?:activate|deactivate|destroy)\s+)([A-Za-z0-9_.-]+)(\s*)$/i;
+
+function sequenceReservedId(id: string): boolean {
+  return MERMAID_SEQUENCE_RESERVED_IDS.has(id.toLowerCase());
+}
+
+function declaredSequenceParticipant(line: string): string | undefined {
+  return DECLARATION_REFERENCE.exec(line)?.[2] ?? CREATE_DECLARATION_REFERENCE.exec(line)?.[2];
+}
+
 export interface SequenceSyntax {
   actors: string[];
   unsupported: string[];
 }
 
 export function normalizeSequenceDiagram(source: string): string {
-  return source.split("\n").map((line) => {
-    const colon = line.indexOf(":");
-    if (colon < 0) return line;
-    return `${line.slice(0, colon + 1)}${line.slice(colon + 1).replaceAll(";", "&#59;")}`;
+  const lines = source.replaceAll("\r\n", "\n").split("\n");
+  const participantIds = new Set<string>();
+  const identifiers = new Set<string>();
+  for (const line of lines) {
+    const id = declaredSequenceParticipant(line);
+    if (id) participantIds.add(id);
+
+    const message = MESSAGE_REFERENCE.exec(line);
+    if (message) {
+      identifiers.add(message[2]!.toLowerCase());
+      identifiers.add(message[4]!.toLowerCase());
+    }
+    const note = NOTE_REFERENCE.exec(line);
+    if (note) {
+      identifiers.add(note[2]!.toLowerCase());
+      if (note[4]) identifiers.add(note[4].toLowerCase());
+    }
+    const actorControl = ACTOR_CONTROL_REFERENCE.exec(line);
+    if (actorControl) identifiers.add(actorControl[2]!.toLowerCase());
+  }
+  for (const id of participantIds) identifiers.add(id.toLowerCase());
+
+  const replacements = new Map<string, string>();
+  for (const id of participantIds) {
+    if (!sequenceReservedId(id)) continue;
+    let replacement = `${id}_participant`;
+    let suffix = 2;
+    while (identifiers.has(replacement.toLowerCase()) || sequenceReservedId(replacement)) {
+      replacement = `${id}_participant${suffix++}`;
+    }
+    replacements.set(id, replacement);
+    identifiers.add(replacement.toLowerCase());
+  }
+
+  const replaceId = (id: string): string => replacements.get(id) ?? id;
+  return lines.map((line) => {
+    const declaration = DECLARATION_REFERENCE.exec(line) ?? CREATE_DECLARATION_REFERENCE.exec(line);
+    let repaired = line;
+    if (declaration && replacements.has(declaration[2]!)) {
+      const id = declaration[2]!;
+      repaired = `${declaration[1]!}${replaceId(id)}${declaration[3] ?? ` as ${id}`}${declaration[4]!}`;
+    } else {
+      const message = MESSAGE_REFERENCE.exec(line);
+      if (message) {
+        repaired = `${message[1]!}${replaceId(message[2]!)}${message[3]!}${replaceId(message[4]!)}${message[5]!}`;
+      } else {
+        const note = NOTE_REFERENCE.exec(line);
+        if (note) {
+          repaired = `${note[1]!}${replaceId(note[2]!)}${note[3] ?? ""}${note[4] ? replaceId(note[4]) : ""}${note[5]!}`;
+        } else {
+          const actorControl = ACTOR_CONTROL_REFERENCE.exec(line);
+          if (actorControl) repaired = `${actorControl[1]!}${replaceId(actorControl[2]!)}${actorControl[3]!}`;
+        }
+      }
+    }
+
+    const colon = repaired.indexOf(":");
+    if (colon < 0) return repaired;
+    return `${repaired.slice(0, colon + 1)}${repaired.slice(colon + 1).replaceAll(";", "&#59;")}`;
   }).join("\n");
 }
 
