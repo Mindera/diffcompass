@@ -12,12 +12,13 @@ import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
 import type { FindingDisposition } from "./types.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewerTaskContext, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, DryRunDetail, DryRunFlowKind, DryRunPlan, DryRunScenario, DryRunTrace, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewerTaskContext, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
 import { isBriefingSectionOrder } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
 import { diffPreferenceStoreDirectory, loadGlobalBriefingPreferences, loadGlobalDiffPreferences, restoreGlobalBriefingPreferences, restoreGlobalDiffPreferences, updateGlobalBriefingPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
 import { buildNeedsAttention } from "./attention.ts";
+import { comparisonFingerprint, dryRunPlanFor, dryRunScenarioFingerprint, traceIsStale, validateDryRunPlans, validateDryRunPlanSourceAnchors, validateDryRunScenario, validateTraceSourceAnchors } from "./dry-runs.ts";
 
 type DiscussionScope = "line" | "range" | "stop";
 
@@ -135,6 +136,16 @@ export class ReviewSession {
   private readonly agentActivities = new Map<string, AgentRunActivity>();
   private readonly prefetchTasks = new Map<string, Promise<void>>();
   private readonly workerAgents = new Set<TourAgent>();
+  private readonly dryRunTraces: DryRunTrace[];
+  private dryRunPreparation?: {
+    id: string;
+    flowId: string;
+    scenarioId: string;
+    detail?: DryRunDetail;
+    worker: TourAgent;
+    status: "preparing";
+    startedAt: string;
+  };
   private commandQueue: Promise<void> = Promise.resolve();
   private mutationQueue: Promise<void> = Promise.resolve();
   private refreshQueue: Promise<void> = Promise.resolve();
@@ -187,12 +198,19 @@ export class ReviewSession {
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
     this.activities = structuredClone(persisted?.activities ?? []);
+    this.dryRunTraces = structuredClone(persisted?.dryRuns ?? []);
     const changedPaths = new Set(this.comparison.files.map((file) => file.path));
     this.reviewedFiles = new Set((persisted?.reviewedFiles ?? []).filter((path) => changedPaths.has(path)));
     this.sessionName = persisted?.name;
     this.archived = persisted?.archived ?? false;
     this.outline = persisted?.outline
-      ? { ...structuredClone(persisted.outline), callFlows: validateCallFlows(persisted.outline.callFlows ?? [], this.comparison), flows: persisted.outline.flows ?? [], findings: persisted.outline.findings ?? [] }
+      ? {
+          ...structuredClone(persisted.outline),
+          callFlows: validateCallFlows(persisted.outline.callFlows ?? [], this.comparison),
+          flows: persisted.outline.flows ?? [],
+          dryRunPlans: persisted.outline.dryRunPlans ? validateDryRunPlans(persisted.outline.dryRunPlans, { callFlows: persisted.outline.callFlows ?? [], flows: persisted.outline.flows ?? [] }, this.comparison) : [],
+          findings: persisted.outline.findings ?? [],
+        }
       : undefined;
     this.currentStepIndex = persisted?.currentStepIndex ?? -1;
     this.revision = persisted?.revision ?? 1;
@@ -202,7 +220,7 @@ export class ReviewSession {
     this.fullComparison = comparison;
     this.currentRevisionSummary = { changedFiles: 0, additions: 0, deletions: 0, newFiles: [], changedAgainFiles: [], resolvedFiles: [], unchangedFiles: [], text: "No review checkpoint yet. Create one before refreshing to preserve reviewed files." };
     this.selection = persisted?.selection
-      ? { ...structuredClone(persisted.selection), includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings, includeAdaptiveDiagrams: persisted.selection.includeAdaptiveDiagrams ?? true }
+      ? { ...structuredClone(persisted.selection), includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings, includeAdaptiveDiagrams: persisted.selection.includeAdaptiveDiagrams ?? true, includeDryRuns: persisted.selection.includeDryRuns ?? true }
       : undefined;
     this.agentContinuation = structuredClone(persisted?.agentContinuation);
     if (this.status === "open" && this.selection) {
@@ -244,7 +262,7 @@ export class ReviewSession {
 
   private persistedState(): PersistedReviewSession {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       name: this.sessionName,
       archived: this.archived,
       repositoryRoot: this.comparison.repositoryRoot,
@@ -269,6 +287,7 @@ export class ReviewSession {
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
+      dryRuns: structuredClone(this.dryRunTraces),
       pullRequest: structuredClone(this.pullRequest),
       screenshots: structuredClone(this.screenshots),
       revision: this.revision,
@@ -550,6 +569,9 @@ export class ReviewSession {
       if (!diagram?.affectedFiles) continue;
       diagram.outdated = diagram.affectedFiles.some((path) => changedPaths.has(path));
     }
+    for (const trace of this.dryRunTraces) {
+      if (trace.comparison.fingerprint !== comparisonFingerprint(full)) trace.stale = true;
+    }
   }
 
   private async selectComparisonView(): Promise<void> {
@@ -796,6 +818,7 @@ export class ReviewSession {
       includeFlows: input.includeFlows ?? true,
       includeFindings: this.defaults.includeFindings === false ? false : input.includeFindings ?? true,
       includeAdaptiveDiagrams: input.includeAdaptiveDiagrams ?? true,
+      includeDryRuns: input.includeDryRuns ?? true,
     };
   }
 
@@ -824,6 +847,7 @@ export class ReviewSession {
       includeFlows: this.selection.includeFlows,
       includeFindings: this.selection.includeFindings,
       includeAdaptiveDiagrams: this.selection.includeAdaptiveDiagrams,
+      includeDryRuns: this.selection.includeDryRuns,
     };
   }
 
@@ -898,6 +922,12 @@ export class ReviewSession {
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
+      dryRunGenerationEnabled: this.selection?.includeDryRuns !== false,
+      dryRunPlans: structuredClone(this.outline?.dryRunPlans ?? []),
+      dryRuns: this.dryRunTraces.map((trace) => ({ ...structuredClone(trace), ...(traceIsStale(trace, this.comparison, this.outline ?? { dryRunPlans: [] }) ? { stale: true } : {}) })),
+      dryRunPreparation: this.dryRunPreparation
+        ? { id: this.dryRunPreparation.id, flowId: this.dryRunPreparation.flowId, scenarioId: this.dryRunPreparation.scenarioId, ...(this.dryRunPreparation.detail ? { detail: this.dryRunPreparation.detail } : {}), status: this.dryRunPreparation.status, startedAt: this.dryRunPreparation.startedAt }
+        : undefined,
       pullRequest: structuredClone(this.pullRequest),
       screenshots: structuredClone(this.screenshots),
       revision: this.revision,
@@ -909,6 +939,14 @@ export class ReviewSession {
       tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
       needsAttention: buildNeedsAttention(this.comparison, this.outline, this.pullRequest),
     };
+  }
+
+  /** Prepared traces are exported as saved, offline review evidence. */
+  exportDryRuns(): DryRunTrace[] {
+    return this.dryRunTraces.map((trace) => ({
+      ...structuredClone(trace),
+      ...(traceIsStale(trace, this.comparison, this.outline ?? { dryRunPlans: [] }) ? { stale: true } : {}),
+    }));
   }
 
   screenshot(id: string): { metadata: ReviewScreenshot; path: string } | undefined {
@@ -1351,7 +1389,8 @@ export class ReviewSession {
         (selection.includeCallFlows !== undefined && selection.includeCallFlows !== this.selection?.includeCallFlows) ||
         (selection.includeFlows !== undefined && selection.includeFlows !== this.selection?.includeFlows) ||
         (selection.includeFindings !== undefined && selection.includeFindings !== this.selection?.includeFindings) ||
-        (selection.includeAdaptiveDiagrams !== undefined && selection.includeAdaptiveDiagrams !== this.selection?.includeAdaptiveDiagrams)
+        (selection.includeAdaptiveDiagrams !== undefined && selection.includeAdaptiveDiagrams !== this.selection?.includeAdaptiveDiagrams) ||
+        (selection.includeDryRuns !== undefined && selection.includeDryRuns !== this.selection?.includeDryRuns)
       )) {
         throw new ReviewError("The agent and model cannot be changed after the tour starts.");
       }
@@ -1368,6 +1407,7 @@ export class ReviewSession {
           );
           receipts.push(...generated.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);
+          await validateDryRunPlanSourceAnchors(generated.value.dryRunPlans ?? [], (path) => loadRepositoryFile(this.comparison, path));
           this.outline = generated.value;
           this.currentStepIndex = 0;
         } else if (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length) {
@@ -1547,7 +1587,152 @@ export class ReviewSession {
     });
   }
 
-  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; stepId?: string | null; anchor?: ChatMessage["anchor"]; contextPaths?: string[] }) {
+  private currentDryRunPlan(flowKind: DryRunFlowKind, flowId: string): DryRunPlan {
+    const plan = this.outline ? dryRunPlanFor(this.outline, flowKind, flowId) : undefined;
+    if (!plan) throw new ReviewError("No dry-run scenarios are available for this flow.");
+    return plan;
+  }
+
+  private finishDryRunPreparation(id: string): void {
+    if (this.dryRunPreparation?.id === id) this.dryRunPreparation = undefined;
+  }
+
+  async prepareDryRunPlans() {
+    return this.serialize(async () => {
+      this.ensureOpen();
+      if (!this.outline) throw new ReviewError("Start the tour before preparing dry-run scenarios.");
+      if (this.selection?.includeDryRuns === false) throw new ReviewError("Enable dry runs before preparing scenarios.");
+      if (this.dryRunPreparation?.status === "preparing") throw new ReviewError("Another dry-run preparation is already in progress.");
+      if (!this.agent) {
+        this.selection = this.resolveSelection({ includeDryRuns: true });
+        this.agent = this.createAgent();
+      }
+      const id = crypto.randomUUID();
+      const comparisonGeneration = this.comparisonGeneration;
+      const worker = this.createWorkerAgent();
+      const outline = this.outline;
+      this.dryRunPreparation = { id, flowId: "planning", scenarioId: "planning", worker, status: "preparing", startedAt: new Date().toISOString() };
+      worker.useComparison(this.comparison);
+      try {
+        const generated = await worker.generateDryRunPlans(this.comparison, outline);
+        return await this.serializeMutation(async () => {
+          if (this.dryRunPreparation?.id !== id || this.dryRunPreparation.status !== "preparing") throw new ReviewError("Dry-run scenario planning was cancelled.");
+          this.ensureOpen();
+          this.ensureComparisonCurrent(comparisonGeneration);
+          if (!this.outline) throw new ReviewError("The tour changed while dry-run scenarios were being prepared.");
+          await validateDryRunPlanSourceAnchors(generated.value, (path) => loadRepositoryFile(this.comparison, path));
+          this.outline.dryRunPlans = generated.value;
+          for (const trace of this.dryRunTraces) {
+            if (traceIsStale(trace, this.comparison, this.outline)) trace.stale = true;
+          }
+          this.dryRunPreparation = undefined;
+          this.revision += 1;
+          await this.persistAgentResult(generated.receipts);
+          return this.snapshot();
+        });
+      } finally {
+        this.finishDryRunPreparation(id);
+        this.workerAgents.delete(worker);
+        worker.cancel();
+      }
+    });
+  }
+
+  async updateDryRunScenario(flowKind: DryRunFlowKind, flowId: string, scenario: unknown) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (this.selection?.includeDryRuns === false) throw new ReviewError("Enable dry runs before editing scenarios.");
+      const plan = this.currentDryRunPlan(flowKind, flowId);
+      const normalized = validateDryRunScenario(scenario, "scenario");
+      const existingIndex = plan.scenarios.findIndex((candidate) => candidate.id === normalized.id);
+      if (existingIndex < 0 && plan.scenarios.length >= 8) throw new ReviewError("Each execution flow can retain at most eight scenarios.");
+      const previous = existingIndex >= 0 ? plan.scenarios[existingIndex] : undefined;
+      const next: DryRunScenario = { ...normalized, source: "reviewer", updatedAt: new Date().toISOString() };
+      if (existingIndex >= 0) plan.scenarios[existingIndex] = next; else plan.scenarios.push(next);
+      for (const trace of this.dryRunTraces) {
+        if (trace.flowId === plan.flowId && trace.flowKind === plan.flowKind && trace.scenario.id === next.id && (!previous || dryRunScenarioFingerprint(previous) !== dryRunScenarioFingerprint(next))) {
+          trace.stale = true;
+        }
+      }
+      this.revision += 1;
+      try {
+        await this.persist();
+        return this.snapshot();
+      } catch (error) {
+        if (existingIndex >= 0 && previous) plan.scenarios[existingIndex] = previous; else plan.scenarios.pop();
+        this.revision -= 1;
+        throw error;
+      }
+    });
+  }
+
+  async prepareDryRun(flowKind: DryRunFlowKind, flowId: string, scenarioId: string, detail: DryRunDetail = "compact") {
+    return this.serialize(async () => {
+      this.ensureOpen();
+      if (this.selection?.includeDryRuns === false) throw new ReviewError("Enable dry runs before preparing a simulated execution.");
+      if (!this.outline) throw new ReviewError("Start the tour before preparing a simulated execution.");
+      if (this.dryRunPreparation?.status === "preparing") throw new ReviewError("Another dry-run preparation is already in progress.");
+      const plan = this.currentDryRunPlan(flowKind, flowId);
+      const scenario = plan.scenarios.find((candidate) => candidate.id === scenarioId);
+      if (!scenario) throw new ReviewError("The selected dry-run scenario does not exist.");
+      if (!this.agent) {
+        this.selection = this.resolveSelection({ includeDryRuns: true });
+        this.agent = this.createAgent();
+      }
+      const id = crypto.randomUUID();
+      const scenarioFingerprint = dryRunScenarioFingerprint(scenario);
+      const comparisonGeneration = this.comparisonGeneration;
+      const worker = this.createWorkerAgent();
+      const outline = this.outline;
+      const retainedTrace = this.dryRunTraces.find((trace) => trace.flowKind === flowKind && trace.flowId === flowId && trace.scenario.id === scenarioId);
+      const compactTrace = detail === "detailed" && retainedTrace && !traceIsStale(retainedTrace, this.comparison, outline) && retainedTrace.detail !== "detailed" && retainedTrace.steps.length <= 8
+        ? retainedTrace
+        : undefined;
+      this.dryRunPreparation = { id, flowId: `${flowKind}:${flowId}`, scenarioId, detail, worker, status: "preparing", startedAt: new Date().toISOString() };
+      worker.useComparison(this.comparison);
+      try {
+        const generated = await worker.prepareDryRunTrace(this.comparison, outline, plan.flowId, plan.flowKind, scenario, detail, compactTrace);
+        if (compactTrace && generated.value.steps.length <= compactTrace.steps.length) {
+          throw new ReviewError("The detailed walkthrough did not add any source-grounded steps. Try preparing it again, or use the compact walkthrough.");
+        }
+        await validateTraceSourceAnchors(generated.value, (path) => loadRepositoryFile(this.comparison, path));
+        return await this.serializeMutation(async () => {
+          if (this.dryRunPreparation?.id !== id || this.dryRunPreparation.status !== "preparing") throw new ReviewError("Dry-run preparation was cancelled.");
+          this.ensureOpen();
+          this.ensureComparisonCurrent(comparisonGeneration);
+          const currentPlan = this.currentDryRunPlan(flowKind, flowId);
+          const currentScenario = currentPlan.scenarios.find((candidate) => candidate.id === scenarioId);
+          if (!currentScenario || dryRunScenarioFingerprint(currentScenario) !== scenarioFingerprint) {
+            throw new ReviewError("Scenario inputs changed while the walkthrough was being prepared. Prepare it again for the current inputs.");
+          }
+          const index = this.dryRunTraces.findIndex((trace) => trace.flowId === plan.flowId && trace.flowKind === plan.flowKind && trace.scenario.id === scenarioId);
+          if (index >= 0) this.dryRunTraces.splice(index, 1, generated.value); else this.dryRunTraces.push(generated.value);
+          this.dryRunPreparation = undefined;
+          this.revision += 1;
+          await this.persistAgentResult(generated.receipts);
+          return this.snapshot();
+        });
+      } finally {
+        this.finishDryRunPreparation(id);
+        this.workerAgents.delete(worker);
+        worker.cancel();
+      }
+    });
+  }
+
+  async cancelDryRunPreparation() {
+    return this.serializeMutation(async () => {
+      const active = this.dryRunPreparation;
+      if (!active || active.status !== "preparing") return this.snapshot();
+      active.worker.cancel();
+      this.dryRunPreparation = undefined;
+      this.revision += 1;
+      await this.persist();
+      return this.snapshot();
+    });
+  }
+
+  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; stepId?: string | null; anchor?: ChatMessage["anchor"]; contextPaths?: string[]; dryRunContext?: ChatMessage["dryRunContext"] }) {
     return this.serialize(async () => {
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;
@@ -1563,6 +1748,13 @@ export class ReviewSession {
       const normalizedAnchor = root || !anchor ? anchor : this.normalizeQuestionAnchor(anchor);
       if (root && conversation?.contextPaths?.length) throw new ReviewError("A follow-up keeps its original file context.");
       const contextPaths = root?.contextPaths ?? [...new Set(conversation?.contextPaths ?? [])];
+      if (root && conversation?.dryRunContext) throw new ReviewError("A follow-up keeps its original dry-run context.");
+      const dryRunContext = root?.dryRunContext ?? conversation?.dryRunContext;
+      const dryRunTrace = dryRunContext ? this.dryRunTraces.find((trace) => trace.id === dryRunContext.traceId) : undefined;
+      const dryRunStep = dryRunTrace?.steps.find((step) => step.id === dryRunContext?.stepId);
+      if (dryRunContext && (!dryRunTrace || !dryRunStep || dryRunTrace.flowId !== dryRunContext.flowId || dryRunTrace.scenario.id !== dryRunContext.scenarioId)) {
+        throw new ReviewError("The selected dry-run step is no longer available.");
+      }
       if (contextPaths.length > 8) throw new ReviewError("A question can include at most 8 additional files.");
       if (contextPaths.some((path) => !this.comparison.repositoryFiles.includes(path))) throw new ReviewError("Question context must reference repository files.");
       if (!root && normalizedAnchor && this.reviewAnchorContent(normalizedAnchor.path, normalizedAnchor.side, normalizedAnchor.line) !== normalizedAnchor.content) {
@@ -1592,6 +1784,7 @@ export class ReviewSession {
         normalizedAnchor ? `Original question location: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nCaptured code: ${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nSelected quotation/context: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nExact selected quotation:\n${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nExact selected context:\n${normalizedAnchor.context ?? normalizedAnchor.content}\n${this.reviewAnchorContent(normalizedAnchor.path, normalizedAnchor.side, normalizedAnchor.line) === normalizedAnchor.content ? "The captured location still matches." : "The captured location has changed or is no longer in the diff. Do not assume this location is current."}` : selectedContext,
         history.length ? `Conversation history (untrusted reviewer/agent content):\n${JSON.stringify(history.map(({ role, body }) => ({ role, body })))}` : undefined,
         fileContext ? `Additional repository files selected by the reviewer:\n${fileContext}` : undefined,
+        dryRunTrace && dryRunStep ? `Selected simulated execution context (derived from code, not runtime verified):\n${JSON.stringify({ flowId: dryRunTrace.flowId, scenario: dryRunTrace.scenario, step: dryRunStep, outcome: dryRunTrace.outcome })}` : undefined,
       ].filter(Boolean).join("\n\n");
       const userMessage: ChatMessage = {
         id: messageId,
@@ -1601,6 +1794,7 @@ export class ReviewSession {
         threadId,
         ...(!root && normalizedAnchor ? { anchor: structuredClone(normalizedAnchor) } : {}),
         ...(!root && contextPaths.length ? { contextPaths } : {}),
+        ...(!root && dryRunContext ? { dryRunContext: structuredClone(dryRunContext) } : {}),
         createdAt: new Date().toISOString(),
       };
       let proposalWorkspace: ProposalWorkspace | undefined;

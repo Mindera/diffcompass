@@ -17,6 +17,46 @@ function boundedString(value: unknown, max = 500_000): value is string {
   return typeof value === "string" && value.length <= max;
 }
 
+function validJson(value: unknown, depth = 0): boolean {
+  if (depth > 8 || value === null || typeof value === "boolean") return depth <= 8;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return value.length <= 16_000;
+  if (Array.isArray(value)) return value.length <= 100 && value.every((item) => validJson(item, depth + 1));
+  return record(value) && Object.keys(value).length <= 100 && Object.keys(value).every((key) => key.length > 0 && key.length <= 256 && validJson(value[key], depth + 1));
+}
+
+function validDryRunScenario(value: unknown): boolean {
+  return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.title, 500) && nonEmptyString(value.reason, 2_000) &&
+    ["test", "example", "invented", "reviewer"].includes(String(value.source)) &&
+    (value.description === undefined || nonEmptyString(value.description, 4_000)) &&
+    record(value.inputs) && record(value.mocks) && validJson(value.inputs) && validJson(value.mocks) &&
+    Array.isArray(value.assumptions) && value.assumptions.length <= 20 && value.assumptions.every((item) => nonEmptyString(item, 2_000)) && new Set(value.assumptions).size === value.assumptions.length &&
+    (value.updatedAt === undefined || nonEmptyString(value.updatedAt, 64));
+}
+
+function validDryRunTrace(value: unknown): boolean {
+  if (!record(value) || !nonEmptyString(value.id, 128) || !record(value.comparison) || !nonEmptyString(value.comparison.base, 4_096) ||
+    !nonEmptyString(value.comparison.mergeBase, 4_096) || !nonEmptyString(value.comparison.head, 4_096) || !/^[0-9a-f]{64}$/.test(String(value.comparison.fingerprint)) ||
+    !nonEmptyString(value.flowId, 128) || value.flowKind !== "behavior" || !/^[0-9a-f]{64}$/.test(String(value.flowFingerprint)) ||
+    (value.detail !== undefined && value.detail !== "compact" && value.detail !== "detailed") ||
+    !validDryRunScenario(value.scenario) || !Array.isArray(value.assumptions) || value.assumptions.length > 20 || !value.assumptions.every((item) => nonEmptyString(item, 2_000)) ||
+    !Array.isArray(value.steps) || value.steps.length === 0 || value.steps.length > (value.detail === "compact" ? 8 : value.detail === "detailed" ? 24 : 80) || !record(value.outcome) || !nonEmptyString(value.outcome.summary, 8_000) ||
+    (value.outcome.value !== undefined && !validJson(value.outcome.value)) || !nonEmptyString(value.preparedAt, 64) || (value.stale !== undefined && typeof value.stale !== "boolean")) return false;
+  const ids = new Set<string>();
+  return value.steps.every((step, index) => record(step) && nonEmptyString(step.id, 128) && !ids.has(step.id) && Boolean(ids.add(step.id)) &&
+    Number(step.order) === index + 1 && ["entry", "calculation", "branch", "call", "mock", "return", "unresolved"].includes(String(step.kind)) &&
+    nonEmptyString(step.title, 500) && nonEmptyString(step.explanation, 8_000) && nonEmptyString(step.function, 500) && record(step.source) &&
+    nonEmptyString(step.source.path, 4_096) && step.source.side === "new" && Number.isInteger(step.source.startLine) && Number(step.source.startLine) > 0 &&
+    Number.isInteger(step.source.endLine) && Number(step.source.endLine) >= Number(step.source.startLine) && Number(step.source.endLine) - Number(step.source.startLine) <= 100 && typeof step.source.changed === "boolean" &&
+    (step.arguments === undefined || (record(step.arguments) && validJson(step.arguments))) && (step.locals === undefined || (record(step.locals) && validJson(step.locals))) &&
+    Array.isArray(step.valueChanges) && step.valueChanges.length <= 30 && step.valueChanges.every((change) => record(change) && nonEmptyString(change.name, 256) &&
+      (change.before === undefined || validJson(change.before)) && (change.after === undefined || validJson(change.after)) && (change.note === undefined || nonEmptyString(change.note, 1_000)) &&
+      (change.before !== undefined || change.after !== undefined || change.note !== undefined)) &&
+    (step.assumption === undefined || nonEmptyString(step.assumption, 2_000)) &&
+    (step.mapLink === undefined || (record(step.mapLink) && nonEmptyString(step.mapLink.callFlowId, 128) &&
+      (step.mapLink.nodeId === undefined || nonEmptyString(step.mapLink.nodeId, 128)) && (step.mapLink.edgeId === undefined || nonEmptyString(step.mapLink.edgeId, 128)))));
+}
+
 function validScreenshot(value: unknown): boolean {
   return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.name, 512) &&
     ["image/png", "image/jpeg", "image/gif", "image/webp", "video/mp4"].includes(String(value.mimeType)) &&
@@ -104,6 +144,23 @@ function validOutline(value: unknown): boolean {
       Array.isArray(flow.affectedFiles) && flow.affectedFiles.length <= 100 && flow.affectedFiles.every((path) => nonEmptyString(path, 4_096)) && new Set(flow.affectedFiles).size === flow.affectedFiles.length &&
       Number.isInteger(flow.blastRadiusSize) && Number(flow.blastRadiusSize) >= 0);
   if (!validFlows) return false;
+  if (value.dryRunPlans !== undefined) {
+    if (!Array.isArray(value.dryRunPlans) || value.dryRunPlans.length > 16) return false;
+    const identities = new Set<string>();
+    const validPlans = value.dryRunPlans.every((plan) => {
+      if (!record(plan) || !nonEmptyString(plan.flowId, 128) || plan.flowKind !== "behavior" || !nonEmptyString(plan.title, 500) || !nonEmptyString(plan.summary, 4_000) ||
+        !record(plan.source) || !Array.isArray(plan.source.anchors) || plan.source.anchors.length === 0 || plan.source.anchors.length > 20 || !Array.isArray(plan.scenarios) || plan.scenarios.length > 8) return false;
+      const key = `${plan.flowKind}:${plan.flowId}`;
+      if (identities.has(key)) return false;
+      identities.add(key);
+      if (!plan.source.anchors.every((anchor) => record(anchor) && nonEmptyString(anchor.path, 4_096) && anchor.side === "new" && Number.isInteger(anchor.startLine) && Number(anchor.startLine) > 0 && Number.isInteger(anchor.endLine) && Number(anchor.endLine) >= Number(anchor.startLine) && Number(anchor.endLine) - Number(anchor.startLine) <= 100 && typeof anchor.changed === "boolean")) return false;
+      if (plan.callFlowId !== undefined && (!nonEmptyString(plan.callFlowId, 128) || !callFlowIds.has(plan.callFlowId))) return false;
+      if (plan.sequenceFlowId !== undefined && (!nonEmptyString(plan.sequenceFlowId, 128) || !flowIds.has(plan.sequenceFlowId))) return false;
+      const scenarioIds = new Set<string>();
+      return plan.scenarios.every((scenario) => validDryRunScenario(scenario) && !scenarioIds.has((scenario as Record<string, unknown>).id as string) && Boolean(scenarioIds.add((scenario as Record<string, unknown>).id as string)));
+    });
+    if (!validPlans) return false;
+  }
   const findingIds = new Set<string>();
   return value.findings.every((finding) => record(finding) && nonEmptyString(finding.id, 128) && !findingIds.has(finding.id) && Boolean(findingIds.add(finding.id)) &&
       (finding.phaseId === undefined || (nonEmptyString(finding.phaseId, 128) && phaseIds.has(finding.phaseId))) &&
@@ -250,6 +307,8 @@ function validMessage(value: unknown): boolean {
       (value.anchor.context === undefined || boundedString(value.anchor.context, 32_000)))) &&
     (value.contextPaths === undefined || (Array.isArray(value.contextPaths) && value.contextPaths.length <= 8 &&
       value.contextPaths.every((path) => nonEmptyString(path, 4096)) && new Set(value.contextPaths).size === value.contextPaths.length)) &&
+    (value.dryRunContext === undefined || (record(value.dryRunContext) && nonEmptyString(value.dryRunContext.traceId, 128) &&
+      nonEmptyString(value.dryRunContext.flowId, 128) && nonEmptyString(value.dryRunContext.scenarioId, 128) && nonEmptyString(value.dryRunContext.stepId, 128))) &&
     nonEmptyString(value.createdAt, 64);
 }
 
@@ -291,7 +350,8 @@ function validSelection(value: unknown): boolean {
     (value.includeCallFlows === undefined || typeof value.includeCallFlows === "boolean") &&
     (value.includeFlows === undefined || typeof value.includeFlows === "boolean") &&
     (value.includeFindings === undefined || typeof value.includeFindings === "boolean") &&
-    (value.includeAdaptiveDiagrams === undefined || typeof value.includeAdaptiveDiagrams === "boolean");
+    (value.includeAdaptiveDiagrams === undefined || typeof value.includeAdaptiveDiagrams === "boolean") &&
+    (value.includeDryRuns === undefined || typeof value.includeDryRuns === "boolean");
 }
 
 function validContinuation(value: unknown): boolean {
@@ -370,7 +430,7 @@ function validBridgePrompt(value: unknown): boolean {
   if (!record(value) || !record(value.event)) return false;
   const event = value.event;
   return Number.isInteger(event.sequence) && Number(event.sequence) > 0 && nonEmptyString(event.id, 128) &&
-    event.type === "agent.prompt" && ["tour.outline", "tour.explanation", "review.question", "issue.assessment"].includes(String(event.kind)) &&
+    event.type === "agent.prompt" && ["tour.outline", "tour.explanation", "review.question", "issue.assessment", "dry-run.plan", "dry-run.trace"].includes(String(event.kind)) &&
     nonEmptyString(event.prompt, 500_000) && nonEmptyString(event.createdAt, 64) &&
     (value.response === undefined || nonEmptyString(value.response, 500_000)) &&
     typeof value.acknowledged === "boolean" && typeof value.committed === "boolean";
@@ -444,9 +504,13 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     }
   }
   if (value.schemaVersion === 2 && record(value.preferences)) value.preferences.prefetchSteps ??= 2;
+  // v4 adds optional dry-run data. A v3 session has no trace state to
+  // transform, but must still advance so the next save uses the current
+  // schema instead of repeatedly presenting itself as a legacy snapshot.
+  if (value.schemaVersion === 3) value.schemaVersion = 4;
   const session = value as Partial<PersistedReviewSession>;
   if (
-    ![2, 3].includes(Number(session.schemaVersion)) ||
+    ![2, 3, 4].includes(Number(session.schemaVersion)) ||
     (session.name !== undefined && !nonEmptyString(session.name, 200)) ||
     (session.archived !== undefined && typeof session.archived !== "boolean") ||
     !nonEmptyString(session.repositoryRoot, 16_384) ||
@@ -465,7 +529,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.activities !== undefined && (!Array.isArray(session.activities) || session.activities.length > 2_000 || !session.activities.every(validActivity))) ||
     (session.reviewedFiles !== undefined && (!Array.isArray(session.reviewedFiles) || session.reviewedFiles.length > 10_000 ||
       !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
-    (session.schemaVersion === 3 && (!Array.isArray(session.checkpoints) || session.checkpoints.length > 100 || !session.checkpoints.every(validCheckpoint) ||
+    ((session.schemaVersion === 3 || session.schemaVersion === 4) && (!Array.isArray(session.checkpoints) || session.checkpoints.length > 100 || !session.checkpoints.every(validCheckpoint) ||
       !nonEmptyString(session.checkpointRefNamespace, 256) || !/^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}$/.test(session.checkpointRefNamespace))) ||
     (session.schemaVersion === 2 && session.checkpointRefNamespace !== undefined) ||
     (session.schemaVersion === 2 && session.checkpoints !== undefined) ||
@@ -475,6 +539,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.preferences !== undefined && !validPreferences(session.preferences)) ||
     (session.reviewPolicy !== undefined && !validReviewPolicy(session.reviewPolicy)) ||
     (session.findingGenerationEnabled !== undefined && typeof session.findingGenerationEnabled !== "boolean") ||
+    (session.dryRuns !== undefined && (!Array.isArray(session.dryRuns) || session.dryRuns.length > 32 || !session.dryRuns.every(validDryRunTrace))) ||
     (session.pullRequest !== undefined && !validPullRequest(session.pullRequest)) ||
     (session.screenshots !== undefined && (!Array.isArray(session.screenshots) || session.screenshots.length > 12 || !session.screenshots.every(validScreenshot) || new Set(session.screenshots.map((shot) => shot.id)).size !== session.screenshots.length)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
@@ -530,7 +595,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       session.bridgeToken === undefined || session.bridgeSequence === undefined || terminal.sequence > session.bridgeSequence ||
       terminal.outcome !== session.status
     )) ||
-    (session.schemaVersion === 3 && session.checkpoints!.some((checkpoint) => !session.checkpointRefNamespace || !checkpoint.ref.startsWith(`${session.checkpointRefNamespace}/`))) ||
+    ((session.schemaVersion === 3 || session.schemaVersion === 4) && session.checkpoints!.some((checkpoint) => !session.checkpointRefNamespace || !checkpoint.ref.startsWith(`${session.checkpointRefNamespace}/`))) ||
     (session.selectedCheckpointId !== undefined && !session.checkpoints?.some((checkpoint) => checkpoint.id === session.selectedCheckpointId))
   ) throw new Error("The review session file has inconsistent state.");
   return session as PersistedReviewSession;

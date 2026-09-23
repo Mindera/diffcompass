@@ -7,7 +7,8 @@ import { validateReviewFlow } from "./flows.ts";
 import { validateReviewArchitecture } from "./architecture.ts";
 import { validateReviewAdaptiveDiagram } from "./adaptive-diagrams.ts";
 import { validateCallFlow, validateCallFlows } from "./call-flows.ts";
-import type { AcceptanceCriterion, AgentRunActivity, AgentSelection, GitComparison, IssueAssessment, IssueAssessmentItem, LinkedIssueContext, ReasoningEffort, ReviewerTaskContext, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
+import { validateDryRunPlans, validateGeneratedDryRun } from "./dry-runs.ts";
+import type { AcceptanceCriterion, AgentRunActivity, AgentSelection, DryRunDetail, DryRunFlowKind, DryRunPlan, DryRunScenario, DryRunTrace, GitComparison, IssueAssessment, IssueAssessmentItem, LinkedIssueContext, ReasoningEffort, ReviewerTaskContext, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFinding, ReviewFlow, ReviewPolicy, StandaloneAgentAdapterId, TourOutline, TourPhase, TourStep } from "./types.ts";
 
 interface CodexJsonEvent {
   type?: string;
@@ -155,6 +156,7 @@ function parseOutline(message: string): TourOutline {
     dataModel: value.dataModel,
     callFlows: Array.isArray(value.callFlows) ? value.callFlows : [],
     flows: Array.isArray(value.flows) ? value.flows : [],
+    dryRunPlans: Array.isArray(value.dryRunPlans) ? value.dryRunPlans : [],
     findings: Array.isArray(value.findings) ? value.findings : [],
     issueAssessment: value.issueAssessment,
   };
@@ -411,7 +413,7 @@ function issueAssessmentPromptContext(issue: LinkedIssueContext | undefined): st
   ].join("\n");
 }
 
-function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy, includeArchitecture: boolean, includeAdaptiveDiagrams: boolean, issue?: LinkedIssueContext): TourOutline {
+function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy, includeArchitecture: boolean, includeAdaptiveDiagrams: boolean, includeDryRuns: boolean, issue?: LinkedIssueContext): TourOutline {
   const phaseIds = new Set<string>();
   const stepIds = new Set<string>();
   let totalSteps = 0;
@@ -448,6 +450,9 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
     return [flow];
   }).slice(0, 3);
   const callFlows = validOptionalCallFlows(outline.callFlows, comparison);
+  const dryRunPlans = includeDryRuns
+    ? validateDryRunPlans(outline.dryRunPlans ?? [], { callFlows, flows }, comparison, { suggested: true })
+    : [];
   const findings = validateFindings(outline.findings, phases, comparison, policy);
   const diagrams: Pick<TourOutline, "architecture" | "behaviorArchitecture" | "behaviorArchitectureStatus"> = includeArchitecture ? requiredArchitectures(outline, comparison) : {};
   const adaptive = includeAdaptiveDiagrams ? {
@@ -464,6 +469,7 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
     phases,
     callFlows,
     flows,
+    dryRunPlans,
     findings,
     issueAssessment: validateIssueAssessment(outline.issueAssessment, issue, comparison),
   };
@@ -521,7 +527,22 @@ function parseCallFlows(message: string, comparison: GitComparison) {
   return validateCallFlows(value.callFlows, comparison);
 }
 
-export type BridgePromptKind = "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment";
+function parseDryRunPlans(message: string, comparison: GitComparison, outline: Pick<TourOutline, "callFlows" | "flows">): DryRunPlan[] {
+  const start = message.indexOf("{");
+  const end = message.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("The agent did not return dry-run plan JSON.");
+  const value = JSON.parse(message.slice(start, end + 1)) as { dryRunPlans?: unknown };
+  return validateDryRunPlans(value.dryRunPlans, outline, comparison, { suggested: true });
+}
+
+function parseDryRunTrace(message: string): unknown {
+  const start = message.indexOf("{");
+  const end = message.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("The agent did not return dry-run trace JSON.");
+  return JSON.parse(message.slice(start, end + 1));
+}
+
+export type BridgePromptKind = "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment" | "dry-run.plan" | "dry-run.trace";
 
 export interface AgentTransportReply {
   message: string;
@@ -540,6 +561,7 @@ export interface AgentTransport {
     kind: BridgePromptKind,
     attachment?: { name: string; content: string },
     progress?: (update: { status: "waiting" | "running"; message: string }) => void,
+    signal?: AbortSignal,
   ): Promise<string | AgentTransportReply>;
   continuationId?(): string | undefined;
   setFallback?(
@@ -853,6 +875,7 @@ export class TourAgent {
   private readonly includeFlows: boolean;
   private readonly includeFindings: boolean;
   private readonly includeAdaptiveDiagrams: boolean;
+  private readonly includeDryRuns: boolean;
   private readonly activity?: (activity: AgentRunActivity) => void;
 
   constructor(
@@ -869,6 +892,7 @@ export class TourAgent {
     this.includeFlows = selection.includeFlows !== false;
     this.includeFindings = selection.includeFindings !== false;
     this.includeAdaptiveDiagrams = selection.includeAdaptiveDiagrams !== false;
+    this.includeDryRuns = selection.includeDryRuns !== false;
     this.activity = activity;
     this.attached = selection.adapterId === "attached";
     if (selection.adapterId === "attached") {
@@ -896,6 +920,10 @@ export class TourAgent {
     const now = new Date().toISOString();
     const label = kind === "tour.explanation"
       ? "Preparing a tour stop"
+      : kind === "dry-run.trace"
+        ? "Preparing simulated execution"
+        : kind === "dry-run.plan"
+          ? "Planning dry-run scenarios"
       : kind === "review.question"
         ? "Answering the reviewer"
         : kind === "issue.assessment"
@@ -929,7 +957,10 @@ export class TourAgent {
       const receipts: string[] = [];
       let request = prompt;
       for (let attempt = 0; ; attempt++) {
-        const response = await this.transport.send(request, kind, attachment, update);
+        // Only dry-run work needs an explicit user-cancel signal. Existing
+        // tour requests retain the bridge's established close/dispose path.
+        const signal = kind === "dry-run.plan" || kind === "dry-run.trace" ? this.abortController.signal : undefined;
+        const response = await this.transport.send(request, kind, attachment, update, signal);
         const message = typeof response === "string" ? response : response.message;
         if (typeof response !== "string" && response.receipt) receipts.push(response.receipt);
         try {
@@ -986,8 +1017,9 @@ ${issueContext}
 
 Reviewer-selected optional outputs:
 - Architecture: ${this.includeArchitecture ? "include" : "omit"}
-- Call-flow diffs: ${this.includeCallFlows ? "include" : "omit"}
+- Call-flow diffs: ${this.includeCallFlows ? "include" : "omit (dry runs retain independent behavior identities)"}
 - Sequence diagrams: ${this.includeFlows ? "include" : "omit"}
+- Dry-run scenario planning: ${this.includeDryRuns ? "include suggestions only; do not prepare detailed traces yet" : "omit"}
 - Findings: ${this.includeFindings && policy.findings.enabled ? "include" : "omit"}
 - Adaptive diagrams: ${this.includeAdaptiveDiagrams ? "consider state-machine or data-model views only when evidence supports them and they materially improve understanding" : "omit"}
 
@@ -1006,6 +1038,8 @@ The optional adaptive fields use these shapes:
 
 Before choosing anchors, identify one primary journey from an input, trigger, or contract to the observable result of the change. Use that journey as the narrative spine of the tour. When the implementation-journey diagram is included, its components and labelled relationships should express the same causal path at system level. Treat phases as ordered conceptual layers and order them by behavior and dependency flow, not file order or remembered implementation chronology. Put contract or foundation layers before implementation layers, and implementation before integration or effects, when the selected evidence supports those layers. Every phase summary must concisely state what its layer establishes and how it enables the next layer; for the final phase, state how it reaches the observable result or relevant verification. The first stop establishes the input or prerequisite. Each later stop adds one concrete fact that depends on what the reviewer has already learned. The final stops reach the observable result and its most relevant verification when the diff supports one. Branch only when the change has a genuinely separate behavior that cannot be explained on the primary journey. Do not create a component inventory, repeat the same fact at several anchors, or use a changed file as a stop unless it advances the journey.
 
+When dry-run scenario planning is enabled, return a dryRunPlans array. A plan is a renderer-independent behavior with its own stable flowId and flowKind "behavior", short title/summary, and source anchors grounded in reviewed source. It may optionally correlate to a returned callFlowId and/or sequenceFlowId, but must work even if neither diagram exists or either diagram tab is disabled. For each useful behavior, suggest exactly two or three scenarios: principal changed behavior, a relevant alternate branch, and a meaningful boundary when supported. Prefer existing tests or examples for input shapes. Mark constructed sample data as invented. Every scenario has editable JSON object inputs and mocks plus explicit assumptions. Planning suggests cases only: do not generate detailed execution steps and do not claim runtime verification.
+
 Every phase is one coherent behavioral or architectural change. Declare every changed file used by that phase exactly once and explain its role; every step anchor must refer to one of those declared files. Step ids are unique across the tour. Every finding must declare its owning phase. Add stepId only when the finding's exact path, side, and line fall inside that step's anchor; otherwise leave it phase-scoped. Every anchor and finding path must be one of the changed files and every line must occur in the diff. Each objective states the one concrete fact established by its anchor, not a generic instruction to inspect, see, or check code. Keep every objective short enough to scan as an annotation beside the code. planningNotes are concise, user-facing decisions about route and scope, never private chain-of-thought. Follow the repository policy's finding enabled flag, category allow-list, and minimum severity exactly. Treat findings in this response as evidence-backed candidates: a separate focused pass will validate them and look for omissions before anything is shown to the reviewer. ${FINDING_EVIDENCE_FORMAT} When findings are omitted above, return an empty findings array and spend no analysis on them. Otherwise, an empty findings array is correct when no candidate is supported. Mark introduced null when attribution is uncertain. Priority is derived deterministically: P0 when untested with blastRadiusSize >= 8 (or a critical recall-guard finding), P1 when blastRadiusSize >= 4, P2 for a line or symbol pin, and P3 for a file-level pin. Call flows describe concrete caller-to-callee structure rooted at changed entrypoints. Use one stable node for the same callable across old and new states, mark it modified when its implementation or outgoing calls changed, and represent rewiring as removed and added edges. Every added edge needs a newCallSite, every removed edge needs an oldCallSite, and every call-site path must be changed so the reviewer can jump to its evidence. affectedFiles must exactly match the changed call-site paths. Include at most 8 entrypoints, 80 nodes and 160 edges per entrypoint. Treat indirect or dynamic dispatch as partial or unverified, never as certain. When call-flow diffs are omitted above, return an empty callFlows array and spend no analysis on them. Include sequence diagrams only for goal-critical, high-blast flows, but do not omit a flow merely because its provenance is partial. When sequence diagrams are omitted above, return an empty flow array and spend no analysis on them. Each included flow's affectedFiles must list every changed path that participates in or is directly affected by that runtime flow, and no unrelated path. Do not use semicolons in Mermaid message or note text; use commas or periods. When diagrams are included and runtime behavior spans three or more changed files, return 1-3 compact flows; return an empty flow array only when no goal-critical runtime flow is supported by evidence. Use at most twelve architectural-layer participants and label provenance honestly. Prefer 3-7 phases with 1-4 meaningful stops each.
 
 Write for a reviewer who has not seen this code before. Use short, plain sentences. Avoid jargon unless the code itself uses the term, and explain a necessary term in a few words. Keep the tour summary to at most three short sentences, every phase and file summary to one sentence, and every objective to one direct sentence. Describe concrete behavior before implementation details.`;
@@ -1018,7 +1052,7 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       "tour.outline",
       attachment,
       undefined,
-      (message) => validateOutline(parseOutline(message), comparison, policy, this.includeArchitecture, this.includeAdaptiveDiagrams, issue),
+      (message) => validateOutline(parseOutline(message), comparison, policy, this.includeArchitecture, this.includeAdaptiveDiagrams, this.includeDryRuns, issue),
     );
     const generated = generatedResult.value;
     const outline = {
@@ -1030,6 +1064,7 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       dataModel: this.includeAdaptiveDiagrams ? generated.dataModel : undefined,
       callFlows: this.includeCallFlows ? generated.callFlows : [],
       flows: this.includeFlows ? generated.flows : [],
+      dryRunPlans: this.includeDryRuns ? generated.dryRunPlans : [],
       findings: this.includeFindings ? generated.findings : [],
     };
     if (!this.includeFindings || !policy.findings.enabled) return { value: outline, receipts: generatedResult.receipts };
@@ -1183,6 +1218,77 @@ Return only {"callFlows":[...]} using bounded nodes and caller-to-callee edges. 
       },
     );
     return callFlows;
+  }
+
+  async generateDryRunPlans(comparison: GitComparison, outline: Pick<TourOutline, "callFlows" | "flows">): Promise<AgentResult<DryRunPlan[]>> {
+    this.useComparison(comparison);
+    const prompt = `${TOUR_CONTEXT_BOUNDARY}
+
+You are planning simulated execution walkthroughs for an interactive code review. Inspect the reviewed source and selected comparison. Do not execute the reviewed program, do not run its tests, and do not modify files.
+
+Comparison fingerprint: ${this.comparisonFingerprint}
+Optional diagram evidence (use an id only when it is an honest correlation):
+${JSON.stringify({ callFlows: outline.callFlows, flows: outline.flows })}
+
+Return only JSON: {"dryRunPlans":[{"flowId":"stable-behavior-id","flowKind":"behavior","title":"short behavior title","summary":"what this code path simulates","source":{"anchors":[{"path":"repository path","side":"new","startLine":1,"endLine":1,"changed":true}]},"callFlowId":"optional exact call-flow id","sequenceFlowId":"optional exact sequence id","scenarios":[{"id":"stable-scenario-id","title":"short scenario title","reason":"principal changed behavior, alternate branch, or boundary","source":"test|example|invented","description":"optional context","inputs":{"named":"sample input"},"mocks":{"dependency":"sample response"},"assumptions":["explicit assumption"]}]}]}.
+
+Suggest two or three cases for each behavior where a source-grounded execution walkthrough would help. Prefer input shapes from existing tests or examples, and label invented sample data. Suggest the principal changed behavior, an alternate branch, and a meaningful boundary when evidence supports them. The behavior id is owned by dry runs; do not require or create a diagram just to make a plan. Do not trace execution yet, correct an implementation bug, or claim that any result is runtime verified.`;
+    const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
+    return this.send(
+      needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`,
+      "dry-run.plan",
+      needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined,
+      undefined,
+      (message) => parseDryRunPlans(message, comparison, outline),
+    );
+  }
+
+  async prepareDryRunTrace(
+    comparison: GitComparison,
+    outline: Pick<TourOutline, "callFlows" | "flows" | "dryRunPlans">,
+    flowId: string,
+    flowKind: DryRunFlowKind,
+    scenario: DryRunScenario,
+    detail: DryRunDetail = "compact",
+    compactTrace?: Pick<DryRunTrace, "steps">,
+  ): Promise<AgentResult<DryRunTrace>> {
+    this.useComparison(comparison);
+    const flow = outline.dryRunPlans?.find((candidate) => candidate.flowKind === flowKind && candidate.flowId === flowId);
+    if (!flow) throw new Error("The selected dry-run flow no longer exists.");
+    const mapEvidence = flow.callFlowId ? outline.callFlows.filter((candidate) => candidate.id === flow.callFlowId) : outline.callFlows;
+    const prompt = `${TOUR_CONTEXT_BOUNDARY}
+
+You are preparing a simulated execution walkthrough of code under review. Inspect source to derive the path. Do not execute the reviewed program, invoke its tests, mutate files, or claim runtime verification. This is a code-derived simulation only.
+
+Comparison fingerprint: ${this.comparisonFingerprint}
+Selected flow identity: ${flowKind}:${flowId}
+Selected flow evidence:
+${JSON.stringify(flow)}
+Available call-flow evidence for optional map links:
+${JSON.stringify(mapEvidence)}
+Selected editable scenario:
+${JSON.stringify(scenario)}
+Requested walkthrough detail: ${detail}
+${compactTrace ? `Existing compact walkthrough to expand (do not merely repeat it):
+${JSON.stringify(compactTrace.steps.map((step) => ({ order: step.order, kind: step.kind, title: step.title, source: step.source, explanation: step.explanation })))}
+` : ""}
+
+Return only JSON with this shape:
+{"assumptions":["explicit assumption"],"steps":[{"id":"stable-step-id","order":1,"kind":"entry|calculation|branch|call|mock|return|unresolved","title":"short action","explanation":"what this source does with the supplied values","source":{"path":"repository path","side":"new","startLine":1,"endLine":1,"changed":true},"function":"function or method name","arguments":{"name":"value"},"locals":{"name":"value"},"valueChanges":[{"name":"subtotal","before":0,"after":20,"note":"optional explanation"}],"assumption":"optional explicit assumption","mapLink":{"callFlowId":"current call-flow id","nodeId":"optional node id","edgeId":"optional edge id"}}],"outcome":{"summary":"observable simulated result","value":"optional structured result"}}
+
+Use ordered steps to show entry, calls, calculations, branches, mock responses, and returns. Anchor every step to a real new-side source range. Set changed true only when that range includes an added diff line; unchanged supporting code must be shown with changed false. Include the current function, supplied arguments, relevant locals, and value changes. Show each mocked response exactly as supplied. State unresolved behavior and assumptions rather than silently correcting an input or implementation issue. Optional mapLink values may only reference the supplied call-flow ids and node/edge ids; omit them when no honest correlation exists.
+
+For a compact walkthrough, use 3–8 steps. Collapse straight-line bookkeeping, individual loop/reduce iterations, temporary assignments, and return forwarding. A step must explain an externally relevant call, a decision, a meaningful calculation, a mock, or the result; do not split one expression into several bookkeeping steps.
+
+For a detailed walkthrough, use up to 24 steps and expand only intermediate values and decisions that clarify the path. When an existing compact walkthrough is supplied, retain its behavior and add source-grounded clarification beyond its step count; do not merely restate or reorder it. Never invent a step merely to reach a count; combine repetitive iterations where they add no understanding. Label the outcome as simulated from code, not executed.`;
+    const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
+    return this.send(
+      needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison.patch}\n</diff>`,
+      "dry-run.trace",
+      needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined,
+      undefined,
+      (message) => validateGeneratedDryRun(parseDryRunTrace(message), comparison, outline, flowId, flowKind, scenario, detail),
+    );
   }
 
   async explainStep(step: TourStep, index: number, total: number, outline: TourOutline): Promise<AgentResult<string>> {

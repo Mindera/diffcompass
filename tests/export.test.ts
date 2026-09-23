@@ -70,6 +70,83 @@ test("Markdown export contains the tour, feedback, flow, and complete diff with 
   expect(artifact.content).toContain("# &lt;/title&gt;&lt;script&gt;bad()");
 });
 
+test("exports prepared dry-run traces for offline review and can omit them", () => {
+  const session = fixture();
+  (session as unknown as { exportDryRuns: () => unknown[] }).exportDryRuns = () => [{
+    id: "trace", flowId: "format-receipt", flowKind: "behavior", flowFingerprint: "f".repeat(64),
+    comparison: { base: "main", mergeBase: "abc", head: "def", fingerprint: "c".repeat(64) },
+    detail: "detailed",
+    scenario: { id: "primary", title: "Receipt with discount", reason: "Shows the changed output.", source: "invented", inputs: { amount: 20 }, mocks: {}, assumptions: ["The amount is finite."] },
+    assumptions: ["This is derived from inspected source."],
+    steps: [{
+      id: "format", order: 1, kind: "return", title: "Format the amount", explanation: "The formatter returns a two-decimal string.",
+      source: { path: "app.ts", side: "new", startLine: 1, endLine: 1, changed: true }, function: "receipt",
+      arguments: { amount: 20 }, locals: { formatted: "20.00" }, valueChanges: [{ name: "result", after: "20.00" }],
+    }, {
+      id: "return", order: 2, kind: "return", title: "Return the receipt", explanation: "The formatted receipt becomes the simulated output.",
+      source: { path: "app.ts", side: "new", startLine: 2, endLine: 2, changed: false }, function: "receipt",
+      valueChanges: [], assumption: "The formatter receives the sample amount.",
+    }],
+    outcome: { summary: "The simulated output is 20.00.", value: "20.00" }, preparedAt: "2026-08-13T10:00:00.000Z",
+  }];
+
+  const markdown = exportReview(session, "markdown").content;
+  expect(markdown).toContain("## Dry runs");
+  expect(markdown).toContain("Simulated from code, not executed/runtime verified.");
+  expect(markdown).toContain("Walkthrough detail: Detailed");
+  expect(markdown).toContain("Receipt with discount");
+  expect(markdown).toContain("The simulated output is 20.00.");
+  expect(exportReview(session, "markdown", { includeDryRuns: false }).content).not.toContain("## Dry runs");
+
+  const html = exportReview(session, "html").content;
+  expect(html).toContain('data-view="dry-runs"');
+  expect(html).toContain('data-view-panel="dry-runs"');
+  expect(html).toContain("Simulated from code, not executed/runtime verified.");
+  expect(html).toContain("Detailed simulation");
+  expect(html).toContain("data-export-dry-run");
+  expect(html).toContain("data-export-dry-run-step");
+  expect(html).toContain("data-export-dry-run-counter");
+  expect(html).toContain('data-export-dry-run-action="previous"');
+  expect(html).toContain('data-export-dry-run-action="restart"');
+  expect(html).toContain('data-export-dry-run-action="next"');
+  expect(html).toContain("Scenario assumptions");
+  expect(html).toContain("Global assumptions");
+  expect(html).toContain("Value changes");
+  expect(html).toContain("Local values");
+  expect(html).toContain("20.00");
+  const dryRunScript = html.match(/<script>\(\(\)=>\{const sync=card=>[\s\S]*?<\/script>/)?.[0];
+  expect(dryRunScript).toBeDefined();
+  const steps = [{ hidden: false }, { hidden: true }];
+  const counter = { textContent: "" };
+  const previous = { disabled: false };
+  const restart = { disabled: false };
+  const next = { disabled: false };
+  const card = {
+    dataset: {} as Record<string, string>,
+    querySelectorAll: (selector: string) => selector === "[data-export-dry-run-step]" ? steps : [],
+    querySelector: (selector: string) => selector === "[data-export-dry-run-counter]" ? counter
+      : selector === '[data-export-dry-run-action="previous"]' ? previous
+        : selector === '[data-export-dry-run-action="restart"]' ? restart
+          : selector === '[data-export-dry-run-action="next"]' ? next : null,
+  };
+  let clickListener: ((event: { target: { closest: (selector: string) => unknown } }) => void) | undefined;
+  new Function("document", dryRunScript!.slice("<script>".length, -"</script>".length))({
+    querySelectorAll: (selector: string) => selector === "[data-export-dry-run]" ? [card] : [],
+    addEventListener: (type: string, listener: typeof clickListener) => { if (type === "click") clickListener = listener; },
+  });
+  expect(counter.textContent).toBe("Step 1 of 2");
+  expect(previous.disabled).toBe(true);
+  const nextButton = { dataset: { exportDryRunAction: "next" }, closest: (selector: string) => selector === "[data-export-dry-run-action]" ? nextButton : card };
+  clickListener!({ target: nextButton });
+  expect(steps).toEqual([{ hidden: true }, { hidden: false }]);
+  expect(counter.textContent).toBe("Step 2 of 2");
+  expect(next.disabled).toBe(true);
+  const restartButton = { dataset: { exportDryRunAction: "restart" }, closest: (selector: string) => selector === "[data-export-dry-run-action]" ? restartButton : card };
+  clickListener!({ target: restartButton });
+  expect(steps).toEqual([{ hidden: false }, { hidden: true }]);
+  expect(exportReview(session, "html", { includeDryRuns: false }).content).not.toContain('data-view="dry-runs"');
+});
+
 test("exports finding dispositions and reviewer notes in Markdown and self-contained HTML", () => {
   const session = fixture();
   session.outline!.findings = [{

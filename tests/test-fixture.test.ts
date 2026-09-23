@@ -31,6 +31,12 @@ test("materializes, resumes, and resets a complete deterministic tour fixture", 
   expect(persisted.outline?.callFlows).toHaveLength(1);
   expect(persisted.outline?.callFlows[0]?.edges).toHaveLength(2);
   expect(persisted.outline?.flows).toHaveLength(1);
+  expect(persisted.outline?.dryRunPlans).toHaveLength(1);
+  expect(persisted.outline?.dryRunPlans?.[0]?.scenarios.map((scenario) => scenario.id)).toEqual(["fractional-discount", "no-discount", "ambiguous-percentage", "empty-cart"]);
+  expect(persisted.dryRuns).toHaveLength(1);
+  expect(persisted.dryRuns?.[0]?.detail).toBe("compact");
+  expect(persisted.dryRuns?.[0]?.steps).toHaveLength(6);
+  expect(persisted.dryRuns?.[0]?.outcome.value).toBe("Total: 20.00");
   expect(persisted.outline?.findings.map((finding) => finding.priority)).toEqual(["P1", "P3"]);
   expect(persisted.pullRequest).toMatchObject({
     repository: "fixture/checkout",

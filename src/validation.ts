@@ -57,13 +57,14 @@ export function enumValue<const T extends string>(value: unknown, name: string, 
 }
 
 export function parseAgentSelection(value: JsonObject): Partial<AgentSelection> {
-  exactKeys(value, ["adapterId", "modelId", "reasoningEffort", "includeArchitecture", "includeCallFlows", "includeFlows", "includeFindings", "includeAdaptiveDiagrams"]);
+  exactKeys(value, ["adapterId", "modelId", "reasoningEffort", "includeArchitecture", "includeCallFlows", "includeFlows", "includeFindings", "includeAdaptiveDiagrams", "includeDryRuns"]);
   const efforts: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
   if (value.includeArchitecture !== undefined && typeof value.includeArchitecture !== "boolean") throw new HttpError(422, "includeArchitecture must be a boolean.");
   if (value.includeCallFlows !== undefined && typeof value.includeCallFlows !== "boolean") throw new HttpError(422, "includeCallFlows must be a boolean.");
   if (value.includeFlows !== undefined && typeof value.includeFlows !== "boolean") throw new HttpError(422, "includeFlows must be a boolean.");
   if (value.includeFindings !== undefined && typeof value.includeFindings !== "boolean") throw new HttpError(422, "includeFindings must be a boolean.");
   if (value.includeAdaptiveDiagrams !== undefined && typeof value.includeAdaptiveDiagrams !== "boolean") throw new HttpError(422, "includeAdaptiveDiagrams must be a boolean.");
+  if (value.includeDryRuns !== undefined && typeof value.includeDryRuns !== "boolean") throw new HttpError(422, "includeDryRuns must be a boolean.");
   return {
     adapterId: optionalString(value.adapterId, "adapterId", 64),
     modelId: optionalString(value.modelId, "modelId", 128),
@@ -75,6 +76,7 @@ export function parseAgentSelection(value: JsonObject): Partial<AgentSelection> 
     includeFlows: value.includeFlows as boolean | undefined,
     includeFindings: value.includeFindings as boolean | undefined,
     includeAdaptiveDiagrams: value.includeAdaptiveDiagrams as boolean | undefined,
+    includeDryRuns: value.includeDryRuns as boolean | undefined,
   };
 }
 

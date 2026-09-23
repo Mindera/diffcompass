@@ -109,22 +109,36 @@ const state = {
   reviewerTaskReturnTarget: null,
   pullRequestReturn: null,
   githubSnapshotRefreshing: false,
+  dryRunFlowId: null,
+  dryRunFlowKind: null,
+  dryRunScenarioId: null,
+  dryRunStepIndex: 0,
+  dryRunEditorOpen: false,
+  dryRunDraft: null,
+  dryRunDraftFlowKey: null,
+  dryRunDraftForm: null,
+  dryRunDraftDirty: false,
+  dryRunSourceCache: new Map(),
+  dryRunSourceLoading: new Set(),
+  dryRunSourceComparisonKey: null,
+  dryRunHighlightRequestId: 0,
+  dryRunQuestionContext: null,
 };
 
 const elements = Object.fromEntries(
   [
-    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
-    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "dry-runs-view", "dry-runs", "dry-runs-tab", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
+    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings", "include-dry-runs",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "shortcut-help-dialog", "shortcut-help-title", "shortcuts-button", "close-shortcut-help", "focus-mode-toggle",
-    "adaptive-view", "adaptive-diagrams", "adaptive-empty", "adaptive-tab", "include-adaptive-diagrams",
+    "adaptive-view", "adaptive-diagrams", "adaptive-empty", "adaptive-tab", "include-adaptive-diagrams", "dry-runs-view", "dry-runs", "dry-runs-tab",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "reviewer-task-assessment-status", "reviewer-task-assessment-status-title", "reviewer-task-assessment-status-body", "view-reviewer-task-assessment", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
-    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "export-dry-runs", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -916,6 +930,7 @@ function setBusy(busy, label = "Working…") {
   elements["include-architecture"].disabled = busy;
   elements["include-call-flows"].disabled = busy;
   elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false;
+  elements["include-dry-runs"].disabled = busy;
   elements["tour-mode-toggle"].disabled = busy;
   elements["update-button"].disabled = busy || state.updateInProgress || elements["update-button"].classList.contains("updated");
   elements["refresh-button"].disabled = busy;
@@ -2339,6 +2354,8 @@ function renderAgentOptions() {
   elements["model-select"].disabled = state.busy || !reviewIsOpen();
   if (!findingGenerationEnabled) elements["include-findings"].checked = false;
   elements["include-findings"].disabled = state.busy || !reviewIsOpen() || !findingGenerationEnabled;
+  elements["include-dry-runs"].checked = state.session.agentSelection?.includeDryRuns !== false;
+  elements["include-dry-runs"].disabled = state.busy || !reviewIsOpen();
   elements["start-tour"].disabled = state.busy || !reviewIsOpen() || adapters.length === 0;
   if (adapters.length === 0) elements["agent-note"].textContent = "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.";
   renderModelOptions();
@@ -2871,7 +2888,7 @@ function callFlowCardHtml(flow, { showTitle = true, showRegenerate = true, viewe
   const counts = flow.edges.reduce((result, edge) => ({ ...result, [edge.change]: result[edge.change] + 1 }), { added: 0, removed: 0, unchanged: 0 });
   const heading = showTitle ? `<h2>${escapeHtml(flow.title)}</h2>` : "";
   const regenerate = showRegenerate ? `<button class="text-button" data-call-flow-regenerate type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button>` : "";
-  return `<article class="flow-card call-flow-card${viewer ? " architecture-viewer-call-flow-card" : ""}" data-call-flow-id="${escapeHtml(flow.id)}"><header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}">${escapeHtml(provenance.label)}</span>${heading}</div>${regenerate}</header><p>${escapeHtml(flow.summary)}</p><div class="call-flow-summary"><span class="plus">+${counts.added} calls</span><span class="minus">−${counts.removed} calls</span></div><details class="flow-impact call-flow-impact"><summary>affects ${flow.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${flow.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details><div class="call-flow-modes" role="group" aria-label="Call-flow version">${["changes", "before", "after"].map((candidate) => `<button type="button" data-call-flow-mode="${candidate}" class="${mode === candidate ? "active" : ""}">${candidate[0].toUpperCase()}${candidate.slice(1)}</button>`).join("")}</div><div class="call-tree-legend" role="list" aria-label="Call-flow legend"><span role="listitem"><i class="entrypoint" aria-hidden="true"></i>Entry point</span><span role="listitem"><i class="added" aria-hidden="true"></i>Added</span><span role="listitem"><i class="modified" aria-hidden="true"></i>Changed callable</span><span role="listitem"><i class="removed" aria-hidden="true"></i>Removed</span><span role="listitem"><i class="unchanged" aria-hidden="true"></i>Unchanged</span></div><p class="call-tree-caption">A changed callable exists before and after this change, but its implementation or outgoing calls changed.</p><div class="call-tree">${renderCallTree(flow, mode)}</div></article>`;
+  return `<article class="flow-card call-flow-card${viewer ? " architecture-viewer-call-flow-card" : ""}" data-call-flow-id="${escapeHtml(flow.id)}"><header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}">${escapeHtml(provenance.label)}</span>${heading}</div><div class="flow-actions">${dryRunEntryButton("call-flow", flow.id)}${regenerate}</div></header><p>${escapeHtml(flow.summary)}</p><div class="call-flow-summary"><span class="plus">+${counts.added} calls</span><span class="minus">−${counts.removed} calls</span></div><details class="flow-impact call-flow-impact"><summary>affects ${flow.affectedFiles.length}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${flow.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")}</div></details><div class="call-flow-modes" role="group" aria-label="Call-flow version">${["changes", "before", "after"].map((candidate) => `<button type="button" data-call-flow-mode="${candidate}" class="${mode === candidate ? "active" : ""}">${candidate[0].toUpperCase()}${candidate.slice(1)}</button>`).join("")}</div><div class="call-tree-legend" role="list" aria-label="Call-flow legend"><span role="listitem"><i class="entrypoint" aria-hidden="true"></i>Entry point</span><span role="listitem"><i class="added" aria-hidden="true"></i>Added</span><span role="listitem"><i class="modified" aria-hidden="true"></i>Changed callable</span><span role="listitem"><i class="removed" aria-hidden="true"></i>Removed</span><span role="listitem"><i class="unchanged" aria-hidden="true"></i>Unchanged</span></div><p class="call-tree-caption">A changed callable exists before and after this change, but its implementation or outgoing calls changed.</p><div class="call-tree">${renderCallTree(flow, mode)}</div></article>`;
 }
 
 // Keep a safe floor while allowing tall state and sequence diagrams to fit in the viewer.
@@ -2997,7 +3014,7 @@ function tourIntroArchitectureCard(architecture, label, key) {
 
 function tourIntroSequenceCard(flow, index) {
   return `<article class="tour-intro-chart tour-intro-flow-card">
-    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Sequence diagram</span><h4>${escapeHtml(flow.title)}</h4></div>${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}</div>
+    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Sequence diagram</span><h4>${escapeHtml(flow.title)}</h4></div><div class="flow-actions">${dryRunEntryButton("sequence", flow.id)}${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}</div></div>
     <p>${escapeHtml(flow.summary)}</p>
     <div class="sequence-diagram mermaid-render" data-tour-intro-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
     <p class="tour-intro-flow-impact">Affects ${flow.affectedFiles?.length || flow.blastRadiusSize} changed file${(flow.affectedFiles?.length || flow.blastRadiusSize) === 1 ? "" : "s"}.</p>
@@ -3007,7 +3024,7 @@ function tourIntroSequenceCard(flow, index) {
 function tourIntroCallFlowCard(flow) {
   const affectedFiles = flow.affectedFiles ?? [];
   return `<article class="tour-intro-chart tour-intro-flow-card">
-    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Call flow</span><h4>${escapeHtml(flow.title)}</h4></div>${briefingDiagramExpandButton("call flow", "call-flow", flow.id)}</div>
+    <div class="tour-intro-chart-heading"><div><span class="architecture-label">Call flow</span><h4>${escapeHtml(flow.title)}</h4></div><div class="flow-actions">${dryRunEntryButton("call-flow", flow.id)}${briefingDiagramExpandButton("call flow", "call-flow", flow.id)}</div></div>
     <p>${escapeHtml(flow.summary)}</p>
     <div class="call-tree tour-intro-call-tree" data-tour-intro-call-flow="${escapeHtml(flow.id)}">${renderCallTree(flow, "changes")}</div>
     <p class="tour-intro-flow-impact">Affects ${affectedFiles.length || flow.blastRadiusSize} changed file${(affectedFiles.length || flow.blastRadiusSize) === 1 ? "" : "s"}.</p>
@@ -3255,7 +3272,7 @@ function renderSequenceDiagrams() {
       ? affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")
       : '<p class="muted">Exact files were not captured for this saved tour. Regenerate this diagram to add them.</p>';
     return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
-      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details>${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}<button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
+      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details>${dryRunEntryButton("sequence", flow.id)}${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}<button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
       <div class="sequence-diagram mermaid-render" data-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
       <div class="flow-warning hidden" data-flow-error>The diagram source is invalid or unsupported. Inspect or edit it below.</div>
@@ -3385,12 +3402,469 @@ function changedImageMedia() {
   ].filter(Boolean));
 }
 
+function dryRunPlanKey(plan) {
+  return `${plan.flowKind}:${plan.flowId}`;
+}
+
+function dryRunPlanForDiagram(kind, id) {
+  return (state.session?.dryRunPlans ?? []).find((plan) => kind === "call-flow" ? plan.callFlowId === id : plan.sequenceFlowId === id);
+}
+
+function dryRunEntryButton(kind, id) {
+  const plan = dryRunPlanForDiagram(kind, id);
+  if (!plan || state.session?.dryRunGenerationEnabled === false) return "";
+  return `<button class="text-button" type="button" data-open-dry-run-flow="${escapeHtml(plan.flowId)}" data-open-dry-run-kind="${escapeHtml(plan.flowKind)}">Simulate</button>`;
+}
+
+function dryRunSelection() {
+  const plans = state.session?.dryRunPlans ?? [];
+  let plan = plans.find((candidate) => candidate.flowId === state.dryRunFlowId && candidate.flowKind === (state.dryRunFlowKind ?? "behavior"));
+  if (!plan) {
+    plan = plans[0] ?? null;
+    state.dryRunFlowId = plan?.flowId ?? null;
+    state.dryRunFlowKind = plan?.flowKind ?? null;
+    state.dryRunScenarioId = plan?.scenarios[0]?.id ?? null;
+    state.dryRunStepIndex = 0;
+    state.dryRunDraft = null;
+    state.dryRunDraftForm = null;
+    state.dryRunDraftDirty = false;
+    state.dryRunDraftFlowKey = null;
+  }
+  if (!plan) return { plans, plan: null, scenario: null, draft: null };
+  let scenario = plan.scenarios.find((candidate) => candidate.id === state.dryRunScenarioId);
+  const key = dryRunPlanKey(plan);
+  if (!scenario && !(state.dryRunDraftDirty && state.dryRunDraftFlowKey === key && state.dryRunDraft?.id === state.dryRunScenarioId)) {
+    scenario = plan.scenarios[0] ?? null;
+    state.dryRunScenarioId = scenario?.id ?? null;
+    state.dryRunStepIndex = 0;
+  }
+  if (!state.dryRunDraft || state.dryRunDraftFlowKey !== key || (!state.dryRunDraftDirty && scenario && state.dryRunDraft.id !== scenario.id)) {
+    state.dryRunDraft = scenario ? structuredClone(scenario) : null;
+    state.dryRunDraftDirty = false;
+    state.dryRunDraftFlowKey = key;
+    state.dryRunDraftForm = null;
+  }
+  return { plans, plan, scenario: scenario ?? (state.dryRunDraftDirty ? state.dryRunDraft : null), draft: state.dryRunDraft };
+}
+
+function dryRunTraceFor(plan, scenarioId) {
+  if (!plan || !scenarioId) return null;
+  return (state.session?.dryRuns ?? []).find((trace) => trace.flowKind === plan.flowKind && trace.flowId === plan.flowId && trace.scenario.id === scenarioId) ?? null;
+}
+
+function dryRunScenarioWalkthroughState(plan, scenario, preparation = state.session?.dryRunPreparation) {
+  if (preparation?.status === "preparing" && preparation.flowId === dryRunPlanKey(plan) && preparation.scenarioId === scenario?.id) {
+    return { label: `Preparing ${preparation.detail === "detailed" ? "detailed " : ""}walkthrough`, tone: "preparing" };
+  }
+  const trace = dryRunTraceFor(plan, scenario?.id);
+  if (!trace) return { label: "No walkthrough", tone: "missing" };
+  return trace.stale
+    ? { label: "Stale walkthrough", tone: "stale" }
+    : { label: "Prepared walkthrough", tone: "prepared" };
+}
+
+function dryRunPlanWalkthroughLabel(plan, preparation = state.session?.dryRunPreparation) {
+  if (preparation?.status === "preparing" && preparation.flowId === dryRunPlanKey(plan)) return "Preparing walkthrough";
+  const states = plan.scenarios.map((scenario) => dryRunScenarioWalkthroughState(plan, scenario, preparation));
+  const prepared = states.filter((state) => state.tone === "prepared").length;
+  const stale = states.filter((state) => state.tone === "stale").length;
+  if (prepared || stale) return [prepared ? `${prepared} prepared` : "", stale ? `${stale} stale` : ""].filter(Boolean).join(" · ");
+  return "No walkthroughs";
+}
+
+// Keep the trace's execution inputs separate from display-only scenario labels.
+// This mirrors the persisted fingerprint so a refreshed suggestion with the
+// same id cannot make an older trace look like it belongs to new inputs.
+function dryRunScenarioExecutionKey(scenario) {
+  return JSON.stringify({
+    id: scenario?.id,
+    inputs: scenario?.inputs,
+    mocks: scenario?.mocks,
+    assumptions: scenario?.assumptions,
+    description: scenario?.description,
+  });
+}
+
+function dryRunJson(value) {
+  return `<pre class="dry-run-json"><code data-dry-run-json-highlight>${escapeHtml(JSON.stringify(value ?? {}, null, 2))}</code></pre>`;
+}
+
+function dryRunJsonEditor(name, draft) {
+  const value = dryRunDraftField(name, draft);
+  return `<div class="dry-run-json-editor"><pre aria-hidden="true" data-dry-run-json-input-preview><code data-dry-run-json-input-highlight>${escapeHtml(value)}</code></pre><textarea data-dry-run-field="${name}" data-dry-run-json-input="${name}" rows="8" spellcheck="false">${escapeHtml(value)}</textarea></div>`;
+}
+
+function dryRunDraftField(name, draft) {
+  if (state.dryRunDraftForm && Object.hasOwn(state.dryRunDraftForm, name)) return state.dryRunDraftForm[name];
+  if (name === "inputs" || name === "mocks") return JSON.stringify(draft?.[name] ?? {}, null, 2);
+  if (name === "assumptions") return (draft?.assumptions ?? []).join("\n");
+  return draft?.[name] ?? "";
+}
+
+function reflectDryRunDraftMismatch() {
+  // Deliberately avoid renderDryRuns() here. Replacing the editor while a
+  // reviewer types would lose its focus, selection, and temporarily invalid
+  // JSON. This is the immediate, visual half of marking the trace stale.
+  const root = elements["dry-runs"];
+  const badge = root.querySelector("[data-dry-run-draft-unsaved]");
+  const warning = root.querySelector("[data-dry-run-draft-mismatch]");
+  const prepare = root.querySelector('[data-dry-run-action="prepare"]');
+  const trace = root.querySelector("[data-dry-run-trace]");
+  if (badge) badge.hidden = false;
+  if (warning) warning.hidden = false;
+  if (prepare) {
+    prepare.disabled = true;
+    prepare.textContent = "Save scenario before prepare";
+  }
+  if (trace && !trace.hidden) {
+    trace.hidden = true;
+    let notice = root.querySelector("[data-dry-run-draft-trace-notice]");
+    if (!notice) {
+      notice = document.createElement("section");
+      notice.className = "dry-run-empty compact";
+      notice.dataset.dryRunDraftTraceNotice = "true";
+      trace.before(notice);
+    }
+    notice.textContent = "The saved trace is hidden while you edit this scenario. Save and prepare again to view a matching simulation.";
+  }
+}
+
+function captureDryRunDraftField(field) {
+  state.dryRunDraftDirty = true;
+  state.dryRunDraftForm ??= {};
+  state.dryRunDraftForm[field.dataset.dryRunField] = field.value;
+  reflectDryRunDraftMismatch();
+}
+
+function syncDryRunJsonEditor(field, refreshSyntax = true) {
+  const editor = field.closest(".dry-run-json-editor");
+  const code = editor?.querySelector("[data-dry-run-json-input-highlight]");
+  const preview = editor?.querySelector("[data-dry-run-json-input-preview]");
+  if (!code || !preview) return;
+  // textContent preserves incomplete JSON literally until the highlighter catches up.
+  code.textContent = field.value;
+  preview.scrollTop = field.scrollTop;
+  preview.scrollLeft = field.scrollLeft;
+  if (refreshSyntax) void highlightDryRunSyntax();
+}
+
+function onDryRunEditorFieldChange(event) {
+  const field = event.target.closest("[data-dry-run-field]");
+  if (!field) return;
+  captureDryRunDraftField(field);
+  if (field.dataset.dryRunJsonInput) syncDryRunJsonEditor(field);
+}
+
+function onDryRunEditorScroll(event) {
+  const field = event.target.closest("[data-dry-run-json-input]");
+  if (field) syncDryRunJsonEditor(field, false);
+}
+
+function dryRunComparisonKey() {
+  const comparison = state.session?.comparison;
+  if (!comparison) return "";
+  // The patch is part of the identity for working-tree comparisons, whose head can stay put.
+  return `${comparison.base}:${comparison.mergeBase}:${comparison.head}:${comparison.sourceTree ?? ""}:${comparison.patch ?? ""}`;
+}
+
+function syncDryRunSourceCache() {
+  const key = dryRunComparisonKey();
+  if (state.dryRunSourceComparisonKey === key) return key;
+  state.dryRunSourceComparisonKey = key;
+  state.dryRunSourceCache.clear();
+  state.dryRunSourceLoading.clear();
+  return key;
+}
+
+function dryRunSourceCacheKey(path) {
+  return `${syncDryRunSourceCache()}\u0000${path}`;
+}
+
+function dryRunSourcePreview(step) {
+  const cacheKey = dryRunSourceCacheKey(step.source.path);
+  const cached = state.dryRunSourceCache.get(cacheKey);
+  if (typeof cached === "string") {
+    const lines = cached.replaceAll("\r\n", "\n").split("\n");
+    const excerpt = lines.slice(step.source.startLine - 1, step.source.endLine).join("\n");
+    return `<pre class="dry-run-source"><code data-dry-run-source-highlight data-dry-run-highlight-path="${escapeHtml(step.source.path)}" data-dry-run-source-start="${step.source.startLine}">${escapeHtml(excerpt)}</code></pre>`;
+  }
+  if (!state.dryRunSourceLoading.has(cacheKey)) void loadDryRunSource(step.source.path, cacheKey);
+  return `<p class="muted">Loading ${escapeHtml(step.source.path)}…</p>`;
+}
+
+async function highlightDryRunSyntax() {
+  const root = elements["dry-runs"];
+  const requestId = ++state.dryRunHighlightRequestId;
+  const targets = [
+    ...[...root.querySelectorAll("[data-dry-run-source-highlight]")].map((node) => ({ node, path: node.dataset.dryRunHighlightPath })),
+    ...[...root.querySelectorAll("[data-dry-run-json-highlight], [data-dry-run-json-input-highlight]")].map((node) => ({ node, path: "dry-run.json" })),
+  ].filter((target) => target.path && (target.node.textContent ?? "").length <= 20_000);
+  if (targets.length === 0) return;
+  const groups = targets.map((target, index) => {
+    const id = `dry-run-syntax-${requestId}-${index}`;
+    target.node.dataset.dryRunSyntaxId = id;
+    return { id, path: target.path, lines: (target.node.textContent ?? "").split("\n") };
+  });
+  try {
+    const highlighted = await api("/api/highlight", {
+      method: "POST",
+      body: JSON.stringify({ groups, theme: state.syntaxTheme }),
+    });
+    if (requestId !== state.dryRunHighlightRequestId || state.activeTab !== "dry-runs") return;
+    for (const group of highlighted.groups ?? []) {
+      const target = root.querySelector(`[data-dry-run-syntax-id="${CSS.escape(group.id)}"]`);
+      if (!target) continue;
+      const startLine = Number(target.dataset.dryRunSourceStart);
+      target.innerHTML = group.lines.map((line, index) => {
+        const code = line.map((token) => syntaxTokenHtml(token)).join("");
+        return Number.isInteger(startLine) && startLine > 0
+          ? `<span class="dry-run-code-line"><i>${startLine + index}</i><span>${code || " "}</span></span>`
+          : code || " ";
+      }).join("\n");
+    }
+  } catch {
+    // Raw escaped source and JSON remain readable if local highlighting fails.
+  }
+}
+
+async function loadDryRunSource(path, cacheKey = dryRunSourceCacheKey(path)) {
+  state.dryRunSourceLoading.add(cacheKey);
+  try {
+    const response = await api(`/api/files?path=${encodeURIComponent(path)}`);
+    // A refresh can replace the comparison while this request is in flight.
+    if (cacheKey === dryRunSourceCacheKey(path)) state.dryRunSourceCache.set(cacheKey, response.content);
+  } catch (error) {
+    if (cacheKey === dryRunSourceCacheKey(path)) state.dryRunSourceCache.set(cacheKey, `Unable to load source: ${error.message}`);
+  } finally {
+    state.dryRunSourceLoading.delete(cacheKey);
+    if (state.activeTab === "dry-runs") renderDryRuns();
+  }
+}
+
+function dryRunValueSummary(value) {
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? "" : "s"}`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value);
+    return entries.slice(0, 3).map(([key, item]) => `${key}: ${Array.isArray(item) ? `${item.length} items` : item !== null && typeof item === "object" ? "{…}" : String(item)}`).join(", ") + (entries.length > 3 ? ", …" : "");
+  }
+  const text = JSON.stringify(value) ?? "—";
+  return text.length > 100 ? `${text.slice(0, 100)}…` : text;
+}
+
+function dryRunCompactValues(values) {
+  if (!values || Object.keys(values).length === 0) return "";
+  return `<dl class="dry-run-compact-values">${Object.entries(values).map(([name, value]) => `<div><dt>${escapeHtml(name)}</dt><dd>${value !== null && typeof value === "object" ? `<details><summary>${escapeHtml(dryRunValueSummary(value))}</summary>${dryRunJson(value)}</details>` : `<code>${escapeHtml(dryRunValueSummary(value))}</code>`}</dd></div>`).join("")}</dl>`;
+}
+
+function renderDryRunStep(trace) {
+  if (!trace) return "";
+  const stepIndex = Math.min(Math.max(state.dryRunStepIndex, 0), trace.steps.length - 1);
+  state.dryRunStepIndex = stepIndex;
+  const step = trace.steps[stepIndex];
+  // The early persisted format had no detail field. Its longer traces were already
+  // expanded, so avoid offering an expansion CTA for them.
+  const detail = trace.detail ?? (trace.steps.length > 8 ? "detailed" : "compact");
+  const valueChanges = step.valueChanges.length
+    ? `<ul class="dry-run-values">${step.valueChanges.map((change) => `<li><strong>${escapeHtml(change.name)}</strong>${change.before !== undefined ? ` <span>${escapeHtml(JSON.stringify(change.before))}</span>` : ""}${change.after !== undefined ? ` → <span>${escapeHtml(JSON.stringify(change.after))}</span>` : ""}${change.note ? ` <small>${escapeHtml(change.note)}</small>` : ""}</li>`).join("")}</ul>`
+    : "";
+  return `<section class="dry-run-trace${trace.stale ? " stale" : ""}" data-dry-run-trace>
+    <nav class="dry-run-navigation" aria-label="Simulation steps"><button type="button" class="button secondary" data-dry-run-action="previous"${stepIndex === 0 ? " disabled" : ""}>Previous</button><strong aria-live="polite">Step ${stepIndex + 1} of ${trace.steps.length}</strong><button type="button" class="button primary" data-dry-run-action="next"${stepIndex >= trace.steps.length - 1 ? " disabled" : ""}>Next</button><span class="dry-run-navigation-spacer"></span><span class="dry-run-detail-label">${detail === "detailed" ? "Detailed" : "Compact"}</span><button type="button" class="text-button" data-dry-run-action="restart"${stepIndex === 0 ? " disabled" : ""}>Restart</button><button type="button" class="button secondary" data-dry-run-action="ask">Ask about this step</button></nav>
+    ${trace.stale ? '<p class="dry-run-mismatch">This walkthrough is stale. Prepare it again for the current code.</p>' : ""}
+    <article class="dry-run-step">
+      <header><div><span class="dry-run-kind">${escapeHtml(step.kind)}</span><h2>${escapeHtml(step.title)}</h2></div><span class="source-change ${step.source.changed ? "changed" : "unchanged"}">${step.source.changed ? "changed code" : "unchanged support"}</span></header>
+      <p>${escapeHtml(step.explanation)}</p>
+      <p class="dry-run-source-label"><code>${escapeHtml(step.function)}</code> · <button type="button" class="text-button" data-dry-run-source-path="${escapeHtml(step.source.path)}" data-dry-run-source-line="${step.source.startLine}">${escapeHtml(`${step.source.path}:${step.source.startLine}${step.source.endLine !== step.source.startLine ? `–${step.source.endLine}` : ""}`)}</button></p>
+      <div class="dry-run-step-code">${dryRunSourcePreview(step)}</div>
+      ${valueChanges ? `<section class="dry-run-value-section"><h3>What changed</h3>${valueChanges}</section>` : ""}
+      ${step.arguments && Object.keys(step.arguments).length ? `<section class="dry-run-value-section"><h3>Inputs to this call</h3>${dryRunCompactValues(step.arguments)}</section>` : ""}
+      ${step.locals && Object.keys(step.locals).length ? `<section class="dry-run-value-section"><h3>Current values</h3>${dryRunCompactValues(step.locals)}</section>` : ""}
+      ${step.assumption ? `<p class="dry-run-assumption"><strong>Assumption:</strong> ${escapeHtml(step.assumption)}</p>` : ""}
+    </article>
+    ${stepIndex === trace.steps.length - 1 ? `<footer class="dry-run-outcome"><strong>Result</strong><p>${escapeHtml(trace.outcome.summary)}</p>${trace.outcome.value === undefined ? "" : dryRunJson(trace.outcome.value)}</footer>` : ""}
+    ${detail === "compact" && !trace.stale ? `<aside class="dry-run-detail-cta"><div><strong>Is this walkthrough too coarse?</strong><p>Expand it to inspect more intermediate values and decisions.</p></div><button type="button" class="button secondary" data-dry-run-action="prepare-detailed"${state.session?.dryRunPreparation ? " disabled" : ""}>Make it more granular</button></aside>` : ""}
+    ${trace.assumptions.length ? `<details class="dry-run-trace-assumptions"><summary>Simulation assumptions</summary><ul>${trace.assumptions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></details>` : ""}
+  </section>`;
+}
+
+function renderDryRuns() {
+  const enabled = state.session?.dryRunGenerationEnabled !== false;
+  const { plans, plan, scenario, draft } = dryRunSelection();
+  const preparation = state.session?.dryRunPreparation;
+  if (!state.session?.outline) {
+    elements["dry-runs"].innerHTML = '<p class="empty compact">Start a review tour to plan code-derived simulated executions.</p>';
+    return;
+  }
+  if (!enabled) {
+    elements["dry-runs"].innerHTML = '<section class="dry-run-empty"><h2>Dry runs were not included in this tour</h2><p>Start a new tour with Dry runs selected to prepare code-derived walkthroughs. No target code is executed.</p></section>';
+    return;
+  }
+  if (plans.length === 0) {
+    elements["dry-runs"].innerHTML = `<section class="dry-run-empty"><h2>Prepare scenarios</h2><p>Ask the review agent to identify a few useful sample inputs for the changed behavior. This plans scenarios only; it does not run the reviewed code.</p><button type="button" class="button primary" data-dry-run-action="plans"${preparation ? " disabled" : ""}>Prepare scenarios</button>${preparation ? '<p class="muted">Preparing scenario suggestions…</p><button type="button" class="button secondary" data-dry-run-action="cancel">Cancel</button>' : ""}</section>`;
+    return;
+  }
+  const trace = dryRunTraceFor(plan, state.dryRunScenarioId);
+  const walkthroughState = dryRunScenarioWalkthroughState(plan, scenario, preparation);
+  const draftMismatch = state.dryRunDraftDirty;
+  const savedScenarioMismatch = Boolean(trace && scenario && dryRunScenarioExecutionKey(trace.scenario) !== dryRunScenarioExecutionKey(scenario));
+  const inputMismatch = draftMismatch || savedScenarioMismatch;
+  const flowOptions = plans.map((candidate) => `<option value="${escapeHtml(dryRunPlanKey(candidate))}"${candidate === plan ? " selected" : ""}>${escapeHtml(candidate.title)} · ${escapeHtml(dryRunPlanWalkthroughLabel(candidate, preparation))}</option>`).join("");
+  const scenarioOptions = plan.scenarios.map((candidate) => `<option value="${escapeHtml(candidate.id)}"${candidate.id === state.dryRunScenarioId ? " selected" : ""}>${escapeHtml(candidate.title)} · ${escapeHtml(dryRunScenarioWalkthroughState(plan, candidate, preparation).label)}</option>`).join("");
+  const inputSummary = Object.entries(scenario?.inputs ?? {}).slice(0, 4).map(([name, value]) => `${name}: ${dryRunValueSummary(value)}`).join(" · ");
+  elements["dry-runs"].innerHTML = `<section class="dry-run-workspace">
+    <div class="dry-run-picker"><label>Flow<select data-dry-run-select="flow">${flowOptions}</select></label><label>Scenario<select data-dry-run-select="scenario">${scenarioOptions}</select></label><button type="button" class="button secondary" data-dry-run-action="edit-inputs" aria-expanded="${state.dryRunEditorOpen}">${state.dryRunEditorOpen ? "Hide inputs" : "Edit inputs"}</button></div>
+    <p class="dry-run-scenario-summary">${escapeHtml(inputSummary || scenario?.reason || plan.summary)}</p>
+    <p class="dry-run-walkthrough-state ${walkthroughState.tone}" role="status">${escapeHtml(walkthroughState.label)}${walkthroughState.tone === "prepared" ? " — ready to walk through" : walkthroughState.tone === "stale" ? " — prepare again for current code" : walkthroughState.tone === "missing" ? " — prepare one when you are ready" : " — reasoning from source"}</p>
+    <section class="dry-run-editor"${state.dryRunEditorOpen ? "" : " hidden"}><header><div><strong>Edit scenario</strong><span>${draft?.source === "invented" ? "Invented sample data" : draft?.source === "reviewer" ? "Reviewer-provided sample" : `Based on ${draft?.source ?? "source evidence"}`}</span></div><span class="unsaved-badge" data-dry-run-draft-unsaved${state.dryRunDraftDirty ? "" : " hidden"}>Unsaved changes</span></header>
+      <div class="dry-run-editor-grid"><label>Title<input data-dry-run-field="title" maxlength="500" value="${escapeHtml(dryRunDraftField("title", draft))}" /></label><label>Why this case<input data-dry-run-field="reason" maxlength="2000" value="${escapeHtml(dryRunDraftField("reason", draft))}" /></label><label class="wide">Description<textarea data-dry-run-field="description" rows="2" maxlength="4000">${escapeHtml(dryRunDraftField("description", draft))}</textarea></label><label>Inputs (JSON object)${dryRunJsonEditor("inputs", draft)}</label><label>Mocks (JSON object)${dryRunJsonEditor("mocks", draft)}</label><label class="wide">Assumptions (one per line)<textarea data-dry-run-field="assumptions" rows="3" maxlength="40000">${escapeHtml(dryRunDraftField("assumptions", draft))}</textarea></label></div>
+      <p class="dry-run-mismatch" data-dry-run-draft-mismatch${draftMismatch ? "" : " hidden"}><strong>Inputs changed.</strong> Any prepared trace below belongs to earlier inputs, not this scenario. Save this scenario before preparing a new simulation.</p>
+      ${savedScenarioMismatch ? '<p class="dry-run-mismatch"><strong>Scenario inputs changed.</strong> Any prepared trace below belongs to earlier inputs, not this scenario. Prepare a new simulation before treating it as a result.</p>' : ""}
+      <div class="dry-run-editor-actions"><button type="button" class="button primary" data-dry-run-action="save"${!draft ? " disabled" : ""}>Save scenario</button><button type="button" class="button secondary" data-dry-run-action="new">New scenario</button></div>
+    </section>
+    <div class="dry-run-prepare-bar"><button type="button" class="${trace && !inputMismatch && !trace.stale ? "text-button" : "button primary"}" data-dry-run-action="prepare"${!scenario || preparation || draftMismatch ? " disabled" : ""}>${draftMismatch ? "Save scenario before preparing" : trace && !savedScenarioMismatch && !trace.stale ? "Prepare compact walkthrough again" : "Prepare compact walkthrough"}</button>${preparation ? `<span role="status" class="muted">Preparing ${preparation.detail === "detailed" ? "detailed " : ""}walkthrough…</span><button type="button" class="button secondary" data-dry-run-action="cancel">Cancel</button>` : ""}<button type="button" class="text-button" data-dry-run-action="plans"${preparation ? " disabled" : ""}>Refresh scenarios</button></div>
+    ${trace && !inputMismatch ? renderDryRunStep(trace) : trace ? '<section class="dry-run-empty compact"><p>The saved trace is withheld while you edit the scenario, so it is not mistaken for a result of the current input. Save and prepare again to view a matching trace.</p></section>' : '<section class="dry-run-empty compact"><p>No trace has been prepared for this scenario yet. Preparing it asks the agent to reason from source; it never executes the reviewed program.</p></section>'}
+  </section>`;
+  void highlightDryRunSyntax();
+}
+
+function openDryRunFlow(flowId, flowKind = "behavior") {
+  const plan = (state.session?.dryRunPlans ?? []).find((candidate) => candidate.flowId === flowId && candidate.flowKind === flowKind);
+  if (!plan) return toast("No dry-run scenario is available for this diagram yet.");
+  state.dryRunFlowId = plan.flowId;
+  state.dryRunFlowKind = plan.flowKind;
+  state.dryRunScenarioId = plan.scenarios[0]?.id ?? null;
+  state.dryRunStepIndex = 0;
+  state.dryRunDraft = null;
+  state.dryRunDraftForm = null;
+  state.dryRunDraftDirty = false;
+  state.dryRunDraftFlowKey = null;
+  activateReviewTab("dry-runs", renderDryRuns);
+}
+
+async function prepareDryRunPlans() {
+  if (state.busy || !reviewIsOpen()) return;
+  state.session.dryRunPreparation = { id: `local-plan-${crypto.randomUUID()}`, flowId: "behavior:planning", scenarioId: "planning", status: "preparing", startedAt: new Date().toISOString() };
+  setBusy(true, "Planning dry-run scenarios…");
+  renderDryRuns();
+  try {
+    state.session = await api("/api/dry-runs/plans", { method: "POST", body: "{}" });
+    toast("Dry-run scenarios prepared");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+function readDryRunDraft() {
+  const { plan, draft } = dryRunSelection();
+  if (!plan || !draft) throw new Error("Select a dry-run scenario first.");
+  const field = (name) => elements["dry-runs"].querySelector(`[data-dry-run-field="${name}"]`);
+  let inputs;
+  let mocks;
+  try {
+    inputs = JSON.parse(field("inputs").value);
+    mocks = JSON.parse(field("mocks").value);
+  } catch {
+    throw new Error("Inputs and mocks must each be valid JSON objects.");
+  }
+  if (!inputs || typeof inputs !== "object" || Array.isArray(inputs) || !mocks || typeof mocks !== "object" || Array.isArray(mocks)) {
+    throw new Error("Inputs and mocks must each be JSON objects.");
+  }
+  return {
+    plan,
+    scenario: {
+      ...draft,
+      title: field("title").value.trim(),
+      reason: field("reason").value.trim(),
+      description: field("description").value.trim() || undefined,
+      source: "reviewer",
+      inputs,
+      mocks,
+      assumptions: field("assumptions").value.split("\n").map((line) => line.trim()).filter(Boolean),
+    },
+  };
+}
+
+async function saveDryRunScenario() {
+  if (state.busy || !reviewIsOpen()) return;
+  let selected;
+  try { selected = readDryRunDraft(); } catch (error) { toast(error.message); return; }
+  setBusy(true, "Saving dry-run scenario…");
+  try {
+    state.session = await api("/api/dry-runs/scenarios", { method: "POST", body: JSON.stringify({ flowKind: selected.plan.flowKind, flowId: selected.plan.flowId, scenario: selected.scenario }) });
+    state.dryRunScenarioId = selected.scenario.id;
+    state.dryRunEditorOpen = false;
+    state.dryRunDraft = null;
+    state.dryRunDraftForm = null;
+    state.dryRunDraftDirty = false;
+    toast("Dry-run scenario saved");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+async function prepareDryRun(detail = "compact") {
+  const { plan, scenario } = dryRunSelection();
+  if (state.busy || !reviewIsOpen() || !plan || !scenario || state.dryRunDraftDirty) return;
+  state.session.dryRunPreparation = { id: `local-trace-${crypto.randomUUID()}`, flowId: dryRunPlanKey(plan), scenarioId: scenario.id, detail, status: "preparing", startedAt: new Date().toISOString() };
+  setBusy(true, `Preparing ${detail === "detailed" ? "detailed " : ""}simulated execution…`);
+  renderDryRuns();
+  try {
+    state.session = await api("/api/dry-runs/prepare", { method: "POST", body: JSON.stringify({ flowKind: plan.flowKind, flowId: plan.flowId, scenarioId: scenario.id, detail }) });
+    state.dryRunStepIndex = 0;
+    toast(`${detail === "detailed" ? "Detailed" : "Compact"} simulated execution prepared`);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+async function cancelDryRunPreparation() {
+  try {
+    state.session = await api("/api/dry-runs/cancel", { method: "POST", body: "{}" });
+    toast("Dry-run preparation cancelled");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+    renderSession();
+  }
+}
+
+function addDryRunScenario() {
+  const { plan, scenario } = dryRunSelection();
+  if (!plan) return;
+  state.dryRunEditorOpen = true;
+  state.dryRunScenarioId = `reviewer-${crypto.randomUUID()}`;
+  state.dryRunDraft = {
+    id: state.dryRunScenarioId,
+    title: "Custom scenario",
+    reason: "Reviewer-provided case",
+    source: "reviewer",
+    description: scenario?.description,
+    inputs: structuredClone(scenario?.inputs ?? {}),
+    mocks: structuredClone(scenario?.mocks ?? {}),
+    assumptions: [...(scenario?.assumptions ?? [])],
+  };
+  state.dryRunDraftForm = null;
+  state.dryRunDraftFlowKey = dryRunPlanKey(plan);
+  state.dryRunDraftDirty = true;
+  state.dryRunStepIndex = 0;
+  renderDryRuns();
+}
+
 function availableTabs() {
-  return ["diff", "call-flows", "sequence", ...(state.session?.outline?.stateDiagram || state.session?.outline?.dataModel ? ["adaptive"] : []), "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "call-flows", "sequence", "dry-runs", ...(state.session?.outline?.stateDiagram || state.session?.outline?.dataModel ? ["adaptive"] : []), "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "call-flows", "sequence", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
+  for (const tabName of ["diff", "call-flows", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -4012,6 +4486,7 @@ function renderSessionUpdate(previous, options) {
 
 function renderSession() {
   const { comparison, comments } = state.session;
+  syncDryRunSourceCache();
   const briefingWasOpen = elements["tour-intro-dialog"].open;
   const briefingScroll = briefingWasOpen ? elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop : 0;
   if (state.tourMode === null && state.session.outline) state.tourMode = true;
@@ -4084,6 +4559,7 @@ function renderSession() {
   renderAdaptiveDiagrams();
   if (state.activeTab === "call-flows") renderCallFlows();
   if (state.activeTab === "sequence") renderSequenceDiagrams();
+  if (state.activeTab === "dry-runs") renderDryRuns();
   if (state.activeTab === "adaptive") renderAdaptiveDiagrams();
   renderActivities();
   renderPullRequest();
@@ -4163,6 +4639,7 @@ async function startTour() {
         includeFlows: elements["include-flows"].checked,
         includeFindings: elements["include-findings"].checked,
         includeAdaptiveDiagrams: elements["include-adaptive-diagrams"].checked,
+        includeDryRuns: elements["include-dry-runs"].checked,
       }),
     });
     state.tourMode = true;
@@ -4786,12 +5263,15 @@ async function askAgent(event) {
   const requestedStepId = !requestThreadId && state.tourMode ? currentStep()?.id ?? null : null;
   const anchor = !requestThreadId && state.selectedLine ? { ...state.selectedLine } : undefined;
   const contextPaths = !requestThreadId ? [...state.questionContextPaths] : [];
-  const pending = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, ...(requestedStepId ? { stepId: requestedStepId } : {}), anchor, contextPaths };
+  const dryRunContext = !requestThreadId ? state.dryRunQuestionContext : null;
+  const pending = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, ...(requestedStepId ? { stepId: requestedStepId } : {}), anchor, contextPaths, ...(dryRunContext ? { dryRunContext } : {}) };
   state.pendingQuestions.set(localId, pending);
   state.activeThreadId = pending.threadId;
   state.questionDrafts.delete(originalThreadId);
   state.questionsOpen = true;
   state.mobileAgentPane = "questions";
+  state.dryRunQuestionContext = null;
+  elements["chat-input"].placeholder = "Ask about this review";
   // Each request owns its captured location. Clear the draft now instead of
   // clearing whichever line a later queued question selected.
   clearSelectedLine();
@@ -4821,7 +5301,7 @@ async function askAgent(event) {
     try {
       const response = await api("/api/agent/message", {
         method: "POST",
-        body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined }),
+        body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined, dryRunContext: dryRunContext ?? undefined }),
       });
       const previous = state.session;
       state.session = response;
@@ -4837,6 +5317,7 @@ async function askAgent(event) {
       if (state.activeThreadId === pending.threadId) {
         state.activeThreadId = originalThreadId;
         elements["chat-input"].value = body;
+        state.dryRunQuestionContext = dryRunContext;
       } else state.questionDrafts.set(originalThreadId, { body, line: anchor, contextPaths });
       renderMessages();
       toast(error.message);
@@ -5374,6 +5855,7 @@ elements["html-export-form"].addEventListener("submit", (event) => {
     includeFindings: elements["export-findings"].checked,
     includeCallFlows: elements["export-call-flows"].checked,
     includeDiagrams: elements["export-diagrams"].checked,
+    includeDryRuns: elements["export-dry-runs"].checked,
     diffWrap: state.diffWrap,
   };
   elements["html-export-dialog"].close();
@@ -5786,6 +6268,64 @@ new ResizeObserver(([entry]) => {
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
 elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequence", renderSequenceDiagrams));
+elements["dry-runs-tab"].addEventListener("click", () => activateReviewTab("dry-runs", renderDryRuns));
+elements["dry-runs"].addEventListener("change", (event) => {
+  const select = event.target.closest("[data-dry-run-select]");
+  if (select?.dataset.dryRunSelect === "flow") {
+    const [flowKind, ...id] = select.value.split(":");
+    state.dryRunFlowKind = flowKind;
+    state.dryRunFlowId = id.join(":");
+    state.dryRunScenarioId = null;
+    state.dryRunStepIndex = 0;
+    state.dryRunDraft = null;
+    state.dryRunDraftForm = null;
+    state.dryRunDraftDirty = false;
+    state.dryRunDraftFlowKey = null;
+    renderDryRuns();
+    return;
+  }
+  if (select?.dataset.dryRunSelect === "scenario") {
+    state.dryRunScenarioId = select.value;
+    state.dryRunStepIndex = 0;
+    state.dryRunDraft = null;
+    state.dryRunDraftForm = null;
+    state.dryRunDraftDirty = false;
+    renderDryRuns();
+    return;
+  }
+  onDryRunEditorFieldChange(event);
+});
+elements["dry-runs"].addEventListener("input", onDryRunEditorFieldChange);
+elements["dry-runs"].addEventListener("scroll", onDryRunEditorScroll, true);
+elements["dry-runs"].addEventListener("click", (event) => {
+  const source = event.target.closest("[data-dry-run-source-path]");
+  if (source) {
+    void showAnalysisFile(source.dataset.dryRunSourcePath, Number(source.dataset.dryRunSourceLine), "new");
+    return;
+  }
+  const action = event.target.closest("[data-dry-run-action]")?.dataset.dryRunAction;
+  if (!action) return;
+  if (action === "edit-inputs") { state.dryRunEditorOpen = !state.dryRunEditorOpen; renderDryRuns(); }
+  if (action === "plans") void prepareDryRunPlans();
+  if (action === "save") void saveDryRunScenario();
+  if (action === "prepare") void prepareDryRun();
+  if (action === "prepare-detailed") void prepareDryRun("detailed");
+  if (action === "cancel") void cancelDryRunPreparation();
+  if (action === "new") addDryRunScenario();
+  if (action === "previous") { state.dryRunStepIndex = Math.max(0, state.dryRunStepIndex - 1); renderDryRuns(); }
+  if (action === "next") { state.dryRunStepIndex += 1; renderDryRuns(); }
+  if (action === "restart") { state.dryRunStepIndex = 0; renderDryRuns(); }
+  if (action === "ask") {
+    const { plan, scenario } = dryRunSelection();
+    const trace = dryRunTraceFor(plan, state.dryRunScenarioId);
+    const step = trace?.steps[state.dryRunStepIndex];
+    if (!plan || !scenario || !trace || !step) return;
+    state.dryRunQuestionContext = { traceId: trace.id, flowId: plan.flowId, scenarioId: scenario.id, stepId: step.id };
+    activateReviewTab("conversations", renderMessages);
+    elements["chat-input"].placeholder = `Ask about simulated step ${step.order}: ${step.title}`;
+    elements["chat-input"].focus();
+  }
+});
 elements["adaptive-tab"].addEventListener("click", () => activateReviewTab("adaptive", renderAdaptiveDiagrams));
 elements["findings-tab"].addEventListener("click", () => activateReviewTab("findings", renderFindings));
 elements["findings-back"].addEventListener("click", returnToFindingCode);
@@ -5801,6 +6341,11 @@ elements["conversation-list"].addEventListener("click", (event) => {
 elements["screenshots-tab"].addEventListener("click", () => activateReviewTab("screenshots", renderScreenshots));
 elements["pull-request-tab"].addEventListener("click", () => activateReviewTab("pull-request", renderPullRequest));
 elements.flows.addEventListener("click", (event) => {
+  const dryRun = event.target.closest("[data-open-dry-run-flow]");
+  if (dryRun) {
+    openDryRunFlow(dryRun.dataset.openDryRunFlow, dryRun.dataset.openDryRunKind);
+    return;
+  }
   const expand = event.target.closest("[data-briefing-diagram-expand]");
   if (expand) {
     openBriefingDiagramViewer(expand.dataset.briefingDiagramExpand, expand.dataset.briefingDiagramId);
@@ -5820,6 +6365,11 @@ elements.flows.addEventListener("click", (event) => {
   if (button.dataset.flowAction === "regenerate") void regenerateFlows(flow.id);
 });
 elements["call-flows"].addEventListener("click", (event) => {
+  const dryRun = event.target.closest("[data-open-dry-run-flow]");
+  if (dryRun) {
+    openDryRunFlow(dryRun.dataset.openDryRunFlow, dryRun.dataset.openDryRunKind);
+    return;
+  }
   const location = event.target.closest("[data-call-path]");
   if (location) {
     state.activeTab = "diff";
@@ -5857,6 +6407,11 @@ function interactiveDiagramKey(diagram) {
 
 function registerArchitectureDiagramInteractions(container) {
   container.addEventListener("click", (event) => {
+    const dryRun = event.target.closest("[data-open-dry-run-flow]");
+    if (dryRun) {
+      openDryRunFlow(dryRun.dataset.openDryRunFlow, dryRun.dataset.openDryRunKind);
+      return;
+    }
     const briefingExpandButton = event.target.closest("[data-briefing-diagram-expand]");
     if (briefingExpandButton) {
       openBriefingDiagramViewer(briefingExpandButton.dataset.briefingDiagramExpand, briefingExpandButton.dataset.briefingDiagramId);
@@ -5940,6 +6495,7 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
   const nextTab = tabs[nextIndex];
   const render = nextTab === "call-flows" ? renderCallFlows
     : nextTab === "sequence" ? renderSequenceDiagrams
+      : nextTab === "dry-runs" ? renderDryRuns
       : nextTab === "adaptive" ? renderAdaptiveDiagrams
       : nextTab === "findings" ? renderFindings
       : nextTab === "activity" ? renderActivities

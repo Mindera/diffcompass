@@ -116,6 +116,8 @@ export interface TourOutline {
   phases: TourPhase[];
   callFlows: CallFlow[];
   flows: ReviewFlow[];
+  /** Scenario suggestions only. Detailed execution traces are prepared on demand. */
+  dryRunPlans?: DryRunPlan[];
   findings: ReviewFinding[];
   issueAssessment?: IssueAssessment;
 }
@@ -234,6 +236,111 @@ export interface ReviewFlow {
   blastRadiusSize: number;
   affectedFiles?: string[];
   outdated?: boolean;
+}
+
+/**
+ * Dry runs describe a code behavior, not a renderer artifact. A behavior can
+ * link to either diagram when one happens to exist, but remains usable when
+ * both diagram surfaces are disabled or no diagram was warranted.
+ */
+export type DryRunFlowKind = "behavior";
+
+export interface DryRunScenario {
+  id: string;
+  title: string;
+  /** Why this case is useful for reviewing this changed behavior. */
+  reason: string;
+  /** Existing repository evidence is preferred; invented samples are always labelled. */
+  source: "test" | "example" | "invented" | "reviewer";
+  description?: string;
+  inputs: Record<string, unknown>;
+  mocks: Record<string, unknown>;
+  assumptions: string[];
+  updatedAt?: string;
+}
+
+export interface DryRunPlanSource {
+  /** Bounded, new-side code evidence used to plan the simulation. */
+  anchors: DryRunSourceAnchor[];
+}
+
+export interface DryRunPlan {
+  /** A snapshot-stable behavior identity owned by the dry-run planner. */
+  flowId: string;
+  flowKind: DryRunFlowKind;
+  title: string;
+  summary: string;
+  source: DryRunPlanSource;
+  /** Optional correlations to diagram evidence in this outline snapshot. */
+  callFlowId?: string;
+  sequenceFlowId?: string;
+  scenarios: DryRunScenario[];
+}
+
+export interface DryRunSourceAnchor {
+  path: string;
+  side: "new";
+  startLine: number;
+  endLine: number;
+  /** True when the anchored line is an added line in the reviewed comparison. */
+  changed: boolean;
+}
+
+/** Optional, renderer-independent correlation to the persisted call-flow evidence. */
+export interface DryRunMapLink {
+  callFlowId: string;
+  nodeId?: string;
+  edgeId?: string;
+}
+
+export interface DryRunValueChange {
+  name: string;
+  before?: unknown;
+  after?: unknown;
+  note?: string;
+}
+
+export interface DryRunStep {
+  id: string;
+  order: number;
+  kind: "entry" | "calculation" | "branch" | "call" | "mock" | "return" | "unresolved";
+  title: string;
+  explanation: string;
+  source: DryRunSourceAnchor;
+  function: string;
+  arguments?: Record<string, unknown>;
+  locals?: Record<string, unknown>;
+  valueChanges: DryRunValueChange[];
+  assumption?: string;
+  mapLink?: DryRunMapLink;
+}
+
+/** Compact is the normal walkthrough; detailed is an explicit reviewer request. */
+export type DryRunDetail = "compact" | "detailed";
+
+export interface DryRunTrace {
+  id: string;
+  comparison: {
+    base: string;
+    mergeBase: string;
+    head: string;
+    fingerprint: string;
+  };
+  flowId: string;
+  flowKind: DryRunFlowKind;
+  flowFingerprint: string;
+  /** Older saved traces predate this field and are treated as compact. */
+  detail?: DryRunDetail;
+  scenario: DryRunScenario;
+  assumptions: string[];
+  steps: DryRunStep[];
+  outcome: {
+    summary: string;
+    value?: unknown;
+  };
+  preparedAt: string;
+  /** A source or scenario edit makes the retained simulation read-only historical context. */
+  stale?: boolean;
 }
 
 export type FindingDisposition =
@@ -448,6 +555,12 @@ export interface ChatMessage {
   };
   /** Extra repository files explicitly added when this conversation started. */
   contextPaths?: string[];
+  dryRunContext?: {
+    traceId: string;
+    flowId: string;
+    scenarioId: string;
+    stepId: string;
+  };
   createdAt: string;
 }
 
@@ -518,11 +631,12 @@ export interface AgentSelection {
   includeFlows?: boolean;
   includeFindings?: boolean;
   includeAdaptiveDiagrams?: boolean;
+  includeDryRuns?: boolean;
 }
 
 export interface AgentRunActivity {
   id: string;
-  kind: "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment";
+  kind: "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment" | "dry-run.plan" | "dry-run.trace";
   label: string;
   status: "waiting" | "running" | "completed" | "failed";
   prompt: string;
@@ -537,7 +651,7 @@ export interface AgentRunActivity {
 }
 
 export interface PersistedReviewSession {
-  schemaVersion: 2 | 3;
+  schemaVersion: 2 | 3 | 4;
   name?: string;
   archived?: boolean;
   repositoryRoot: string;
@@ -550,7 +664,7 @@ export interface PersistedReviewSession {
       sequence: number;
       id: string;
       type: "agent.prompt";
-      kind: "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment";
+      kind: "tour.outline" | "tour.explanation" | "review.question" | "issue.assessment" | "dry-run.plan" | "dry-run.trace";
       prompt: string;
       createdAt: string;
     };
@@ -586,6 +700,8 @@ export interface PersistedReviewSession {
   preferences?: ReviewPreferences;
   reviewPolicy?: ReviewPolicy;
   findingGenerationEnabled?: boolean;
+  /** Prepared simulations are durable so their Previous/Next navigation works offline after resume. */
+  dryRuns?: DryRunTrace[];
   pullRequest?: PullRequestContext;
   screenshots?: ReviewScreenshot[];
   revision: number;

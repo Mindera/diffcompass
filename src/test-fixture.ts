@@ -4,9 +4,11 @@ import { dirname, join, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
-import type { PersistedReviewSession } from "./types.ts";
+import { loadComparison } from "./git.ts";
+import { comparisonFingerprint, dryRunFlowFingerprint } from "./dry-runs.ts";
+import type { GitComparison, PersistedReviewSession } from "./types.ts";
 
-const FIXTURE_SCHEMA = 2;
+const FIXTURE_SCHEMA = 3;
 const FIXTURE_DIRECTORY = "code-review-tour-test-fixture-v2";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
@@ -174,9 +176,9 @@ async function git(repository: string, ...args: string[]): Promise<string> {
   return (await runProcess(["git", ...args], repository)).stdout.trim();
 }
 
-function persistedFixture(repositoryRoot: string, browserToken: string, baseOid: string, headOid: string): PersistedReviewSession {
-  return {
-    schemaVersion: 2,
+function persistedFixture(repositoryRoot: string, browserToken: string, baseOid: string, headOid: string, comparison: GitComparison): PersistedReviewSession {
+  const fixture: PersistedReviewSession = {
+    schemaVersion: 4,
     name: "Complete product tour fixture",
     repositoryRoot,
     base: baseOid,
@@ -296,6 +298,51 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
         blastRadiusSize: 2,
         affectedFiles: ["src/cart.ts", "src/receipt.ts"],
       }],
+      dryRunPlans: [{
+        flowId: "receipt-total-behavior",
+        flowKind: "behavior",
+        title: "Calculate and format a receipt",
+        summary: "Follow receipt input through subtotal, the optional discount branch, and fixed-decimal output.",
+        source: { anchors: [
+          { path: "src/receipt.ts", side: "new", startLine: 3, endLine: 5, changed: true },
+          { path: "src/cart.ts", side: "new", startLine: 10, endLine: 18, changed: true },
+        ] },
+        callFlowId: "receipt-calls",
+        sequenceFlowId: "checkout-flow",
+        scenarios: [{
+          id: "fractional-discount",
+          title: "Fractional 20% discount",
+          reason: "Primary changed behavior: two line items and a fractional discount reach formatted receipt output.",
+          source: "example",
+          inputs: { items: [{ price: 10, quantity: 2 }, { price: 5, quantity: 1 }], discount: { percentage: 0.2 } },
+          mocks: {},
+          assumptions: ["The input percentage is fractional, so 0.2 represents 20%."],
+        }, {
+          id: "no-discount",
+          title: "No discount supplied",
+          reason: "Alternate branch: the early return preserves the subtotal when discount is absent.",
+          source: "invented",
+          inputs: { items: [{ price: 10, quantity: 2 }, { price: 5, quantity: 1 }] },
+          mocks: {},
+          assumptions: ["An omitted discount is represented by undefined."],
+        }, {
+          id: "ambiguous-percentage",
+          title: "Percentage supplied as 20",
+          reason: "Boundary contract check: the code faithfully multiplies by 20 rather than normalizing a percentage-like value.",
+          source: "invented",
+          inputs: { items: [{ price: 10, quantity: 2 }, { price: 5, quantity: 1 }], discount: { percentage: 20 } },
+          mocks: {},
+          assumptions: ["No validation or percentage normalization is present in the reviewed code."],
+        }, {
+          id: "empty-cart",
+          title: "Empty cart boundary",
+          reason: "Boundary behavior: reduction begins at zero and the receipt still formats a number.",
+          source: "invented",
+          inputs: { items: [], discount: { percentage: 0.2 } },
+          mocks: {},
+          assumptions: ["The built-in array reduction receives the explicit zero initial value shown in source."],
+        }],
+      }],
       findings: [{
         id: "percentage-units",
         phaseId: "calculation",
@@ -387,6 +434,8 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
       createdAt: FIXTURE_TIME,
       updatedAt: FIXTURE_TIME,
     }],
+    checkpoints: [],
+    checkpointRefNamespace: "refs/code-review-tour/checkpoints/fixture",
     messages: [{
       id: "fixture-question",
       threadId: "fixture-question",
@@ -496,9 +545,44 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
       includeCallFlows: true,
       includeFlows: true,
       includeFindings: true,
+      includeDryRuns: true,
     },
     updatedAt: FIXTURE_TIME,
   };
+  const plan = fixture.outline!.dryRunPlans![0]!;
+  const scenario = plan.scenarios[0]!;
+  fixture.dryRuns = [{
+    id: "fixture-fractional-discount-trace",
+    comparison: { base: comparison.base, mergeBase: comparison.mergeBase, head: comparison.head, fingerprint: comparisonFingerprint(comparison) },
+    flowId: plan.flowId,
+    flowKind: plan.flowKind,
+    flowFingerprint: dryRunFlowFingerprint(fixture.outline!, plan.flowKind, plan.flowId),
+    detail: "compact",
+    scenario,
+    assumptions: ["The walkthrough derives values from the reviewed source and does not execute this fixture."],
+    steps: [{
+      id: "receipt-calls-total", order: 1, kind: "call", title: "Receipt calls total", explanation: "The receipt passes both supplied arguments to the cart total function.",
+      source: { path: "src/receipt.ts", side: "new", startLine: 4, endLine: 4, changed: true }, function: "receipt", arguments: scenario.inputs, locals: {}, valueChanges: [], mapLink: { callFlowId: "receipt-calls", edgeId: "receipt-total" },
+    }, {
+      id: "subtotal-reduces-items", order: 2, kind: "calculation", title: "Subtotal accumulates the items", explanation: "The reduction starts at zero, adds 20 for the first item, then adds 5 for the second item.",
+      source: { path: "src/cart.ts", side: "new", startLine: 10, endLine: 11, changed: true }, function: "subtotal", arguments: { items: scenario.inputs.items }, locals: { sum: 25 }, valueChanges: [{ name: "subtotal", before: 0, after: 25, note: "0 → 20 → 25" }], mapLink: { callFlowId: "receipt-calls", nodeId: "subtotal" },
+    }, {
+      id: "discount-branch", order: 3, kind: "branch", title: "Discount branch is taken", explanation: "A discount object is present, so !discount is false and total continues to the discount calculation.",
+      source: { path: "src/cart.ts", side: "new", startLine: 16, endLine: 16, changed: true }, function: "total", arguments: { discount: scenario.inputs.discount }, locals: { amount: 25 }, valueChanges: [], mapLink: { callFlowId: "receipt-calls", nodeId: "total" },
+    }, {
+      id: "apply-fractional-discount", order: 4, kind: "calculation", title: "Apply the fractional discount", explanation: "The source subtracts 25 multiplied by 0.2, producing 20 without normalizing or rounding the number.",
+      source: { path: "src/cart.ts", side: "new", startLine: 17, endLine: 17, changed: true }, function: "total", arguments: { amount: 25, percentage: 0.2 }, locals: { amount: 25 }, valueChanges: [{ name: "amount", before: 25, after: 20, note: "25 - 25 * 0.2" }], mapLink: { callFlowId: "receipt-calls", nodeId: "total" },
+    }, {
+      id: "format-fixed-decimals", order: 5, kind: "calculation", title: "Format two decimal places", explanation: "The receipt formatter converts the simulated numeric amount to the string 20.00.",
+      source: { path: "src/receipt.ts", side: "new", startLine: 5, endLine: 5, changed: true }, function: "receipt", arguments: { amount: 20 }, locals: { formatted: "20.00" }, valueChanges: [{ name: "formatted", before: 20, after: "20.00", note: "toFixed(2)" }], mapLink: { callFlowId: "receipt-calls", nodeId: "receipt" },
+    }, {
+      id: "return-receipt", order: 6, kind: "return", title: "Return the receipt text", explanation: "The formatter returns the exact text built from the fixed-decimal amount.",
+      source: { path: "src/receipt.ts", side: "new", startLine: 5, endLine: 5, changed: true }, function: "receipt", arguments: { amount: 20 }, locals: { formatted: "20.00" }, valueChanges: [{ name: "receipt", after: "Total: 20.00" }], mapLink: { callFlowId: "receipt-calls", nodeId: "receipt" },
+    }],
+    outcome: { summary: "Simulated receipt output is Total: 20.00.", value: "Total: 20.00" },
+    preparedAt: FIXTURE_TIME,
+  }];
+  return fixture;
 }
 
 export interface TestFixture {
@@ -546,6 +630,7 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
   await git(repository, "commit", "-m", "fixture pull request");
   const headOid = await git(repository, "rev-parse", "HEAD");
   const canonicalRepository = await realpath(repository);
-  await savePersistedSession(stateFile, persistedFixture(canonicalRepository, crypto.randomUUID(), baseOid, headOid));
+  const comparison = await loadComparison(canonicalRepository, baseOid);
+  await savePersistedSession(stateFile, persistedFixture(canonicalRepository, crypto.randomUUID(), baseOid, headOid, comparison));
   return { root, repository: canonicalRepository, stateFile: await realpath(stateFile), created: true };
 }
