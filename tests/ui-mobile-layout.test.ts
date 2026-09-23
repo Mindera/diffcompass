@@ -61,10 +61,45 @@ test("mobile layout gives paths their own wrapping row and leaves code at its no
 test("inline forms and line actions fit the visible mobile code pane", () => {
   expect(styles).toContain(".diff-file-scroll { container-type: inline-size; }");
   expect(styles).toContain(".inline-edit-form, .inline-comment-form, .github-thread-inline { position: sticky; left: 4px; width: calc(100cqw - 8px)");
+  expect(styles).toContain(".inline-comment-form header > div { min-width: 0; }");
   expect(styles).toContain(".code-selection-toolbar button { min-height: 38px;");
   expect(styles).toContain(".inline-edit-form textarea, .inline-edit-highlight { min-width: 0; min-height: 84px; font-size: 16px;");
   expect(styles).toContain(".inline-edit-form footer .button, .inline-comment-form footer .button { min-height: 44px;");
   expect(app.match(/revealInlineForm\(form\);/g)?.length).toBe(2);
+});
+
+test("wrap mode returns each file scroll viewport to its left edge without changing Scroll mode", () => {
+  const source = app.slice(app.indexOf("function changeDiffView("), app.indexOf("function isPngDiff("));
+  const fileScroll = { scrollLeft: 260 };
+  const panel = { scrollTop: 140, getBoundingClientRect: () => ({ top: 100 }) };
+  const elements = {
+    diff: {
+      querySelector: () => null,
+      querySelectorAll: (selector: string) => selector === ".diff-file-scroll" ? [fileScroll] : [],
+    },
+    "diff-panel": panel,
+  };
+  const scrolls: Array<{ top: number; behavior: string }> = [];
+  const changeDiffView = new Function(
+    "state", "elements", "document", "window", "syncDiffViewControls", "scheduleCurrentStepReturnUpdate",
+    `${source}; return changeDiffView;`,
+  )(
+    { diffLayout: "unified", diffWrap: "scroll", selectedLine: null },
+    elements,
+    { querySelector: () => ({ getBoundingClientRect: () => ({ height: 36 }) }) },
+    { scrollY: 75, scrollTo: (value: { top: number; behavior: string }) => scrolls.push(value) },
+    () => {},
+    () => {},
+  ) as (layout: string, wrap: string, persist: boolean) => void;
+
+  changeDiffView("unified", "wrap", false);
+  expect(fileScroll.scrollLeft).toBe(0);
+  expect(panel.scrollTop).toBe(140);
+  expect(scrolls).toEqual([{ top: 75, behavior: "instant" }]);
+
+  fileScroll.scrollLeft = 180;
+  changeDiffView("unified", "scroll", false);
+  expect(fileScroll.scrollLeft).toBe(180);
 });
 
 test("visible viewport height follows keyboard resizing but not pinch zoom", () => {

@@ -1701,6 +1701,11 @@ function changeDiffView(layout, wrap, persist = true) {
     }
     if (state.selectedLine) diffViewRow(state.selectedLine.path, state.selectedLine.side, state.selectedLine.line)?.classList.add("selected");
   } else syncDiffViewControls();
+  // Wrapped code has no intentional horizontal viewport. Clear any offset
+  // retained from Scroll mode before restoring the vertical source-line anchor.
+  if (state.diffWrap === "wrap") {
+    elements.diff.querySelectorAll(".diff-file-scroll").forEach((scroll) => { scroll.scrollLeft = 0; });
+  }
   // Restore the same source line, not its old pixel scroll offset: wrapping
   // changes the height of every preceding line. No smooth jump via the top.
   window.scrollTo({top: pageTop, behavior: "instant"});

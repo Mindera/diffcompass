@@ -518,6 +518,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .inline-comment-editor-lane.new-side .inline-comment-form { grid-column: 2; }
 .inline-comment-form { box-sizing: border-box; min-width: 0; margin: 8px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: 9px; padding: 11px; background: var(--surface-item); box-shadow: 0 5px 16px var(--shadow); font-family: system-ui, sans-serif; }
 .inline-comment-form header, .inline-comment-form footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.inline-comment-form header > div { min-width: 0; }
 .inline-comment-form header strong { display: block; overflow: hidden; margin-top: 3px; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .selection-quote-preview { margin: 10px 0 0; border: 1px solid var(--border-soft); border-radius: 7px; padding: 7px 9px; background: var(--surface-code); }
 .selection-quote-preview summary { cursor: pointer; color: var(--text-soft); font-size: 10px; }
@@ -1287,6 +1288,9 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .questions-resizer::after { content: ""; position: absolute; inset: 2px 42%; border-radius: 999px; background: var(--muted); }
 .questions-resizer:hover, .questions-resizer:focus-visible { background: var(--accent); }
 .agent-pane-switch { display: none; }
+#conversations-view { box-sizing: border-box; padding: 24px; }
+#conversations-view > h2 { margin: 4px 0 8px; }
+#conversations-view > .muted { margin: 0 0 24px; }
 .conversation-card { padding: 16px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; overflow-wrap: anywhere; }
 .conversation-title { background: none; border: 0; padding: 0; text-align: left; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
 .conversation-title:hover { color: var(--accent-strong); }

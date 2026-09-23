@@ -76,3 +76,9 @@ test("desktop tabs have a separate row and the title cannot wrap into them", () 
   expect(styles).toContain('.topbar > .actions { grid-column: 2; grid-row: 1; }');
   expect(styles).toContain('height: calc(100vh - 98px);');
 });
+
+test("conversations view keeps its content away from the pane edges", () => {
+  expect(styles).toContain("#conversations-view { box-sizing: border-box; padding: 24px; }");
+  expect(styles).toContain("#conversations-view > h2 { margin: 4px 0 8px; }");
+  expect(styles).toContain("#conversations-view > .muted { margin: 0 0 24px; }");
+});
