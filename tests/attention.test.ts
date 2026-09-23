@@ -52,6 +52,38 @@ test("does not manufacture attention for a quiet documentation-only comparison",
   expect(result.estimate.factors.map((factor) => factor.label)).toEqual(["Baseline", "Changed files", "Diff size"]);
 });
 
+test("prioritizes broad static reach only when a saved structural result also reports a test gap", () => {
+  const result = buildNeedsAttention(comparison([file("src/api.ts", "export function api() {}")]), outline({
+    structuralBlastRadii: [{
+      id: "api-radius", symbol: { id: "src/api.ts:new:1:api", symbol: "api", kind: "function", location: { path: "src/api.ts", side: "new", line: 1 } },
+      provider: "repository-search", confidence: "low", provenance: "partial", summary: "Static reach, not proof of runtime impact.",
+      nodes: [{ id: "src/api.ts:new:1:api", symbol: "api", kind: "function", location: { path: "src/api.ts", side: "new", line: 1 } }],
+      edges: [], directCallerIds: [], reportedDirectCallerCount: 8, reportedReachableNodeCount: 12, reportedImpactedFileCount: 1, impactedFiles: ["src/api.ts"],
+      coverage: { state: "partial", reportedCounts: "exact", omissionReason: "The provider supplied totals without all source identities." },
+      nearbyTestGaps: [{ kind: "no-nearby-tests", detail: "No nearby test references the changed API.", nearbyTestFiles: [] }],
+    }],
+  }));
+  expect(result.signals.find((signal) => signal.kind === "structural-blast-radius")).toMatchObject({
+    target: { kind: "structural-blast-radius", structuralBlastRadiusId: "api-radius" },
+    basis: "bounded-heuristic",
+  });
+  expect(result.estimate.factors.map((factor) => factor.label)).toContain("Structural reach");
+});
+
+test("does not turn an unverified structural total into broad-reach attention", () => {
+  const result = buildNeedsAttention(comparison([file("src/api.ts", "export function api() {}")]), outline({
+    structuralBlastRadii: [{
+      id: "legacy-api-radius", symbol: { id: "src/api.ts:new:1:api", symbol: "api", kind: "function", location: { path: "src/api.ts", side: "new", line: 1 } },
+      provider: "repository-search", confidence: "low", provenance: "partial", summary: "Static reach only, not proof of runtime impact.",
+      nodes: [{ id: "src/api.ts:new:1:api", symbol: "api", kind: "function", location: { path: "src/api.ts", side: "new", line: 1 } }],
+      edges: [], directCallerIds: [], reportedDirectCallerCount: 8, reportedReachableNodeCount: 12, reportedImpactedFileCount: 1, impactedFiles: ["src/api.ts"],
+      coverage: { state: "unknown", reportedCounts: "not-reported", omissionReason: "Reason not supplied by this saved result." },
+      nearbyTestGaps: [{ kind: "no-nearby-tests", detail: "No nearby test references the changed API.", nearbyTestFiles: [] }],
+    }],
+  }));
+  expect(result.signals.some((signal) => signal.kind === "structural-blast-radius")).toBe(false);
+});
+
 test("export options can omit analysis that is not present in the exported artifact", () => {
   const result = buildNeedsAttention(comparison([file("src/api.ts", "export function api() {}")]), outline({
     findings: [{ id: "p1", path: "src/api.ts", side: "new", line: 1, lineContent: "export function api() {}", message: "Risk", category: "correctness", severity: "high", confidence: "high", evidence: "Evidence", priority: "P1", introduced: true, recallGuard: false, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" }],

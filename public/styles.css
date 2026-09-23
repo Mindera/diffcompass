@@ -822,6 +822,10 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .finding-badges .finding-disposition.deferred { border-color: var(--warning-border); color: var(--warning); background: var(--warning-background); }
 .finding-badges .finding-disposition.obsolete-after-refresh { border-color: var(--priority-p3); color: var(--priority-p3); background: var(--surface-control); }
 .finding-badges .finding-reassessment { border-color: var(--warning-border); color: var(--warning); background: var(--warning-background); font-weight: 700; }
+.finding-structural-pins { margin: 7px 0; color: var(--muted); font-size: 10px; }
+.finding-structural-pins summary { cursor: pointer; }
+.finding-structural-pins ul { display: grid; gap: 3px; margin: 5px 0 0; padding-left: 16px; }
+.finding-structural-pins code { overflow-wrap: anywhere; color: var(--text-code); }
 .finding-note { margin: 8px 0; border-left: 2px solid var(--accent-strong); padding-left: 8px; color: var(--text-soft); font-size: 11px; }
 .finding-note strong { color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .finding-note p { margin: 3px 0 0; }
@@ -880,6 +884,107 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .dependency-changes ul { margin: 6px 0 0; padding-left: 20px; }
 .architecture-impact { margin-top: 12px; }
 .call-flows { max-width: 1002px; margin: 18px auto 48px; padding: 0 24px; }
+.structural-blast-radii { max-width: 1002px; margin: 18px auto 48px; padding: 0 24px; }
+.structural-toolbar { align-items: flex-start; }
+.structural-toolbar > div { min-width: 0; }
+.structural-picker { display: grid; grid-template-columns: minmax(210px, 360px); gap: 5px; flex: 0 1 360px; min-width: min(100%, 210px); color: var(--text-soft); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.structural-picker select { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; color: var(--text); background: var(--surface-control); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
+.structural-picker small { color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.structural-blast-card { display: grid; gap: 13px; }
+.structural-blast-card > header { display: flex; justify-content: space-between; gap: 12px; }
+.structural-card-heading > div { min-width: 0; }
+.structural-question { display: block; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.structural-blast-card h3 { margin: 0; color: var(--text); font: 700 18px/1.35 system-ui, sans-serif; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.structural-blast-card h3 code { color: var(--text-code); font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.structural-root-link { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--accent-border); text-underline-offset: 3px; overflow-wrap: anywhere; }
+.structural-root-link:hover, .structural-root-link:focus-visible { color: var(--accent-strong); outline: 0; }
+.structural-metadata { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0; margin: 5px 0 0; color: var(--muted); font: 10px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.structural-source-link { border: 0; padding: 0; color: var(--accent-strong); background: transparent; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--accent-border); text-underline-offset: 2px; overflow-wrap: anywhere; }
+.structural-source-link:hover, .structural-source-link:focus-visible { color: var(--text); outline: 0; }
+.structural-comparison-side { color: var(--muted); }
+.structural-description { margin: 0; color: var(--text-soft); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.structural-boundary { margin: 0; border-left: 3px solid var(--warning-border); padding: 7px 9px; color: var(--text-soft); background: var(--surface-hover); font-size: 11px; line-height: 1.45; }
+.structural-completeness { display: grid; gap: 3px; border: 1px solid var(--border-soft); border-left: 3px solid var(--muted); border-radius: 8px; padding: 8px 10px; background: var(--surface-control); color: var(--text-soft); font-size: 10px; line-height: 1.45; }
+.structural-completeness strong { color: var(--text); font-size: 11px; }
+.structural-completeness.complete { border-left-color: var(--success-border); }
+.structural-completeness.partial { border-left-color: var(--warning); }
+.structural-completeness.unavailable { border-left-color: var(--danger); }
+.structural-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--border-soft); }
+.structural-counts > span { min-width: 0; padding: 9px 10px; color: var(--text-soft); background: var(--surface-control); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+.structural-count-help { margin: -2px 0 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.structural-section { border: 1px solid var(--border-soft); border-radius: 8px; padding: 9px 10px; background: var(--surface-code); }
+.structural-section > summary { color: var(--text); cursor: pointer; font-size: 11px; font-weight: 800; }
+.structural-section > .muted { margin: 8px 0 0; }
+.structural-section ul { display: grid; gap: 6px; margin: 9px 0 0; padding-left: 18px; }
+.structural-section li { min-width: 0; color: var(--text-soft); font-size: 11px; overflow-wrap: anywhere; }
+.structural-analysis-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 9px; }
+.structural-analysis-block, .structural-technical-data { min-width: 0; border: 1px solid var(--border-soft); border-radius: 7px; padding: 8px; background: var(--surface-control); }
+.structural-analysis-block h4, .structural-test-evidence h4 { margin: 0 0 6px; color: var(--muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.structural-analysis-block p { margin: 0; color: var(--text-soft); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.structural-analysis-block p + p { margin-top: 6px; }
+.structural-analysis-block ul { display: grid; gap: 5px; margin: 0; padding-left: 16px; }
+.structural-analysis-block li { color: var(--text-soft); font-size: 10px; line-height: 1.45; }
+.structural-analysis-block strong { color: var(--text); }
+.structural-technical-data { display: block; margin-top: 9px; }
+.structural-technical-data > summary { color: var(--text-soft); cursor: pointer; font-size: 10px; font-weight: 700; }
+.structural-technical-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 9px; margin: 8px 0 0; }
+.structural-technical-meta > div { display: grid; grid-template-columns: minmax(72px, .45fr) minmax(0, 1fr); gap: 7px; }
+.structural-technical-meta dt { color: var(--muted); font-size: 9px; }
+.structural-technical-meta dd { min-width: 0; margin: 0; color: var(--text-soft); font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.structural-raw-identity { display: block; margin: 2px 6px 0; color: var(--muted); font-size: 8px; overflow-wrap: anywhere; }
+.structural-node-link, .structural-node-label { display: grid; width: 100%; gap: 2px; border: 0; padding: 5px 6px; color: var(--text); background: transparent; font: inherit; text-align: left; }
+.structural-node-link { border-radius: 6px; cursor: pointer; }
+.structural-node-link:hover { background: var(--surface-hover); }
+.structural-node-link strong, .structural-node-label strong { color: var(--text-code); font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.structural-node-link small, .structural-node-label small, .structural-subgraph small { color: var(--muted); font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.structural-subgraph { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 8px; }
+.structural-subgraph > section { min-width: 0; border: 1px solid var(--border-soft); border-radius: 7px; padding: 8px; background: var(--surface-control); }
+.structural-subgraph > section > strong { color: var(--muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.structural-subgraph ul { margin-top: 6px; }
+.structural-technical-edge { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; }
+.structural-technical-edge > code { overflow-wrap: anywhere; }
+.structural-files button, .structural-test-evidence button { border: 0; padding: 0; color: var(--accent-strong); background: transparent; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: left; cursor: pointer; }
+.structural-files li { display: grid; gap: 3px; }
+.structural-test-evidence { display: grid; gap: 9px; margin-top: 9px; }
+.structural-test-evidence > section { min-width: 0; border-left: 2px solid var(--border); padding-left: 8px; }
+.structural-test-evidence p { margin: 0; color: var(--text-soft); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.structural-test-evidence ul { display: grid; gap: 5px; margin: 0; padding-left: 16px; }
+.structural-test-evidence li { display: grid; gap: 2px; min-width: 0; color: var(--text-soft); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.structural-test-evidence li > ul { margin-top: 3px; }
+.structural-test-status { color: var(--text) !important; font-size: 11px !important; font-weight: 800; }
+.structural-test-caveat { border-top: 1px solid var(--border-soft); padding-top: 7px; color: var(--muted) !important; }
+.structural-test-search { border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px; background: var(--surface-control); }
+.structural-test-search > summary { color: var(--muted); cursor: pointer; font-size: 10px; font-weight: 700; }
+.structural-graph-shell { overflow: hidden; border: 1px solid var(--border-soft); border-radius: 9px; background: var(--surface-code); }
+.structural-graph-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); color: var(--text); background: var(--surface-control); font-size: 10px; font-weight: 800; }
+.structural-graph-legend { display: flex; flex-wrap: wrap; gap: 4px 11px; margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 600; }
+.structural-graph-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.structural-graph-legend i { box-sizing: border-box; width: 13px; height: 9px; border: 1.5px solid var(--border); border-radius: 3px; background: var(--surface-code); }
+.structural-graph-legend i.root { border-color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 20%, var(--surface-control)); }
+.structural-graph-legend i.direct { border-color: var(--warning); }
+.structural-graph-legend i.external { border-style: dashed; }
+.structural-graph-help { margin-right: auto; color: var(--muted); font-weight: 500; }
+.structural-graph-actions { display: flex; gap: 4px; }
+.structural-graph-actions button { min-width: 27px; border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; color: var(--text); background: var(--surface-hover); font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
+.structural-graph-actions button:hover, .structural-graph-actions button:focus-visible { border-color: var(--accent-strong); outline: 0; }
+.structural-graph { display: block; width: 100%; height: auto; max-height: 340px; touch-action: none; cursor: grab; user-select: none; }
+.structural-graph.dragging { cursor: grabbing; }
+.structural-graph-backdrop { fill: color-mix(in srgb, var(--surface-code) 88%, var(--surface-control)); }
+.structural-graph-edge { fill: none; stroke: var(--muted); stroke-width: 2; opacity: .75; }
+.structural-graph marker path { fill: var(--muted); }
+.structural-graph-node rect { fill: var(--surface-control); stroke: var(--border); stroke-width: 1.5; }
+.structural-graph-node.root rect { fill: color-mix(in srgb, var(--accent) 20%, var(--surface-control)); stroke: var(--accent-strong); stroke-width: 2; }
+.structural-graph-node.direct rect { stroke: var(--warning); }
+.structural-graph-node.external rect { stroke-dasharray: 4 3; }
+.structural-graph-node[role="button"] { cursor: pointer; }
+.structural-graph-node[role="button"]:hover rect { fill: var(--surface-hover); stroke: var(--accent-strong); }
+.structural-graph-node[role="button"]:focus { outline: none; }
+.structural-graph-node[role="button"]:focus rect { stroke: var(--accent-strong); stroke-width: 3; }
+.structural-graph-symbol { fill: var(--text); font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; pointer-events: none; }
+.structural-graph-location { fill: var(--muted); font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; pointer-events: none; }
+.structural-graph-role { fill: var(--accent-strong); font: 800 8px system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
+.structural-graph-caption { margin: 0; padding: 7px 10px 9px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+@media (max-width: 700px) { .structural-toolbar { align-items: stretch; flex-direction: column; } .structural-picker { width: 100%; max-width: none; } .structural-counts, .structural-subgraph, .structural-analysis-layout, .structural-technical-meta { grid-template-columns: 1fr; } .structural-graph-help { flex-basis: 100%; } }
 .call-flow-card { overflow: hidden; }
 .call-flow-summary { display: flex; align-items: center; gap: 12px; margin: 12px 0 5px; color: var(--muted); font-size: 11px; }
 .call-flow-impact { margin-bottom: 12px; color: var(--muted); font-size: 11px; }

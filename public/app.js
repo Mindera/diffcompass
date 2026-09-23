@@ -77,6 +77,10 @@ const state = {
   tourIntroShown: false,
   focusedFindingId: null,
   findingReturn: null,
+  structuralBlastRadiusId: null,
+  structuralGraphViews: new Map(),
+  structuralDisclosureStates: new Map(),
+  structuralGraphDrag: null,
   pollInFlight: false,
   pollGeneration: 0,
   expectedAgentActivity: null,
@@ -129,6 +133,8 @@ const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "dry-runs-view", "dry-runs", "dry-runs-tab", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings", "include-dry-runs",
+    "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "structural-blast-radius-view", "structural-blast-radius", "structural-blast-radius-empty", "structural-blast-radius-tab", "structural-blast-radius-select", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
+    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
@@ -139,6 +145,7 @@ const elements = Object.fromEntries(
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "reviewer-task-assessment-status", "reviewer-task-assessment-status-title", "reviewer-task-assessment-status-body", "view-reviewer-task-assessment", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "export-dry-runs", "cancel-html-export", "finding-tooltip", "toast",
+    "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-structural-blast-radius", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -2741,7 +2748,8 @@ function findingCards(findings, compact = false) {
       <strong>${escapeHtml(finding.category)} · ${escapeHtml(finding.severity)}</strong>
       <p>${renderInlineMarkdown(finding.message)}</p>
       <details class="finding-evidence"><summary>Evidence trail · ${escapeHtml(finding.confidence)} confidence</summary>${renderFindingEvidence(finding.evidence)}</details>
-      <div class="finding-badges"><span>${finding.introduced === true ? "introduced" : finding.introduced === false ? "pre-existing" : "attribution unknown"}</span><span>${finding.tested ? "tested" : "untested"}</span><span>blast ${finding.blastRadiusSize}</span><span>${escapeHtml(finding.pinScope)} pin</span>${finding.recallGuard ? "<span>recall-protected</span>" : ""}${disposition ? `<span class="finding-disposition ${escapeHtml(disposition)}">${escapeHtml(findingDispositionLabel(disposition))}</span>` : ""}${finding.outdated ? '<span class="finding-reassessment">Needs reassessment</span>' : ""}</div>
+      <div class="finding-badges"><span>${finding.introduced === true ? "introduced" : finding.introduced === false ? "pre-existing" : "attribution unknown"}</span><span>${finding.tested ? "tested" : "untested"}</span><span>blast ${finding.blastRadiusSize}</span><span>${escapeHtml(finding.pinScope)} pin</span>${finding.pinnedSymbolIds?.length ? `<span>${finding.pinnedSymbolIds.length} structural pin${finding.pinnedSymbolIds.length === 1 ? "" : "s"}</span>` : ""}${finding.recallGuard ? "<span>recall-protected</span>" : ""}${disposition ? `<span class="finding-disposition ${escapeHtml(disposition)}">${escapeHtml(findingDispositionLabel(disposition))}</span>` : ""}${finding.outdated ? '<span class="finding-reassessment">Needs reassessment</span>' : ""}</div>
+      ${finding.pinnedSymbolIds?.length ? `<details class="finding-structural-pins"><summary>Symbols linked to this finding</summary><ul>${finding.pinnedSymbolIds.map((id) => `<li><code>${escapeHtml(id)}</code></li>`).join("")}</ul></details>` : ""}
       ${finding.reviewerNote ? `<div class="finding-note"><strong>Reviewer note</strong><p>${renderInlineMarkdown(finding.reviewerNote)}</p></div>` : ""}
       <div class="comment-actions">
         ${finding.status === "converted-to-feedback" ? `<span class="muted">${convertedLabel}</span>` : `<label class="finding-disposition-control"><span>Disposition</span><select data-finding-disposition${disabled}><option value=""${!disposition ? " selected" : ""}>Open</option>${Object.entries(findingDispositionLabels).map(([value, label]) => `<option value="${value}"${disposition === value ? " selected" : ""}>${label}</option>`).join("")}</select></label><textarea data-finding-note rows="2" maxlength="8000" placeholder="Optional reviewer note"${disabled}>${escapeHtml(finding.reviewerNote || "")}</textarea><button class="text-button" data-action="save-disposition" type="button"${disabled}>Save disposition</button>${finding.status === "open" ? `<button class="text-button" data-action="convert" type="button"${disabled}>${finding.outdated ? "Revalidate" : "Add as feedback"}</button>${state.session.pullRequest && !/\.png$/i.test(finding.path) ? `<button class="text-button" data-action="publish-finding" type="button"${disabled}>Add to PR review</button>` : ""}` : `<button class="text-button" data-action="reopen" type="button"${disabled}>Reopen</button>`}`}
@@ -3109,6 +3117,7 @@ function openBriefingDiagramViewer(kind, id) {
 function attentionSignalTarget(target) {
   if (target.kind === "finding") return `data-attention-kind="finding" data-attention-id="${escapeHtml(target.findingId)}"`;
   if (target.kind === "call-flow") return `data-attention-kind="call-flow" data-attention-id="${escapeHtml(target.callFlowId)}"`;
+  if (target.kind === "structural-blast-radius") return `data-attention-kind="structural-blast-radius" data-attention-id="${escapeHtml(target.structuralBlastRadiusId)}"`;
   if (target.kind === "file") return `data-attention-kind="file" data-attention-path="${escapeHtml(target.path)}"${target.side ? ` data-attention-side="${target.side}"` : ""}${target.line ? ` data-attention-line="${target.line}"` : ""}`;
   return `data-attention-kind="section" data-attention-section="${escapeHtml(target.section)}"`;
 }
@@ -3116,6 +3125,7 @@ function attentionSignalTarget(target) {
 function attentionTargetLabel(target) {
   if (target.kind === "finding") return "View finding";
   if (target.kind === "call-flow") return "Open call flow";
+  if (target.kind === "structural-blast-radius") return "Open structural reach";
   if (target.kind === "file") return `Open ${target.path}${target.line ? `:${target.line}` : ""}`;
   return `Open ${target.section.replaceAll("-", " ")} section`;
 }
@@ -3127,7 +3137,7 @@ function renderTourAttention() {
   const showAttention = state.session.preferences?.briefingNeedsAttention !== false;
   const showEffort = state.session.preferences?.briefingReviewEffort !== false;
   elements["tour-intro-attention"].classList.toggle("hidden", !showAttention || signals.length === 0);
-  elements["tour-intro-attention-note"].textContent = signals.length === 0 ? "" : `${signals.length} review cue${signals.length === 1 ? "" : "s"} shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 finding${findingCount === 1 ? "" : "s"}. Other cues point to contracts, tests, flows, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
+  elements["tour-intro-attention-note"].textContent = signals.length === 0 ? "" : `${signals.length} review cue${signals.length === 1 ? "" : "s"} shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 finding${findingCount === 1 ? "" : "s"}. Other cues point to contracts, tests, flows, structural reach, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
   elements["tour-intro-attention-list"].innerHTML = signals.map((signal) => `<article class="tour-intro-attention-item ${signal.kind}" role="listitem"><div class="tour-intro-attention-heading"><strong>${escapeHtml(signal.title)}</strong><span class="attention-basis">${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</span></div><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details><button type="button" class="text-button" ${attentionSignalTarget(signal.target)}>${escapeHtml(attentionTargetLabel(signal.target))}</button></article>`).join("");
   const estimate = briefing?.estimate;
   elements["tour-intro-estimate"].classList.toggle("hidden", !showEffort || !estimate);
@@ -3259,6 +3269,469 @@ function renderCallFlows() {
   elements["call-flows-empty"].classList.toggle("hidden", callFlows.length > 0);
   elements["call-flows-empty"].textContent = state.session.outline ? "No changed call graph was identified for this comparison." : "Start the tour to trace changed calls from their entrypoints.";
   elements["call-flows"].innerHTML = callFlows.map((flow) => callFlowCardHtml(flow)).join("");
+}
+
+function structuralLocationLabel(node) {
+  return node.location ? `${node.location.path}:${node.location.line} (${node.location.side})` : node.id;
+}
+
+function structuralNodeLink(node) {
+  const identity = `${node.symbol} · ${structuralLocationLabel(node)}`;
+  return node.location
+    ? `<button class="structural-node-link" type="button" data-structural-path="${escapeHtml(node.location.path)}" data-structural-side="${escapeHtml(node.location.side)}" data-structural-line="${node.location.line}" title="Open ${escapeHtml(identity)}"><strong>${escapeHtml(node.symbol)}</strong><small>${escapeHtml(structuralLocationLabel(node))}</small></button>`
+    : `<span class="structural-node-label"><strong>${escapeHtml(node.symbol)}</strong><small>${escapeHtml(node.id)}</small></span>`;
+}
+
+function structuralCoverage(radius) {
+  return radius.coverage ?? {
+    state: radius.provider === "unavailable" ? "unavailable" : "unknown",
+    reportedCounts: "not-reported",
+    omissionReason: "Reason not supplied by this saved result.",
+  };
+}
+
+function structuralCompletenessCopy(radius) {
+  const coverage = structuralCoverage(radius);
+  const knownReach = Math.max(0, radius.nodes.length - 1);
+  if (coverage.state === "complete") {
+    return {
+      state: "complete",
+      title: "",
+      detail: "",
+      analysis: "Every connection saved with this result is shown. Other connections may still exist outside this analysis.",
+    };
+  }
+  if (coverage.state === "partial") {
+    const exact = coverage.reportedCounts === "exact";
+    const totals = exact
+      ? `${knownReach} reachable identities and ${radius.impactedFiles.length} source files are supplied; the provider reported ${radius.reportedReachableNodeCount} and ${radius.reportedImpactedFileCount} respectively.`
+      : `${knownReach} reachable identities and ${radius.impactedFiles.length} source files are supplied; totals are ${coverage.reportedCounts === "lower-bound" ? "lower bounds" : "not reported"}.`;
+    return { state: "partial", title: "Incomplete provider result", detail: `Some provider results were not supplied. ${coverage.omissionReason ?? "Reason not supplied by this saved result."}`, analysis: totals };
+  }
+  if (coverage.state === "unavailable") {
+    return { state: "unavailable", title: "Structural provider unavailable", detail: "Caller reach and broader affected-file reach were not analysed.", analysis: "Only the changed symbol is saved. This is not evidence that it has no callers." };
+  }
+  return { state: "unknown", title: "Completeness not recorded", detail: "Treat displayed identities as a lower bound.", analysis: coverage.omissionReason ?? "Reason not supplied by this saved result." };
+}
+
+function structuralCountCopy(radius, known, reported, noun) {
+  const coverage = structuralCoverage(radius);
+  if (coverage.state === "unavailable") return `${noun}: not analysed`;
+  if (coverage.state === "complete") return `${noun}: ${known} known`;
+  if (coverage.reportedCounts === "exact") return `${noun}: ${known} supplied of ${reported} reported`;
+  if (coverage.reportedCounts === "lower-bound") return `${noun}: ${known} supplied; provider found at least ${reported}`;
+  return `${noun}: ${known} supplied; total not reported`;
+}
+
+function structuralSelectedLabel(radius) {
+  const labels = {
+    function: "Selected function",
+    method: "Selected method",
+    constructor: "Selected constructor",
+    component: "Selected component",
+    type: "Selected type",
+    module: "Selected module",
+  };
+  return labels[radius.symbol.kind] ?? "Selected symbol";
+}
+
+function structuralConnectionLabels(radius) {
+  const kind = structuralRelationshipKind(radius);
+  if (kind === "calls" && structuralCallable(radius)) return { direct: "Direct caller", indirect: "Indirect caller", noun: "caller" };
+  if (kind === "references") return { direct: "Direct reference", indirect: "Indirect reference", noun: "reference" };
+  if (kind === "calls") return { direct: "Direct use", indirect: "Indirect use", noun: "use" };
+  return { direct: "Direct connection", indirect: "Indirect connection", noun: "connection" };
+}
+
+function structuralReachCountCopy(radius, known, reported) {
+  const coverage = structuralCoverage(radius);
+  const noun = structuralConnectionLabels(radius).noun;
+  const plural = known === 1 ? noun : `${noun}s`;
+  const label = structuralRelationshipKind(radius) === "calls" && structuralCallable(radius)
+    ? `${known} ${plural}, direct or indirect`
+    : `${known} ${plural}, direct or indirect`;
+  if (coverage.state === "unavailable") return `${noun[0].toUpperCase()}${noun.slice(1)}s, direct or indirect: not analysed`;
+  if (coverage.state === "complete") return label;
+  if (coverage.reportedCounts === "exact") return `${label} · ${known} supplied of ${reported} reported`;
+  if (coverage.reportedCounts === "lower-bound") return `${label} · ${known} supplied; provider found at least ${reported}`;
+  return `${label} · ${known} supplied; total not reported`;
+}
+
+function structuralCountHelpCopy(radius) {
+  const label = structuralSelectedLabel(radius).replace("Selected", "The selected").toLowerCase();
+  const kind = structuralRelationshipKind(radius);
+  const noun = kind === "calls" && structuralCallable(radius) ? "caller" : kind === "references" ? "reference" : "connection";
+  return `${label[0].toUpperCase()}${label.slice(1)} is excluded from ${noun} counts.`;
+}
+
+function structuralTestGapLabel(kind) {
+  return {
+    "no-nearby-tests": "No nearby tests found",
+    "changed-symbol-not-covered": "Changed symbol not covered by a nearby test",
+    "impacted-path-not-covered": "Potentially affected path not covered by a nearby test",
+    "coverage-unknown": "Test coverage unknown",
+  }[kind] ?? kind;
+}
+
+function structuralTestAssessment(radius) {
+  if (radius.testEvidence) return { ...radius.testEvidence, legacy: false };
+  const savedGaps = radius.nearbyTestGaps.filter((gap) => gap.kind !== "coverage-unknown");
+  if (savedGaps.length) {
+    return {
+      state: "limited",
+      checkedSources: [],
+      relevantTests: [],
+      remainingUncertainty: "A saved test question exists, but it does not say what was checked.",
+      legacy: true,
+    };
+  }
+  return { state: "not-assessed", checkedSources: [], relevantTests: [], legacy: true };
+}
+
+function structuralTestAssessmentCopy(assessment) {
+  return {
+    "not-assessed": "Tests were not assessed for this symbol.",
+    "relevant-tests-found": "We found test code related to this symbol.",
+    "none-found": "We did not find related test code in the recorded search.",
+    limited: "The test check was limited.",
+  }[assessment.state] ?? "Test assessment was not recorded.";
+}
+
+function structuralTestSourceLink(source) {
+  const location = `${source.path}:${source.line}`;
+  return `<li><button type="button" data-structural-path="${escapeHtml(source.path)}" data-structural-side="${escapeHtml(source.side)}" data-structural-line="${source.line}" title="Open ${escapeHtml(location)}"><code>${escapeHtml(location)}</code></button><span>${escapeHtml(source.detail)}</span></li>`;
+}
+
+function structuralTestSources(assessment) {
+  const sources = new Map();
+  for (const source of [...assessment.checkedSources, ...assessment.relevantTests]) {
+    const key = `${source.path}:${source.side}:${source.line}`;
+    const saved = sources.get(key) ?? { ...source, details: [] };
+    if (source.detail && !saved.details.includes(source.detail)) saved.details.push(source.detail);
+    sources.set(key, saved);
+  }
+  return [...sources.values()].map(({ details, ...source }) => ({ ...source, detail: details.join(" ") }));
+}
+
+function structuralTestEvidenceMarkup(radius) {
+  const assessment = structuralTestAssessment(radius);
+  const savedGaps = radius.nearbyTestGaps.filter((gap) => gap.kind !== "coverage-unknown");
+  const sources = structuralTestSources(assessment);
+  const related = sources.length ? `<ul>${sources.map(structuralTestSourceLink).join("")}</ul>` : "";
+  const uncertainty = assessment.remainingUncertainty
+    ? `<section><h4>Still unclear</h4><p>${escapeHtml(assessment.remainingUncertainty)}</p></section>`
+    : assessment.state === "none-found"
+      ? "<section><h4>Still unclear</h4><p>This only describes the recorded search. It does not show that no tests exist, ran, or passed.</p></section>"
+      : "";
+  const legacyGaps = savedGaps.length
+    ? `<section><h4>${assessment.legacy ? "Saved test questions" : "Additional test questions"}</h4><ul>${savedGaps.map((gap) => `<li><strong>${escapeHtml(structuralTestGapLabel(gap.kind))}</strong><span>${escapeHtml(gap.detail)}</span>${gap.nearbyTestFiles.length ? `<ul>${gap.nearbyTestFiles.map((path) => `<li><button type="button" data-structural-file="${escapeHtml(path)}"><code>${escapeHtml(path)}</code></button></li>`).join("")}</ul>` : ""}</li>`).join("")}</ul></section>`
+    : "";
+  const sourceCaveat = sources.length
+    ? "<p class=\"structural-test-caveat\">Based on reading the test code; no test-run result is available.</p>"
+    : "";
+  const showStatus = assessment.state !== "relevant-tests-found" || !sources.length;
+  const searchDetails = assessment.searchScope
+    ? `<details class="structural-test-search" data-structural-disclosure="test-search"${structuralDisclosureOpen(radius.id, "test-search")}><summary>Search details</summary><p>${escapeHtml(assessment.searchScope)}</p></details>`
+    : "";
+  return `<div class="structural-test-evidence ${escapeHtml(assessment.state)}">${showStatus ? `<p class="structural-test-status">${escapeHtml(structuralTestAssessmentCopy(assessment))}</p>` : ""}${related}${uncertainty}${legacyGaps}${sourceCaveat}${searchDetails}</div>`;
+}
+
+function structuralRelationshipKind(radius) {
+  const relationships = new Set(radius.edges.map((edge) => edge.relationship));
+  if (relationships.size === 1 && relationships.has("calls")) return "calls";
+  if (relationships.size === 1 && relationships.has("references")) return "references";
+  if (relationships.size > 1) return "mixed";
+  return "none";
+}
+
+function structuralCallable(radius) {
+  return ["function", "method", "constructor", "component"].includes(radius.symbol.kind);
+}
+
+function structuralConnectionSearchTarget(radius) {
+  const kind = structuralRelationshipKind(radius);
+  if (kind === "calls") return `places that use ${radius.symbol.symbol}`;
+  if (kind === "references") return `places that refer to ${radius.symbol.symbol}`;
+  if (kind === "mixed") return `places that use or refer to ${radius.symbol.symbol}`;
+  return `connections to ${radius.symbol.symbol}`;
+}
+
+function structuralAnalysisMethodCopy(radius) {
+  if (radius.provider === "repository-search") return `We searched the code for ${structuralConnectionSearchTarget(radius)}.`;
+  if (radius.provider === "codegraph") return `CodeGraph returned code connected to ${radius.symbol.symbol}.`;
+  if (radius.provider === "language-server") return `The language server returned code connected to ${radius.symbol.symbol}.`;
+  return `Structural analysis was unavailable for ${radius.symbol.symbol}.`;
+}
+
+function structuralPossibleMissingCopy(radius, coverage) {
+  if (coverage.state === "complete" || coverage.state === "unavailable") return "";
+  const kind = structuralRelationshipKind(radius);
+  const noun = kind === "calls" && structuralCallable(radius) ? "callers" : kind === "references" ? "references" : "connections";
+  return radius.provider === "repository-search"
+    ? `Other ${noun} may exist that this search didn't find.`
+    : `Other ${noun} may exist that this result didn't find.`;
+}
+
+function structuralDiagramCopy(radius) {
+  const kind = structuralRelationshipKind(radius);
+  if (kind === "calls") return structuralCallable(radius)
+    ? `Code that calls ${radius.symbol.symbol}, directly or through another function.`
+    : `Code that uses ${radius.symbol.symbol}, directly or through another code symbol.`;
+  if (kind === "references") return `Code that refers to ${radius.symbol.symbol}, directly or through another code symbol.`;
+  if (kind === "mixed") return `Code that calls or refers to ${radius.symbol.symbol}, directly or through another code symbol.`;
+  return `No caller or reference connections were saved in this diagram.`;
+}
+
+function structuralMissingSourceCopy(radius, unknownSourceCount) {
+  if (!unknownSourceCount) return "";
+  const noun = structuralRelationshipKind(radius) === "calls" && structuralCallable(radius) ? "caller" : "connection";
+  return `${unknownSourceCount === 1 ? "One" : unknownSourceCount} ${noun}${unknownSourceCount === 1 ? " has" : "s have"} no source link.`;
+}
+
+function structuralTechnicalMetadata(radius, coverage) {
+  const countBasis = coverage.reportedCounts === "exact" ? "exact totals" : coverage.reportedCounts === "lower-bound" ? "lower bounds" : "totals not recorded";
+  return `<dl class="structural-technical-meta"><div><dt>How it was found</dt><dd>${escapeHtml(radius.provider)}</dd></div><div><dt>Confidence</dt><dd>${escapeHtml(radius.confidence)}</dd></div><div><dt>Source of this result</dt><dd>${escapeHtml(radius.provenance)}</dd></div><div><dt>Saved result</dt><dd>${escapeHtml(coverage.state)} · ${escapeHtml(countBasis)}</dd></div></dl>`;
+}
+
+function structuralDisclosureOpen(radiusId, key) {
+  const disclosures = typeof state === "undefined" ? null : state.structuralDisclosureStates;
+  return disclosures?.get(radiusId)?.[key] ? " open" : "";
+}
+
+function structuralAnalysisMarkup(radius, coverage, unknownSourceCount, graphNodes, graphEdges) {
+  const missing = structuralPossibleMissingCopy(radius, coverage);
+  const missingSource = structuralMissingSourceCopy(radius, unknownSourceCount);
+  return `<details class="structural-section structural-analysis" data-structural-disclosure="analysis"${structuralDisclosureOpen(radius.id, "analysis")}><summary>Analysis details</summary><div class="structural-analysis-layout"><section class="structural-analysis-block"><h4>How we found these connections</h4><p>${escapeHtml(structuralAnalysisMethodCopy(radius))}</p>${missing ? `<p>${escapeHtml(missing)}</p>` : ""}${coverage.state === "complete" ? `<p>${escapeHtml(structuralCompletenessCopy(radius).analysis)}</p>` : ""}</section><section class="structural-analysis-block"><h4>What the diagram shows</h4><p>${escapeHtml(structuralDiagramCopy(radius))}</p>${missingSource ? `<p>${escapeHtml(missingSource)}</p>` : ""}</section></div><details class="structural-technical-data" data-structural-disclosure="technical"${structuralDisclosureOpen(radius.id, "technical")}><summary>Technical data · ${radius.nodes.length} nodes, ${radius.edges.length} edges</summary>${structuralTechnicalMetadata(radius, coverage)}<div class="structural-subgraph"><section><strong>Nodes</strong><ul>${graphNodes}</ul></section><section><strong>Edges</strong><ul>${graphEdges}</ul></section></div></details></details>`;
+}
+
+function structuralFileRoles(radius) {
+  const roles = new Map(radius.impactedFiles.map((path) => [path, new Set()]));
+  const add = (location, role) => {
+    if (!location) return;
+    if (!roles.has(location.path)) roles.set(location.path, new Set());
+    roles.get(location.path).add(role);
+  };
+  add(radius.symbol.location, `Contains ${structuralSelectedLabel(radius).toLowerCase()}`);
+  const labels = structuralConnectionLabels(radius);
+  for (const node of radius.nodes) {
+    if (node.id === radius.symbol.id) continue;
+    const relationships = new Set(radius.edges.filter((edge) => edge.from === node.id).map((edge) => edge.relationship));
+    const direct = radius.directCallerIds.includes(node.id);
+    for (const relationship of relationships) {
+      const label = relationship === "references"
+        ? (direct ? "Direct reference" : "Indirect reference")
+        : relationship === "calls"
+          ? (structuralCallable(radius) ? (direct ? "Direct caller" : "Indirect caller") : (direct ? "Direct use" : "Indirect use"))
+          : (direct ? labels.direct : labels.indirect);
+      add(node.location, `Contains ${label.toLowerCase()}`);
+    }
+  }
+  return [...roles.entries()].map(([path, fileRoles]) => ({ path, roles: [...fileRoles] }));
+}
+
+function structuralFilesMarkup(radius) {
+  return `<ul class="structural-files">${structuralFileRoles(radius).map(({ path, roles }) => `<li><button type="button" data-structural-file="${escapeHtml(path)}"><code>${escapeHtml(path)}</code></button><span>${escapeHtml(roles.length ? `${roles.join("; ")}.` : "Listed in the saved result.")}</span></li>`).join("")}</ul>`;
+}
+
+function structuralPickerOptionLabel(radius) {
+  return `${radius.symbol.symbol} · ${radius.symbol.location?.path ?? "unresolved source"}`;
+}
+
+function structuralRelationshipDescription(radius) {
+  const relationships = new Set(radius.edges.map((edge) => edge.relationship));
+  const callable = ["function", "method", "constructor", "component"].includes(radius.symbol.kind);
+  if (relationships.size === 1 && relationships.has("calls")) {
+    return callable
+      ? `These functions call ${radius.symbol.symbol}, directly or indirectly.`
+      : `These symbols use ${radius.symbol.symbol}, directly or indirectly.`;
+  }
+  if (relationships.size === 1 && relationships.has("references")) return `These symbols reference ${radius.symbol.symbol}, directly or indirectly.`;
+  if (relationships.size > 1) return `These symbols call or reference ${radius.symbol.symbol}, directly or indirectly.`;
+  return `No caller or reference relationships were supplied for ${radius.symbol.symbol}.`;
+}
+
+function structuralComparisonSideCopy(side) {
+  return side === "old"
+    ? { label: "Before changes", hint: "Code version from the old side of the comparison, not an execution step or screenshot." }
+    : { label: "After changes", hint: "Code version from the new side of the comparison, not an execution step or screenshot." };
+}
+
+function structuralGraphView(radiusId) {
+  if (!state.structuralGraphViews.has(radiusId)) state.structuralGraphViews.set(radiusId, { scale: 1, x: 0, y: 0 });
+  return state.structuralGraphViews.get(radiusId);
+}
+
+function structuralGraphLayout(radius) {
+  const nodes = new Map(radius.nodes.map((node) => [node.id, node]));
+  const callersByTarget = new Map();
+  for (const edge of radius.edges) callersByTarget.set(edge.to, [...(callersByTarget.get(edge.to) ?? []), edge.from]);
+  const depths = new Map([[radius.symbol.id, 0]]);
+  const pending = [radius.symbol.id];
+  while (pending.length) {
+    const target = pending.shift();
+    for (const caller of callersByTarget.get(target) ?? []) {
+      if (depths.has(caller)) continue;
+      depths.set(caller, depths.get(target) + 1);
+      pending.push(caller);
+    }
+  }
+  const maxDepth = Math.max(0, ...depths.values());
+  for (const node of radius.nodes) if (!depths.has(node.id)) depths.set(node.id, maxDepth + 1);
+  const layers = new Map();
+  for (const node of radius.nodes) {
+    const depth = depths.get(node.id);
+    layers.set(depth, [...(layers.get(depth) ?? []), node].sort((left, right) => left.symbol.localeCompare(right.symbol) || left.id.localeCompare(right.id)));
+  }
+  const furthestDepth = Math.max(0, ...layers.keys());
+  const largestLayer = Math.max(1, ...[...layers.values()].map((layer) => layer.length));
+  const nodeWidth = 164;
+  const layerGap = 216;
+  const contentWidth = nodeWidth + furthestDepth * layerGap;
+  const width = Math.max(480, contentWidth + 64);
+  const height = Math.max(150, largestLayer * 78 + 58);
+  const firstLayerX = Math.round((width - contentWidth) / 2 + nodeWidth / 2);
+  const positions = new Map();
+  for (const [depth, layer] of layers) {
+    const x = firstLayerX + (furthestDepth - depth) * layerGap;
+    const gap = height / (layer.length + 1);
+    layer.forEach((node, index) => positions.set(node.id, { x, y: Math.round(gap * (index + 1)) }));
+  }
+  return { nodes, positions, width, height };
+}
+
+function structuralGraphNodeLabel(node) {
+  const limit = 24;
+  return node.symbol.length > limit ? `${node.symbol.slice(0, limit - 1)}…` : node.symbol;
+}
+
+function structuralGraphLocationLabel(node) {
+  if (!node.location) return "source not supplied";
+  const segments = node.location.path.split("/");
+  const path = segments.length > 2 ? `…/${segments.slice(-2).join("/")}` : node.location.path;
+  const label = `${path}:${node.location.line}`;
+  return label.length > 28 ? `${label.slice(0, 27)}…` : label;
+}
+
+function structuralGraphHeading(radius) {
+  const kind = structuralRelationshipKind(radius);
+  if (kind === "calls") return structuralCallable(radius) ? "Caller graph" : "Use graph";
+  if (kind === "references") return "Reference graph";
+  return "Connection graph";
+}
+
+function structuralExternalLegendLabel(radius) {
+  const external = radius.nodes.filter((node) => node.kind === "external");
+  if (!external.length) return "";
+  const hasKnownSource = external.some((node) => node.location);
+  const hasUnknownSource = external.some((node) => !node.location);
+  const labels = structuralConnectionLabels(radius);
+  if (hasKnownSource && hasUnknownSource) return `External code / ${labels.noun} with unknown source`;
+  if (hasKnownSource) return "External code";
+  return `${labels.noun[0].toUpperCase()}${labels.noun.slice(1)} with unknown source`;
+}
+
+function structuralGraphNodeRole(radius, node, root, direct) {
+  if (root) return structuralSelectedLabel(radius);
+  const labels = structuralConnectionLabels(radius);
+  const relationship = direct ? labels.direct : labels.indirect;
+  if (node.kind !== "external") return relationship;
+  return node.location ? `External code · ${relationship}` : `${relationship} with unknown source`;
+}
+
+function structuralGraphSvg(radius) {
+  const { nodes, positions, width, height } = structuralGraphLayout(radius);
+  const view = structuralGraphView(radius.id);
+  const markerId = `structural-arrow-${radius.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+  const edgeMarkup = radius.edges.map((edge) => {
+    const from = positions.get(edge.from);
+    const to = positions.get(edge.to);
+    if (!from || !to) return "";
+    const direction = to.x >= from.x ? 1 : -1;
+    const startX = from.x + direction * 78;
+    const endX = to.x - direction * 78;
+    const middleX = Math.round((startX + endX) / 2);
+    return `<path class="structural-graph-edge" d="M ${startX} ${from.y} C ${middleX} ${from.y}, ${middleX} ${to.y}, ${endX} ${to.y}" marker-end="url(#${markerId})"><title>${escapeHtml(`${nodes.get(edge.from)?.symbol ?? edge.from} ${edge.relationship} ${nodes.get(edge.to)?.symbol ?? edge.to}`)}</title></path>`;
+  }).join("");
+  const nodeMarkup = radius.nodes.map((node) => {
+    const position = positions.get(node.id);
+    if (!position) return "";
+    const root = node.id === radius.symbol.id;
+    const direct = radius.directCallerIds.includes(node.id);
+    const classes = ["structural-graph-node", root ? "root" : "", direct ? "direct" : "", node.kind === "external" ? "external" : ""].filter(Boolean).join(" ");
+    const location = node.location ? structuralLocationLabel(node) : "source not supplied";
+    const graphLocation = structuralGraphLocationLabel(node);
+    const source = node.location ? `data-structural-path="${escapeHtml(node.location.path)}" data-structural-side="${escapeHtml(node.location.side)}" data-structural-line="${node.location.line}"` : "";
+    const interactive = node.location ? " role=\"button\" tabindex=\"0\"" : "";
+    const role = structuralGraphNodeRole(radius, node, root, direct);
+    return `<g class="${classes}" transform="translate(${position.x} ${position.y})"${interactive} ${source} aria-label="${escapeHtml(`${role}: ${node.symbol}, ${location}`)}"><title>${escapeHtml(`${role}: ${node.symbol} · ${location}`)}</title><rect x="-82" y="-30" width="164" height="60" rx="8"></rect>${root ? `<text class="structural-graph-role" x="0" y="-15" text-anchor="middle">${escapeHtml(structuralSelectedLabel(radius))}</text>` : ""}<text class="structural-graph-symbol" x="0" y="${root ? 1 : -3}" text-anchor="middle">${escapeHtml(structuralGraphNodeLabel(node))}</text><text class="structural-graph-location" x="0" y="${root ? 18 : 13}" text-anchor="middle">${escapeHtml(graphLocation)}</text></g>`;
+  }).join("");
+  const labels = structuralConnectionLabels(radius);
+  const external = structuralExternalLegendLabel(radius);
+  return `<div class="structural-graph-shell"><div class="structural-graph-toolbar"><div><strong>${escapeHtml(structuralGraphHeading(radius))}</strong><div class="structural-graph-legend" aria-label="Graph legend"><span><i class="root"></i>${escapeHtml(structuralSelectedLabel(radius))}</span><span><i class="direct"></i>${escapeHtml(labels.direct)}</span><span><i class="indirect"></i>${escapeHtml(labels.indirect)}</span>${external ? `<span><i class="external"></i>${escapeHtml(external)}</span>` : ""}</div></div><span class="structural-graph-help">Arrows point toward the selected item · drag canvas background · scroll to zoom · click a source node to open it</span><div class="structural-graph-actions"><button type="button" data-structural-graph-action="zoom-out" aria-label="Zoom out">−</button><button type="button" data-structural-graph-action="reset" aria-label="Reset graph view">Reset</button><button type="button" data-structural-graph-action="zoom-in" aria-label="Zoom in">+</button></div></div><svg class="structural-graph" data-structural-graph-radius="${escapeHtml(radius.id)}" data-structural-graph-width="${width}" style="aspect-ratio: ${width} / ${height}" viewBox="0 0 ${width} ${height}" role="group" aria-label="Static ${escapeHtml(structuralGraphHeading(radius).toLowerCase())} for selected ${escapeHtml(radius.symbol.symbol)}" tabindex="0"><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs><rect class="structural-graph-backdrop" width="${width}" height="${height}" rx="10"></rect><g data-structural-graph-canvas transform="translate(${view.x} ${view.y}) scale(${view.scale})">${edgeMarkup}${nodeMarkup}</g></svg><p class="structural-graph-caption">Static relationships only; not confirmed runtime impact.</p></div>`;
+}
+
+function structuralBlastRadiusCard(radius) {
+  const nodes = new Map(radius.nodes.map((node) => [node.id, node]));
+  const visibleReach = Math.max(0, radius.nodes.length - 1);
+  const coverage = structuralCoverage(radius);
+  const completeness = structuralCompletenessCopy(radius);
+  const unknownSourceCount = radius.nodes.filter((node) => node.kind === "external" && !node.location).length;
+  const directCount = radius.directCallerIds.length;
+  const labels = structuralConnectionLabels(radius);
+  const comparisonSide = structuralComparisonSideCopy(radius.symbol.location?.side);
+  const rootLocation = radius.symbol.location ? `${radius.symbol.location.path}:${radius.symbol.location.line}` : "Source unavailable";
+  const rootLink = radius.symbol.location
+    ? `<button class="structural-root-link" type="button" data-structural-path="${escapeHtml(radius.symbol.location.path)}" data-structural-side="${escapeHtml(radius.symbol.location.side)}" data-structural-line="${radius.symbol.location.line}">${escapeHtml(radius.symbol.symbol)}</button>`
+    : escapeHtml(radius.symbol.symbol);
+  const metadata = radius.symbol.location
+    ? `<p class="structural-metadata"><button class="structural-source-link" type="button" data-structural-path="${escapeHtml(radius.symbol.location.path)}" data-structural-side="${escapeHtml(radius.symbol.location.side)}" data-structural-line="${radius.symbol.location.line}" title="Open ${escapeHtml(comparisonSide.label.toLowerCase())} source at ${escapeHtml(rootLocation)}">${escapeHtml(rootLocation)}</button><span aria-hidden="true"> · </span><span class="structural-comparison-side" title="${escapeHtml(comparisonSide.hint)}">${escapeHtml(comparisonSide.label)}<span class="sr-only">. ${escapeHtml(comparisonSide.hint)}</span></span></p>`
+    : '<p class="structural-metadata">Source unavailable</p>';
+  const graphNodes = radius.nodes.map((node) => `<li>${structuralNodeLink(node)}<code class="structural-raw-identity">${escapeHtml(node.id)}</code></li>`).join("");
+  const graphEdges = radius.edges.length
+    ? radius.edges.map((edge) => `<li class="structural-technical-edge"><code>${escapeHtml(edge.id)}</code><span>${escapeHtml(nodes.get(edge.from)?.symbol ?? edge.from)} → ${escapeHtml(nodes.get(edge.to)?.symbol ?? edge.to)}</span><small>${escapeHtml(edge.relationship)}</small></li>`).join("")
+    : '<li class="muted">No structural edges were reported.</li>';
+  const completenessWarning = completeness.state === "complete" ? "" : `<section class="structural-completeness ${escapeHtml(completeness.state)}"><strong>${escapeHtml(completeness.title)}</strong><span>${escapeHtml(completeness.detail)}</span></section>`;
+  return `<article class="flow-card structural-blast-card" data-structural-blast-radius="${escapeHtml(radius.id)}"><header class="structural-card-heading"><div><h3>What depends on <code>${rootLink}</code>?</h3>${metadata}</div></header><p class="structural-description">${escapeHtml(structuralRelationshipDescription(radius))}</p>${completenessWarning}<div class="structural-counts"><span>${escapeHtml(structuralCountCopy(radius, directCount, radius.reportedDirectCallerCount, `${labels.direct}s`))}</span><span>${escapeHtml(structuralReachCountCopy(radius, visibleReach, radius.reportedReachableNodeCount))}</span><span>${escapeHtml(structuralCountCopy(radius, radius.impactedFiles.length, radius.reportedImpactedFileCount, "Files involved"))}</span></div><p class="structural-count-help">${escapeHtml(structuralCountHelpCopy(radius))}</p>${structuralGraphSvg(radius)}${structuralAnalysisMarkup(radius, coverage, unknownSourceCount, graphNodes, graphEdges)}<details class="structural-section" data-structural-disclosure="files"${structuralDisclosureOpen(radius.id, "files")}><summary>Files involved · ${radius.impactedFiles.length}</summary>${structuralFilesMarkup(radius)}</details><details class="structural-section" data-structural-disclosure="tests"${structuralDisclosureOpen(radius.id, "tests")}><summary>Related tests</summary>${structuralTestEvidenceMarkup(radius)}</details></article>`;
+}
+
+function renderStructuralBlastRadii() {
+  const radii = state.session.outline?.structuralBlastRadii ?? [];
+  if (state.activeTab === "structural-blast-radius" && radii.length === 0) state.activeTab = "diff";
+  if (!radii.some((radius) => radius.id === state.structuralBlastRadiusId)) state.structuralBlastRadiusId = radii[0]?.id ?? null;
+  const selected = radii.find((radius) => radius.id === state.structuralBlastRadiusId);
+  elements["structural-blast-radius-tab"].classList.toggle("hidden", !state.session.outline || radii.length === 0);
+  elements["structural-blast-radius-empty"].classList.toggle("hidden", radii.length > 0);
+  elements["structural-blast-radius-empty"].textContent = state.session.outline
+    ? "No analysed symbols had a saved structural result for this comparison."
+    : "Start the tour to inspect static structural reach for analysed symbols.";
+  elements["structural-blast-radius-select"].disabled = radii.length === 0;
+  elements["structural-blast-radius-select"].innerHTML = radii.map((radius) => `<option value="${escapeHtml(radius.id)}">${escapeHtml(structuralPickerOptionLabel(radius))}</option>`).join("");
+  elements["structural-blast-radius-select"].value = selected?.id ?? "";
+  const pickerCount = document.getElementById("structural-blast-radius-picker-count");
+  if (pickerCount) pickerCount.textContent = `${radii.length} analysed symbol${radii.length === 1 ? "" : "s"} saved`;
+  elements["structural-blast-radius"].innerHTML = selected ? structuralBlastRadiusCard(selected) : "";
+}
+
+function structuralGraphElement(radiusId) {
+  return [...elements["structural-blast-radius"].querySelectorAll(".structural-graph")].find((graph) => graph.dataset.structuralGraphRadius === radiusId);
+}
+
+function applyStructuralGraphView(radiusId) {
+  const graph = structuralGraphElement(radiusId);
+  const view = structuralGraphView(radiusId);
+  graph?.querySelector("[data-structural-graph-canvas]")?.setAttribute("transform", `translate(${view.x} ${view.y}) scale(${view.scale})`);
+}
+
+function changeStructuralGraphView(radiusId, action) {
+  const view = structuralGraphView(radiusId);
+  if (action === "zoom-in") view.scale = Math.min(3, Number((view.scale * 1.2).toFixed(3)));
+  if (action === "zoom-out") view.scale = Math.max(0.6, Number((view.scale / 1.2).toFixed(3)));
+  if (action === "pan-left") view.x -= 44;
+  if (action === "pan-right") view.x += 44;
+  if (action === "pan-up") view.y -= 44;
+  if (action === "pan-down") view.y += 44;
+  if (action === "reset") Object.assign(view, { scale: 1, x: 0, y: 0 });
+  applyStructuralGraphView(radiusId);
 }
 
 function renderSequenceDiagrams() {
@@ -3865,11 +4338,11 @@ function addDryRunScenario() {
 }
 
 function availableTabs() {
-  return ["diff", "call-flows", "sequence", "dry-runs", ...(state.session?.outline?.stateDiagram || state.session?.outline?.dataModel ? ["adaptive"] : []), "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "call-flows", ...(state.session?.outline?.structuralBlastRadii?.length ? ["structural-blast-radius"] : []), "sequence", "dry-runs", ...(state.session?.outline?.stateDiagram || state.session?.outline?.dataModel ? ["adaptive"] : []), "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "call-flows", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
+  for (const tabName of ["diff", "call-flows", "structural-blast-radius", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -4562,7 +5035,9 @@ function renderSession() {
   renderReviewOverview();
   renderArchitecture();
   renderAdaptiveDiagrams();
+  renderStructuralBlastRadii();
   if (state.activeTab === "call-flows") renderCallFlows();
+  if (state.activeTab === "structural-blast-radius") renderStructuralBlastRadii();
   if (state.activeTab === "sequence") renderSequenceDiagrams();
   if (state.activeTab === "dry-runs") renderDryRuns();
   if (state.activeTab === "adaptive") renderAdaptiveDiagrams();
@@ -4714,7 +5189,8 @@ async function toggleTourMode() {
 }
 
 async function showAnalysisFile(path, line, side) {
-  const outsidePhase = state.tourMode && !filteredChangedFiles().some((file) => file.path === path);
+  const changedFile = state.session.comparison.files.some((file) => file.path === path || file.oldPath === path);
+  const outsidePhase = changedFile && state.tourMode && !filteredChangedFiles().some((file) => file.path === path);
   if (outsidePhase) {
     state.tourMode = false;
     state.fileRequestId += 1;
@@ -4723,7 +5199,8 @@ async function showAnalysisFile(path, line, side) {
     state.visibleFile = null;
     renderSession();
   }
-  await showChangedFile(path, line, side);
+  if (changedFile) await showChangedFile(path, line, side);
+  else await showRepositoryFile(path);
   if (outsidePhase) toast("Tour paused so this evidence can be shown. Resume the tour when you are ready.", { duration: 7_000 });
 }
 
@@ -5537,10 +6014,15 @@ elements["tour-intro-dialog"].addEventListener("click", (event) => {
     window.requestAnimationFrame(() => document.querySelector(`[data-call-flow-id="${CSS.escape(target.dataset.attentionId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
     return;
   }
+  if (kind === "structural-blast-radius") {
+    state.structuralBlastRadiusId = target.dataset.attentionId;
+    activateReviewTab("structural-blast-radius", renderStructuralBlastRadii);
+    return;
+  }
   if (kind === "section") {
     const section = target.dataset.attentionSection;
-    const tab = section === "findings" ? "findings" : section === "call-flows" ? "call-flows" : section === "pull-request" ? "pull-request" : "diff";
-    const render = tab === "findings" ? renderFindings : tab === "call-flows" ? renderCallFlows : tab === "pull-request" ? renderPullRequest : null;
+    const tab = section === "findings" ? "findings" : section === "call-flows" ? "call-flows" : section === "structural-blast-radius" ? "structural-blast-radius" : section === "pull-request" ? "pull-request" : "diff";
+    const render = tab === "findings" ? renderFindings : tab === "call-flows" ? renderCallFlows : tab === "structural-blast-radius" ? renderStructuralBlastRadii : tab === "pull-request" ? renderPullRequest : null;
     activateReviewTab(tab, render);
   }
 });
@@ -5859,6 +6341,7 @@ elements["html-export-form"].addEventListener("submit", (event) => {
     prepareMissingSteps: elements["export-prepare-steps"].checked,
     includeFindings: elements["export-findings"].checked,
     includeCallFlows: elements["export-call-flows"].checked,
+    includeStructuralBlastRadius: elements["export-structural-blast-radius"].checked,
     includeDiagrams: elements["export-diagrams"].checked,
     includeDryRuns: elements["export-dry-runs"].checked,
     diffWrap: state.diffWrap,
@@ -6272,6 +6755,7 @@ new ResizeObserver(([entry]) => {
 }).observe(document.querySelector('.diff-toolbar'));
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
+elements["structural-blast-radius-tab"].addEventListener("click", () => activateReviewTab("structural-blast-radius", renderStructuralBlastRadii));
 elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequence", renderSequenceDiagrams));
 elements["dry-runs-tab"].addEventListener("click", () => activateReviewTab("dry-runs", renderDryRuns));
 elements["dry-runs"].addEventListener("change", (event) => {
@@ -6398,6 +6882,81 @@ elements["call-flows"].addEventListener("click", (event) => {
   }
   if (card && event.target.closest("[data-call-flow-regenerate]")) void regenerateCallFlows(card.dataset.callFlowId);
 });
+elements["structural-blast-radius-select"].addEventListener("change", () => {
+  state.structuralBlastRadiusId = elements["structural-blast-radius-select"].value || null;
+  renderStructuralBlastRadii();
+});
+elements["structural-blast-radius"].addEventListener("toggle", (event) => {
+  const disclosure = event.target.closest?.("details[data-structural-disclosure]");
+  if (!disclosure || disclosure !== event.target) return;
+  const radiusId = disclosure.closest("[data-structural-blast-radius]")?.dataset.structuralBlastRadius;
+  if (!radiusId) return;
+  const saved = state.structuralDisclosureStates.get(radiusId) ?? {};
+  saved[disclosure.dataset.structuralDisclosure] = disclosure.open;
+  state.structuralDisclosureStates.set(radiusId, saved);
+}, true);
+elements["structural-blast-radius"].addEventListener("click", (event) => {
+  const graphAction = event.target.closest("[data-structural-graph-action]");
+  if (graphAction) {
+    if (state.structuralBlastRadiusId) changeStructuralGraphView(state.structuralBlastRadiusId, graphAction.dataset.structuralGraphAction);
+    return;
+  }
+  const location = event.target.closest("[data-structural-path]");
+  const file = event.target.closest("[data-structural-file]");
+  if (!location && !file) return;
+  state.activeTab = "diff";
+  renderActiveTab();
+  if (location) void showAnalysisFile(location.dataset.structuralPath, Number(location.dataset.structuralLine), location.dataset.structuralSide);
+  else void showAnalysisFile(file.dataset.structuralFile);
+});
+elements["structural-blast-radius"].addEventListener("wheel", (event) => {
+  const graph = event.target.closest(".structural-graph");
+  if (!graph || !state.structuralBlastRadiusId) return;
+  event.preventDefault();
+  changeStructuralGraphView(state.structuralBlastRadiusId, event.deltaY < 0 ? "zoom-in" : "zoom-out");
+}, { passive: false });
+elements["structural-blast-radius"].addEventListener("pointerdown", (event) => {
+  const graph = event.target.closest(".structural-graph");
+  if (!graph || event.button !== 0 || event.target.closest("[data-structural-path]")) return;
+  state.structuralGraphDrag = { pointerId: event.pointerId, radiusId: graph.dataset.structuralGraphRadius, graph, x: event.clientX, y: event.clientY };
+  graph.setPointerCapture(event.pointerId);
+  graph.classList.add("dragging");
+});
+elements["structural-blast-radius"].addEventListener("pointermove", (event) => {
+  const drag = state.structuralGraphDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  const width = Number(drag.graph.dataset.structuralGraphWidth) || drag.graph.clientWidth || 1;
+  const movement = width / Math.max(drag.graph.clientWidth, 1);
+  const view = structuralGraphView(drag.radiusId);
+  view.x += (event.clientX - drag.x) * movement / view.scale;
+  view.y += (event.clientY - drag.y) * movement / view.scale;
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+  applyStructuralGraphView(drag.radiusId);
+});
+function finishStructuralGraphDrag(event) {
+  const drag = state.structuralGraphDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  drag.graph.classList.remove("dragging");
+  if (drag.graph.hasPointerCapture(event.pointerId)) drag.graph.releasePointerCapture(event.pointerId);
+  state.structuralGraphDrag = null;
+}
+elements["structural-blast-radius"].addEventListener("pointerup", finishStructuralGraphDrag);
+elements["structural-blast-radius"].addEventListener("pointercancel", finishStructuralGraphDrag);
+elements["structural-blast-radius"].addEventListener("keydown", (event) => {
+  const graph = event.target.closest(".structural-graph");
+  if (event.target.closest("[data-structural-path]") && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    event.target.closest("[data-structural-path]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return;
+  }
+  if (!graph) return;
+  const actions = { "+": "zoom-in", "=": "zoom-in", "-": "zoom-out", "0": "reset", ArrowLeft: "pan-left", ArrowRight: "pan-right", ArrowUp: "pan-up", ArrowDown: "pan-down" };
+  const action = actions[event.key];
+  if (!action || !state.structuralBlastRadiusId) return;
+  event.preventDefault();
+  changeStructuralGraphView(state.structuralBlastRadiusId, action);
+});
 function finishArchitectureDiagramDrag(event) {
   const drag = state.architectureDiagramDrag;
   if (!drag || drag.pointerId !== event.pointerId) return;
@@ -6499,7 +7058,8 @@ document.querySelector(".tabs").addEventListener("keydown", (event) => {
     (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
   const nextTab = tabs[nextIndex];
   const render = nextTab === "call-flows" ? renderCallFlows
-    : nextTab === "sequence" ? renderSequenceDiagrams
+    : nextTab === "structural-blast-radius" ? renderStructuralBlastRadii
+      : nextTab === "sequence" ? renderSequenceDiagrams
       : nextTab === "dry-runs" ? renderDryRuns
       : nextTab === "adaptive" ? renderAdaptiveDiagrams
       : nextTab === "findings" ? renderFindings

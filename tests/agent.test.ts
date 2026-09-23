@@ -136,6 +136,10 @@ test("normalizes context findings and derives all priority levels from the docum
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
   expect(event.prompt).toContain("Use short, plain sentences");
   expect(event.prompt).toContain("Describe concrete behavior before implementation details");
+  expect(event.prompt).toContain("Always include structuralBlastRadii");
+  expect(event.prompt).toContain("not proof of runtime impact");
+  expect(event.prompt).toContain("unambiguous source identities");
+  expect(event.prompt).toContain("For every new radius include testEvidence");
   const finding = (id: string, line: number, side: "old" | "new", blastRadiusSize: number, tested: boolean, pinScope: "line" | "symbol" | "file") => ({
     id, phaseId: "behavior", ...(line === 2 ? { stepId: "step" } : {}), path: "app.ts", side, line, message: `${id} issue`, category: "correctness", severity: "medium", confidence: "high",
     evidence: "The diff demonstrates the issue.", priority: "P3", introduced: true, recallGuard: false, blastRadiusSize, tested, pinScope, status: "open",
@@ -173,6 +177,7 @@ test("normalizes context findings and derives all priority levels from the docum
   const [auditEvent] = await bridge.eventsAfter(event.sequence, 1_000);
   if (!auditEvent || auditEvent.type !== "agent.prompt") throw new Error("Expected a finding-audit prompt.");
   expect(auditEvent.prompt).toContain("focused findings auditor");
+  expect(auditEvent.prompt).toContain("Structural evidence from the planning pass");
   await bridge.respond(auditEvent.id, JSON.stringify({
     candidateDecisions: candidateFindings.map(({ id }) => ({ id, disposition: "kept", reason: "The evidence supports this candidate." })),
     findings: candidateFindings,
@@ -183,6 +188,50 @@ test("normalizes context findings and derives all priority levels from the docum
   expect(outline.callFlows.map((flow) => flow.id)).toEqual(["valid-optional-flow"]);
   expect(outline.findings.map(({ id, priority }) => [id, priority])).toEqual([["p0", "P0"], ["p1", "P1"], ["p2", "P2"], ["p3", "P3"]]);
   expect(outline.findings[3]).toMatchObject({ side: "new", line: 1 });
+});
+
+test("uses persisted structural reach and test gaps when pinning and prioritizing findings", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session", includeArchitecture: false }, bridge);
+  const comparison: GitComparison = {
+    repositoryRoot: "/tmp/repository", repositoryName: "repository", base: "main", mergeBase: "base", head: "head", patch: "", repositoryFiles: ["app.ts"],
+    files: [{ oldPath: "app.ts", newPath: "app.ts", path: "app.ts", status: "modified", metadata: [], additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, rows: [{ kind: "addition", content: "export function changed() {}", oldLine: null, newLine: 1 }] }],
+    }],
+  };
+  const candidate = {
+    id: "structural-finding", phaseId: "behavior", stepId: "step", path: "app.ts", side: "new" as const, line: 1,
+    message: "The changed declaration has broad static reach without nearby coverage.", category: "testing", severity: "medium" as const, confidence: "low" as const,
+    evidence: "The structural provider found callers and no nearby test coverage.", priority: "P3" as const, introduced: true, recallGuard: false, blastRadiusSize: 0, tested: true, pinScope: "symbol" as const, status: "open" as const,
+  };
+  const radius = {
+    id: "changed-radius", symbol: { id: "app.ts:new:1:changed", symbol: "changed", kind: "function", location: { path: "app.ts", side: "new" as const, line: 1 } },
+    provider: "repository-search" as const, confidence: "low" as const, provenance: "partial" as const, summary: "Static reach only, not proof of runtime impact.",
+    nodes: [{ id: "app.ts:new:1:changed", symbol: "changed", kind: "function", location: { path: "app.ts", side: "new" as const, line: 1 } }],
+    edges: [], directCallerIds: [], reportedDirectCallerCount: 4, reportedReachableNodeCount: 10, reportedImpactedFileCount: 1, impactedFiles: ["app.ts"],
+    coverage: { state: "partial" as const, reportedCounts: "exact" as const, omissionReason: "The provider returned totals without all caller identities." },
+    testEvidence: { state: "limited" as const, searchScope: "Inspected the available test sources for changed.", checkedSources: [], relevantTests: [], remainingUncertainty: "No relevant test source anchor was retained." },
+    nearbyTestGaps: [{ kind: "no-nearby-tests" as const, detail: "No nearby test covers the changed declaration.", nearbyTestFiles: [] }],
+  };
+  const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
+  const [event] = await bridge.eventsAfter(0, 1_000);
+  if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
+  await bridge.respond(event.id, JSON.stringify({
+    title: "Review", summary: "Review the changed declaration.", callFlows: [], structuralBlastRadii: [radius], flows: [], findings: [candidate],
+    phases: [{ id: "behavior", title: "Behavior", summary: "Inspect the changed declaration.", fileChanges: [{ path: "app.ts", summary: "Contains the declaration." }], steps: [{ id: "step", title: "Changed declaration", objective: "Inspect its callers.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
+  }));
+  await bridge.ack(event.id);
+  const [auditEvent] = await bridge.eventsAfter(event.sequence, 1_000);
+  if (!auditEvent || auditEvent.type !== "agent.prompt") throw new Error("Expected a finding-audit prompt.");
+  await bridge.respond(auditEvent.id, JSON.stringify({
+    candidateDecisions: [{ id: candidate.id, disposition: "kept", reason: "The bounded static evidence supports review attention." }], findings: [candidate],
+  }));
+
+  const { value: outline } = await pending;
+  expect(outline.structuralBlastRadii).toMatchObject([{ id: "changed-radius", reportedReachableNodeCount: 10, testEvidence: { state: "limited" } }]);
+  expect(outline.findings).toMatchObject([{
+    id: "structural-finding", pinnedSymbolIds: ["app.ts:new:1:changed"], blastRadiusSize: 10, tested: false, priority: "P0",
+  }]);
 });
 
 test("asks for short plain-language stop explanations", async () => {
