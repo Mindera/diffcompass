@@ -20,7 +20,7 @@
       <div class="tabs" role="tablist">
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
         <button id="call-flows-tab" class="tab" data-tab="call-flows" role="tab" aria-selected="false" aria-controls="call-flows-view" tabindex="-1">Call flows</button>
-        <button id="structural-blast-radius-tab" class="tab" data-tab="structural-blast-radius" role="tab" aria-selected="false" aria-controls="structural-blast-radius-view" tabindex="-1">Structural reach</button>
+        <button id="structural-blast-radius-tab" class="tab" data-tab="structural-blast-radius" role="tab" aria-selected="false" aria-controls="structural-blast-radius-view" tabindex="-1">Blast radius</button>
         <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
         <button id="dry-runs-tab" class="tab" data-tab="dry-runs" role="tab" aria-selected="false" aria-controls="dry-runs-view" tabindex="-1">Dry runs</button>
         <button id="adaptive-tab" class="tab" data-tab="adaptive" role="tab" aria-selected="false" aria-controls="adaptive-view" tabindex="-1">Adaptive diagrams</button>
@@ -225,7 +225,7 @@
         </div>
         <div id="structural-blast-radius-view" class="review-view hidden" role="tabpanel" aria-labelledby="structural-blast-radius-tab">
           <div class="flows-toolbar structural-toolbar"><div><strong>What could this change affect?</strong><span class="muted">Static callers and references for the selected item—not the whole pull request or proof of runtime impact.</span></div><label class="structural-picker"><span>Analysed symbol</span><select id="structural-blast-radius-select" aria-label="Analysed symbol structural caller graph"></select><small id="structural-blast-radius-picker-count" aria-live="polite"></small></label></div>
-          <div id="structural-blast-radius-empty" class="empty">Start the tour to inspect static structural reach for changed symbols.</div>
+          <div id="structural-blast-radius-empty" class="empty">Start the tour to inspect static blast radius for changed symbols.</div>
           <div id="structural-blast-radius" class="structural-blast-radii"></div>
         </div>
         <div id="sequence-view" class="review-view hidden" role="tabpanel" aria-labelledby="sequence-tab">
@@ -559,7 +559,7 @@
           <label><input id="export-prepare-steps" type="checkbox" /> Prepare missing step explanations</label>
           <label><input id="export-findings" type="checkbox" checked /> Findings</label>
           <label><input id="export-call-flows" type="checkbox" checked /> Call flows</label>
-          <label><input id="export-structural-blast-radius" type="checkbox" checked /> Structural reach</label>
+          <label><input id="export-structural-blast-radius" type="checkbox" checked /> Blast radius</label>
           <label><input id="export-diagrams" type="checkbox" checked /> Component and sequence diagrams</label>
           <label><input id="export-dry-runs" type="checkbox" checked /> Dry-run traces</label>
         </fieldset>

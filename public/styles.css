@@ -471,6 +471,8 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .code-selection-toolbar button { border: 0; border-radius: 5px; padding: 5px 8px; color: var(--text); background: transparent; font: 600 10px system-ui, sans-serif; cursor: pointer; }
 .code-selection-toolbar button:hover:not(:disabled), .code-selection-toolbar button:focus-visible { color: var(--accent-strong); background: var(--surface-hover); }
 .code-selection-toolbar button:disabled { opacity: .45; cursor: default; }
+.code-selection-toolbar.touch-selection-bar { left: 8px; right: 8px; top: auto; bottom: calc(var(--selection-viewport-bottom, 0px) + env(safe-area-inset-bottom, 0px) + 8px); width: max-content; max-width: calc(100% - 16px); box-sizing: border-box; margin-inline: auto; flex-wrap: wrap; justify-content: center; padding: 6px; }
+.code-selection-toolbar.touch-selection-bar button { min-height: 44px; min-width: 44px; padding: 8px 12px; font-size: 13px; overflow-wrap: anywhere; max-width: 100%; }
 .review-dot { color: var(--warning); font-size: 9px; }
 .has-comment { box-shadow: inset -2px 0 var(--warning); }
 .has-comment .row-prefix { display: none; }

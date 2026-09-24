@@ -67,7 +67,7 @@ test("prioritizes broad static reach only when a saved structural result also re
     target: { kind: "structural-blast-radius", structuralBlastRadiusId: "api-radius" },
     basis: "bounded-heuristic",
   });
-  expect(result.estimate.factors.map((factor) => factor.label)).toContain("Structural reach");
+  expect(result.estimate.factors.map((factor) => factor.label)).toContain("Blast radius");
 });
 
 test("does not turn an unverified structural total into broad-reach attention", () => {

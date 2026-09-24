@@ -3125,7 +3125,7 @@ function attentionSignalTarget(target) {
 function attentionTargetLabel(target) {
   if (target.kind === "finding") return "View finding";
   if (target.kind === "call-flow") return "Open call flow";
-  if (target.kind === "structural-blast-radius") return "Open structural reach";
+  if (target.kind === "structural-blast-radius") return "Open blast radius";
   if (target.kind === "file") return `Open ${target.path}${target.line ? `:${target.line}` : ""}`;
   return `Open ${target.section.replaceAll("-", " ")} section`;
 }
@@ -3137,7 +3137,7 @@ function renderTourAttention() {
   const showAttention = state.session.preferences?.briefingNeedsAttention !== false;
   const showEffort = state.session.preferences?.briefingReviewEffort !== false;
   elements["tour-intro-attention"].classList.toggle("hidden", !showAttention || signals.length === 0);
-  elements["tour-intro-attention-note"].textContent = signals.length === 0 ? "" : `${signals.length} review cue${signals.length === 1 ? "" : "s"} shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 finding${findingCount === 1 ? "" : "s"}. Other cues point to contracts, tests, flows, structural reach, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
+  elements["tour-intro-attention-note"].textContent = signals.length === 0 ? "" : `${signals.length} review cue${signals.length === 1 ? "" : "s"} shown; ${findingCount === 0 ? "none are" : findingCount === 1 ? "one is" : `${findingCount} are`} unresolved P0/P1 finding${findingCount === 1 ? "" : "s"}. Other cues point to contracts, tests, flows, blast radius, stale analysis, or GitHub status; lower-priority findings remain in Findings.`;
   elements["tour-intro-attention-list"].innerHTML = signals.map((signal) => `<article class="tour-intro-attention-item ${signal.kind}" role="listitem"><div class="tour-intro-attention-heading"><strong>${escapeHtml(signal.title)}</strong><span class="attention-basis">${signal.basis === "bounded-heuristic" ? "Bounded heuristic" : "Repository evidence"}</span></div><p>${escapeHtml(signal.detail)}</p><details><summary>Evidence</summary><p>${escapeHtml(signal.evidence)}</p></details><button type="button" class="text-button" ${attentionSignalTarget(signal.target)}>${escapeHtml(attentionTargetLabel(signal.target))}</button></article>`).join("");
   const estimate = briefing?.estimate;
   elements["tour-intro-estimate"].classList.toggle("hidden", !showEffort || !estimate);
@@ -3703,7 +3703,7 @@ function renderStructuralBlastRadii() {
   elements["structural-blast-radius-empty"].classList.toggle("hidden", radii.length > 0);
   elements["structural-blast-radius-empty"].textContent = state.session.outline
     ? "No analysed symbols had a saved structural result for this comparison."
-    : "Start the tour to inspect static structural reach for analysed symbols.";
+    : "Start the tour to inspect static blast radius for analysed symbols.";
   elements["structural-blast-radius-select"].disabled = radii.length === 0;
   elements["structural-blast-radius-select"].innerHTML = radii.map((radius) => `<option value="${escapeHtml(radius.id)}">${escapeHtml(structuralPickerOptionLabel(radius))}</option>`).join("");
   elements["structural-blast-radius-select"].value = selected?.id ?? "";
@@ -5620,6 +5620,31 @@ function hideCodeSelectionToolbar(clearSelection = false) {
   if (clearSelection) window.getSelection()?.removeAllRanges();
 }
 
+let codeSelectionPointerType = null;
+
+function dockCodeSelectionToolbar() {
+  return codeSelectionPointerType === "touch" || codeSelectionPointerType === "pen"
+    || (codeSelectionPointerType === null && window.matchMedia("(pointer: coarse)").matches);
+}
+
+function positionCodeSelectionToolbar(toolbar, selected) {
+  const docked = dockCodeSelectionToolbar();
+  toolbar.classList.toggle("touch-selection-bar", docked);
+  if (docked) {
+    toolbar.style.left = "";
+    toolbar.style.top = "";
+    const viewport = window.visualViewport;
+    const bottom = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+    toolbar.style.setProperty("--selection-viewport-bottom", `${bottom}px`);
+    return;
+  }
+  const bounds = toolbar.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - bounds.width - 8, selected.rect.left + selected.rect.width / 2 - bounds.width / 2));
+  const preferredTop = selected.rect.top - bounds.height - 7;
+  toolbar.style.left = `${left}px`;
+  toolbar.style.top = `${preferredTop >= 8 ? preferredTop : selected.rect.bottom + 7}px`;
+}
+
 function updateCodeSelectionToolbar() {
   const selected = readCodeSelection();
   if (!selected || state.proposalPreview || !reviewIsOpen()) return hideCodeSelectionToolbar();
@@ -5631,11 +5656,7 @@ function updateCodeSelectionToolbar() {
   const candidate = symbolForCodeSelection(selected);
   peek.textContent = candidate.expanded ? `Peek ${candidate.symbol}` : "Peek symbol";
   toolbar.classList.remove("hidden");
-  const bounds = toolbar.getBoundingClientRect();
-  const left = Math.max(8, Math.min(window.innerWidth - bounds.width - 8, selected.rect.left + selected.rect.width / 2 - bounds.width / 2));
-  const preferredTop = selected.rect.top - bounds.height - 7;
-  toolbar.style.left = `${left}px`;
-  toolbar.style.top = `${preferredTop >= 8 ? preferredTop : selected.rect.bottom + 7}px`;
+  positionCodeSelectionToolbar(toolbar, selected);
 }
 
 async function submitInlineAsk(form) {
@@ -6637,7 +6658,13 @@ elements.diff.addEventListener("pointercancel", () => {
   splitResizeStart?.resizer.classList.remove("dragging");
   splitResizeStart = null;
 });
+elements.diff.addEventListener("pointerdown", (event) => {
+  codeSelectionPointerType = event.pointerType || null;
+}, { passive: true });
 document.addEventListener("selectionchange", () => window.requestAnimationFrame(updateCodeSelectionToolbar));
+window.addEventListener("resize", updateCodeSelectionToolbar);
+window.visualViewport?.addEventListener("resize", updateCodeSelectionToolbar);
+window.visualViewport?.addEventListener("scroll", updateCodeSelectionToolbar);
 elements["code-selection-toolbar"].addEventListener("pointerdown", (event) => event.preventDefault());
 elements["code-selection-toolbar"].addEventListener("click", (event) => {
   const button = event.target.closest("[data-selection-tool]");
