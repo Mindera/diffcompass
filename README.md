@@ -38,7 +38,7 @@ your token. Users without repository access cannot install private releases.
 | Need | Command or option |
 | --- | --- |
 | Binary only; do not install skills | Append `--minimal` or `--binary-only` (`-Minimal` on Windows) |
-| Pin a release | `CODE_REVIEW_TOUR_VERSION=v1.1.25` before `bash` |
+| Pin a release | `CODE_REVIEW_TOUR_VERSION=v1.2.0` before `bash` |
 | Update | `code-review-tour update [--version vX.Y.Z]` |
 | Roll back | `code-review-tour rollback [--to X.Y.Z]` |
 | Preview uninstall | `code-review-tour uninstall --dry-run` |
