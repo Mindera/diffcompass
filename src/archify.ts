@@ -1,6 +1,7 @@
 import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { runProcess } from "./process.ts";
 import type { ArchifyArtifact, ArchifyDiagramType, ArchifyFailure, ArchifyJson, CallFlow, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFlow, TourOutline } from "./types.ts";
 
@@ -453,8 +454,13 @@ export class ArchifyRenderer {
   }
 
   static fromEnvironment(env: Record<string, string | undefined> = globalThis.process.env): ArchifyRenderer | undefined {
-    const directory = env.CODE_REVIEW_TOUR_ARCHIFY_DIR?.trim();
+    const directory = env.CODE_REVIEW_TOUR_ARCHIFY_DIR?.trim() || ArchifyRenderer.bundledDirectory();
     return directory ? new ArchifyRenderer(directory) : undefined;
+  }
+
+  static bundledDirectory(executable = process.execPath): string | undefined {
+    const directory = resolve(dirname(realpathSync(executable)), "../share/code-review-tour/archify");
+    return existsSync(join(directory, "bin/archify.mjs")) ? directory : undefined;
   }
 
   private async cli(): Promise<string> {
@@ -534,8 +540,11 @@ export class ArchifyRenderer {
     const input = join(directory, "candidate.json");
     const output = join(directory, "artifact.html");
     await writeFile(input, `${JSON.stringify(ir, null, 2)}\n`, "utf8");
-    const validation = await this.runner(["node", cli, "validate", type, input, "--quality", "standard", "--json"], directory, env);
-    const delivered = await this.runner(["node", cli, "deliver", type, input, output, "--quality", "standard", "--json"], directory, env);
+    // The compiled executable contains Bun itself. This also propagates to
+    // Archify's renderer/checker subprocesses via process.execPath.
+    const runtimeEnv = { ...env, BUN_BE_BUN: "1" };
+    const validation = await this.runner([process.execPath, cli, "validate", type, input, "--quality", "standard", "--json"], directory, runtimeEnv);
+    const delivered = await this.runner([process.execPath, cli, "deliver", type, input, output, "--quality", "standard", "--json"], directory, runtimeEnv);
     const html = await readFile(output, "utf8");
     if (!html.trim() || new TextEncoder().encode(html).byteLength > MAX_ARTIFACT_BYTES) throw new Error("Archify produced no displayable artifact or exceeded the 5 MiB artifact limit.");
     return { ir, html, validationReceipt: compactReceipt(`${validation.stdout}\n${delivered.stdout}`, `${validation.stderr}\n${delivered.stderr}`) };

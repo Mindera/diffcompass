@@ -161,9 +161,14 @@ proposal is pending. The reviewed working tree stays untouched until `Apply`.
 
 The **Maps** tab has two modes: **Understand the change** for component, call,
 sequence, and data/lifecycle diagrams; **Explore impact** for the selected
-symbol's blast radius, source links, and related tests. When a local Archify
-renderer is configured, supported diagrams gain interactive node inspection and
-Fit/zoom/pan controls. Other diagrams remain available through Mermaid.
+symbol's blast radius, source links, and related tests. Release packages include
+a pinned Archify renderer, run with the executable's embedded runtime—no Node
+installation or separate checkout is required. Supported diagrams gain interactive
+node inspection and Fit/zoom/pan controls. Other diagrams remain available through
+Mermaid. Developers can override the bundled renderer with
+`CODE_REVIEW_TOUR_ARCHIFY_DIR`. Archify's MIT license, font license, upstream notices,
+and pinned revision are included in `share/code-review-tour/archify`; optional
+third-party brand logos are excluded.
 
 Architecture comparisons show Before, Delta, and After when the saved evidence
 supports them. Delta includes additions and removals as well as modifications;

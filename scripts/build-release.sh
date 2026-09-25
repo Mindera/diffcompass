@@ -7,6 +7,8 @@ version="$(bun -e 'console.log((await Bun.file("package.json").json()).version)'
 release_root="dist/release"
 rm -rf "$release_root"
 mkdir -p "$release_root"
+archify_stage="$release_root/archify"
+bun scripts/package-archify.ts "$archify_stage"
 
 targets=(
   "darwin-arm64:bun-darwin-arm64"
@@ -26,6 +28,7 @@ for entry in "${targets[@]}"; do
   [[ "$platform" == windows-* ]] && executable="code-review-tour.exe"
   bun build --compile --minify --target="$bun_target" src/cli.ts --outfile "$package_root/bin/$executable"
   cp -R skills/code-review-tour "$package_root/share/code-review-tour/skills/code-review-tour"
+  cp -R "$archify_stage" "$package_root/share/code-review-tour/archify"
   cp scripts/install.sh scripts/install.ps1 "$package_root/share/code-review-tour/"
   cp README.md "$package_root/README.md"
   if [[ "$platform" == windows-* ]]; then
@@ -35,6 +38,7 @@ for entry in "${targets[@]}"; do
   fi
   rm -rf "$package_root"
 done
+rm -rf "$archify_stage"
 
 (
   cd "$release_root"

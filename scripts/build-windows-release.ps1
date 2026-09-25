@@ -12,6 +12,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "bin"), (Join-
 & bun build --compile --minify --target=bun-windows-x64 src/cli.ts --outfile (Join-Path $PackageRoot "bin\code-review-tour.exe")
 if ($LASTEXITCODE -ne 0) { throw "Windows executable compilation failed." }
 Copy-Item -Recurse skills/code-review-tour (Join-Path $PackageRoot "share\code-review-tour\skills\code-review-tour")
+& bun scripts/package-archify.ts (Join-Path $PackageRoot "share\code-review-tour\archify")
+if ($LASTEXITCODE -ne 0) { throw "Archify packaging failed." }
 Copy-Item scripts/install.sh, scripts/install.ps1 (Join-Path $PackageRoot "share\code-review-tour")
 Copy-Item README.md $PackageRoot
 

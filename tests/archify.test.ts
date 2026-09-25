@@ -1,9 +1,28 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArchifyRenderer, archifyCandidates, type ArchifyCommandRunner } from "../src/archify.ts";
 import type { TourOutline } from "../src/types.ts";
+
+test("discovers bundled Archify relative to the real executable, including install symlinks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archify-package-test-"));
+  try {
+    const executable = join(root, "version", "bin", "code-review-tour");
+    const directory = join(root, "version", "share", "code-review-tour", "archify");
+    await mkdir(join(root, "version", "bin"), { recursive: true });
+    await writeFile(executable, "fixture");
+    expect(ArchifyRenderer.bundledDirectory(executable)).toBeUndefined();
+    await mkdir(join(directory, "bin"), { recursive: true });
+    await writeFile(join(directory, "bin", "archify.mjs"), "fixture");
+    expect(ArchifyRenderer.bundledDirectory(executable)).toBe(await realpath(directory));
+    if (process.platform !== "win32") {
+      const link = join(root, "command");
+      await symlink(executable, link);
+      expect(ArchifyRenderer.bundledDirectory(link)).toBe(await realpath(directory));
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 const outline: TourOutline = {
   title: "Checkout review",
@@ -164,7 +183,9 @@ test("keeps a last validated Archify artifact if regenerated delivery fails", as
   await mkdir(join(root, "bin"));
   await writeFile(join(root, "bin", "archify.mjs"), "// fixture\n");
   let fail = false;
-  const runner: ArchifyCommandRunner = async (command) => {
+  const runner: ArchifyCommandRunner = async (command, _cwd, env) => {
+    expect(command[0]).toBe(process.execPath);
+    expect(env.BUN_BE_BUN).toBe("1");
     if (fail && command.includes("deliver")) throw new Error("layout/collision: candidate rejected");
     const output = command.find((part) => part.endsWith("artifact.html"));
     if (output) await writeFile(output, "<!doctype html><title>validated</title><script>window.ready=true</script>");

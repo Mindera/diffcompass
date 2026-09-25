@@ -28,6 +28,7 @@ CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT="$test_root/copilot/skills" \
 
 "$test_root/bin/code-review-tour" --version
 "$test_root/bin/code-review-tour" bridge >/dev/null
+BUN_BE_BUN=1 "$test_root/bin/code-review-tour" scripts/smoke-archify.ts
 [[ -L "$test_root/codex/skills/code-review-tour" ]]
 [[ -L "$test_root/claude/skills/code-review-tour" ]]
 [[ -L "$test_root/gemini/skills/code-review-tour" ]]

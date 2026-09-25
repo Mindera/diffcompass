@@ -22,6 +22,11 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Installed Windows command failed." }
   & $Command bridge *> $null
   if ($LASTEXITCODE -ne 0) { throw "Bundled bridge command failed." }
+  $env:BUN_BE_BUN = "1"
+  try {
+    & $Command scripts/smoke-archify.ts
+    if ($LASTEXITCODE -ne 0) { throw "Installed Archify renderer smoke test failed." }
+  } finally { Remove-Item Env:BUN_BE_BUN }
   foreach ($RootName in @("codex", "claude", "gemini", "copilot")) {
     if (-not (Test-Path (Join-Path $Root "$RootName\skills\code-review-tour\.code-review-tour-managed"))) { throw "$RootName skill was not installed as a managed copy." }
   }

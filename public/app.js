@@ -5228,8 +5228,8 @@ function renderSession() {
   elements["include-archify"].checked = state.session.agentSelection?.includeArchify === true;
   elements["include-archify"].disabled = state.busy || !state.session.archifyAvailable;
   elements["include-archify"].title = state.session.archifyAvailable
-    ? "Use the locally configured Archify renderer."
-    : "Set CODE_REVIEW_TOUR_ARCHIFY_DIR to an installed Archify skill to enable this option.";
+    ? "Create interactive maps using the locally available Archify renderer."
+    : "The Archify renderer is missing. Reinstall the release package, or configure CODE_REVIEW_TOUR_ARCHIFY_DIR for a development checkout.";
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
   elements["chat-form"].querySelector("button").disabled = state.busy || closed;

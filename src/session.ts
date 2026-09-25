@@ -228,7 +228,7 @@ export class ReviewSession {
         includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings,
         includeAdaptiveDiagrams: persisted.selection.includeAdaptiveDiagrams ?? true,
         includeDryRuns: persisted.selection.includeDryRuns ?? true,
-        includeArchify: persisted.selection.includeArchify ?? Boolean(globalThis.process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR),
+        includeArchify: persisted.selection.includeArchify ?? Boolean(ArchifyRenderer.fromEnvironment()),
       }
       : undefined;
     this.agentContinuation = structuredClone(persisted?.agentContinuation);
@@ -828,7 +828,7 @@ export class ReviewSession {
       includeFindings: this.defaults.includeFindings === false ? false : input.includeFindings ?? true,
       includeAdaptiveDiagrams: input.includeAdaptiveDiagrams ?? true,
       includeDryRuns: input.includeDryRuns ?? true,
-      includeArchify: input.includeArchify ?? Boolean(globalThis.process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR),
+      includeArchify: input.includeArchify ?? Boolean(ArchifyRenderer.fromEnvironment()),
     };
   }
 
@@ -960,7 +960,7 @@ export class ReviewSession {
       agentActivity: structuredClone(this.agentActivity),
       tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
       needsAttention: buildNeedsAttention(this.comparison, this.outline, this.pullRequest),
-      archifyAvailable: Boolean(globalThis.process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR),
+      archifyAvailable: Boolean(ArchifyRenderer.fromEnvironment()),
     };
   }
 
@@ -999,7 +999,7 @@ export class ReviewSession {
       outline.archifyFailures = candidates.map((candidate) => ({
         id: candidate.id,
         type: candidate.type,
-        message: "Archify is not configured. Set CODE_REVIEW_TOUR_ARCHIFY_DIR to an absolute path containing bin/archify.mjs.",
+        message: "The Archify renderer is missing. Reinstall the release package, or configure CODE_REVIEW_TOUR_ARCHIFY_DIR for a development checkout.",
         preservedLastValid: prior.has(candidate.id),
       }));
       return;
