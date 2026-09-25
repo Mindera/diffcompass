@@ -1,7 +1,18 @@
 import { expect, test } from "bun:test";
 import { exportReview, htmlHighlightGroups } from "../src/export.ts";
 import { highlightGroups } from "../src/highlight.ts";
+import { domainFixtureModel } from "../src/domain-fixture.ts";
 import type { ReviewSession } from "../src/session.ts";
+
+test("Markdown keeps domain definitions and relationship citations even without an optional renderer", () => {
+  const session = fixture();
+  session.outline!.domainModels = [structuredClone(domainFixtureModel)];
+  const markdown = exportReview(session, "markdown").content;
+  expect(markdown).toContain("## Domain vocabulary");
+  expect(markdown).toContain("Receipt → Cart: summarises");
+  expect(markdown).toContain("CONTEXT.md:3");
+  expect(exportReview(session,"markdown",{includeDiagrams:false}).content).not.toContain("## Domain vocabulary");
+});
 
 function fixture(): ReviewSession {
   return {
@@ -360,6 +371,46 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain('<html lang="en" data-diff-wrap="scroll">');
 });
 
+test("HTML export embeds validated Archify artifacts and preserves the authored-topology boundary", () => {
+  const session = fixture();
+  session.outline!.archifyArtifacts = [{
+    id: "architecture-journey",
+    type: "architecture",
+    title: "Changed components",
+    ir: { schema_version: 1, diagram_type: "architecture", meta: { title: "After" }, components: [] },
+    html: "<!doctype html><html><body><script>window.archify=true</script></body></html>",
+    comparison: {
+      before: { ir: { schema_version: 1, diagram_type: "architecture", meta: { title: "Before" }, components: [] }, html: "<!doctype html><html><body><script>window.archifyBefore=true</script></body></html>", validationReceipt: '{"validated":true}' },
+      delta: { ir: { schema_version: 1, diagram_type: "architecture", meta: { title: "Delta" }, components: [] }, html: "<!doctype html><html><body><script>window.archifyDelta=true</script></body></html>", validationReceipt: '{"validated":true}' },
+    },
+    evidence: ["app.ts wires the changed components."],
+    affectedFiles: ["app.ts"],
+    view: "before-delta-after",
+    validationReceipt: '{"validated":true}',
+    renderedAt: "2026-09-18T12:00:00.000Z",
+  }];
+
+  const artifact = exportReview(session, "html");
+  expect(artifact.content).toContain("Validated map");
+  expect(artifact.content).toContain("data-code-review-tour-camera");
+  expect(artifact.content).toContain("Fit entire map");
+  expect(artifact.content).toContain('sandbox="allow-scripts allow-downloads"');
+  expect(artifact.content).toContain('srcdoc="&lt;!doctype html&gt;');
+  expect(artifact.content).toContain("bounded saved evidence only");
+  expect(artifact.content).toContain('data-archify-export-view="before"');
+  expect(artifact.content).toContain('data-archify-export-view="delta"');
+  expect(artifact.content).toContain("data-archify-export-frame");
+  expect(artifact.content).toContain('data-view="maps">Maps');
+  expect(artifact.content).toContain('data-view-panel="maps"');
+  const report = exportReview(session, "markdown").content;
+  expect(report).toContain("## Maps");
+  expect(report).toContain("#### Before");
+  expect(report).toContain("#### Delta");
+  expect(report).toContain("app.ts wires the changed components.");
+  expect(exportReview(session, "html", { includeDiagrams: false }).content).not.toContain('data-archify-export-frame=');
+  expect(exportReview(session, "markdown", { includeDiagrams: false }).content).not.toContain("## Maps");
+});
+
 test("HTML and Markdown exports include the evidence briefing when signals exist", () => {
   const session = fixture();
   session.outline!.findings = [{ id: "briefing-finding", phaseId: "behavior", stepId: "one", path: "app.ts", side: "new", line: 1, lineContent: "const fence = ```;", message: "Important issue", category: "correctness", severity: "critical", confidence: "high", evidence: "The changed line is the evidence.", priority: "P1", introduced: true, recallGuard: true, blastRadiusSize: 1, tested: false, pinScope: "line", status: "open" }];
@@ -508,8 +559,8 @@ test("exports structural provider limits, isolated identities, and test-gap evid
   expect(markdown.content).toContain("Static relationships only; not confirmed runtime impact.");
   expect(markdown.content).toContain("Symbols linked to this finding: `app.ts:new:1:fence`");
   const html = exportReview(session, "html");
-  expect(html.content).toContain('data-view="structural"');
-  expect(html.content).toContain('data-view-panel="structural"');
+  expect(html.content).toContain('data-view="maps"');
+  expect(html.content).toContain('data-view-panel="maps"');
   expect(html.content).toContain("Analysis details");
   expect(html.content).toContain("app.ts:new:1:fence");
   expect(html.content).toContain("After changes");

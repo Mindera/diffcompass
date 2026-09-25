@@ -1,3 +1,4 @@
+import { domainFixtureModel, domainFixtureText } from "./domain-fixture.ts";
 import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -6,6 +7,7 @@ import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { loadComparison } from "./git.ts";
 import { comparisonFingerprint, dryRunFlowFingerprint } from "./dry-runs.ts";
+import { ArchifyRenderer } from "./archify.ts";
 import type { GitComparison, PersistedReviewSession } from "./types.ts";
 
 const FIXTURE_SCHEMA = 5;
@@ -65,6 +67,7 @@ function receiptPng(accent: [number, number, number]): Buffer {
 }
 
 const baseFiles = {
+  "CONTEXT.md": domainFixtureText,
   "screens/receipt.png": receiptPng([100, 116, 139]),
   "README.md": "# Checkout\n\nThe checkout returns a numeric total.\n",
   "docs/checkout-guide.md": `# Checkout guide
@@ -191,6 +194,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
     base: baseOid,
     browserToken,
     outline: {
+      domainModels: [structuredClone(domainFixtureModel)],
       title: "Discounted checkout and receipt output",
       summary: "A compact, deterministic change that exercises the complete review interface without asking an agent to generate a tour.",
       planningNotes: [
@@ -742,6 +746,18 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
   const headOid = await git(repository, "rev-parse", "HEAD");
   const canonicalRepository = await realpath(repository);
   const comparison = await loadComparison(canonicalRepository, baseOid);
-  await savePersistedSession(stateFile, persistedFixture(canonicalRepository, crypto.randomUUID(), baseOid, headOid, comparison));
+  const persisted = persistedFixture(canonicalRepository, crypto.randomUUID(), baseOid, headOid, comparison);
+  // A resumed fixture normally skips the agent generation path that refreshes
+  // optional diagrams. When a local Archify skill is deliberately configured,
+  // pre-render it here so the manual fixture exercises the same saved artifact
+  // and fallback behavior as a generated tour. No renderer means no extra
+  // dependency or network work for the ordinary deterministic fixture.
+  const archify = ArchifyRenderer.fromEnvironment();
+  if (archify && persisted.outline) {
+    const rendered = await archify.render(persisted.outline);
+    persisted.outline.archifyArtifacts = rendered.artifacts;
+    persisted.outline.archifyFailures = rendered.failures;
+  }
+  await savePersistedSession(stateFile, persisted);
   return { root, repository: canonicalRepository, stateFile: await realpath(stateFile), created: true };
 }

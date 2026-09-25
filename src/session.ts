@@ -20,6 +20,7 @@ import { revisionSummary } from "./revision.ts";
 import { diffPreferenceStoreDirectory, loadGlobalBriefingPreferences, loadGlobalDiffPreferences, restoreGlobalBriefingPreferences, restoreGlobalDiffPreferences, updateGlobalBriefingPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
 import { buildNeedsAttention } from "./attention.ts";
 import { comparisonFingerprint, dryRunPlanFor, dryRunScenarioFingerprint, traceIsStale, validateDryRunPlans, validateDryRunPlanSourceAnchors, validateDryRunScenario, validateTraceSourceAnchors } from "./dry-runs.ts";
+import { ArchifyRenderer, archifyCandidates } from "./archify.ts";
 
 type DiscussionScope = "line" | "range" | "stop";
 
@@ -222,7 +223,13 @@ export class ReviewSession {
     this.fullComparison = comparison;
     this.currentRevisionSummary = { changedFiles: 0, additions: 0, deletions: 0, newFiles: [], changedAgainFiles: [], resolvedFiles: [], unchangedFiles: [], text: "No review checkpoint yet. Create one before refreshing to preserve reviewed files." };
     this.selection = persisted?.selection
-      ? { ...structuredClone(persisted.selection), includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings, includeAdaptiveDiagrams: persisted.selection.includeAdaptiveDiagrams ?? true, includeDryRuns: persisted.selection.includeDryRuns ?? true }
+      ? {
+        ...structuredClone(persisted.selection),
+        includeFindings: defaults.includeFindings === false ? false : persisted.selection.includeFindings,
+        includeAdaptiveDiagrams: persisted.selection.includeAdaptiveDiagrams ?? true,
+        includeDryRuns: persisted.selection.includeDryRuns ?? true,
+        includeArchify: persisted.selection.includeArchify ?? Boolean(globalThis.process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR),
+      }
       : undefined;
     this.agentContinuation = structuredClone(persisted?.agentContinuation);
     if (this.status === "open" && this.selection) {
@@ -821,6 +828,7 @@ export class ReviewSession {
       includeFindings: this.defaults.includeFindings === false ? false : input.includeFindings ?? true,
       includeAdaptiveDiagrams: input.includeAdaptiveDiagrams ?? true,
       includeDryRuns: input.includeDryRuns ?? true,
+      includeArchify: input.includeArchify ?? Boolean(globalThis.process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR),
     };
   }
 
@@ -850,6 +858,7 @@ export class ReviewSession {
       includeFindings: this.selection.includeFindings,
       includeAdaptiveDiagrams: this.selection.includeAdaptiveDiagrams,
       includeDryRuns: this.selection.includeDryRuns,
+      includeArchify: this.selection.includeArchify,
     };
   }
 
@@ -908,9 +917,20 @@ export class ReviewSession {
       diffMode,
       diffRowCount,
     };
+    const outline = structuredClone(this.outline);
+    // HTML is served as a separately sandboxed local resource. Keeping it out
+    // of routine JSON snapshots avoids repeatedly moving multi-megabyte HTML.
+    if (outline?.archifyArtifacts) {
+      outline.archifyArtifacts = outline.archifyArtifacts.map(({ html: _html, comparison, ...artifact }) => ({
+        ...artifact,
+        ...(comparison ? {
+          comparison: Object.fromEntries(Object.entries(comparison).map(([key, view]) => [key, view ? (({ html: _viewHtml, ...safeView }) => safeView)(view) : view])),
+        } : {}),
+      })) as typeof outline.archifyArtifacts;
+    }
     return {
       comparison,
-      outline: this.outline,
+      outline,
       currentStepIndex: this.currentStepIndex,
       comments: this.comments,
       messages: this.messages,
@@ -940,6 +960,7 @@ export class ReviewSession {
       agentActivity: structuredClone(this.agentActivity),
       tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
       needsAttention: buildNeedsAttention(this.comparison, this.outline, this.pullRequest),
+      archifyAvailable: Boolean(globalThis.process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR),
     };
   }
 
@@ -949,6 +970,43 @@ export class ReviewSession {
       ...structuredClone(trace),
       ...(traceIsStale(trace, this.comparison, this.outline ?? { dryRunPlans: [] }) ? { stale: true } : {}),
     }));
+  }
+
+  archifyArtifact(id: string) {
+    return this.outline?.archifyArtifacts?.find((artifact) => artifact.id === id);
+  }
+
+  /**
+   * Archify is optional. A renderer failure is kept beside the tour as a
+   * diagnostic and never discards the normal Mermaid review path.
+   */
+  private async refreshArchifyArtifacts(outline: TourOutline, previous?: TourOutline): Promise<void> {
+    if (!this.selection?.includeArchify) {
+      delete outline.archifyArtifacts;
+      delete outline.archifyFailures;
+      return;
+    }
+    const candidates = archifyCandidates(outline);
+    if (candidates.length === 0) {
+      outline.archifyArtifacts = [];
+      outline.archifyFailures = [];
+      return;
+    }
+    const renderer = ArchifyRenderer.fromEnvironment();
+    if (!renderer) {
+      const prior = new Map((previous?.archifyArtifacts ?? []).map((artifact) => [artifact.id, artifact]));
+      outline.archifyArtifacts = candidates.flatMap((candidate) => prior.get(candidate.id) ? [prior.get(candidate.id)!] : []);
+      outline.archifyFailures = candidates.map((candidate) => ({
+        id: candidate.id,
+        type: candidate.type,
+        message: "Archify is not configured. Set CODE_REVIEW_TOUR_ARCHIFY_DIR to an absolute path containing bin/archify.mjs.",
+        preservedLastValid: prior.has(candidate.id),
+      }));
+      return;
+    }
+    const rendered = await renderer.render(outline, previous?.archifyArtifacts);
+    outline.archifyArtifacts = rendered.artifacts;
+    outline.archifyFailures = rendered.failures;
   }
 
   screenshot(id: string): { metadata: ReviewScreenshot; path: string } | undefined {
@@ -1392,7 +1450,8 @@ export class ReviewSession {
         (selection.includeFlows !== undefined && selection.includeFlows !== this.selection?.includeFlows) ||
         (selection.includeFindings !== undefined && selection.includeFindings !== this.selection?.includeFindings) ||
         (selection.includeAdaptiveDiagrams !== undefined && selection.includeAdaptiveDiagrams !== this.selection?.includeAdaptiveDiagrams) ||
-        (selection.includeDryRuns !== undefined && selection.includeDryRuns !== this.selection?.includeDryRuns)
+        (selection.includeDryRuns !== undefined && selection.includeDryRuns !== this.selection?.includeDryRuns) ||
+        (selection.includeArchify !== undefined && selection.includeArchify !== this.selection?.includeArchify)
       )) {
         throw new ReviewError("The agent and model cannot be changed after the tour starts.");
       }
@@ -1410,6 +1469,7 @@ export class ReviewSession {
           receipts.push(...generated.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);
           await validateDryRunPlanSourceAnchors(generated.value.dryRunPlans ?? [], (path) => loadRepositoryFile(this.comparison, path));
+          await this.refreshArchifyArtifacts(generated.value, before.outline);
           this.outline = generated.value;
           this.currentStepIndex = 0;
         } else if (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length) {
@@ -1511,14 +1571,19 @@ export class ReviewSession {
         throw new ReviewError(error instanceof Error ? error.message : String(error));
       }
       const previous = this.outline.flows[index]!;
+      const previousArchify = structuredClone(this.outline.archifyArtifacts);
+      const previousArchifyFailures = structuredClone(this.outline.archifyFailures);
       const previousRevision = this.revision;
       this.outline.flows[index] = flow;
+      await this.refreshArchifyArtifacts(this.outline, { archifyArtifacts: previousArchify } as TourOutline);
       this.revision += 1;
       try {
         await this.persist();
         return this.snapshot();
       } catch (error) {
         this.outline.flows[index] = previous;
+        this.outline.archifyArtifacts = previousArchify;
+        this.outline.archifyFailures = previousArchifyFailures;
         this.revision = previousRevision;
         throw error;
       }
@@ -1545,6 +1610,7 @@ export class ReviewSession {
         } else {
           this.outline.flows = generated.value;
         }
+        await this.refreshArchifyArtifacts(this.outline, before.outline);
         this.ensureOpen();
         this.revision += 1;
         operationRevision = this.revision;
@@ -1577,6 +1643,7 @@ export class ReviewSession {
         } else {
           this.outline.callFlows = generated.value;
         }
+        await this.refreshArchifyArtifacts(this.outline, before.outline);
         this.ensureOpen();
         this.revision += 1;
         operationRevision = this.revision;

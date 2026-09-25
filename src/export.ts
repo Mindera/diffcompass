@@ -1,4 +1,5 @@
 import type { ReviewSession } from "./session.ts";
+import { withArchifyEmbedAdapter } from "./archify-embed.ts";
 import type { CallFlow, DiffFile, DiffRow, DryRunTrace, FindingDisposition, IssueAssessment, LinkedIssueContext, ReviewerTaskContext, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewComment, ReviewFinding, StructuralBlastRadius } from "./types.ts";
 import type { HighlightGroup, HighlightToken } from "./highlight.ts";
 import { buildNeedsAttention } from "./attention.ts";
@@ -505,6 +506,34 @@ function markdown(session: ReviewSession, options: HtmlExportOptions = {}): stri
     if (outline.stateDiagram) lines.push(...markdownAdaptiveDiagram("State machine", outline.stateDiagram));
     if (outline.dataModel) lines.push(...markdownAdaptiveDiagram("Data model / ER", outline.dataModel));
   }
+  if (options.includeDiagrams !== false && outline?.domainModels?.length) {
+    lines.push("## Domain vocabulary", "", "Documented concepts; not a claim that the domain model changed.", "");
+    for (const model of outline.domainModels) {
+      lines.push(`### ${markdownText(model.context)}`, "");
+      for (const concept of model.concepts) lines.push(`**${markdownText(concept.term)}** — ${markdownText(concept.definition)}`, "", `Source: ${markdownText(concept.source.path)}:${concept.source.line}`, "");
+      for (const edge of model.relationships) lines.push(`- ${markdownText(model.concepts.find(item => item.id === edge.from)!.term)} → ${markdownText(model.concepts.find(item => item.id === edge.to)!.term)}: ${markdownText(edge.label)} (${markdownText(edge.source.path)}:${edge.source.line})`, `  > ${markdownText(edge.source.quote).replace(/\n/g, "\n  > ")}`, "");
+    }
+  }
+  if (options.includeDiagrams !== false && outline?.archifyArtifacts?.length) {
+    lines.push("## Maps", "", "Saved map relationships and evidence. Use the HTML export for interactive navigation and comparisons. These maps are not runtime traces.", "");
+    for (const artifact of outline.archifyArtifacts.filter((item) => !item.id.startsWith("structural-"))) {
+      lines.push(`### ${markdownText(artifact.title)}`, "", `Type: ${artifact.purpose === "domain-model" ? "Domain model" : markdownText(artifact.type)}`, "");
+      for (const detail of Object.values(artifact.domainDetails ?? {})) lines.push(`**${markdownText(detail.term)} · ${markdownText(detail.context)}**`, "", markdownText(detail.definition), "", `Glossary: ${markdownText(detail.source.path)}:${detail.source.line}`, "", `> ${markdownText(detail.source.quote).replace(/\n/g, "\n> ")}`, "");
+      for (const [label, ir] of [["Before", artifact.comparison?.before?.ir], ["Delta", artifact.comparison?.delta?.ir], ["After", artifact.ir]] as const) {
+        if (!ir) continue;
+        const records = (keys: string[]) => keys.flatMap((key) => Array.isArray(ir[key]) ? ir[key] as Array<Record<string, unknown>> : []);
+        const nodes = records(["components", "nodes", "states", "entities", "participants"]);
+        const labels = new Map(nodes.map((node) => [String(node.id), String(node.label ?? node.name ?? node.id)]));
+        lines.push(`#### ${artifact.purpose === "domain-model" ? "Documented model" : label}`, "");
+        for (const node of nodes) lines.push(`- ${markdownText(String(node.label ?? node.name ?? node.id))}${node.sublabel ? ` — ${markdownText(String(node.sublabel))}` : ""}`);
+        const edges = records(["connections", "edges", "transitions", "relationships", "messages", "flows"]);
+        if (edges.length) lines.push("", "Relationships:", "");
+        for (const edge of edges) lines.push(`- ${markdownText(labels.get(String(edge.from)) ?? String(edge.from))} → ${markdownText(labels.get(String(edge.to)) ?? String(edge.to))}${edge.label ? ` — ${markdownText(String(edge.label))}` : ""}`);
+        lines.push("");
+      }
+      lines.push("Evidence:", "", ...artifact.evidence.map((item) => `- ${markdownText(item)}`), "", "Affected files:", "", ...artifact.affectedFiles.map((path) => `- ${markdownText(path)}`), "");
+    }
+  }
   if (outline?.callFlows?.length) {
     lines.push("## Call flows", "");
     for (const flow of outline.callFlows) {
@@ -630,6 +659,8 @@ function dryRunTraceHtml(trace: DryRunTrace): string {
 // This intentionally has no network or session dependency: an exported file
 // keeps its dry-run walkthrough usable after the original review is gone.
 const dryRunExportScript = `<script>(()=>{const sync=card=>{const steps=[...card.querySelectorAll('[data-export-dry-run-step]')],count=steps.length;let index=Number(card.dataset.exportDryRunIndex||0);index=Number.isFinite(index)?Math.min(Math.max(index,0),Math.max(count-1,0)):0;card.dataset.exportDryRunIndex=String(index);steps.forEach((step,stepIndex)=>step.hidden=stepIndex!==index);const counter=card.querySelector('[data-export-dry-run-counter]'),previous=card.querySelector('[data-export-dry-run-action="previous"]'),restart=card.querySelector('[data-export-dry-run-action="restart"]'),next=card.querySelector('[data-export-dry-run-action="next"]');if(counter)counter.textContent=count?'Step '+(index+1)+' of '+count:'No steps';if(previous)previous.disabled=index===0||count===0;if(restart)restart.disabled=index===0||count===0;if(next)next.disabled=count===0||index>=count-1};document.querySelectorAll('[data-export-dry-run]').forEach(sync);document.addEventListener('click',event=>{const button=event.target.closest('[data-export-dry-run-action]');if(!button)return;const card=button.closest('[data-export-dry-run]');if(!card)return;const count=card.querySelectorAll('[data-export-dry-run-step]').length,current=Number(card.dataset.exportDryRunIndex||0),action=button.dataset.exportDryRunAction;if(action==='previous')card.dataset.exportDryRunIndex=String(Math.max(0,current-1));if(action==='next')card.dataset.exportDryRunIndex=String(Math.min(Math.max(0,count-1),current+1));if(action==='restart')card.dataset.exportDryRunIndex='0';sync(card)})})();</script>`;
+
+const archifyExportComparisonScript = `<script>(()=>{const sync=card=>{const selected=card.dataset.archifyExportView||'after';card.querySelectorAll('[data-archify-export-view]').forEach(button=>{const active=button.dataset.archifyExportView===selected;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});card.querySelectorAll('[data-archify-export-frame]').forEach(frame=>frame.hidden=frame.dataset.archifyExportFrame!==selected)};document.querySelectorAll('[data-archify-export]').forEach(sync);document.addEventListener('click',event=>{const button=event.target.closest('[data-archify-export-view]');if(!button)return;const card=button.closest('[data-archify-export]');if(!card)return;card.dataset.archifyExportView=button.dataset.archifyExportView||'after';sync(card)})})();</script>`;
 
 function inlineChangeHtml(value: unknown, ranges: Array<[number, number]> = [], baseOffset = 0): string {
   let html = "";
@@ -931,7 +962,7 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
     if (target.kind === "file") return `<button type="button" data-open-file="${escapeHtml(target.path)}">Open ${escapeHtml(target.path)}${target.line ? `:${target.line}` : ""}</button>`;
     if (target.kind === "finding") return `<button type="button" data-view="findings">Open finding ${escapeHtml(target.findingId)}</button>`;
     if (target.kind === "call-flow") return `<button type="button" data-view="calls">Open call flow</button>`;
-    if (target.kind === "structural-blast-radius") return `<button type="button" data-view="structural">Open structural reach</button>`;
+    if (target.kind === "structural-blast-radius") return `<button type="button" data-view="maps">Open blast radius</button>`;
     return `<button type="button" data-view="diff">Open ${escapeHtml(target.section.replaceAll("-", " "))} section</button>`;
   };
   const findingEvidenceStyles = `<style>.finding-evidence-list{display:grid;gap:6px;margin:8px 0 2px;padding:0;list-style:none}.finding-evidence-list li{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px;border:1px solid var(--line);border-radius:6px;padding:7px;background:var(--code)}.finding-evidence-list li>strong{color:var(--soft);font-size:8px;text-transform:uppercase}.finding-evidence-list li>div{min-width:0;color:#cbd5e3;overflow-wrap:anywhere}@media(max-width:600px){.finding-evidence-list li{grid-template-columns:1fr;gap:2px}}</style>`;
@@ -957,9 +988,24 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
     const withViewerLegend = adaptive
       ? withAdaptiveTab.replace(`<div class="viewer-body">${architectureLegend}`, `<div class="viewer-body">${architectureLegend}${adaptiveLegend}`)
       : withAdaptiveTab;
-    return withViewerLegend.replace('</section><aside class="agent-panel">', `${adaptiveView}</section><aside class="agent-panel">`);
+    const mapsContent = `${archify}${archifyFailures}${structuralBlastRadii ? `<h3>Explore impact · Blast radius</h3><div class="call-grid">${structuralBlastRadii}</div>` : ""}`;
+    const hasMaps = (includeDiagrams && Boolean(outline?.archifyArtifacts?.length || outline?.archifyFailures?.length)) || Boolean(structuralBlastRadii);
+    const mapsPanel = hasMaps ? `<section class="view" data-view-panel="maps" hidden><section class="overview-section"><h2>Maps</h2><p>Explore saved diagrams and potential impact. These are code-derived maps, not runtime traces.</p><div class="export-maps">${mapsContent}</div></section></section>` : "";
+    const withMapsTab = hasMaps ? withViewerLegend.replace('<nav class="tabs" aria-label="Review views">', '<nav class="tabs" aria-label="Review views"><button type="button" data-view="maps">Maps</button>') : withViewerLegend;
+    return withMapsTab.replace('</section><aside class="agent-panel">', `${mapsPanel}${adaptiveView}</section><aside class="agent-panel">`);
   };
   const architectureSection = (key: string, label: string, architecture: ReviewArchitecture) => `<article class="diagram-card architecture-card"><header><div><span class="eyebrow">${escapeHtml(label)}</span><h3>${escapeHtml(architecture.title)}</h3></div><button class="expand-diagram" type="button" data-diagram-expand="${key}">⛶ Expand</button></header><p>${escapeHtml(architecture.summary)}</p><div class="diagram-shell" data-diagram-key="${key}">${diagramControls}<div class="mermaid architecture-diagram" tabindex="0">${escapeHtml(architecture.mermaid)}</div><small>Drag to move · Arrow keys move · +/− zoom · 0 resets</small></div><h4>Relationship changes</h4><ul>${architecture.dependencyChanges.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul></article>`;
+  const archifyArtifact = (artifact: NonNullable<NonNullable<typeof outline>["archifyArtifacts"]>[number]) => {
+    const views = [
+      ...(artifact.comparison?.before ? [{ id: "before", label: "Before", html: artifact.comparison.before.html }] : []),
+      ...(artifact.comparison?.delta ? [{ id: "delta", label: "Delta", html: artifact.comparison.delta.html }] : []),
+      { id: "after", label: "After", html: artifact.html },
+    ];
+    const controls = views.length > 1 ? `<div class="call-flow-modes" role="group" aria-label="${escapeHtml(`${artifact.title} comparison view`)}">${views.map((view) => `<button type="button" data-archify-export-view="${view.id}"${view.id === "after" ? ' class="active" aria-pressed="true"' : ' aria-pressed="false"'}>${view.label}</button>`).join("")}</div>` : "";
+    return `<article class="diagram-card architecture-card archify-export" data-archify-export data-archify-export-view="after"><header><div><span class="eyebrow">Validated map</span><h3>${escapeHtml(artifact.title)}</h3></div><span>${escapeHtml(artifact.purpose === "domain-model" ? "Domain model" : artifact.type)}</span></header><p>Fit, zoom, and panning are available in the map. It visualizes bounded saved evidence only; open the files below for repository context.</p>${controls}${views.map((view) => `<iframe data-archify-export-frame="${view.id}"${view.id === "after" ? "" : " hidden"} style="width:100%;height:640px;border:1px solid var(--line);border-radius:8px;background:#101418" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${view.label}: ${artifact.type}: ${artifact.title}`)}" srcdoc="${escapeHtml(withArchifyEmbedAdapter(view.html, artifact.type, view.id === "before" ? undefined : artifact.domainDetails, artifact.purpose === "domain-model"))}"></iframe>`).join("")}<details><summary>Sources and technical validation</summary><ul>${artifact.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul><p><strong>Affected changed files:</strong> ${artifact.affectedFiles.map(escapeHtml).join(", ") || "none captured"}</p><details><summary>Validated after map data</summary><pre>${escapeHtml(JSON.stringify(artifact.ir, null, 2))}</pre></details><details><summary>Renderer diagnostics</summary><pre>${escapeHtml(artifact.validationReceipt)}</pre></details></details></article>`;
+  };
+  const archify = includeDiagrams ? `<script>window.addEventListener('message',event=>{if(event.data?.type!=='code-review-tour-map-scroll'||!Number.isFinite(event.data.deltaY))return;const frame=[...document.querySelectorAll('iframe[data-archify-export-frame]')].find(node=>node.contentWindow===event.source);if(!frame||!frame.getClientRects().length)return;frame.closest('.diff-panel')?.scrollBy({top:Math.max(-2000,Math.min(2000,event.data.deltaY)),behavior:'instant'})});</script>${(outline?.archifyArtifacts ?? []).filter((artifact) => !artifact.id.startsWith("structural-")).map(archifyArtifact).join("")}${(outline?.archifyArtifacts ?? []).some((artifact) => artifact.comparison?.before || artifact.comparison?.delta) ? archifyExportComparisonScript : ""}` : "";
+  const archifyFailures = includeDiagrams ? (outline?.archifyFailures ?? []).map((failure) => `<article class="diagram-card archify-export-failure"><strong>Archify ${escapeHtml(failure.type)} unavailable</strong><p>${escapeHtml(failure.message)}</p><small>${failure.preservedLastValid ? "The last validated artifact remains embedded above." : "The validated Mermaid fallback remains available."}</small></article>`).join("") : "";
   const architecture = includeDiagrams ? [outline?.behaviorArchitecture ? architectureSection("behavior", `${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`, outline.behaviorArchitecture) : "", outline?.architecture ? architectureSection("journey", "Implementation journey", outline.architecture) : ""].join("") : "";
   const stepPanels = outline?.phases.flatMap((phase, phaseIndex) => {
     const phaseFindings = findings.filter((finding) => finding.phaseId === phase.id && !finding.stepId);

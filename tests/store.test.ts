@@ -124,6 +124,34 @@ test("persists bounded structural blast-radius evidence and accepts older outlin
   await expect(loadPersistedSession(path)).resolves.toEqual(legacy);
 });
 
+test("persists only bounded validated Archify artifacts", async () => {
+  const path = await temporaryStateFile();
+  const session = persistedSession();
+  session.outline!.archifyArtifacts = [{
+    id: "architecture-journey", type: "architecture", title: "Changed components",
+    ir: { schema_version: 1, diagram_type: "architecture", meta: { title: "After" } },
+    baselineIr: { schema_version: 1, diagram_type: "architecture", meta: { title: "Before" } },
+    comparison: {
+      before: { ir: { schema_version: 1, diagram_type: "architecture", meta: { title: "Before" } }, html: "<!doctype html><title>Before</title>", validationReceipt: '{"ok":true}' },
+      delta: { ir: { schema_version: 1, diagram_type: "architecture", meta: { title: "Delta" } }, html: "<!doctype html><title>Delta</title>", validationReceipt: '{"ok":true}' },
+    },
+    html: "<!doctype html><title>Archify</title>", evidence: ["src/app.ts changed"], affectedFiles: ["src/app.ts"],
+    view: "before-delta-after", validationReceipt: '{"ok":true}', renderedAt: "2026-09-18T12:00:00.000Z",
+  }];
+  await savePersistedSession(path, session);
+  await expect(loadPersistedSession(path)).resolves.toMatchObject({ outline: { archifyArtifacts: [{ id: "architecture-journey", view: "before-delta-after" }] } });
+
+  const malformed = structuredClone(session) as unknown as { outline: { archifyArtifacts: Array<Record<string, unknown>> } };
+  malformed.outline.archifyArtifacts[0]!.html = "";
+  await writeFile(path, JSON.stringify(malformed));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+
+  const malformedComparison = structuredClone(session) as unknown as { outline: { archifyArtifacts: Array<{ comparison?: { before?: { html: string } } }> } };
+  malformedComparison.outline.archifyArtifacts[0]!.comparison!.before!.html = "";
+  await writeFile(path, JSON.stringify(malformedComparison));
+  await expect(loadPersistedSession(path)).rejects.toThrow("unsupported or invalid schema");
+});
+
 test("persists optional diff preferences while accepting older sessions without them", async () => {
   const path = await temporaryStateFile();
   const session = persistedSession();

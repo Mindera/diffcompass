@@ -45,6 +45,39 @@ test("session API exposes the evidence briefing without a second agent pass", as
   expect(payload.needsAttention.estimate.factors.length).toBeGreaterThan(1);
 });
 
+test("validated Archify HTML is served in a network-denied sandbox resource and omitted from snapshots", async () => {
+  const { session, fetch } = fixture();
+  (session as unknown as { outline: unknown }).outline = {
+    title: "Tour", summary: "Summary", phases: [{ id: "phase", title: "Phase", summary: "Summary", fileChanges: [{ path: "app.ts", summary: "Changed" }], steps: [{ id: "step", title: "Step", objective: "Review", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }], callFlows: [], flows: [], findings: [],
+    archifyArtifacts: [{ id: "architecture-journey", type: "architecture", title: "Changed components", ir: { schema_version: 1, diagram_type: "architecture" }, html: "<!doctype html><script>window.archify=true</script>", comparison: { before: { ir: { schema_version: 1, diagram_type: "architecture" }, html: "<!doctype html><script>window.archifyBefore=true</script>", validationReceipt: '{"ok":true}' }, delta: { ir: { schema_version: 1, diagram_type: "architecture" }, html: "<!doctype html><script>window.archifyDelta=true</script>", validationReceipt: '{"ok":true}' } }, evidence: ["app.ts changed"], affectedFiles: ["app.ts"], view: "before-delta-after", validationReceipt: '{"ok":true}', renderedAt: "2026-09-18T12:00:00.000Z" }],
+  };
+  const snapshot = await fetch(new Request("http://127.0.0.1/api/session", { headers: { "x-review-tour-token": session.browserToken } }));
+  const snapshotText = await snapshot.text();
+  expect(snapshotText).not.toContain("window.archify=true");
+  expect(snapshotText).not.toContain("window.archifyBefore=true");
+
+  const artifact = await fetch(new Request("http://127.0.0.1/archify/architecture-journey"));
+  expect(artifact.status).toBe(200);
+  const artifactHtml = await artifact.text();
+  expect(artifactHtml).toContain("window.archify=true");
+  expect(artifactHtml).toContain("data-code-review-tour-embed");
+  expect(artifactHtml).toContain("Fit entire map");
+  expect(artifactHtml).toContain("Archify.view={zoomIn");
+  expect(artifactHtml).toContain("touch-action:none");
+  expect(artifactHtml).toContain("new ResizeObserver(refit)");
+  expect(artifactHtml).not.toContain("container.style.height");
+  expect(artifactHtml).not.toContain("pointer-events:none!important");
+  expect(artifact.headers.get("content-security-policy")).toContain("connect-src 'none'");
+
+  const before = await fetch(new Request("http://127.0.0.1/archify/architecture-journey?view=before"));
+  expect(before.status).toBe(200);
+  expect(await before.text()).toContain("window.archifyBefore=true");
+  const delta = await fetch(new Request("http://127.0.0.1/archify/architecture-journey?view=delta"));
+  expect(delta.status).toBe(200);
+  expect(await delta.text()).toContain("window.archifyDelta=true");
+  expect((await fetch(new Request("http://127.0.0.1/archify/architecture-journey?view=unknown"))).status).toBe(200);
+});
+
 test("reviewer task input is authenticated, bounded, and retained locally", async () => {
   const { session, fetch } = fixture();
   (session as unknown as { pullRequest: unknown }).pullRequest = {

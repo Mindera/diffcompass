@@ -105,6 +105,8 @@ export interface TourPhase {
 }
 
 export interface TourOutline {
+  /** Source-backed domain vocabulary, saved with the reviewed snapshot. */
+  domainModels?: import("./domain-context.ts").DomainModel[];
   title: string;
   summary: string;
   planningNotes?: string[];
@@ -113,6 +115,13 @@ export interface TourOutline {
   architecture?: ReviewArchitecture;
   stateDiagram?: ReviewAdaptiveDiagram;
   dataModel?: ReviewAdaptiveDiagram;
+  /**
+   * Validated, self-contained Archify HTML. These artifacts are optional and
+   * never replace the constrained Mermaid source kept above.
+   */
+  archifyArtifacts?: ArchifyArtifact[];
+  /** Renderer diagnostics for a candidate that did not replace its last-good artifact. */
+  archifyFailures?: ArchifyFailure[];
   phases: TourPhase[];
   callFlows: CallFlow[];
   /** Static caller/reachability evidence for changed symbols. This is not a runtime trace. */
@@ -332,6 +341,57 @@ export interface ReviewAdaptiveDiagram {
   evidence: string[];
   materiallyImprovesUnderstanding: string;
   affectedFiles: string[];
+}
+
+export type ArchifyDiagramType = "architecture" | "workflow" | "sequence" | "dataflow" | "lifecycle";
+
+/** JSON is deliberately kept as data, never interpreted by the review UI. */
+export type ArchifyJson = null | boolean | number | string | ArchifyJson[] | { [key: string]: ArchifyJson };
+
+/** A separately validated, self-contained comparison surface for one map. */
+export interface ArchifyComparisonView {
+  /** The exact renderer-validated JSON IR for this comparison state. */
+  ir: { [key: string]: ArchifyJson };
+  /** Standalone renderer output, loaded only inside a sandboxed iframe. */
+  html: string;
+  validationReceipt: string;
+}
+
+export interface ArchifyArtifact {
+  purpose?: "domain-model";
+  domainDetails?: Record<string, import("./domain-context.ts").DomainNodeDetail>;
+  id: string;
+  type: ArchifyDiagramType;
+  title: string;
+  /** The exact, renderer-validated JSON IR. */
+  ir: { [key: string]: ArchifyJson };
+  /** Legacy independently validated baseline retained when resuming an older session. */
+  baselineIr?: { [key: string]: ArchifyJson };
+  /**
+   * Separately rendered comparison states. `before` contains only components
+   * evidenced before the review; `delta` contains only entities with both
+   * evidenced before and after states. Entirely new components are After-only.
+   */
+  comparison?: {
+    before?: ArchifyComparisonView;
+    delta?: ArchifyComparisonView;
+  };
+  /** Standalone renderer output, loaded only inside a sandboxed iframe. */
+  html: string;
+  evidence: string[];
+  affectedFiles: string[];
+  /** Comparison controls are present only when their independently bounded states exist. */
+  view: "single" | "before-after" | "before-delta-after";
+  validationReceipt: string;
+  renderedAt: string;
+}
+
+export interface ArchifyFailure {
+  id: string;
+  type: ArchifyDiagramType;
+  message: string;
+  /** True means an earlier validated artifact remains available. */
+  preservedLastValid: boolean;
 }
 
 export interface ReviewFlow {
@@ -742,6 +802,7 @@ export interface AgentSelection {
   includeFindings?: boolean;
   includeAdaptiveDiagrams?: boolean;
   includeDryRuns?: boolean;
+  includeArchify?: boolean;
 }
 
 export interface AgentRunActivity {
