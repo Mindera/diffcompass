@@ -1,0 +1,62 @@
+/* Shared node vocabulary for native maps and embedded Archify viewers.
+ * Relationship/change colours belong to each graph, not to this skin. */
+:root {
+  --map-node-radius: 8px;
+  --map-node-title-size: 11px;
+  --map-node-detail-size: 8.4px;
+  --map-node-font: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.structural-graph-node rect,
+html[data-code-review-tour-embed] .diagram-container g[data-node-id] > rect,
+.architecture-diagram .node rect {
+  rx: var(--map-node-radius);
+  ry: var(--map-node-radius);
+  stroke-width: 1.5px;
+}
+.structural-graph-symbol,
+html[data-code-review-tour-embed] .diagram-container g[data-node-id] > text[data-node-label] {
+  font-family: var(--map-node-font);
+  font-size: var(--map-node-title-size);
+  font-weight: 600;
+}
+.structural-graph-location,
+html[data-code-review-tour-embed] .diagram-container g[data-node-id] > text[data-detail="context"] {
+  font-family: var(--map-node-font);
+  font-size: var(--map-node-detail-size);
+}
+.structural-graph-node[role="button"]:hover,
+html[data-code-review-tour-embed] .diagram-container g[data-node-id][role="button"]:hover {
+  filter: brightness(1.12);
+}
+.structural-graph-node[role="button"]:focus-visible rect,
+html[data-code-review-tour-embed] .diagram-container g[data-node-id]:focus-visible > rect:not(.c-mask) {
+  stroke-width: 3px;
+}
+.structural-graph-node.root rect { stroke-width: 2px; }
+/* Mermaid injects ID-scoped styles and inline change overlays. Override only
+ * the visual skin, retaining each node's change colour and dash pattern. */
+:is(.architecture-diagram, .architecture-node-skin) .node foreignObject > div {
+  display: flex !important;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+:is(.architecture-diagram, .architecture-node-skin) .node rect {
+  rx: var(--map-node-radius) !important;
+  ry: var(--map-node-radius) !important;
+  stroke-width: 1.5px !important;
+  fill: var(--surface-control) !important;
+}
+:is(.architecture-diagram, .architecture-node-skin) .nodeLabel,
+:is(.architecture-diagram, .architecture-node-skin) .nodeLabel p {
+  font-family: var(--map-node-font) !important;
+  font-size: var(--map-node-title-size) !important;
+  font-weight: 600 !important;
+  color: var(--text) !important;
+}
+:is(.architecture-diagram, .architecture-node-skin) .edgeLabel,
+:is(.architecture-diagram, .architecture-node-skin) .edgeLabel p {
+  background: var(--surface-control) !important;
+  color: var(--text-soft) !important;
+}

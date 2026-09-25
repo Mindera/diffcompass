@@ -159,8 +159,19 @@ proposal is pending. The reviewed working tree stays untouched until `Apply`.
 
 ### Architecture and analysis
 
+The **Maps** tab has two modes: **Understand the change** for component, call,
+sequence, and data/lifecycle diagrams; **Explore impact** for the selected
+symbol's blast radius, source links, and related tests. When a local Archify
+renderer is configured, supported diagrams gain interactive node inspection and
+Fit/zoom/pan controls. Other diagrams remain available through Mermaid.
+
+Architecture comparisons show Before, Delta, and After when the saved evidence
+supports them. Delta includes additions and removals as well as modifications;
+an incomplete Before view does not imply that missing connections never existed.
+
 | View | What it shows |
 | --- | --- |
+| Domain model | Business concepts and documented relationships from scoped `CONTEXT.md` glossaries and `CONTEXT-MAP.md`. Click a concept for its definition and source; matched code components show the same domain vocabulary. Missing or ambiguous glossary matches keep code-derived names. |
 | Component maps | Implemented behavior and implementation journey using plain-language components, labelled relationships, dependency changes, and new/touched/removed/external status. |
 | Call flows | Concrete changed entrypoints, Before/After/Changes call trees, added/removed edge counts, exact diff evidence, affected files, honest labels for dynamic dispatch, and single/all regeneration. |
 | Sequence diagrams | Goal-critical runtime interactions rendered locally from a validated Mermaid subset, with affected files, provenance, editable source, single/all regeneration, and source fallback. |

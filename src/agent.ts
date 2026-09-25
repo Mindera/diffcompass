@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { loadDomainDocuments, domainPrompt, validateDomainModels } from "./domain-context.ts";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { runProcess } from "./process.ts";
@@ -1024,6 +1025,7 @@ export class TourAgent {
 
   async createOutline(comparison: GitComparison, policy: ReviewPolicy, beforeFindingAudit?: () => void, issue?: LinkedIssueContext): Promise<AgentResult<TourOutline>> {
     this.useComparison(comparison);
+    const domainDocuments = await loadDomainDocuments(comparison);
     const changedFiles = comparison.files
       .map((file) => `- ${file.path} (+${file.additions}/-${file.deletions})`)
       .join("\n");
@@ -1076,7 +1078,7 @@ Every phase is one coherent behavioral or architectural change. Declare every ch
 
 Write for a reviewer who has not seen this code before. Use short, plain sentences. Avoid jargon unless the code itself uses the term, and explain a necessary term in a few words. Keep the tour summary to at most three short sentences, every phase and file summary to one sentence, and every objective to one direct sentence. Describe concrete behavior before implementation details.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
-    const boundedPrompt = `${TOUR_CONTEXT_BOUNDARY}\n\n${prompt}`;
+    const boundedPrompt = `${TOUR_CONTEXT_BOUNDARY}\n\n${prompt}\n\n${domainPrompt(domainDocuments)}`;
     const promptWithDiff = needsAttachment ? boundedPrompt : `${boundedPrompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
     const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;
     const generatedResult = await this.send(
@@ -1084,7 +1086,18 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       "tour.outline",
       attachment,
       undefined,
-      (message) => validateOutline(parseOutline(message), comparison, policy, this.includeArchitecture, this.includeAdaptiveDiagrams, this.includeDryRuns, issue),
+      (message) => {
+        const parsed = parseOutline(message);
+        try {
+          parsed.domainModels = validateDomainModels(parsed.domainModels, domainDocuments, comparison);
+        } catch {
+          // Optional vocabulary must never replace unverified evidence or block
+          // the ordinary code review when extraction cannot be grounded.
+          parsed.domainModels = [];
+          parsed.planningNotes = [...(parsed.planningNotes ?? []), "Domain maps were omitted because their glossary evidence or scope could not be verified."];
+        }
+        return validateOutline(parsed, comparison, policy, this.includeArchitecture, this.includeAdaptiveDiagrams, this.includeDryRuns, issue);
+      },
     );
     const generated = generatedResult.value;
     const outline = {

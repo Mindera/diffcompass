@@ -4,6 +4,21 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
 
+test("map nodes share a visual skin and About credits Archify", async () => {
+  const [html, app, skin, server] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+    readFile(join(root, "public/map-nodes.css"), "utf8"),
+    readFile(join(root, "src/server.ts"), "utf8"),
+  ]);
+  expect(html).toContain('href="https://github.com/tt-a1i/archify" target="_blank" rel="noopener noreferrer"');
+  expect(html).toContain('Third-party tools');
+  expect(skin).toContain('.structural-graph-symbol,');
+  expect(skin).toContain('g[data-node-id] > text[data-node-label]');
+  expect(server).toContain('${styles}\\n${mapNodeStyles}');
+  expect(app).toContain('!state.structuralBlastRadiusId || (!event.ctrlKey && !event.metaKey)');
+});
+
 test("review navigation exposes expanded changed paths and a full repository mode", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
@@ -577,10 +592,13 @@ test("stable tour and pull request context render above the diff instead of insi
   expect(html).toContain('id="pull-request-description-body"');
   expect(html).not.toContain('<details id="pull-request-description" class="pull-request-description hidden" open>');
   const architecture = html.indexOf('<details id="architecture" class="architecture hidden">');
-  expect(architecture).toBeGreaterThan(overview);
+  expect(architecture).toBeGreaterThan(html.indexOf('id="diff-view"'));
+  expect(architecture).toBeLessThan(html.indexOf('id="diff"'));
+  expect(architecture).toBeGreaterThan(html.indexOf('id="pull-request-description-body"'));
   expect(architecture).toBeLessThan(toolbar);
-  expect(html).toContain("<summary>Architecture</summary>");
   expect(html).not.toContain('<details id="architecture" class="architecture hidden" open>');
+  expect(html).toContain('id="maps-architecture-content"');
+  expect(html).toContain("<summary>Component maps</summary>");
   expect(html.slice(agent)).not.toContain('id="review-overview-title"');
   expect(app).toContain("pullRequestDescription(pullRequest.body)");
   expect(app).toContain('data-pr-description-mode="rendered"');
@@ -1150,6 +1168,20 @@ test("each architecture chart has independent movement and zoom controls", async
   expect(styles).toContain("touch-action: none");
 });
 
+test("validated maps expose only the evidenced Before, Delta, and After comparison states", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(join(root, "public", "app.js"), "utf8"),
+    readFile(join(root, "public", "styles.css"), "utf8"),
+  ]);
+  expect(app).toContain("function archifyComparisonViews(artifact)");
+  expect(app).toContain('artifact.comparison?.before');
+  expect(app).toContain('artifact.comparison?.delta');
+  expect(app).toContain('data-archify-comparison-view="${view.id}"');
+  expect(app).toContain('src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"');
+  expect(app).toContain('state.archifyArtifactViews.set(artifactId, view)');
+  expect(styles).toContain(".archify-comparison button.active");
+});
+
 test("diagram zoom can scale a tall chart down to a comfortable viewer fit", async () => {
   const app = await readFile(join(root, "public/app.js"), "utf8");
   const source = app.slice(app.indexOf("const ARCHITECTURE_ZOOM_MIN"), app.indexOf("function architectureCard("));
@@ -1159,7 +1191,7 @@ test("diagram zoom can scale a tall chart down to a comfortable viewer fit", asy
     "document",
     "CSS",
     `${source}; return { architectureDiagramView, changeArchitectureDiagramView };`,
-  )(state, { querySelector: () => null }, { escape: (value: string) => value }) as {
+  )(state, { querySelectorAll: () => [] }, { escape: (value: string) => value }) as {
     architectureDiagramView(key: string): { scale: number };
     changeArchitectureDiagramView(key: string, action: string): void;
   };
@@ -1190,11 +1222,12 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(html).toContain('id="prefetch-steps"');
   expect(html).toContain('id="show-tour-briefing"');
   expect(html).toContain('id="briefing-architecture"');
-  expect(html).toContain('id="briefing-sequence-diagrams"');
-  expect(html).toContain('id="briefing-call-flows"');
+  expect(html).not.toContain('id="briefing-sequence-diagrams"');
+  expect(html).not.toContain('id="briefing-call-flows"');
   expect(html).toContain('id="briefing-needs-attention"');
   expect(html).toContain('id="briefing-review-effort"');
   expect(html).toContain('data-briefing-option="architecture"');
+  expect(html).toContain("Interactive maps open in their own workspace pane.");
   expect(html).toContain('draggable="true"');
   expect(html).toContain('id="briefing-options" class="briefing-options"');
   expect(html).toContain('aria-controls="briefing-options"');
@@ -1204,8 +1237,8 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(html).toContain('data-diff-layout="split"');
   expect(html).toContain('data-diff-wrap="wrap"');
   expect(html).toContain('id="tree-mode"');
-  expect(html).toContain('data-export-format="markdown">Markdown');
-  expect(html).toContain('data-export-format="html">HTML');
+  expect(html).toContain('data-export-format="markdown">Review report (Markdown)');
+  expect(html).toContain('data-export-format="html">Interactive review (HTML)');
   expect(html).toContain('id="html-export-dialog"');
   expect(html).toContain('id="export-prepare-steps"');
   expect(html).toContain('id="export-findings"');
@@ -1222,8 +1255,9 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(app).toContain('method: "POST"');
   expect(app).toContain('api("/api/preferences", { method: "POST", body: JSON.stringify({ prefetchSteps }) })');
   expect(app).toContain('async function saveBriefingPreferences(order = briefingOptionOrderFromDom())');
-  expect(app).toContain('briefingSequenceDiagrams: elements["briefing-sequence-diagrams"].checked');
-  expect(app).toContain('briefingCallFlows: elements["briefing-call-flows"].checked');
+  expect(app).toContain('briefingArchitecture: elements["briefing-architecture"].checked');
+  expect(app).toContain("briefingSequenceDiagrams: false");
+  expect(app).toContain("briefingCallFlows: false");
   expect(app).toContain('briefingNeedsAttention: elements["briefing-needs-attention"].checked');
   expect(app).toContain('briefingReviewEffort: elements["briefing-review-effort"].checked');
   expect(app).toContain("briefingOrder: order");
@@ -1249,6 +1283,51 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(app).toContain('elements["settings-menu"].open = false');
   expect(styles).toContain(".settings-popover { position: absolute;");
   expect(styles).toContain(".export-options {");
+});
+
+test("validated Archify artifacts use a dedicated workspace pane and replace Mermaid views", async () => {
+  const [html, app] = await Promise.all([
+    readFile(join(root, "public/index.html"), "utf8"),
+    readFile(join(root, "public/app.js"), "utf8"),
+  ]);
+  expect(html).toContain('id="archify-tab"');
+  expect(html).toContain('id="archify-view"');
+  expect(html).toContain('id="archify-select"');
+  expect(html).toContain('id="archify-picker-count"');
+  expect(html).toContain('id="archify-artifacts"');
+  expect(html).toContain("Understand the change");
+  expect(app).toContain("function renderArchify()");
+  expect(app).toContain("function selectedArchifyArtifact(artifacts)");
+  expect(app).toContain('state.archifyArtifactId = elements["archify-select"].value || null');
+  expect(app).toContain('selected ? archifyArtifactCard(selected) : ""');
+  expect(app).not.toContain("function resizeArchifyFrame(event)");
+  expect(app).not.toContain('code-review-tour-archify-height');
+  expect(app).toContain("function hasArchifyArtifact(id)");
+  expect(app).toContain("function legacyCallFlows()");
+  expect(app).toContain("function legacySequenceFlows()");
+  expect(app).toContain("function componentArchitectureEntries()");
+  expect(app).toContain("function architectureEntries() {\n  return componentArchitectureEntries();\n}");
+  expect(app).toContain('!hasArchifyArtifact(`workflow-${flow.id}`)');
+  expect(app).toContain('!hasArchifyArtifact(`sequence-${flow.id}`)');
+  expect(app).toContain('"lifecycle-state-machine" : "dataflow-data-model"');
+  const briefing = app.slice(app.indexOf("function renderTourIntro()"), app.indexOf("function maybeShowTourIntro()"));
+  expect(briefing).toContain('const architectures = state.session.preferences?.briefingArchitecture === false ? [] : componentArchitectureEntries();');
+  expect(briefing).toContain('elements["tour-intro-architecture-section"].classList.toggle("hidden", architectures.length === 0)');
+  expect(briefing).toContain('tourIntroArchitectureCard(value, label, key)');
+  expect(briefing).toContain('elements["tour-intro-sequence-section"].classList.add("hidden")');
+  expect(briefing).toContain('elements["tour-intro-call-flows-section"].classList.add("hidden")');
+  expect(briefing).not.toContain("archifyArtifactCard");
+  const renderer = app.slice(app.indexOf("async function renderFlowDiagrams"), app.indexOf("function renderActivities"));
+  expect(renderer).toContain('for (const [index, target] of [...targets].entries())');
+  expect(renderer).toContain('const introTarget = elements["tour-intro-architecture"].querySelector');
+  expect(app).toContain('elements["archify-tab"].addEventListener("click", () => openMaps())');
+  expect(html).toContain('id="maps-navigation"');
+  expect(html).toContain('data-maps-mode="impact"');
+  expect(html).toContain('data-maps-mode="understand"');
+  expect(app).toContain('elements["structural-blast-radius-tab"].classList.add("hidden")');
+  expect(app).toContain('elements["sequence-tab"].classList.add("hidden")');
+  expect(app).toContain('elements["archify-artifacts"]._mapMarkup !== markup');
+  expect(app).toContain('MAP_VIEWS.includes(state.activeTab) ? "archify" : state.activeTab');
 });
 
 test("topbar controls stay compact around a labelled settings menu", async () => {
@@ -1300,17 +1379,20 @@ test("tour startup defaults diagrams and findings on and sends both choices", as
   expect(html).toContain('<input id="include-architecture" type="checkbox" checked /> Architecture');
   expect(html).toContain('<input id="include-call-flows" type="checkbox" checked /> Call flows');
   expect(html).toContain('<input id="include-flows" type="checkbox" checked /> Sequence diagrams');
+  expect(html).toContain('<input id="include-archify" type="checkbox" /> Archify interactive HTML');
   expect(html).toContain('<input id="include-findings" type="checkbox" checked /> Findings');
   expect(app).toContain('includeArchitecture: elements["include-architecture"].checked');
   expect(app).toContain('includeCallFlows: elements["include-call-flows"].checked');
   expect(app).toContain('includeFlows: elements["include-flows"].checked');
   expect(app).toContain('includeFindings: elements["include-findings"].checked');
+  expect(app).toContain('includeArchify: elements["include-archify"].checked');
   expect(app).toContain('state.session.findingGenerationEnabled !== false');
   expect(app).toContain('if (!findingGenerationEnabled) elements["include-findings"].checked = false');
   expect(app).toContain('elements["include-architecture"].disabled = busy');
   expect(app).toContain('elements["include-call-flows"].disabled = busy');
   expect(app).toContain('elements["include-flows"].disabled = busy');
   expect(app).toContain('elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false');
+  expect(app).toContain('elements["include-archify"].disabled = busy || !state.session?.archifyAvailable');
   expect(styles).toContain(".tour-includes {");
   expect(app).toContain('state.session.tourState === "planning"');
   expect(app).toContain('latest.tourState !== state.session.tourState');

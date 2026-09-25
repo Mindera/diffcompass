@@ -42,6 +42,10 @@ const state = {
   highlightRequestId: 0,
   inlineEditHighlightRequestId: 0,
   flowRenderGeneration: 0,
+  archifyArtifactId: null,
+  archifyArtifactViews: new Map(),
+  mapsLastUnderstand: "archify",
+  mapsLastView: "archify",
   architectureDiagramViews: new Map(),
   architectureDiagramDrag: null,
   callFlowModes: new Map(),
@@ -132,16 +136,16 @@ const state = {
 const elements = Object.fromEntries(
   [
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "dry-runs-view", "dry-runs", "dry-runs-tab", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
-    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings", "include-dry-runs",
+    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings", "include-dry-runs",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "structural-blast-radius-view", "structural-blast-radius", "structural-blast-radius-empty", "structural-blast-radius-tab", "structural-blast-radius-select", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
-    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-sequence-diagrams", "briefing-call-flows", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
+    "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "shortcut-help-dialog", "shortcut-help-title", "shortcuts-button", "close-shortcut-help", "focus-mode-toggle",
-    "adaptive-view", "adaptive-diagrams", "adaptive-empty", "adaptive-tab", "include-adaptive-diagrams", "dry-runs-view", "dry-runs", "dry-runs-tab",
+    "adaptive-view", "adaptive-diagrams", "adaptive-empty", "adaptive-tab", "include-adaptive-diagrams", "dry-runs-view", "dry-runs", "dry-runs-tab", "archify-view", "archify-tab", "archify-empty", "archify-select", "archify-picker-count", "archify-artifacts", "include-archify",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "reviewer-task-assessment-status", "reviewer-task-assessment-status-title", "reviewer-task-assessment-status-body", "view-reviewer-task-assessment", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
     "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "export-dry-runs", "cancel-html-export", "finding-tooltip", "toast",
@@ -936,6 +940,8 @@ function setBusy(busy, label = "Working…") {
   elements["include-flows"].disabled = busy;
   elements["include-architecture"].disabled = busy;
   elements["include-call-flows"].disabled = busy;
+  elements["include-adaptive-diagrams"].disabled = busy;
+  elements["include-archify"].disabled = busy || !state.session?.archifyAvailable;
   elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false;
   elements["include-dry-runs"].disabled = busy;
   elements["tour-mode-toggle"].disabled = busy;
@@ -961,8 +967,6 @@ function syncBriefingPreferenceControls() {
   elements["show-tour-briefing"].disabled = state.briefingPreferencesSaving;
   const disabled = state.briefingPreferencesSaving || !elements["show-tour-briefing"].checked;
   elements["briefing-architecture"].disabled = disabled;
-  elements["briefing-sequence-diagrams"].disabled = disabled;
-  elements["briefing-call-flows"].disabled = disabled;
   elements["briefing-needs-attention"].disabled = disabled;
   elements["briefing-review-effort"].disabled = disabled;
   elements["briefing-options"].querySelectorAll("[data-briefing-option]").forEach((option) => {
@@ -2917,12 +2921,13 @@ function architectureDiagramView(key) {
 }
 
 function applyArchitectureDiagramView(key) {
-  const shell = document.querySelector(`[data-architecture-key="${CSS.escape(key)}"]`);
+  for (const shell of document.querySelectorAll(`[data-architecture-key="${CSS.escape(key)}"]`)) {
   const svg = shell?.querySelector(".architecture-diagram svg");
   const label = shell?.querySelector("[data-diagram-zoom-label]");
   const view = architectureDiagramView(key);
   if (svg) svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   if (label) label.textContent = `${Math.round(view.scale * 100)}%`;
+  }
 }
 
 function architectureDiagramControls(label) {
@@ -2975,12 +2980,120 @@ function architectureCard(architecture, label, key) {
   </article>`;
 }
 
-function architectureEntries() {
+function componentArchitectureEntries() {
   const outline = state.session.outline;
   return [
     outline?.behaviorArchitecture ? { key: "behavior", label: `${outline.behaviorArchitectureStatus === "proposed" ? "Proposed" : "Implemented"} behaviour`, value: outline.behaviorArchitecture } : null,
     outline?.architecture ? { key: "journey", label: "Implementation journey", value: outline.architecture } : null,
   ].filter(Boolean);
+}
+
+function architectureEntries() {
+  return componentArchitectureEntries();
+}
+
+function archifyArtifacts() {
+  // Impact maps already have a complete, source-linked view with test evidence.
+  // Do not offer a second, truncated rendering of the same result here.
+  return (state.session.outline?.archifyArtifacts ?? []).filter((artifact) => !artifact.id.startsWith("structural-"));
+}
+
+function hasArchifyArtifact(id) {
+  return archifyArtifacts().some((artifact) => artifact.id === id);
+}
+
+function legacyCallFlows() {
+  return (state.session.outline?.callFlows ?? []).filter((flow) => !hasArchifyArtifact(`workflow-${flow.id}`));
+}
+
+function legacySequenceFlows() {
+  return (state.session.outline?.flows ?? []).filter((flow) => !hasArchifyArtifact(`sequence-${flow.id}`));
+}
+
+function archifyArtifactTypeLabel(type, purpose) {
+  if (purpose === "domain-model") return "Domain model";
+  return ({ architecture: "Architecture", workflow: "Workflow", sequence: "Sequence", dataflow: "Data flow", lifecycle: "Lifecycle" })[type] ?? type;
+}
+
+function selectedArchifyArtifact(artifacts) {
+  const selected = artifacts.find((artifact) => artifact.id === state.archifyArtifactId);
+  if (selected) return selected;
+  state.archifyArtifactId = artifacts[0]?.id ?? null;
+  return artifacts[0];
+}
+
+function archifyComparisonViews(artifact) {
+  return [
+    ...(artifact.comparison?.before ? [{ id: "before", label: "Before", description: "Components known to exist before the change. Old connections may be missing from the supplied comparison." }] : []),
+    ...(artifact.comparison?.delta ? [{ id: "delta", label: "Delta", description: "Added, changed, and removed components and connections, with surrounding context." }] : []),
+    { id: "after", label: "After", description: "The map after the change." },
+  ];
+}
+
+function selectedArchifyComparisonView(artifact) {
+  const views = archifyComparisonViews(artifact);
+  const requested = state.archifyArtifactViews.get(artifact.id) ?? "after";
+  const selected = views.find((view) => view.id === requested) ?? views.find((view) => view.id === "after");
+  if (!selected) return views[0];
+  state.archifyArtifactViews.set(artifact.id, selected.id);
+  return selected;
+}
+
+function archifyViewData(artifact, view) {
+  if (view === "before") return artifact.comparison?.before;
+  if (view === "delta") return artifact.comparison?.delta;
+  return { ir: artifact.ir, validationReceipt: artifact.validationReceipt };
+}
+
+function archifyArtifactCard(artifact) {
+  const views = archifyComparisonViews(artifact);
+  const selectedView = selectedArchifyComparisonView(artifact);
+  const displayed = archifyViewData(artifact, selectedView.id);
+  const affected = artifact.affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("");
+  const evidence = artifact.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const ir = escapeHtml(JSON.stringify(displayed?.ir ?? artifact.ir, null, 2));
+  const comparisonControls = views.length > 1 ? `<div class="archify-comparison" role="group" aria-label="${escapeHtml(`${artifact.title} comparison view`)}">${views.map((view) => `<button type="button" data-archify-comparison-view="${view.id}" data-archify-comparison-artifact="${escapeHtml(artifact.id)}"${view.id === selectedView.id ? ' class="active" aria-pressed="true"' : ' aria-pressed="false"'}>${escapeHtml(view.label)}</button>`).join("")}</div>` : "";
+  return `<article class="flow-card architecture-card archify-artifact">
+    <header class="architecture-card-heading"><div><span class="architecture-label">Validated map</span><h2>${escapeHtml(artifact.title)}</h2></div><span class="archify-view">${escapeHtml(archifyArtifactTypeLabel(artifact.type, artifact.purpose))}</span></header>
+    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it. Drag the background to pan; use Fit to see the whole map.</p>
+    ${comparisonControls}
+    ${selectedView.id === "delta" ? '<p class="archify-delta-key" aria-label="Change legend"><span>+ Added</span><span>~ Changed</span><span>− Removed</span><span>Unchanged context</span></p>' : ""}
+    <iframe class="archify-frame" data-archify-artifact-id="${escapeHtml(artifact.id)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
+    <details class="archify-evidence"><summary>Sources and technical validation</summary><ul>${evidence}</ul><div class="flow-impact-list"><strong>Affected changed files</strong>${affected || "<span class=\"muted\">No exact changed file was captured.</span>"}</div><details><summary>Validated ${escapeHtml(selectedView.label.toLowerCase())} map data</summary><pre>${ir}</pre></details><details><summary>Renderer diagnostics</summary><pre>${escapeHtml(displayed?.validationReceipt ?? artifact.validationReceipt)}</pre></details></details>
+  </article>`;
+}
+
+window.addEventListener("message", (event) => {
+  if (event.data?.type !== "code-review-tour-map-scroll" || !Number.isFinite(event.data.deltaY)) return;
+  const frame = [...document.querySelectorAll("iframe.archify-frame")].find((candidate) => candidate.contentWindow === event.source);
+  if (!frame || !frame.getClientRects().length) return;
+  const pane = frame.closest(".diff-panel");
+  if (pane) pane.scrollBy({ top: Math.max(-2000, Math.min(2000, event.data.deltaY)), behavior: "instant" });
+});
+
+function archifyFailureCards() {
+  const failures = state.session.outline?.archifyFailures ?? [];
+  return failures.map((failure) => `<article class="flow-card archify-failure"><strong>Archify ${escapeHtml(failure.type)} unavailable</strong><p>${escapeHtml(failure.message)}</p><small>${failure.preservedLastValid ? "The last validated diagram remains on display." : "The Mermaid fallback remains available."}</small></article>`).join("");
+}
+
+function renderArchify() {
+  const artifacts = archifyArtifacts();
+  const failures = archifyFailureCards();
+  const hasArtifacts = artifacts.length > 0;
+  const hasContent = hasArtifacts || Boolean(failures) || componentArchitectureEntries().length > 0;
+  const selected = selectedArchifyArtifact(artifacts);
+  elements["archify-tab"].classList.remove("hidden");
+  elements["archify-empty"].classList.toggle("hidden", hasContent);
+  elements["archify-select"].disabled = !hasArtifacts;
+  elements["archify-select"].innerHTML = artifacts.map((artifact) => `<option value="${escapeHtml(artifact.id)}">${escapeHtml(`${archifyArtifactTypeLabel(artifact.type, artifact.purpose)} · ${artifact.title}`)}</option>`).join("");
+  elements["archify-select"].value = selected?.id ?? "";
+  elements["archify-picker-count"].textContent = selected ? `Showing ${artifacts.indexOf(selected) + 1} of ${artifacts.length} validated map${artifacts.length === 1 ? "" : "s"}.` : "No validated map is available.";
+  const markup = `${selected ? archifyArtifactCard(selected) : ""}${failures}`;
+  // Preserve the iframe and its camera/inspection state on unrelated updates.
+  if (elements["archify-artifacts"]._mapMarkup !== markup) {
+    elements["archify-artifacts"].innerHTML = markup;
+    elements["archify-artifacts"]._mapMarkup = markup;
+  }
 }
 
 function architectureLegend() {
@@ -2997,7 +3110,7 @@ function adaptiveEntries() {
   return [
     outline?.stateDiagram ? { key: "state", label: "State machine", value: outline.stateDiagram } : null,
     outline?.dataModel ? { key: "data-model", label: "Data model / ER", value: outline.dataModel } : null,
-  ].filter(Boolean);
+  ].filter((entry) => entry && !hasArchifyArtifact(entry.key === "state" ? "lifecycle-state-machine" : "dataflow-data-model"));
 }
 
 function adaptiveLegend(kind) {
@@ -3020,7 +3133,7 @@ function tourIntroArchitectureCard(architecture, label, key) {
   return `<article class="tour-intro-chart">
     <div class="tour-intro-chart-heading"><div><span class="architecture-label">${escapeHtml(label)}</span><h4>${escapeHtml(architecture.title)}</h4></div>${architectureDiagramExpandButton(label, key)}</div>
     <p>${escapeHtml(architecture.summary)}</p>
-    <div class="sequence-diagram mermaid-render" data-tour-intro-architecture-diagram="${key}" role="img" aria-label="${escapeHtml(`${label}: ${architecture.title}`)}"><span class="loading">Rendering diagram…</span></div>
+    <div class="sequence-diagram architecture-node-skin mermaid-render" data-tour-intro-architecture-diagram="${key}" role="img" aria-label="${escapeHtml(`${label}: ${architecture.title}`)}"><span class="loading">Rendering diagram…</span></div>
     <div class="flow-warning hidden" data-tour-intro-architecture-error="${key}">The component diagram is unavailable.</div>
   </article>`;
 }
@@ -3045,7 +3158,7 @@ function tourIntroCallFlowCard(flow) {
 }
 
 function openArchitectureDiagramViewer(key) {
-  const architecture = [...architectureEntries(), ...adaptiveEntries()].find((entry) => entry.key === key);
+  const architecture = [...componentArchitectureEntries(), ...adaptiveEntries()].find((entry) => entry.key === key);
   const source = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${CSS.escape(key)}"]`)
     ?? elements["architecture-content"].querySelector(`[data-architecture-diagram="${CSS.escape(key)}"]`)
     ?? elements["adaptive-diagrams"].querySelector(`[data-adaptive-diagram="${CSS.escape(key)}"]`);
@@ -3145,18 +3258,6 @@ function renderTourAttention() {
   elements["tour-intro-estimate-factors"].innerHTML = (estimate?.factors ?? []).map((factor) => `<div class="tour-intro-estimate-factor"><span>${escapeHtml(factor.label)}</span><strong>+${factor.minutes} min</strong><small>${escapeHtml(factor.detail)} · ${factor.basis === "bounded-heuristic" ? "bounded heuristic" : "repository evidence"}</small></div>`).join("");
 }
 
-function briefingArchitectureEntries() {
-  return state.session.preferences?.briefingArchitecture === false ? [] : architectureEntries();
-}
-
-function briefingSequenceFlows() {
-  return state.session.preferences?.briefingSequenceDiagrams === true ? (state.session.outline?.flows ?? []) : [];
-}
-
-function briefingCallFlows() {
-  return state.session.preferences?.briefingCallFlows === true ? (state.session.outline?.callFlows ?? []) : [];
-}
-
 function briefingOrder() {
   const saved = state.session.preferences?.briefingOrder;
   return Array.isArray(saved) && saved.length === DEFAULT_BRIEFING_ORDER.length && new Set(saved).size === saved.length && saved.every((key) => DEFAULT_BRIEFING_ORDER.includes(key))
@@ -3186,8 +3287,6 @@ function renderBriefingOptionOrder(order = briefingOrder()) {
 function renderTourBriefingOrder() {
   const sections = new Map([
     ["architecture", elements["tour-intro-architecture-section"]],
-    ["sequence-diagrams", elements["tour-intro-sequence-section"]],
-    ["call-flows", elements["tour-intro-call-flows-section"]],
     ["needs-attention", elements["tour-intro-attention"]],
     ["review-effort", elements["tour-intro-estimate"]],
   ]);
@@ -3200,28 +3299,27 @@ function renderTourBriefingOrder() {
 
 function renderTourIntro() {
   const outline = state.session.outline;
-  const architectures = briefingArchitectureEntries();
-  const flows = briefingSequenceFlows();
-  const callFlows = briefingCallFlows();
+  const architectures = state.session.preferences?.briefingArchitecture === false ? [] : componentArchitectureEntries();
   elements["tour-intro-title"].textContent = state.session.pullRequest?.title ?? outline?.title ?? `${state.session.comparison.repositoryName} review briefing`;
   elements["tour-intro-summary"].textContent = outline?.summary ?? "Grounded signals from this comparison are ready. Start the tour when you’re ready to explore the change.";
   renderTourAttention();
   elements["tour-intro-architecture-section"].classList.toggle("hidden", architectures.length === 0);
-  elements["tour-intro-architecture"].innerHTML = `${architectureLegend()}${architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("")}`;
-  elements["tour-intro-sequence-section"].classList.toggle("hidden", flows.length === 0);
-  elements["tour-intro-sequence"].innerHTML = flows.map(tourIntroSequenceCard).join("");
-  elements["tour-intro-call-flows-section"].classList.toggle("hidden", callFlows.length === 0);
-  elements["tour-intro-call-flows"].innerHTML = callFlows.map(tourIntroCallFlowCard).join("");
+  elements["tour-intro-sequence-section"].classList.add("hidden");
+  elements["tour-intro-call-flows-section"].classList.add("hidden");
+  elements["tour-intro-architecture"].innerHTML = architectures.length > 0
+    ? `${architectureLegend()}${architectures.map(({ key, label, value }) => tourIntroArchitectureCard(value, label, key)).join("")}`
+    : "";
+  elements["tour-intro-sequence"].innerHTML = "";
+  elements["tour-intro-call-flows"].innerHTML = "";
   renderTourBriefingOrder();
   elements["begin-tour"].textContent = state.tourStarted ? "Close" : "Start tour";
 }
 
 function renderTourIntroDiagrams() {
-  const architectures = briefingArchitectureEntries();
-  const flows = briefingSequenceFlows();
-  if (architectures.length === 0 && flows.length === 0) return;
+  const architectures = state.session.preferences?.briefingArchitecture === false ? [] : componentArchitectureEntries();
+  if (architectures.length === 0) return;
   const generation = ++state.flowRenderGeneration;
-  void renderFlowDiagrams(architectures, flows, generation);
+  void renderFlowDiagrams(architectures, [], generation);
 }
 
 function maybeShowTourIntro() {
@@ -3250,13 +3348,17 @@ function renderArchitecture() {
   if (state.tourIntroPending && !state.tourIntroShown) renderTourIntro();
   elements.architecture.classList.toggle("hidden", architectures.length === 0);
   elements["architecture-content"].innerHTML = `${architectureLegend()}${architectures.map(({ key, label, value }) => architectureCard(value, label, key)).join("")}`;
+  const fallbacks = architectures.filter(({ key }) => !hasArchifyArtifact(`architecture-${key}`));
+  document.getElementById("maps-architecture").classList.toggle("hidden", fallbacks.length === 0);
+  document.getElementById("maps-architecture-content").innerHTML = `${architectureLegend()}${fallbacks.map(({ key, label, value }) => architectureCard(value, label, key)).join("")}`;
   const generation = ++state.flowRenderGeneration;
   void renderFlowDiagrams(architectures, [], generation);
 }
 
 function renderAdaptiveDiagrams() {
   const diagrams = adaptiveEntries();
-  elements["adaptive-tab"].classList.toggle("hidden", diagrams.length === 0);
+  if (state.activeTab === "adaptive" && diagrams.length === 0) state.activeTab = "diff";
+  elements["adaptive-tab"].classList.add("hidden");
   elements["adaptive-empty"].classList.toggle("hidden", diagrams.length > 0);
   elements["adaptive-diagrams"].innerHTML = diagrams.map(({ label, value, key }) => adaptiveLegend(value.kind) + adaptiveCard(value, label, key)).join("");
   const generation = state.flowRenderGeneration;
@@ -3264,7 +3366,11 @@ function renderAdaptiveDiagrams() {
 }
 
 function renderCallFlows() {
-  const callFlows = state.session.outline?.callFlows ?? [];
+  const callFlows = legacyCallFlows();
+  const savedCallFlows = state.session.outline?.callFlows ?? [];
+  const allReplaced = savedCallFlows.length > 0 && callFlows.length === 0;
+  if (state.activeTab === "call-flows" && allReplaced) state.activeTab = "diff";
+  elements["call-flows-tab"].classList.add("hidden");
   elements["regenerate-call-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["call-flows-empty"].classList.toggle("hidden", callFlows.length > 0);
   elements["call-flows-empty"].textContent = state.session.outline ? "No changed call graph was identified for this comparison." : "Start the tour to trace changed calls from their entrypoints.";
@@ -3667,7 +3773,7 @@ function structuralGraphSvg(radius) {
   }).join("");
   const labels = structuralConnectionLabels(radius);
   const external = structuralExternalLegendLabel(radius);
-  return `<div class="structural-graph-shell"><div class="structural-graph-toolbar"><div><strong>${escapeHtml(structuralGraphHeading(radius))}</strong><div class="structural-graph-legend" aria-label="Graph legend"><span><i class="root"></i>${escapeHtml(structuralSelectedLabel(radius))}</span><span><i class="direct"></i>${escapeHtml(labels.direct)}</span><span><i class="indirect"></i>${escapeHtml(labels.indirect)}</span>${external ? `<span><i class="external"></i>${escapeHtml(external)}</span>` : ""}</div></div><span class="structural-graph-help">Arrows point toward the selected item · drag canvas background · scroll to zoom · click a source node to open it</span><div class="structural-graph-actions"><button type="button" data-structural-graph-action="zoom-out" aria-label="Zoom out">−</button><button type="button" data-structural-graph-action="reset" aria-label="Reset graph view">Reset</button><button type="button" data-structural-graph-action="zoom-in" aria-label="Zoom in">+</button></div></div><svg class="structural-graph" data-structural-graph-radius="${escapeHtml(radius.id)}" data-structural-graph-width="${width}" style="aspect-ratio: ${width} / ${height}" viewBox="0 0 ${width} ${height}" role="group" aria-label="Static ${escapeHtml(structuralGraphHeading(radius).toLowerCase())} for selected ${escapeHtml(radius.symbol.symbol)}" tabindex="0"><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs><rect class="structural-graph-backdrop" width="${width}" height="${height}" rx="10"></rect><g data-structural-graph-canvas transform="translate(${view.x} ${view.y}) scale(${view.scale})">${edgeMarkup}${nodeMarkup}</g></svg><p class="structural-graph-caption">Static relationships only; not confirmed runtime impact.</p></div>`;
+  return `<div class="structural-graph-shell"><div class="structural-graph-toolbar"><div><strong>${escapeHtml(structuralGraphHeading(radius))}</strong><div class="structural-graph-legend" aria-label="Graph legend"><span><i class="root"></i>${escapeHtml(structuralSelectedLabel(radius))}</span><span><i class="direct"></i>${escapeHtml(labels.direct)}</span><span><i class="indirect"></i>${escapeHtml(labels.indirect)}</span>${external ? `<span><i class="external"></i>${escapeHtml(external)}</span>` : ""}</div></div><span class="structural-graph-help">Arrows point toward the selected item · drag canvas background · Ctrl/⌘ + scroll to zoom · click a source node to open it</span><div class="structural-graph-actions"><button type="button" data-structural-graph-action="zoom-out" aria-label="Zoom out">−</button><button type="button" data-structural-graph-action="reset" aria-label="Fit entire graph">Fit</button><button type="button" data-structural-graph-action="zoom-in" aria-label="Zoom in">+</button></div></div><svg class="structural-graph" data-structural-graph-radius="${escapeHtml(radius.id)}" data-structural-graph-width="${width}" style="aspect-ratio: ${width} / ${height}; max-width: ${width}px; margin-inline: auto" viewBox="0 0 ${width} ${height}" role="group" aria-label="Static ${escapeHtml(structuralGraphHeading(radius).toLowerCase())} for selected ${escapeHtml(radius.symbol.symbol)}" tabindex="0"><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs><rect class="structural-graph-backdrop" width="${width}" height="${height}" rx="10"></rect><g data-structural-graph-canvas transform="translate(${view.x} ${view.y}) scale(${view.scale})">${edgeMarkup}${nodeMarkup}</g></svg><p class="structural-graph-caption">Static relationships only; not confirmed runtime impact.</p></div>`;
 }
 
 function structuralBlastRadiusCard(radius) {
@@ -3696,10 +3802,9 @@ function structuralBlastRadiusCard(radius) {
 
 function renderStructuralBlastRadii() {
   const radii = state.session.outline?.structuralBlastRadii ?? [];
-  if (state.activeTab === "structural-blast-radius" && radii.length === 0) state.activeTab = "diff";
   if (!radii.some((radius) => radius.id === state.structuralBlastRadiusId)) state.structuralBlastRadiusId = radii[0]?.id ?? null;
   const selected = radii.find((radius) => radius.id === state.structuralBlastRadiusId);
-  elements["structural-blast-radius-tab"].classList.toggle("hidden", !state.session.outline || radii.length === 0);
+  elements["structural-blast-radius-tab"].classList.add("hidden");
   elements["structural-blast-radius-empty"].classList.toggle("hidden", radii.length > 0);
   elements["structural-blast-radius-empty"].textContent = state.session.outline
     ? "No analysed symbols had a saved structural result for this comparison."
@@ -3725,7 +3830,7 @@ function applyStructuralGraphView(radiusId) {
 function changeStructuralGraphView(radiusId, action) {
   const view = structuralGraphView(radiusId);
   if (action === "zoom-in") view.scale = Math.min(3, Number((view.scale * 1.2).toFixed(3)));
-  if (action === "zoom-out") view.scale = Math.max(0.6, Number((view.scale / 1.2).toFixed(3)));
+  if (action === "zoom-out") view.scale = Math.max(0.1, Number((view.scale / 1.2).toFixed(3)));
   if (action === "pan-left") view.x -= 44;
   if (action === "pan-right") view.x += 44;
   if (action === "pan-up") view.y -= 44;
@@ -3734,8 +3839,16 @@ function changeStructuralGraphView(radiusId, action) {
   applyStructuralGraphView(radiusId);
 }
 
+function syncSequenceTab() {
+  const savedFlows = state.session.outline?.flows ?? [];
+  const allReplaced = savedFlows.length > 0 && legacySequenceFlows().length === 0;
+  if (state.activeTab === "sequence" && allReplaced) state.activeTab = "diff";
+  elements["sequence-tab"].classList.add("hidden");
+}
+
 function renderSequenceDiagrams() {
-  const flows = state.session.outline?.flows ?? [];
+  const flows = legacySequenceFlows();
+  syncSequenceTab();
   const generation = ++state.flowRenderGeneration;
   elements["regenerate-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["flows-empty"].classList.toggle("hidden", flows.length > 0);
@@ -3776,16 +3889,18 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
     sequence: { useMaxWidth: true, wrap: true },
   });
   for (const architecture of architectures) {
-    const target = elements.architecture.querySelector(`[data-architecture-diagram="${architecture.key}"]`);
-    try {
-      const result = await window.mermaid.render(`review-tour-architecture-${architecture.key}-${generation}`, architecture.value.mermaid);
-      if (generation !== state.flowRenderGeneration || !target?.isConnected) return;
-      target.innerHTML = result.svg;
-      target.querySelector("svg")?.setAttribute("aria-hidden", "true");
-      applyArchitectureDiagramView(architecture.key);
-    } catch {
-      if (target) target.innerHTML = '<span class="muted">Diagram unavailable</span>';
-      elements.architecture.querySelector(`[data-architecture-error="${architecture.key}"]`)?.classList.remove("hidden");
+    const targets = document.querySelectorAll(`[data-architecture-diagram="${architecture.key}"]`);
+    for (const [index, target] of [...targets].entries()) {
+      try {
+        const result = await window.mermaid.render(`review-tour-architecture-${architecture.key}-${generation}-${index}`, architecture.value.mermaid);
+        if (generation !== state.flowRenderGeneration || !target.isConnected) return;
+        target.innerHTML = result.svg;
+        target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+        applyArchitectureDiagramView(architecture.key);
+      } catch {
+        target.innerHTML = '<span class="muted">Diagram unavailable</span>';
+        target.closest("article")?.querySelector(`[data-architecture-error="${architecture.key}"]`)?.classList.remove("hidden");
+      }
     }
     const introTarget = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${architecture.key}"]`);
     if (introTarget) {
@@ -4338,11 +4453,54 @@ function addDryRunScenario() {
 }
 
 function availableTabs() {
-  return ["diff", "call-flows", ...(state.session?.outline?.structuralBlastRadii?.length ? ["structural-blast-radius"] : []), "sequence", "dry-runs", ...(state.session?.outline?.stateDiagram || state.session?.outline?.dataModel ? ["adaptive"] : []), "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["diff", "archify", "dry-runs", "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+}
+
+const MAP_VIEWS = ["archify", "call-flows", "sequence", "adaptive", "structural-blast-radius"];
+
+function understandMapViews() {
+  const views = [
+    ...(archifyArtifacts().length || componentArchitectureEntries().length ? [{ id: "archify", label: "Component and behaviour maps" }] : []),
+    ...(legacyCallFlows().length ? [{ id: "call-flows", label: "Call flows" }] : []),
+    ...(legacySequenceFlows().length ? [{ id: "sequence", label: "Sequence diagrams" }] : []),
+    ...(adaptiveEntries().length ? [{ id: "adaptive", label: "Data and lifecycle diagrams" }] : []),
+  ];
+  return views.length ? views : [{ id: "archify", label: "Overview" }];
+}
+
+function openMaps(view = state.mapsLastView) {
+  if (view !== "structural-blast-radius" && !understandMapViews().some((entry) => entry.id === view)) view = understandMapViews()[0].id;
+  const render = { archify: renderArchify, "call-flows": renderCallFlows, sequence: renderSequenceDiagrams, adaptive: renderAdaptiveDiagrams, "structural-blast-radius": renderStructuralBlastRadii }[view];
+  activateReviewTab(view, render);
+}
+
+function renderMapsNavigation() {
+  const inMaps = MAP_VIEWS.includes(state.activeTab);
+  const impact = state.activeTab === "structural-blast-radius";
+  if (inMaps) state.mapsLastView = state.activeTab;
+  if (inMaps && !impact) state.mapsLastUnderstand = state.activeTab;
+  const navigation = document.getElementById("maps-navigation");
+  navigation.classList.toggle("hidden", !inMaps);
+  for (const view of MAP_VIEWS) elements[`${view}-tab`].classList.toggle("hidden", view !== "archify");
+  for (const view of MAP_VIEWS) elements[`${view}-view`].setAttribute("aria-labelledby", "archify-tab");
+  const tab = elements["archify-tab"];
+  tab.classList.toggle("active", inMaps);
+  tab.setAttribute("aria-selected", String(inMaps));
+  tab.setAttribute("aria-controls", inMaps ? `${state.activeTab}-view` : "archify-view");
+  tab.tabIndex = inMaps ? 0 : -1;
+  for (const button of navigation.querySelectorAll("[data-maps-mode]")) {
+    const active = (button.dataset.mapsMode === "impact") === impact;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  const picker = document.getElementById("maps-understand-select");
+  picker.parentElement.classList.toggle("hidden", impact || understandMapViews().length < 2);
+  picker.innerHTML = understandMapViews().map((view) => `<option value="${view.id}">${escapeHtml(view.label)}</option>`).join("");
+  picker.value = state.mapsLastUnderstand;
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "call-flows", "structural-blast-radius", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
+  for (const tabName of ["diff", "call-flows", "structural-blast-radius", "archify", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -4350,6 +4508,7 @@ function renderActiveTab() {
     elements[`${tabName}-tab`].tabIndex = active ? 0 : -1;
   }
   updatePullRequestReturnVisibility();
+  renderMapsNavigation();
   scheduleCurrentStepReturnUpdate();
 }
 
@@ -5003,8 +5162,6 @@ function renderSession() {
   renderBriefingOptionOrder();
   elements["show-tour-briefing"].checked = state.session.preferences?.showBriefing !== false;
   elements["briefing-architecture"].checked = state.session.preferences?.briefingArchitecture !== false;
-  elements["briefing-sequence-diagrams"].checked = state.session.preferences?.briefingSequenceDiagrams === true;
-  elements["briefing-call-flows"].checked = state.session.preferences?.briefingCallFlows === true;
   elements["briefing-needs-attention"].checked = state.session.preferences?.briefingNeedsAttention !== false;
   elements["briefing-review-effort"].checked = state.session.preferences?.briefingReviewEffort !== false;
   syncBriefingPreferenceControls();
@@ -5034,9 +5191,11 @@ function renderSession() {
   renderFindings();
   renderReviewOverview();
   renderArchitecture();
+  renderArchify();
+  renderCallFlows();
+  syncSequenceTab();
   renderAdaptiveDiagrams();
   renderStructuralBlastRadii();
-  if (state.activeTab === "call-flows") renderCallFlows();
   if (state.activeTab === "structural-blast-radius") renderStructuralBlastRadii();
   if (state.activeTab === "sequence") renderSequenceDiagrams();
   if (state.activeTab === "dry-runs") renderDryRuns();
@@ -5066,6 +5225,11 @@ function renderSession() {
   elements["approve-comments-button"].disabled = state.busy || closed;
   elements["feedback-button"].disabled = state.busy || closed;
   elements["prefetch-steps"].disabled = closed;
+  elements["include-archify"].checked = state.session.agentSelection?.includeArchify === true;
+  elements["include-archify"].disabled = state.busy || !state.session.archifyAvailable;
+  elements["include-archify"].title = state.session.archifyAvailable
+    ? "Use the locally configured Archify renderer."
+    : "Set CODE_REVIEW_TOUR_ARCHIFY_DIR to an installed Archify skill to enable this option.";
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
   elements["chat-form"].querySelector("button").disabled = state.busy || closed;
@@ -5120,6 +5284,7 @@ async function startTour() {
         includeFindings: elements["include-findings"].checked,
         includeAdaptiveDiagrams: elements["include-adaptive-diagrams"].checked,
         includeDryRuns: elements["include-dry-runs"].checked,
+        includeArchify: elements["include-archify"].checked,
       }),
     });
     state.tourMode = true;
@@ -6444,8 +6609,8 @@ async function saveBriefingPreferences(order = briefingOptionOrderFromDom()) {
   const values = {
     showBriefing: elements["show-tour-briefing"].checked,
     briefingArchitecture: elements["briefing-architecture"].checked,
-    briefingSequenceDiagrams: elements["briefing-sequence-diagrams"].checked,
-    briefingCallFlows: elements["briefing-call-flows"].checked,
+    briefingSequenceDiagrams: false,
+    briefingCallFlows: false,
     briefingNeedsAttention: elements["briefing-needs-attention"].checked,
     briefingReviewEffort: elements["briefing-review-effort"].checked,
     briefingOrder: order,
@@ -6467,8 +6632,6 @@ async function saveBriefingPreferences(order = briefingOptionOrderFromDom()) {
 [
   "show-tour-briefing",
   "briefing-architecture",
-  "briefing-sequence-diagrams",
-  "briefing-call-flows",
   "briefing-needs-attention",
   "briefing-review-effort",
 ].forEach((id) => elements[id].addEventListener("change", () => void saveBriefingPreferences()));
@@ -6783,6 +6946,25 @@ new ResizeObserver(([entry]) => {
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
 elements["structural-blast-radius-tab"].addEventListener("click", () => activateReviewTab("structural-blast-radius", renderStructuralBlastRadii));
+elements["archify-tab"].addEventListener("click", () => openMaps());
+document.getElementById("maps-navigation").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-maps-mode]");
+  if (button) openMaps(button.dataset.mapsMode === "impact" ? "structural-blast-radius" : state.mapsLastUnderstand);
+});
+document.getElementById("maps-understand-select").addEventListener("change", (event) => openMaps(event.target.value));
+elements["archify-select"].addEventListener("change", () => {
+  state.archifyArtifactId = elements["archify-select"].value || null;
+  renderArchify();
+});
+elements["archify-artifacts"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-archify-comparison-view]");
+  if (!button) return;
+  const artifactId = button.dataset.archifyComparisonArtifact;
+  const view = button.dataset.archifyComparisonView;
+  if (!artifactId || !view) return;
+  state.archifyArtifactViews.set(artifactId, view);
+  renderArchify();
+});
 elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequence", renderSequenceDiagrams));
 elements["dry-runs-tab"].addEventListener("click", () => activateReviewTab("dry-runs", renderDryRuns));
 elements["dry-runs"].addEventListener("change", (event) => {
@@ -6938,13 +7120,13 @@ elements["structural-blast-radius"].addEventListener("click", (event) => {
 });
 elements["structural-blast-radius"].addEventListener("wheel", (event) => {
   const graph = event.target.closest(".structural-graph");
-  if (!graph || !state.structuralBlastRadiusId) return;
+  if (!graph || !state.structuralBlastRadiusId || (!event.ctrlKey && !event.metaKey)) return;
   event.preventDefault();
   changeStructuralGraphView(state.structuralBlastRadiusId, event.deltaY < 0 ? "zoom-in" : "zoom-out");
 }, { passive: false });
 elements["structural-blast-radius"].addEventListener("pointerdown", (event) => {
   const graph = event.target.closest(".structural-graph");
-  if (!graph || event.button !== 0 || event.target.closest("[data-structural-path]")) return;
+  if (!graph || event.pointerType === "touch" || event.pointerType === "pen" || event.button !== 0 || event.target.closest("[data-structural-path]")) return;
   state.structuralGraphDrag = { pointerId: event.pointerId, radiusId: graph.dataset.structuralGraphRadius, graph, x: event.clientX, y: event.clientY };
   graph.setPointerCapture(event.pointerId);
   graph.classList.add("dragging");
@@ -7074,19 +7256,21 @@ registerArchitectureDiagramInteractions(elements["tour-intro-architecture"]);
 registerArchitectureDiagramInteractions(elements["tour-intro-sequence"]);
 registerArchitectureDiagramInteractions(elements["tour-intro-call-flows"]);
 registerArchitectureDiagramInteractions(elements.architecture);
+registerArchitectureDiagramInteractions(document.getElementById("maps-architecture"));
 registerArchitectureDiagramInteractions(elements["adaptive-view"]);
 registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"]);
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
   const tabs = availableTabs();
-  const currentIndex = tabs.indexOf(state.activeTab);
+  const currentIndex = tabs.indexOf(MAP_VIEWS.includes(state.activeTab) ? "archify" : state.activeTab);
   const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
     (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
   const nextTab = tabs[nextIndex];
   const render = nextTab === "call-flows" ? renderCallFlows
     : nextTab === "structural-blast-radius" ? renderStructuralBlastRadii
-      : nextTab === "sequence" ? renderSequenceDiagrams
+      : nextTab === "archify" ? renderArchify
+        : nextTab === "sequence" ? renderSequenceDiagrams
       : nextTab === "dry-runs" ? renderDryRuns
       : nextTab === "adaptive" ? renderAdaptiveDiagrams
       : nextTab === "findings" ? renderFindings

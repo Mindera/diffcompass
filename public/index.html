@@ -21,6 +21,7 @@
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
         <button id="call-flows-tab" class="tab" data-tab="call-flows" role="tab" aria-selected="false" aria-controls="call-flows-view" tabindex="-1">Call flows</button>
         <button id="structural-blast-radius-tab" class="tab" data-tab="structural-blast-radius" role="tab" aria-selected="false" aria-controls="structural-blast-radius-view" tabindex="-1">Blast radius</button>
+        <button id="archify-tab" class="tab" data-tab="archify" role="tab" aria-selected="false" aria-controls="archify-view" tabindex="-1">Maps</button>
         <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
         <button id="dry-runs-tab" class="tab" data-tab="dry-runs" role="tab" aria-selected="false" aria-controls="dry-runs-view" tabindex="-1">Dry runs</button>
         <button id="adaptive-tab" class="tab" data-tab="adaptive" role="tab" aria-selected="false" aria-controls="adaptive-view" tabindex="-1">Adaptive diagrams</button>
@@ -55,14 +56,6 @@
                     <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
                     <label><span>Component diagrams</span><input id="briefing-architecture" type="checkbox" /></label>
                   </div>
-                  <div class="briefing-option" data-briefing-option="sequence-diagrams" role="listitem" draggable="true" tabindex="0" aria-label="Sequence diagrams briefing section. Drag to reorder.">
-                    <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
-                    <label><span>Sequence diagrams</span><input id="briefing-sequence-diagrams" type="checkbox" /></label>
-                  </div>
-                  <div class="briefing-option" data-briefing-option="call-flows" role="listitem" draggable="true" tabindex="0" aria-label="Call flows briefing section. Drag to reorder.">
-                    <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
-                    <label><span>Call flows</span><input id="briefing-call-flows" type="checkbox" /></label>
-                  </div>
                   <div class="briefing-option" data-briefing-option="needs-attention" role="listitem" draggable="true" tabindex="0" aria-label="Needs your attention briefing section. Drag to reorder.">
                     <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
                     <label><span>Needs your attention</span><input id="briefing-needs-attention" type="checkbox" /></label>
@@ -72,7 +65,7 @@
                     <label><span>Review effort</span><input id="briefing-review-effort" type="checkbox" /></label>
                   </div>
                 </div>
-                <p>Choose which grounded context appears before or during the tour. Drag rows to reorder them.</p>
+                <p>Interactive maps open in their own workspace pane. Choose whether the compact component overview, review context, and effort estimate appear before the tour, then drag rows to reorder them.</p>
               </div>
             </section>
             <section class="settings-section">
@@ -94,8 +87,8 @@
               <button id="sessions-button" class="text-button" type="button">Manage sessions</button>
               <div id="export-menu" class="settings-export">
                 <span>Export</span>
-                <button class="text-button" type="button" data-export-format="markdown">Markdown</button>
-                <button class="text-button" type="button" data-export-format="html">HTML</button>
+                <button class="text-button" type="button" data-export-format="markdown">Review report (Markdown)</button>
+                <button class="text-button" type="button" data-export-format="html">Interactive review (HTML)</button>
               </div>
             </section>
             <section class="settings-section settings-actions">
@@ -218,7 +211,14 @@
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>
         </div>
-        <div id="call-flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="call-flows-tab">
+        <nav id="maps-navigation" class="maps-navigation hidden" aria-label="Maps">
+          <div class="diff-view-toggle" role="group" aria-label="Map purpose">
+            <button type="button" data-maps-mode="understand" aria-pressed="true">Understand the change</button>
+            <button type="button" data-maps-mode="impact" aria-pressed="false">Explore impact</button>
+          </div>
+          <label><span class="sr-only">Map category</span><select id="maps-understand-select" aria-label="Map category"></select></label>
+        </nav>
+        <div id="call-flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="archify-tab">
           <div class="flows-toolbar"><div><strong>Call changes</strong><span class="muted">See how changed entrypoints call through the code before and after this change.</span></div><button id="regenerate-call-flows" class="button secondary" type="button">Regenerate call flows</button></div>
           <div id="call-flows-empty" class="empty">Start the tour to trace changed calls from their entrypoints.</div>
           <div id="call-flows" class="call-flows"></div>
@@ -227,6 +227,15 @@
           <div class="flows-toolbar structural-toolbar"><div><strong>What could this change affect?</strong><span class="muted">Static callers and references for the selected item—not the whole pull request or proof of runtime impact.</span></div><label class="structural-picker"><span>Analysed symbol</span><select id="structural-blast-radius-select" aria-label="Analysed symbol structural caller graph"></select><small id="structural-blast-radius-picker-count" aria-live="polite"></small></label></div>
           <div id="structural-blast-radius-empty" class="empty">Start the tour to inspect static blast radius for changed symbols.</div>
           <div id="structural-blast-radius" class="structural-blast-radii"></div>
+        </div>
+        <div id="archify-view" class="review-view hidden" role="tabpanel" aria-labelledby="archify-tab">
+          <div class="flows-toolbar archify-toolbar"><div><strong>Understand the change</strong><span class="muted">Follow the components, calls, data, and events involved in this change.</span></div><label class="archify-picker"><span>Map</span><select id="archify-select" aria-label="Interactive map"></select><small id="archify-picker-count" aria-live="polite"></small></label></div>
+          <div id="archify-empty" class="empty">No validated interactive maps were saved for this tour.</div>
+          <div id="archify-artifacts" class="archify-artifacts"></div>
+          <details id="maps-architecture" class="architecture hidden" open>
+            <summary>Component maps</summary>
+            <div id="maps-architecture-content" class="architecture-content"></div>
+          </details>
         </div>
         <div id="sequence-view" class="review-view hidden" role="tabpanel" aria-labelledby="sequence-tab">
           <div class="flows-toolbar"><div><strong>Sequence diagrams</strong><span class="muted">Runtime interactions across components, in execution order.</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate diagrams</button></div>
@@ -293,6 +302,7 @@
               <label><input id="include-call-flows" type="checkbox" checked /> Call flows</label>
               <label><input id="include-flows" type="checkbox" checked /> Sequence diagrams</label>
               <label><input id="include-adaptive-diagrams" type="checkbox" checked /> Adaptive diagrams</label>
+              <label><input id="include-archify" type="checkbox" /> Archify interactive HTML</label>
               <label><input id="include-findings" type="checkbox" checked /> Findings</label>
               <label><input id="include-dry-runs" type="checkbox" checked /> Dry runs</label>
             </fieldset>
@@ -560,7 +570,7 @@
           <label><input id="export-findings" type="checkbox" checked /> Findings</label>
           <label><input id="export-call-flows" type="checkbox" checked /> Call flows</label>
           <label><input id="export-structural-blast-radius" type="checkbox" checked /> Blast radius</label>
-          <label><input id="export-diagrams" type="checkbox" checked /> Component and sequence diagrams</label>
+          <label><input id="export-diagrams" type="checkbox" checked /> Maps, component and sequence diagrams</label>
           <label><input id="export-dry-runs" type="checkbox" checked /> Dry-run traces</label>
         </fieldset>
         <p class="field-hint">The downloaded file is self-contained and can be opened without Code Review Tour.</p>
@@ -593,6 +603,10 @@
       </div>
       <dl id="about-details" class="about-details"><div><dt>Status</dt><dd>Loading…</dd></div></dl>
       <p class="dialog-description">A local, agent-guided workspace for understanding, discussing, and reviewing changes.</p>
+      <section aria-labelledby="about-third-party-title">
+        <h3 id="about-third-party-title">Third-party tools</h3>
+        <p class="dialog-description"><a href="https://github.com/tt-a1i/archify" target="_blank" rel="noopener noreferrer">Archify ↗</a> — powers the optional interactive maps and semantic inspection.</p>
+      </section>
     </dialog>
 
     <dialog id="shortcut-help-dialog" class="shortcut-help-dialog" aria-labelledby="shortcut-help-title" aria-describedby="shortcut-help-description">

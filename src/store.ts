@@ -1,3 +1,4 @@
+import { validDomainModels, validDomainDetails } from "./domain-context.ts";
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { isBriefingSectionOrder, type PersistedReviewSession, type SourceCheckpoint } from "./types.ts";
@@ -55,6 +56,40 @@ function validDryRunTrace(value: unknown): boolean {
     (step.assumption === undefined || nonEmptyString(step.assumption, 2_000)) &&
     (step.mapLink === undefined || (record(step.mapLink) && nonEmptyString(step.mapLink.callFlowId, 128) &&
       (step.mapLink.nodeId === undefined || nonEmptyString(step.mapLink.nodeId, 128)) && (step.mapLink.edgeId === undefined || nonEmptyString(step.mapLink.edgeId, 128)))));
+}
+
+function validArchifyJson(value: unknown, depth = 0): boolean {
+  if (depth > 32 || value === null || typeof value === "boolean") return depth <= 32;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return value.length <= 100_000;
+  if (Array.isArray(value)) return value.length <= 2_000 && value.every((item) => validArchifyJson(item, depth + 1));
+  if (!record(value) || Object.keys(value).length > 2_000) return false;
+  return Object.entries(value).every(([key, item]) => key.length <= 256 && validArchifyJson(item, depth + 1));
+}
+
+function validArchifyComparisonView(value: unknown): boolean {
+  return record(value) && validArchifyJson(value.ir) && nonEmptyString(value.html, 5 * 1024 * 1024) && nonEmptyString(value.validationReceipt, 32_000);
+}
+
+function validArchifyArtifacts(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > 12) return false;
+  const ids = new Set<string>();
+  return value.every((artifact) => record(artifact) && nonEmptyString(artifact.id, 128) && !ids.has(artifact.id) && Boolean(ids.add(artifact.id)) &&
+    ["architecture", "workflow", "sequence", "dataflow", "lifecycle"].includes(String(artifact.type)) && nonEmptyString(artifact.title, 8_000) &&
+    validArchifyJson(artifact.ir) && validDomainDetails(artifact.domainDetails) && (artifact.purpose === undefined || artifact.purpose === "domain-model") && (artifact.baselineIr === undefined || validArchifyJson(artifact.baselineIr)) &&
+    (artifact.comparison === undefined || (record(artifact.comparison) && Object.keys(artifact.comparison).every((key) => key === "before" || key === "delta") &&
+      (artifact.comparison.before === undefined || validArchifyComparisonView(artifact.comparison.before)) &&
+      (artifact.comparison.delta === undefined || validArchifyComparisonView(artifact.comparison.delta)))) &&
+    nonEmptyString(artifact.html, 5 * 1024 * 1024) && Array.isArray(artifact.evidence) && artifact.evidence.length <= 8 && artifact.evidence.every((item) => nonEmptyString(item, 2_000)) &&
+    Array.isArray(artifact.affectedFiles) && artifact.affectedFiles.length <= 100 && artifact.affectedFiles.every((item) => nonEmptyString(item, 4_096)) && new Set(artifact.affectedFiles).size === artifact.affectedFiles.length &&
+    ["single", "before-after", "before-delta-after"].includes(String(artifact.view)) && nonEmptyString(artifact.validationReceipt, 32_000) && nonEmptyString(artifact.renderedAt, 64));
+}
+
+function validArchifyFailures(value: unknown): boolean {
+  if (value === undefined) return true;
+  return Array.isArray(value) && value.length <= 12 && value.every((failure) => record(failure) && nonEmptyString(failure.id, 128) &&
+    ["architecture", "workflow", "sequence", "dataflow", "lifecycle"].includes(String(failure.type)) && nonEmptyString(failure.message, 8_000) && typeof failure.preservedLastValid === "boolean");
 }
 
 function validScreenshot(value: unknown): boolean {
@@ -117,6 +152,7 @@ function validOutline(value: unknown): boolean {
       try { validateReviewAdaptiveDiagram(value[field]); } catch { return false; }
     }
   }
+  if (!validDomainModels(value.domainModels) || !validArchifyArtifacts(value.archifyArtifacts) || !validArchifyFailures(value.archifyFailures)) return false;
   const callFlowIds = new Set<string>();
   const validCallFlows = value.callFlows.every((flow) => {
     if (!record(flow) || !nonEmptyString(flow.id, 128) || callFlowIds.has(flow.id) ||
