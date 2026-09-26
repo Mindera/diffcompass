@@ -3085,9 +3085,9 @@ function renderArchify() {
   elements["archify-tab"].classList.remove("hidden");
   elements["archify-empty"].classList.toggle("hidden", hasContent);
   elements["archify-select"].disabled = !hasArtifacts;
-  elements["archify-select"].innerHTML = artifacts.map((artifact) => `<option value="${escapeHtml(artifact.id)}">${escapeHtml(`${archifyArtifactTypeLabel(artifact.type, artifact.purpose)} · ${artifact.title}`)}</option>`).join("");
+  elements["archify-select"].innerHTML = hasArtifacts ? artifacts.map((artifact) => `<option value="${escapeHtml(artifact.id)}">${escapeHtml(`${archifyArtifactTypeLabel(artifact.type, artifact.purpose)} · ${artifact.title}`)}</option>`).join("") : '<option value="">No interactive maps available</option>';
   elements["archify-select"].value = selected?.id ?? "";
-  elements["archify-picker-count"].textContent = selected ? `Showing ${artifacts.indexOf(selected) + 1} of ${artifacts.length} validated map${artifacts.length === 1 ? "" : "s"}.` : "No validated map is available.";
+  elements["archify-picker-count"].textContent = selected ? `Showing ${artifacts.indexOf(selected) + 1} of ${artifacts.length} validated map${artifacts.length === 1 ? "" : "s"}.` : failures ? "Maps could not be drawn. See the reasons and source diagrams below." : "No interactive maps have been generated for this review.";
   const markup = `${selected ? archifyArtifactCard(selected) : ""}${failures}`;
   // Preserve the iframe and its camera/inspection state on unrelated updates.
   if (elements["archify-artifacts"]._mapMarkup !== markup) {

@@ -1,0 +1,57 @@
+{
+  "title": "Branched architecture and self-calls",
+  "summary": "Regression case",
+  "phases": [],
+  "callFlows": [],
+  "behaviorArchitecture": {
+    "title": "How a plan digest page is built, checked and read",
+    "summary": "The assembler wraps the planner's region with the template, rail counts, shadow-root illustrations and task dialogs, then runs the lint. The lint and the extractor read slice cards with one shared reader, so the gate text matches what the page draws.",
+    "mermaid": "flowchart LR\n  component1[\"Planner-written page region\"]:::external\n  component2[\"plan.md tasks and slice manifest\"]:::external\n  component3[\"Page assembler\"]:::touched\n  component4[\"Page template styles and script\"]:::touched\n  component5[\"Illustration files\"]:::external\n  component6[\"Assembled digest page\"]:::touched\n  component7[\"Page lint\"]:::touched\n  component8[\"Text extractor\"]:::touched\n  component9[\"Gate and PR readers\"]:::touched\n  component10[\"Reviewer browser\"]:::external\n  component3 -->|wraps| component1\n  component3 -->|reads counts and task specs from| component2\n  component3 -->|inlines| component4\n  component3 -->|embeds in a shadow root| component5\n  component3 -->|writes| component6\n  component3 -->|runs once| component7\n  component7 -->|checks slice cards, decide and handles in| component6\n  component8 -->|reads slice cards through| component7\n  component8 -->|prints text from| component6\n  component9 -->|reads the summary from| component8\n  component10 -->|renders| component6\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3",
+    "dependencyChanges": [
+      "No dependency-direction changes: the assembler already read plan.md and illustration files, and the lint and extractor already shared readers.",
+      "Changed Page assembler → Page lint: it runs once, with no second run to write a banner.",
+      "Changed Text extractor → Page lint: it reads slice cards through slice_cards instead of tier-table rows."
+    ],
+    "affectedFiles": []
+  },
+  "architecture": {
+    "title": "From the amendments to the shipped tools",
+    "summary": "The ADR amendments set the shapes, docs/plan-digest.md specifies them, and the template, assembler, lint and extractor implement them. The skills teach and read the new page, and the test suites and three-plan eval check it.",
+    "mermaid": "flowchart LR\n  component1[\"ADR 0066, 0041 and 0067 amendments\"]:::touched\n  component2[\"Page grammar doc\"]:::touched\n  component3[\"Digest template\"]:::touched\n  component4[\"Page assembler\"]:::touched\n  component5[\"Page lint\"]:::touched\n  component6[\"Text extractor\"]:::touched\n  component7[\"writing-plans skill and planner agent\"]:::touched\n  component8[\"Other reader skills and agents\"]:::touched\n  component9[\"Script test suites\"]:::touched\n  component10[\"Prototype class inventory\"]:::new\n  component11[\"Three-plan acceptance eval\"]:::new\n  component1 -->|decides the shapes in| component2\n  component2 -->|specifies the parts drawn by| component3\n  component2 -->|specifies the checks in| component5\n  component4 -->|inlines| component3\n  component4 -->|runs| component5\n  component6 -->|reuses the slice-card reader of| component5\n  component7 -->|writes regions to| component2\n  component7 -->|runs| component4\n  component7 -->|reads the gate summary from| component6\n  component8 -->|reads slice card lines from| component6\n  component9 -->|exercises| component4\n  component9 -->|exercises| component5\n  component9 -->|exercises| component6\n  component9 -->|compares the template with| component10\n  component11 -->|scores pages written by| component7\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3",
+    "dependencyChanges": [
+      "Added Script test suites → Prototype class inventory: the template is compared with every prototype class.",
+      "Added Three-plan acceptance eval → writing-plans skill and planner agent: real plans are run and scored.",
+      "No other dependency-direction changes."
+    ],
+    "affectedFiles": []
+  },
+  "flows": [
+    {
+      "id": "flow-assemble-lint",
+      "title": "Assemble and lint a digest page",
+      "summary": "The planner runs the assembler on its region. The assembler builds the page from the template, plan.md and illustration files, then runs the lint once.",
+      "mermaid": "sequenceDiagram\n  participant P as Planner (writing-plans)\n  participant A as assemble.py\n  participant M as plan.md\n  participant T as Template css and js\n  participant I as Illustration file\n  participant L as lint.py\n  P->>A: assemble.sh folder, region in human.html\n  A->>M: read slice manifest and task blocks\n  A->>T: inline stylesheet and script\n  A->>I: parse and reject scripts, page CSS, host rules\n  A->>A: wrap body in shadow root with id illus-slug\n  A->>A: build rail counts and task dialogs\n  A->>P: write human.html atomically\n  A->>L: run lint.sh once, no banner\n  L->>L: check timeline, slice cards, proof pairs, decide order, handles\n  L-->>P: exit 0 with WARN lines, or 1 with violations",
+      "provenance": "partial",
+      "blastRadiusSize": 5,
+      "affectedFiles": []
+    },
+    {
+      "id": "flow-gate-text",
+      "title": "Gate summary reads slice cards",
+      "summary": "The gate and PR steps call the extractor, which reads slice cards through the lint's shared reader and prints one line per card.",
+      "mermaid": "sequenceDiagram\n  participant G as Gate or PR step\n  participant X as extract.py\n  participant H as human.html\n  participant L as lint.py readers\n  G->>X: extract.sh folder summary or tier-table\n  X->>H: parse the page\n  X->>L: slice_cards on the build-order section\n  L-->>X: cards with chips, proof pairs, module tags\n  X->>X: one line per card, assertion paired with command\n  X->>L: handle rows and key-handle cards\n  X-->>G: text-only reading for the gate",
+      "provenance": "partial",
+      "blastRadiusSize": 4,
+      "affectedFiles": []
+    },
+    {
+      "id": "flow-task-dialog",
+      "title": "Open and close a task dialog",
+      "summary": "A reviewer opens a task's execution spec from a chip, and the Close button closes it by script.",
+      "mermaid": "sequenceDiagram\n  participant R as Reviewer\n  participant J as digest.js\n  participant D as dialog task-N from assemble.py\n  R->>J: click a data-task chip\n  J->>D: showModal\n  R->>J: click the Close button, data-close\n  J->>D: close()\n  D-->>J: close event, focus returns to the chip",
+      "provenance": "verified",
+      "blastRadiusSize": 2,
+      "affectedFiles": []
+    }
+  ]
+}

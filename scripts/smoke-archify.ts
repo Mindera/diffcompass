@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArchifyRenderer } from "../src/archify.ts";
 import { prepareTestFixture } from "../src/test-fixture.ts";
+import branchedMaps from "../tests/fixtures/branched-maps.json";
+import type { TourOutline } from "../src/types.ts";
 
 delete process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR;
 const renderer = ArchifyRenderer.fromEnvironment();
@@ -20,6 +22,10 @@ try {
   assert.deepEqual([...new Set(result.artifacts.map((item) => item.type))].sort(), ["architecture", "dataflow", "lifecycle", "sequence", "workflow"]);
   assert(result.artifacts.some((item) => item.comparison?.before && item.comparison?.delta), "Before/Delta/After must render");
   assert(result.artifacts.every((item) => item.html.includes("<html")));
+  const branched = await renderer.render(branchedMaps as unknown as TourOutline);
+  assert.deepEqual(branched.failures, []);
+  assert.equal(branched.artifacts.length, 5);
+  assert(branched.artifacts.filter((map) => map.type === "architecture").every((map) => map.view === "before-delta-after"));
   const directory = ArchifyRenderer.bundledDirectory()!;
   assert((await readFile(join(directory, "LICENSE"), "utf8")).includes("Permission is hereby granted"));
   assert((await readFile(join(directory, "assets/JetBrainsMono-OFL.txt"), "utf8")).includes("SIL OPEN FONT LICENSE"));

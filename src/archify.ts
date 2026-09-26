@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { runProcess } from "./process.ts";
+import { layoutArchitecture } from "./architecture-layout.ts";
 import type { ArchifyArtifact, ArchifyDiagramType, ArchifyFailure, ArchifyJson, CallFlow, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFlow, TourOutline } from "./types.ts";
 
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
@@ -85,17 +86,6 @@ function stableRelationshipId(scope: string, value: string): string {
  * its compact spread sequence layout is viable before asking the renderer. */
 function sequenceTextUnits(value: string): number {
   return Array.from(value).reduce((units, character) => units + (/^[\u3000-\u9fff\uf900-\ufaff\uff01-\uff60\uffe0-\uffe6]$/u.test(character) ? 2 : 1), 0);
-}
-
-function sequenceParticipantWidth(participantCount: number): number {
-  // This mirrors the optional renderer's documented default viewBox and spread
-  // formula. It is an eligibility guard, not separately authored geometry.
-  return Math.max(86, Math.min(190, Math.round((920 - 62 * 2) / participantCount) - 24));
-}
-
-function sequenceFitsCompactSpread(participants: Array<[string, string]>): boolean {
-  const width = sequenceParticipantWidth(participants.length);
-  return participants.every(([, label]) => sequenceTextUnits(label) * 6.8 <= width + 6);
 }
 
 type ArchitectureSnapshot = "before" | "after" | "delta";
@@ -276,7 +266,8 @@ function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefined {
   // participant can remain visible and legible. Do not drop participants or
   // messages simply to force a validation pass; the native Mermaid view keeps
   // richer sequences intact.
-  if (participants.length < 2 || labels.size !== participants.length || messages.length === 0 || messages.length > 10 || !sequenceFitsCompactSpread(participants)) return undefined;
+  const participantWidth = Math.max(86, ...participants.map(([, label]) => Math.ceil(sequenceTextUnits(label) * 6.8 + 20)));
+  if (participants.length < 2 || labels.size !== participants.length || messages.length === 0 || messages.length > 40 || participantWidth > 480) return undefined;
   const ids = new Map(participants.map(([id]) => [id, safeId(`${flow.id}-${id}`)]));
   const available = new Set(ids.keys());
   const usableMessages = messages.filter((message) => available.has(message.from) && available.has(message.to)).slice(0, 40);
@@ -293,7 +284,7 @@ function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefined {
       // Spread is the renderer-supported way to preserve meaningful labels in
       // its compact 920px sequence canvas. It preserves participant and event
       // order; unlike guided views it does not invent an execution story.
-      meta: { title: flow.title, quality_profile: "standard", locale: "en", column_fit: "spread", viewBox: [920, Math.max(480, 268 + (usableMessages.length - 1) * 56)], legend: { mode: "hidden" } },
+      meta: { title: flow.title, quality_profile: "standard", locale: "en", column_fit: "spread", viewBox: [Math.max(920, 124 + (participantWidth + 24) * participants.length), Math.max(480, 292 + (usableMessages.length - 1) * 56)], legend: { mode: "hidden" } },
       participants: participants.map(([id, label]) => ({ id: ids.get(id)!, type: rendererCodeType(), label })),
       // Mermaid's message order is the only ordering fact we have. Preserve
       // it directly and do not attach a guided view that claims an execution
@@ -430,7 +421,7 @@ function compactReceipt(stdout: string, stderr: string): string {
   return receipt.length > MAX_RECEIPT_LENGTH ? `${receipt.slice(0, MAX_RECEIPT_LENGTH)}\n[receipt truncated]` : receipt;
 }
 
-function reviewerFailureMessage(type: ArchifyDiagramType): string {
+function reviewerFailureMessage(type: ArchifyDiagramType, error?: unknown): string {
   const label: Record<ArchifyDiagramType, string> = {
     architecture: "architecture",
     workflow: "workflow",
@@ -441,7 +432,13 @@ function reviewerFailureMessage(type: ArchifyDiagramType): string {
   // Renderer output can contain absolute temporary paths and JSON diagnostics.
   // Those are useful only while developing the adapter, never in a reviewer
   // surface or export. The native source diagram is still available.
-  return `The optional ${label[type]} map could not be prepared from the saved review evidence.`;
+  const detail = error instanceof Error ? error.message : "";
+  const reason = /spans 0px|Self-call/.test(detail) ? " A self-call could not be drawn correctly."
+    : /wider than|overlaps|edge-through-node|endpoint-side-direction|orthogonal-arrows|layout\/constraint/.test(detail) ? " Labels or connections could not be laid out without collisions."
+    : /ENOENT|unavailable|absolute path/.test(detail) ? " The local renderer could not be started."
+    : /timed out/.test(detail) ? " Drawing the map took too long."
+    : "";
+  return `The ${label[type]} map could not be prepared from the saved review evidence.${reason}`;
 }
 
 export class ArchifyRenderer {
@@ -485,7 +482,7 @@ export class ArchifyRenderer {
       for (const candidate of candidates) {
         const lastValid = prior.get(candidate.id);
         if (lastValid) artifacts.push(lastValid);
-        failures.push({ id: candidate.id, type: candidate.type, message: reviewerFailureMessage(candidate.type), preservedLastValid: Boolean(lastValid) });
+        failures.push({ id: candidate.id, type: candidate.type, message: reviewerFailureMessage(candidate.type, error), preservedLastValid: Boolean(lastValid) });
       }
       return { artifacts, failures };
     }
@@ -495,7 +492,7 @@ export class ArchifyRenderer {
       } catch (error) {
         const lastValid = prior.get(candidate.id);
         if (lastValid) artifacts.push(lastValid);
-        failures.push({ id: candidate.id, type: candidate.type, message: reviewerFailureMessage(candidate.type), preservedLastValid: Boolean(lastValid) });
+        failures.push({ id: candidate.id, type: candidate.type, message: reviewerFailureMessage(candidate.type, error), preservedLastValid: Boolean(lastValid) });
       }
     }
     return { artifacts, failures };
@@ -505,6 +502,9 @@ export class ArchifyRenderer {
     const directory = await mkdtemp(join(tmpdir(), "code-review-tour-archify-"));
     const env = { ARCHIFY_UPDATE_CHECK_DISABLED: "1" };
     try {
+      if (candidate.type === "architecture") {
+        await layoutArchitecture([candidate.ir, candidate.comparison?.before, candidate.comparison?.delta].filter((document): document is ArchifyDocument => Boolean(document)));
+      }
       const after = await this.renderDocument(cli, candidate.type, candidate.ir, directory, env);
       const comparison: NonNullable<ArchifyArtifact["comparison"]> = {};
       // Each comparison state is a complete, separately validated Archify

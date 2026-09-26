@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { patchSequenceRenderer } from "./patch-archify.ts";
 
 const revision = "9e35d2b0b39b155553ba9fcfe0b4f2a5198dd993";
 const sha256 = "24b38bf7ea6de8d2d77d32c1a7320caa34846b83e96da393ebe2a66015a2fb1b";
@@ -33,7 +34,13 @@ try {
   await cp(join(source, "scripts/check-render-output.mjs"), join(target, "scripts/check-render-output.mjs"));
   // Optional logo artwork has separate licenses; our code-derived maps do not use it.
   await writeFile(join(target, "renderers/shared/generated-brand-marks.mjs"), "// Code Review Tour distribution: optional third-party logos omitted.\nexport const BRAND_MARKS = Object.freeze([]);\n");
-  await writeFile(join(target, "BUNDLE.json"), JSON.stringify({ repository: "https://github.com/tt-a1i/archify", revision, sha256, modifications: ["Optional brand-mark catalog omitted"], runtime: "Code Review Tour embedded Bun runtime" }, null, 2) + "\n");
+  const sequenceRenderer = join(target, "renderers/sequence/render-sequence.mjs");
+  await writeFile(sequenceRenderer, patchSequenceRenderer(await readFile(sequenceRenderer, "utf8")));
+  await cp(new URL("./patch-archify.ts", import.meta.url), join(target, "CODE_REVIEW_TOUR_PATCHES.ts"));
+  for (const name of ["dagre", "graphlib"]) {
+    await cp(new URL(`../node_modules/@dagrejs/${name}/LICENSE`, import.meta.url), join(target, `${name}-LICENSE.txt`));
+  }
+  await writeFile(join(target, "BUNDLE.json"), JSON.stringify({ repository: "https://github.com/tt-a1i/archify", revision, sha256, modifications: ["Optional brand-mark catalog omitted", "Sequence self-call loops and wider participant boxes; see CODE_REVIEW_TOUR_PATCHES.ts"], runtime: "Code Review Tour embedded Bun runtime" }, null, 2) + "\n");
   console.log(`Packaged Archify ${revision} in ${target}`);
 } finally {
   await rm(temporary, { recursive: true, force: true });
