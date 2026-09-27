@@ -392,6 +392,16 @@ unprepared so prepare-ahead behavior can be tested. Use
 
 ### Verify and release
 
+Map types describe evidenced roles (for example Agent skill, Script, ViewModel,
+Use case, Repository, or Domain model), independently of a node's name and
+its domain vocabulary from `CONTEXT.md`. Architecture and sequence generation
+can supply `nodeRoles` keyed by Mermaid node id, each with a `type` and a
+source-grounded `evidence` explanation. The Types filter groups these roles;
+component details include “Why this type”. Names and suffixes alone do not
+establish a role. Older saved maps without role evidence remain usable, show
+“Type unspecified” in the filter, and omit the type badge. Regenerate those
+maps to obtain classifications; existing labels are not silently reinterpreted.
+
 ```sh
 bun run verify
 bun run build:release

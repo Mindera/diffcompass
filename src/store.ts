@@ -1,4 +1,7 @@
 import { validDomainModels, validDomainDetails } from "./domain-context.ts";
+import { validateMapNodeRoles } from "./map-node-roles.ts";
+
+function validNodeRoles(value: unknown): boolean { try { validateMapNodeRoles(value); return true; } catch { return false; } }
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { isBriefingSectionOrder, type PersistedReviewSession, type SourceCheckpoint } from "./types.ts";
@@ -77,7 +80,7 @@ function validArchifyArtifacts(value: unknown): boolean {
   const ids = new Set<string>();
   return value.every((artifact) => record(artifact) && nonEmptyString(artifact.id, 128) && !ids.has(artifact.id) && Boolean(ids.add(artifact.id)) &&
     ["architecture", "workflow", "sequence", "dataflow", "lifecycle"].includes(String(artifact.type)) && nonEmptyString(artifact.title, 8_000) &&
-    validArchifyJson(artifact.ir) && validDomainDetails(artifact.domainDetails) && (artifact.purpose === undefined || artifact.purpose === "domain-model") && (artifact.baselineIr === undefined || validArchifyJson(artifact.baselineIr)) &&
+    validArchifyJson(artifact.ir) && validNodeRoles(artifact.nodeRoles) && validDomainDetails(artifact.domainDetails) && (artifact.purpose === undefined || artifact.purpose === "domain-model") && (artifact.baselineIr === undefined || validArchifyJson(artifact.baselineIr)) &&
     (artifact.comparison === undefined || (record(artifact.comparison) && Object.keys(artifact.comparison).every((key) => key === "before" || key === "delta") &&
       (artifact.comparison.before === undefined || validArchifyComparisonView(artifact.comparison.before)) &&
       (artifact.comparison.delta === undefined || validArchifyComparisonView(artifact.comparison.delta)))) &&
@@ -175,7 +178,7 @@ function validOutline(value: unknown): boolean {
   if (!validCallFlows) return false;
   const flowIds = new Set<string>();
   const validFlows = value.flows.every((flow) => record(flow) && nonEmptyString(flow.id, 128) && !flowIds.has(flow.id) && Boolean(flowIds.add(flow.id)) && nonEmptyString(flow.title, 8_000) &&
-      nonEmptyString(flow.summary, 50_000) && nonEmptyString(flow.mermaid, 12_000) &&
+      nonEmptyString(flow.summary, 50_000) && nonEmptyString(flow.mermaid, 12_000) && validNodeRoles(flow.nodeRoles) &&
       ["verified", "partial", "unverified"].includes(String(flow.provenance)) &&
       Array.isArray(flow.affectedFiles) && flow.affectedFiles.length <= 100 && flow.affectedFiles.every((path) => nonEmptyString(path, 4_096)) && new Set(flow.affectedFiles).size === flow.affectedFiles.length &&
       Number.isInteger(flow.blastRadiusSize) && Number(flow.blastRadiusSize) >= 0);

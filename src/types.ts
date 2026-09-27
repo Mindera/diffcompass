@@ -323,6 +323,7 @@ export interface CallFlow {
 }
 
 export interface ReviewArchitecture {
+  nodeRoles?: import("./map-node-roles.ts").MapNodeRoles;
   title: string;
   summary: string;
   mermaid: string;
@@ -358,6 +359,7 @@ export interface ArchifyComparisonView {
 }
 
 export interface ArchifyArtifact {
+  nodeRoles?: import("./map-node-roles.ts").MapNodeRoles;
   purpose?: "domain-model";
   domainDetails?: Record<string, import("./domain-context.ts").DomainNodeDetail>;
   id: string;
@@ -395,6 +397,7 @@ export interface ArchifyFailure {
 }
 
 export interface ReviewFlow {
+  nodeRoles?: import("./map-node-roles.ts").MapNodeRoles;
   id: string;
   title: string;
   summary: string;

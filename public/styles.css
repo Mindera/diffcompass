@@ -1663,6 +1663,6 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   padding: 1rem;
   border-bottom: 1px solid var(--border);
 }
-.maps-navigation select { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--surface-control); color: var(--text); }
+.maps-navigation select { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--surface-control); color: var(--text); font: 400 12px/1.4 system-ui, sans-serif; }
 .maps-navigation label { min-width: 0; }
 .maps-navigation .diff-view-toggle button { font: 600 12px/1.4 system-ui, sans-serif; }

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { MAP_NODE_ROLE_PROMPT } from "./map-node-roles.ts";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { loadDomainDocuments, domainPrompt, validateDomainModels } from "./domain-context.ts";
 import { tmpdir } from "node:os";
@@ -1048,6 +1049,7 @@ Reviewer-selected optional outputs:
 - Findings: ${this.includeFindings && policy.findings.enabled ? "include" : "omit"}
 - Adaptive diagrams: ${this.includeAdaptiveDiagrams ? "consider state-machine or data-model views only when evidence supports them and they materially improve understanding" : "omit"}
 
+${MAP_NODE_ROLE_PROMPT}
 When included, return two complementary architecture diagrams beside phases. Both use this shape: {"title":"...","summary":"...","mermaid":"flowchart LR\\n  client[\\\"Client\\\"]:::touched\\n  service[\\\"Service\\\"]:::new\\n  client -->|calls| service\\n  classDef new stroke:#2e7d32,stroke-width:3px\\n  classDef touched stroke:#f9a825,stroke-width:3px\\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\\n  classDef external stroke:#888888,stroke-dasharray:3 3","dependencyChanges":["Added Client → Service: calls"],"affectedFiles":["exact/changed/path"]}.
 
 Add "behaviorArchitectureStatus":"implemented|proposed" and "behaviorArchitecture": the system-level answer to what the changed code does. Use status "implemented" only when changed executable code directly supports the depicted behaviour. Use "proposed" for plans, ADRs, specifications, and documentation that describe future behaviour. This view may include immediate unchanged or external collaborators needed to understand the outcome.
@@ -1225,6 +1227,7 @@ You are updating grounded sequence diagrams for an interactive code review. Insp
 Comparison fingerprint: ${this.comparisonFingerprint}
 ${selected ? `Regenerate only this flow, preserving its id: ${JSON.stringify(selected)}` : `Regenerate the complete flow set. Current flows: ${JSON.stringify(currentFlows)}`}
 
+${MAP_NODE_ROLE_PROMPT}
 Return only JSON shaped as {"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}]}. Return no more than three flows. affectedFiles must list every changed path that participates in or is directly affected by the flow, with no unrelated paths. Mermaid may use participants or actors, messages, notes, activation, autonumber, and alt/loop/opt/par/critical/break/rect/box blocks. Do not use semicolons in message or note text. Use at most twelve participants. Return an empty array only when no goal-critical runtime flow is supported by evidence.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
     const flows = await this.send(

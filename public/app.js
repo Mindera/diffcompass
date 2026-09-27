@@ -3877,11 +3877,16 @@ function renderSequenceDiagrams() {
 async function renderFlowDiagrams(architectures, flows, generation, adaptive = []) {
   if (!window.mermaid || (architectures.length === 0 && flows.length === 0 && adaptive.length === 0)) return;
   const theme = document.documentElement.dataset.theme === "light" ? "default" : "dark";
+  // Mermaid measures in a temporary container outside the diagram skin. Apply
+  // the same node typography there, before it sizes labels and routes edges.
+  const mapStyle = getComputedStyle(document.documentElement);
+  const nodeTypography = `font-family: ${mapStyle.getPropertyValue("--map-node-font")}; font-size: ${mapStyle.getPropertyValue("--map-node-title-size")}; font-weight: 600;`;
   window.mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
     suppressErrorRendering: true,
     theme,
+    themeCSS: `.nodeLabel, .nodeLabel p { ${nodeTypography} }`,
     maxTextSize: 12_000,
     maxEdges: 500,
     deterministicIds: true,

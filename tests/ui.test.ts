@@ -4,6 +4,26 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
 
+test("map category selector uses compact navigation typography", async () => {
+  const css = await readFile(join(root, "public/styles.css"), "utf8");
+  expect(css.match(/\.maps-navigation select\s*\{([^}]+)\}/)?.[1]).toContain('font: 400 12px/1.4 system-ui, sans-serif');
+});
+
+test("Mermaid measures component typography before layout and blends edge labels into the canvas", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const skin = await readFile(join(root, "public/map-nodes.css"), "utf8");
+  expect(app).toContain('mapStyle.getPropertyValue("--map-node-font")');
+  expect(app).toContain('mapStyle.getPropertyValue("--map-node-title-size")');
+  expect(app).toContain('themeCSS: `.nodeLabel, .nodeLabel p { ${nodeTypography} }`');
+  const edgeSkin = skin.slice(skin.indexOf('.edgeLabel,'));
+  expect(edgeSkin).toContain('background: var(--sequence-background) !important');
+  expect(edgeSkin).toContain('stroke: none !important');
+  expect(edgeSkin).not.toContain('var(--surface-control)');
+  expect(edgeSkin).toContain('width: fit-content');
+  expect(edgeSkin).toContain('display: block');
+  expect(edgeSkin).not.toContain('box-decoration-break: clone');
+});
+
 test("map nodes share a visual skin and About credits Archify", async () => {
   const [html, app, skin, server] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),

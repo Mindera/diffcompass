@@ -13,6 +13,7 @@ const MAX_ARTIFACTS = 12;
 type ArchifyDocument = { [key: string]: ArchifyJson };
 
 interface ArchifyCandidate {
+  nodeRoles?: ArchifyArtifact["nodeRoles"];
   purpose?: "domain-model";
   domainDetails?: ArchifyArtifact["domainDetails"];
   id: string;
@@ -180,6 +181,7 @@ function architectureCandidate(id: string, architecture: ReviewArchitecture): Ar
     id,
     type: "architecture",
     title: architecture.title,
+    nodeRoles: architecture.nodeRoles && Object.fromEntries(Object.entries(architecture.nodeRoles).map(([id, role]) => [safeId(id), role])),
     evidence: [...evidence(architecture.affectedFiles, architecture.summary), ...architecture.dependencyChanges].slice(0, 8),
     affectedFiles: architecture.affectedFiles,
     ir: after,
@@ -275,6 +277,7 @@ function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefined {
   return {
     id: `sequence-${flow.id}`,
     type: "sequence",
+    nodeRoles: flow.nodeRoles && Object.fromEntries(Object.entries(flow.nodeRoles).filter(([id]) => ids.has(id)).map(([id, role]) => [ids.get(id)!, role])),
     title: flow.title,
     evidence: evidence(affectedFiles, flow.summary),
     affectedFiles,
@@ -520,6 +523,7 @@ export class ArchifyRenderer {
         id: candidate.id,
         purpose: candidate.purpose,
         domainDetails: candidate.domainDetails,
+        nodeRoles: candidate.nodeRoles,
         type: candidate.type,
         title: candidate.title,
         ir: after.ir,

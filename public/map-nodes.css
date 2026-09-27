@@ -57,6 +57,25 @@ html[data-code-review-tour-embed] .diagram-container g[data-node-id]:focus-visib
 }
 :is(.architecture-diagram, .architecture-node-skin) .edgeLabel,
 :is(.architecture-diagram, .architecture-node-skin) .edgeLabel p {
-  background: var(--surface-control) !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
   color: var(--text-soft) !important;
+}
+:is(.architecture-diagram, .architecture-node-skin) .edgeLabel rect,
+:is(.architecture-diagram, .architecture-node-skin) .labelBkg {
+  background: transparent !important;
+  fill: var(--sequence-background) !important;
+  stroke: none !important;
+  opacity: 1 !important;
+}
+/* Keep one continuous mask across wrapped lines so curved edges cannot show
+ * through the line spacing. Fit the text without adding caption padding. */
+:is(.architecture-diagram, .architecture-node-skin) .edgeLabel p {
+  background: var(--sequence-background) !important;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0;
 }

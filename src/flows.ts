@@ -1,4 +1,5 @@
 import type { ReviewFlow } from "./types.ts";
+import { validateMapNodeRoles } from "./map-node-roles.ts";
 
 const DECLARATION = /^(?:participant|actor)\s+([A-Za-z0-9_.-]+)(?:\s+as\s+.+)?$/i;
 const MESSAGE = /^([A-Za-z0-9_.-]+?)\s*(?:-{1,2}(?:>>|>|x|\)))\s*([A-Za-z0-9_.-]+)\s*:\s*.+$/;
@@ -124,7 +125,7 @@ export function inspectSequenceDiagram(source: string): SequenceSyntax {
 export function validateReviewFlow(value: unknown): ReviewFlow {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Flow must be an object.");
   const flow = value as Record<string, unknown>;
-  const allowed = ["id", "title", "summary", "mermaid", "provenance", "blastRadiusSize", "affectedFiles", "outdated"];
+  const allowed = ["id", "title", "summary", "mermaid", "provenance", "blastRadiusSize", "affectedFiles", "outdated", "nodeRoles"];
   const unknown = Object.keys(flow).find((key) => !allowed.includes(key));
   if (unknown) throw new Error(`Flow contains an unsupported field: ${unknown}`);
   if (flow.outdated !== undefined && typeof flow.outdated !== "boolean") throw new Error("Flow outdated must be a boolean.");
@@ -150,5 +151,8 @@ export function validateReviewFlow(value: unknown): ReviewFlow {
   const syntax = inspectSequenceDiagram(mermaid);
   if (syntax.unsupported.length > 0) throw new Error(`Flow contains unsupported Mermaid syntax: ${syntax.unsupported[0]}`);
   if (syntax.actors.length === 0 || syntax.actors.length > 12) throw new Error("Flow must reference between 1 and 12 participants.");
-  return { id, title, summary, mermaid, provenance: provenance as ReviewFlow["provenance"], blastRadiusSize: affectedFiles.length || Number(flow.blastRadiusSize), affectedFiles: affectedFiles.map((path) => path.trim()), ...(flow.outdated === true ? { outdated: true } : {}) };
+  const originalIds = inspectSequenceDiagram(String(flow.mermaid).replaceAll("\r\n", "\n")).actors;
+  const roles = validateMapNodeRoles(flow.nodeRoles, new Set(originalIds));
+  const nodeRoles = roles && Object.fromEntries(Object.entries(roles).map(([key, role]) => [syntax.actors[originalIds.indexOf(key)]!, role]));
+  return { id, title, summary, mermaid, ...(nodeRoles ? { nodeRoles } : {}), provenance: provenance as ReviewFlow["provenance"], blastRadiusSize: affectedFiles.length || Number(flow.blastRadiusSize), affectedFiles: affectedFiles.map((path) => path.trim()), ...(flow.outdated === true ? { outdated: true } : {}) };
 }

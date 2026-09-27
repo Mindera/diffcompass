@@ -1,6 +1,25 @@
 import { expect, test } from "bun:test";
 import { withArchifyEmbedAdapter } from "../src/archify-embed.ts";
 
+test("review maps expose opt-in motion without requiring decorative trace animation", () => {
+  const html = withArchifyEmbedAdapter(`<html><body><script>var capable = !!(svg && svg.getAttribute('data-animation') === 'trace'); readerPaused = readStored() === 'still';</script></body></html>`);
+  expect(html).toContain('var capable = !!svg;');
+  expect(html).toContain("readerPaused = readStored() !== 'live';");
+});
+
+test("all inspection overlays drag by their headers and stay within the viewport", () => {
+  for (const [id, header] of [['route-probe','.route-probe-head'],['semantic-lens','.semantic-lens-head'],['node-finder','.node-finder-head'],['diagram-guide','.diagram-guide-head']]) {
+    const harness = interactiveHarness({}, id, header);
+    const target = { closest: () => null };
+    harness.firePassport('pointerdown', {button:0, pointerId:1, clientX:30, clientY:30, target});
+    harness.firePassport('pointermove', {pointerId:1, clientX:2000, clientY:2000, target, preventDefault(){}});
+    expect(harness.passport.style.left).toBe('720px');
+    expect(harness.passport.style.top).toBe('420px');
+    expect(harness.passport.attributes.get('data-review-panel-moved')).toBe('true');
+    harness.firePassport('pointerup', {pointerId:1});
+  }
+});
+
 test("lifecycle bands disappear only when no state occupies them", () => {
   const html = withArchifyEmbedAdapter('<html><body></body></html>', 'lifecycle');
   const code = html.split('\n').find(line => line.includes('if(true){var nodes='))!;
@@ -27,7 +46,7 @@ test("embedded and exported maps include the shared node skin without replacing 
   expect(html).toContain('data-code-review-tour-map-nodes');
   expect(html).toContain('--map-node-radius: 8px');
   expect(html).toContain('var(--map-node-title-size)');
-  expect(html).toContain('data-node-kind="backend"');
+  expect(html).toContain('data-node-kind="review-unspecified"');
 });
 
 test("neutral component label is shared by the lens and passport without changing kinds or authored text", () => {
@@ -35,9 +54,20 @@ test("neutral component label is shared by the lens and passport without changin
   const html = `<html><body><script type="application/json" id="archify-i18n-data">${JSON.stringify(data)}</script><g data-node-kind="backend">Backend service</g></body></html>`;
   const result = withArchifyEmbedAdapter(html);
   const json = /id="archify-i18n-data">([\s\S]*?)<\/script>/.exec(result)![1]!;
-  expect(JSON.parse(json)).toEqual({ ...data, messages: { ...data.messages, "viewer.kind.backend": "Code component" } });
+  expect(JSON.parse(json)).toMatchObject({ ...data, messages: { ...data.messages, "viewer.kind.backend": "Type unspecified", "viewer.motion.live": "Motion on", "viewer.motion.still": "Motion off" } });
   expect(json).not.toContain("<example>");
   expect(result).toContain('<g data-node-kind="backend">Backend service</g>');
+});
+
+test("generic renderer categories do not mislabel skills, files or people as code", () => {
+  const html = '<html><body><script id="archify-i18n-data">{"messages":{"viewer.kind.backend":"Backend","viewer.kind.external":"External"}}</script><g data-node-kind="backend">Planner (writing-plans)</g></body></html>';
+  for (const [type, domain, expected] of [["sequence", false, "Type unspecified"], ["architecture", false, "Type unspecified"], ["architecture", true, "Domain concept"]] as const) {
+    const adapted = withArchifyEmbedAdapter(html, type, undefined, domain);
+    const json = JSON.parse(/id="archify-i18n-data">([\s\S]*?)<\/script>/.exec(adapted)![1]!);
+    expect(json.messages['viewer.kind.backend']).toBe(expected);
+    expect(json.messages['viewer.kind.external']).toBe('External');
+    expect(adapted).toContain('>Planner (writing-plans)</g>');
+  }
 });
 
 test("missing or malformed translation payloads remain intact", () => {
@@ -52,7 +82,7 @@ function cameraRuntime() {
   return /<script data-code-review-tour-camera>([\s\S]+)<\/script>/.exec(embedded)?.[1] ?? "";
 }
 
-function interactiveHarness(dimensions: Partial<{ containerWidth: number; containerHeight: number; svgWidth: number; svgHeight: number }> = {}) {
+function interactiveHarness(dimensions: Partial<{ containerWidth: number; containerHeight: number; svgWidth: number; svgHeight: number }> = {}, panelId = "focus-chip", handleSelector = ".relationship-lens-head") {
   const size = {
     containerWidth: dimensions.containerWidth ?? 1_000,
     containerHeight: dimensions.containerHeight ?? 600,
@@ -145,13 +175,13 @@ function interactiveHarness(dimensions: Partial<{ containerWidth: number; contai
     classList: { add() {}, remove() {} },
     setAttribute(name: string, value: string) { this.attributes.set(name, value); },
     hasAttribute(name: string) { return this.attributes.has(name); },
-    querySelector(selector: string) { return selector === ".relationship-lens-head" ? passportHandle : null; },
+    querySelector(selector: string) { return selector === handleSelector ? passportHandle : null; },
     getBoundingClientRect() { return { width: 280, height: 180 }; },
   };
   const posted: unknown[] = [];
   const documentListeners = new Map<string, Array<(event: Record<string, unknown>) => void>>();
   const windowValue = { Archify: {} as { view?: unknown }, parent: { postMessage(message: unknown) { posted.push(message); } }, addEventListener() {} };
-  const documentValue = { readyState: "complete", querySelector: () => container, getElementById: (id: string) => id === "focus-chip" ? passport : null, addEventListener(type: string, listener: (event: Record<string, unknown>) => void) { documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]); } };
+  const documentValue = { readyState: "complete", querySelector: () => container, getElementById: (id: string) => id === panelId ? passport : null, addEventListener(type: string, listener: (event: Record<string, unknown>) => void) { documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]); } };
   const ResizeObserverValue = class { constructor(_callback: () => void) {} observe() {} };
   const runtime = new Function("window", "document", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "Archify", cameraRuntime());
   runtime(windowValue, documentValue, ResizeObserverValue, (callback: () => void) => callback(), () => {}, (node: { testOverflowY?: string }) => ({ paddingLeft: "24px", paddingRight: "24px", paddingTop: "16px", paddingBottom: "72px", overflowY: node?.testOverflowY }), windowValue.Archify);
@@ -242,7 +272,7 @@ test("a fitted small map can be freely dragged and Fit restores its position", (
   expect(harness.svg.style.transform).toBe(initial);
 });
 
-test("the generated camera keeps the existing reveal API usable for finder and route controls", async () => {
+test("the generated camera keeps explicit reveal available for finder controls", async () => {
   const harness = interactiveHarness();
   const before = harness.svg.style.transform;
   const receipt = harness.view.reveal(["receipt"], { includeNeighbors: true, maxScale: 2 });
@@ -260,6 +290,27 @@ test("inspecting a node or relationship preserves both camera position and zoom"
     await harness.view.reveal(["receipt"], { reason, includeNeighbors: true }).finished;
     expect(harness.svg.style.transform).toBe(before);
   }
+});
+
+test("route selection, alternatives, journey steps and overview preserve the manually positioned camera", async () => {
+  const harness = interactiveHarness();
+  harness.click('[data-view="in"]');
+  const background = { closest: () => null };
+  harness.fire("pointerdown", { button: 0, pointerId: 9, clientX: 400, clientY: 300, target: background });
+  harness.fire("pointermove", { pointerId: 9, clientX: 480, clientY: 360, target: background, preventDefault() {} });
+  harness.fire("pointerup", { pointerId: 9, target: background });
+  const before = { ...harness.view.state() };
+  const transform = harness.svg.style.transform;
+  for (const reason of ["route-pick", "route", "route", "route-journey", "route-journey", "route"]) {
+    const receipt = harness.view.reveal(["receipt"], { reason, includeNeighbors: true, maxScale: 2 });
+    await expect(receipt.finished).resolves.toEqual({ state: "complete" });
+    expect(harness.view.state()).toEqual(before);
+    expect(harness.svg.style.transform).toBe(transform);
+  }
+  harness.click('[data-view="in"]');
+  expect(harness.view.state().scale).toBeGreaterThan(before.scale);
+  harness.click('[data-view="reset"]');
+  expect(harness.svg.style.transform).not.toBe(transform);
 });
 
 test("automatic camera reset on dismiss preserves the view, but Fit still works", () => {
