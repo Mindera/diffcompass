@@ -182,11 +182,28 @@ an incomplete Before view does not imply that missing connections never existed.
 | Sequence diagrams | Goal-critical runtime interactions rendered locally from a validated Mermaid subset, with affected files, provenance, editable source, single/all regeneration, and source fallback. |
 | Adaptive diagrams | Evidence-gated state machines and data-model/ER views, repository observations, changed-file support, notation legends, and honest empty results when no extra diagram is justified. |
 
+Native Mermaid component diagrams automatically adjust arrow captions after every
+render, including regeneration, briefing previews, and HTML exports. Caption
+placement preserves Mermaid's original node positions and curves, uses compact
+background-matched masks, and seeks clearance from other arrows, captions, and
+nodes. This is a renderer rule, not something diagram authors need to prompt for.
+New native render paths must use `ReviewDiagramLabels.mount`; regression tests
+protect that boundary and the dense-diagram fixture. Extremely crowded diagrams
+can still exceed the available caption space; placement is best-effort rather
+than a guarantee for arbitrary graphs.
+
 Every diagram supports expansion; applicable views also support independent pan,
 zoom, keyboard/pinch movement, reset, and full-screen inspection. Mermaid is
 bundled locally and runs in strict mode—no CDN is loaded. Invalid component
 diagrams receive two bounded correction attempts; startup reports failure rather
 than silently dropping required architecture.
+
+Invalid optional call flows and missing dry-run diagram links also receive up to
+two correction attempts, including the rejected outline and validation details.
+If repair fails, the tour keeps valid content and reports omitted diagrams or
+links in its planning notes. Dry-run scenarios retain their independent source
+validation. Unchanged calls may anchor unchanged source lines; added and removed
+calls still require matching changed diff rows.
 
 ### Markdown, images, and supplied media
 

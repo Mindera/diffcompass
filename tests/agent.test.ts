@@ -150,7 +150,7 @@ test("normalizes context findings and derives all priority levels from the docum
     finding("p2", 2, "new", 1, true, "symbol"),
     finding("p3", 1, "old", 1, true, "file"),
   ];
-  await bridge.respond(event!.id, JSON.stringify({
+  const outlineResponse = JSON.stringify({
     title: "Review", summary: "Review changes", planningNotes: ["Start at the behavior boundary."], flows: [],
     callFlows: [
       {
@@ -172,9 +172,20 @@ test("normalizes context findings and derives all priority levels from the docum
     ],
     phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
     findings: candidateFindings,
-  }));
+  });
+  await bridge.respond(event.id, outlineResponse);
   await bridge.ack(event.id);
-  const [auditEvent] = await bridge.eventsAfter(event.sequence, 1_000);
+  let sequence = event.sequence;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const [repairEvent] = await bridge.eventsAfter(sequence, 1_000);
+    if (!repairEvent || repairEvent.type !== "agent.prompt") throw new Error("Expected a repair prompt.");
+    expect(repairEvent.prompt).toContain(`Repair attempt ${attempt}/2`);
+    expect(repairEvent.prompt).toContain("A repository call-flow node needs a source location");
+    await bridge.respond(repairEvent.id, outlineResponse);
+    await bridge.ack(repairEvent.id);
+    sequence = repairEvent.sequence;
+  }
+  const [auditEvent] = await bridge.eventsAfter(sequence, 1_000);
   if (!auditEvent || auditEvent.type !== "agent.prompt") throw new Error("Expected a finding-audit prompt.");
   expect(auditEvent.prompt).toContain("focused findings auditor");
   expect(auditEvent.prompt).toContain("Structural evidence from the planning pass");
@@ -184,7 +195,8 @@ test("normalizes context findings and derives all priority levels from the docum
   }));
 
   const { value: outline } = await pending;
-  expect(outline.planningNotes).toEqual(["Start at the behavior boundary."]);
+  expect(outline.planningNotes).toContain("Start at the behavior boundary.");
+  expect(outline.planningNotes?.[0]).toContain("callFlows[1] was omitted");
   expect(outline.callFlows.map((flow) => flow.id)).toEqual(["valid-optional-flow"]);
   expect(outline.findings.map(({ id, priority }) => [id, priority])).toEqual([["p0", "P0"], ["p1", "P1"], ["p2", "P2"], ["p3", "P3"]]);
   expect(outline.findings[3]).toMatchObject({ side: "new", line: 1 });

@@ -1,0 +1,29 @@
+flowchart LR
+  planner["Planner agent"]:::touched
+  assembler["Assembler"]:::touched
+  extractor["Extractor"]:::touched
+  region["Page region"]:::touched
+  illustration["Illustration file"]:::touched
+  plan["plan.md"]:::external
+  template["Page template"]:::touched
+  banner["Check results banner"]:::removed
+  lint["Lint"]:::touched
+  page["Assembled page"]:::touched
+  terminal["Terminal and gate summary"]:::external
+  planner -->|writes| region
+  planner -->|draws| illustration
+  assembler -->|reads| region
+  assembler -->|places in shadow root| illustration
+  assembler -->|counts slices and tasks from| plan
+  assembler -->|wraps with| template
+  assembler -->|writes| page
+  assembler -->|inserted from lint warnings| banner
+  assembler -->|runs| lint
+  extractor -->|reuses slice card reader of| lint
+  extractor -->|prints parts of| page
+  lint -->|checks header, decide cards, slice cards| page
+  lint -->|prints warnings to| terminal
+  classDef new stroke:#2e7d32,stroke-width:3px
+  classDef touched stroke:#f9a825,stroke-width:3px
+  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3
+  classDef external stroke:#888888,stroke-dasharray:3 3

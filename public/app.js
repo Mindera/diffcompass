@@ -3899,8 +3899,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
       try {
         const result = await window.mermaid.render(`review-tour-architecture-${architecture.key}-${generation}-${index}`, architecture.value.mermaid);
         if (generation !== state.flowRenderGeneration || !target.isConnected) return;
-        target.innerHTML = result.svg;
-        target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+        window.ReviewDiagramLabels.mount(target, result.svg);
         applyArchitectureDiagramView(architecture.key);
       } catch {
         target.innerHTML = '<span class="muted">Diagram unavailable</span>';
@@ -3912,8 +3911,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
       try {
         const introResult = await window.mermaid.render(`review-tour-intro-architecture-${architecture.key}-${generation}`, architecture.value.mermaid);
         if (generation !== state.flowRenderGeneration || !introTarget.isConnected) return;
-        introTarget.innerHTML = introResult.svg;
-        introTarget.querySelector("svg")?.setAttribute("aria-hidden", "true");
+        window.ReviewDiagramLabels.mount(introTarget, introResult.svg);
       } catch {
         introTarget.innerHTML = '<span class="muted">Diagram unavailable</span>';
         elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-error="${architecture.key}"]`)?.classList.remove("hidden");
@@ -3926,8 +3924,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
     try {
       const result = await window.mermaid.render(`review-tour-adaptive-${diagram.key}-${generation}`, diagram.value.mermaid);
       if (generation !== state.flowRenderGeneration || !target?.isConnected) return;
-      target.innerHTML = result.svg;
-      target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      window.ReviewDiagramLabels.mount(target, result.svg);
       applyArchitectureDiagramView(diagram.key);
     } catch {
       if (target) target.innerHTML = '<span class="muted">Diagram unavailable</span>';
@@ -3943,8 +3940,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
       try {
         const result = await window.mermaid.render(`review-tour-flow-${generation}-${index}`, flows[index].mermaid);
         if (generation !== state.flowRenderGeneration || !target.isConnected) return;
-        target.innerHTML = result.svg;
-        target.querySelector("svg")?.setAttribute("aria-hidden", "true");
+        window.ReviewDiagramLabels.mount(target, result.svg);
       } catch {
         target.innerHTML = '<span class="muted">Diagram unavailable</span>';
         card.querySelector("[data-flow-error]")?.classList.remove("hidden");
@@ -3956,8 +3952,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
       try {
         const introResult = await window.mermaid.render(`review-tour-intro-flow-${generation}-${index}`, flows[index].mermaid);
         if (generation !== state.flowRenderGeneration || !introTarget.isConnected) return;
-        introTarget.innerHTML = introResult.svg;
-        introTarget.querySelector("svg")?.setAttribute("aria-hidden", "true");
+        window.ReviewDiagramLabels.mount(introTarget, introResult.svg);
       } catch {
         introTarget.innerHTML = '<span class="muted">Diagram unavailable</span>';
       }

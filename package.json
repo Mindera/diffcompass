@@ -1,6 +1,6 @@
 {
   "name": "code-review-tour",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "description": "A local, agent-led walkthrough for Git changes.",
   "repository": {
@@ -18,7 +18,7 @@
     "build:release": "bash scripts/build-release.sh",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
-    "verify": "bun run typecheck && bun test && node --check public/theme.js && node --check public/app.js"
+    "verify": "bun run typecheck && bun test && node --check public/theme.js && node --check public/app.js && node --check public/diagram-labels.js"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

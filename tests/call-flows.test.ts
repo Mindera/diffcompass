@@ -40,6 +40,18 @@ test("rejects a call-site in unchanged context even when its file changed", () =
   expect(() => validateCallFlow({ ...flow, edges: [{ ...flow.edges[0], newCallSite: { path: "src/entry.ts", side: "new", line: 4 } }] }, comparison)).toThrow("added or removed diff row");
 });
 
+test("accepts unchanged context calls without counting them as changed evidence", () => {
+  const contextEdge = {
+    id: "context", from: "entry", to: "service", change: "unchanged",
+    oldCallSite: { path: "src/service.ts", side: "old", line: 4 },
+    newCallSite: { path: "src/service.ts", side: "new", line: 4 },
+  };
+  expect(validateCallFlow({ ...flow, edges: [contextEdge, ...flow.edges] }, comparison).affectedFiles).toEqual(["src/entry.ts"]);
+  expect(() => validateCallFlow({ ...flow, edges: [{ ...contextEdge, newCallSite: { ...contextEdge.newCallSite, side: "old" } }, ...flow.edges] }, comparison)).toThrow("matching old or new side");
+  expect(() => validateCallFlow({ ...flow, edges: [{ ...contextEdge, newCallSite: { ...contextEdge.newCallSite, line: 0 } }, ...flow.edges] }, comparison)).toThrow("positive integer");
+  expect(() => validateCallFlow({ ...flow, edges: [{ ...contextEdge, change: "removed", newCallSite: undefined }, ...flow.edges] }, comparison)).toThrow("added or removed diff row");
+});
+
 test("rejects disconnected graphs and graphs without a changed call", () => {
   expect(() => validateCallFlow({ ...flow, nodes: [...flow.nodes, { id: "orphan", label: "orphan", kind: "external", change: "unchanged" }] }, comparison)).toThrow("reachable");
   expect(() => validateCallFlow({ ...flow, edges: [{ ...flow.edges[0], change: "unchanged", oldCallSite: { path: "src/entry.ts", side: "old", line: 5 } }] }, comparison)).toThrow("added or removed");

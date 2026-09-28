@@ -67,8 +67,9 @@ function validateEdge(value: unknown, nodeIds: Set<string>, comparison: GitCompa
   if (!nodeIds.has(from) || !nodeIds.has(to)) throw new Error("Every call-flow edge must connect declared nodes.");
   const change = String(edge.change);
   if (!["added", "removed", "unchanged"].includes(change)) throw new Error("Call-flow edge change is invalid.");
-  const oldCallSite = optionalLocation(edge.oldCallSite, "oldCallSite", comparison, true);
-  const newCallSite = optionalLocation(edge.newCallSite, "newCallSite", comparison, true);
+  // Unchanged calls provide context; only changed calls require changed rows.
+  const oldCallSite = optionalLocation(edge.oldCallSite, "oldCallSite", comparison, change !== "unchanged");
+  const newCallSite = optionalLocation(edge.newCallSite, "newCallSite", comparison, change !== "unchanged");
   if (change === "added" && !newCallSite) throw new Error("An added call edge needs a new call-site anchor.");
   if (change === "removed" && !oldCallSite) throw new Error("A removed call edge needs an old call-site anchor.");
   if (change === "added" && oldCallSite) throw new Error("An added call edge cannot have an old call-site anchor.");
@@ -115,7 +116,7 @@ export function validateCallFlow(value: unknown, comparison: GitComparison): Cal
   if (reachable.size !== nodes.length) throw new Error("Every call-flow node must be reachable from its entrypoint.");
   const provenance = String(flow.provenance);
   if (!['verified', 'partial', 'unverified'].includes(provenance)) throw new Error("Call-flow provenance must be verified, partial, or unverified.");
-  const affectedFiles = [...new Set(edges.flatMap((edge) => [edge.oldCallSite?.path, edge.newCallSite?.path]).filter((path): path is string => Boolean(path)))];
+  const affectedFiles = [...new Set(edges.filter((edge) => edge.change !== "unchanged").flatMap((edge) => [edge.oldCallSite?.path, edge.newCallSite?.path]).filter((path): path is string => Boolean(path)))];
   if (affectedFiles.length === 0) throw new Error("Call flow must contain at least one changed call edge with diff evidence.");
   if (flow.affectedFiles !== undefined && (!Array.isArray(flow.affectedFiles) || flow.affectedFiles.some((path) => typeof path !== "string") || new Set(flow.affectedFiles).size !== flow.affectedFiles.length || flow.affectedFiles.length !== affectedFiles.length || flow.affectedFiles.some((path) => !affectedFiles.includes(path)))) {
     throw new Error("Call-flow affectedFiles must exactly match its changed call-site evidence.");

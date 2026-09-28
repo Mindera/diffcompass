@@ -5,6 +5,8 @@ import { withArchifyEmbedAdapter } from "./archify-embed.ts";
 import appScript from "../public/app.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared browser runtime.
 import mapPresentationScript from "../public/map-presentation.js" with { type: "text" };
+// @ts-expect-error Bun embeds the shared caption layout runtime.
+import diagramLabelsScript from "../public/diagram-labels.js" with { type: "text" };
 import indexHtml from "../public/index.html" with { type: "text" };
 // @ts-expect-error Bun's text loader embeds this CSS asset as a string.
 import styles from "../public/styles.css" with { type: "text" };
@@ -39,7 +41,7 @@ import {
 
 const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
-  "app.js": { body: String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
+  "app.js": { body: String(diagramLabelsScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
   "mermaid.min.js": { body: String(mermaidScript), contentType: "text/javascript; charset=utf-8" },
   "styles.css": { body: `${styles}\n${mapNodeStyles}`, contentType: "text/css; charset=utf-8" },
