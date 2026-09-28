@@ -2692,7 +2692,8 @@ function renderReviewOverview() {
   const showBriefing = state.session.preferences?.showBriefing !== false;
   elements["review-overview"].classList.toggle("hidden", !outline && !pullRequest);
   elements["tour-overview"].classList.toggle("hidden", !outline);
-  elements["tour-intro-return"].classList.toggle("hidden", !outline || !state.tourIntroShown || !showBriefing);
+  // Resumed reviews may not have shown the briefing in this browser session.
+  elements["tour-intro-return"].classList.toggle("hidden", !outline || !showBriefing);
   elements["tour-intro-return"].textContent = state.tourIntroReturn ? "↩ Back to briefing" : "View briefing";
   if (outline) {
     elements["review-overview-title"].textContent = outline.title;

@@ -1,8 +1,31 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { runInNewContext } from "node:vm";
 
 const root = join(import.meta.dir, "..");
+
+test("briefing remains accessible after resume without having been shown in this browser", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf('function renderReviewOverview()'), app.indexOf('\nconst findingEvidenceLabels'));
+  for (const hasOutline of [false, true]) {
+    for (const showBriefing of [undefined, false, true]) {
+      for (const tourIntroShown of [false, true]) {
+        const hidden = new Map<string, boolean>();
+        const elements = Object.fromEntries(['review-overview', 'tour-overview', 'tour-intro-return',
+          'review-overview-title', 'review-overview-summary', 'tour-mode-toggle', 'pull-request-description']
+          .map(id => [id, { classList: { toggle: (_name: string, value: boolean) => hidden.set(id, value) },
+            setAttribute() {}, textContent: '' }]));
+        runInNewContext(source + '\nrenderReviewOverview();', { elements, state: {
+          session: { outline: hasOutline ? { title: 'Saved tour', summary: 'Saved summary' } : undefined,
+            preferences: { showBriefing } }, tourIntroShown,
+        } });
+        expect(hidden.get('tour-intro-return')).toBe(!hasOutline || showBriefing === false);
+        expect(elements['tour-intro-return']!.textContent).toBe('View briefing');
+      }
+    }
+  }
+});
 
 test("map category selector uses compact navigation typography", async () => {
   const css = await readFile(join(root, "public/styles.css"), "utf8");
