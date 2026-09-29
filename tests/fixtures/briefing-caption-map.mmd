@@ -1,0 +1,27 @@
+flowchart LR
+  component1["Planner (writing-plans)"]:::touched
+  component2["plan.md"]:::external
+  component3["Page region in human.html"]:::touched
+  component4["Assembler"]:::touched
+  component5["Page template CSS and JS"]:::touched
+  component6["Illustration file"]:::external
+  component7["Lint"]:::touched
+  component8["Extractor"]:::touched
+  component9["Warning banner on page"]:::removed
+  component10["Reviewer in plannotator"]:::external
+  component1 -->|writes| component3
+  component1 -->|writes| component2
+  component4 -->|reads| component3
+  component4 -->|reads counts and task blocks| component2
+  component4 -->|inlines| component5
+  component4 -->|embeds in shadow root| component6
+  component4 -->|runs once| component7
+  component4 -->|wrote| component9
+  component7 -->|checks page against| component2
+  component8 -->|reads text of| component3
+  component1 -->|shows gate summary from| component8
+  component10 -->|opens task dialogs in| component3
+  classDef new stroke:#2e7d32,stroke-width:3px
+  classDef touched stroke:#f9a825,stroke-width:3px
+  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3
+  classDef external stroke:#888888,stroke-dasharray:3 3

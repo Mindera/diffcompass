@@ -1,4 +1,5 @@
-/* Adjust captions without changing Mermaid's node positions or arrow routes.
+/* Adjust captions without changing Mermaid's node positions; only unresolved
+ * collisions permit a checked detour of the offending arrow.
  * Geometry is measured in SVG coordinates so zoom does not affect placement. */
 (function () {
   function intersects(a, b) {
@@ -98,12 +99,76 @@
     }
     return placed;
   }
+
+  function hits(points, box) {
+    return points.some((p, i) => i > 0 && segmentHits(points[i - 1], p, box));
+  }
+  // Only a remaining caption collision permits changing an arrow. Try a smooth
+  // detour through an open horizontal lane; never move nodes or unrelated edges.
+  function resolve(labels, paths, nodes) {
+    let positions = layout(labels, paths, nodes);
+    let routed = paths;
+    const failures = positions.filter(p => p.collisions > 0);
+    for (const failure of failures) {
+      for (const path of routed.filter(p => p.id !== failure.id && hits(p.points, failure.box))) {
+        const a = path.points[0];
+        let b = path.points.at(-1);
+        const contains = (n,p) => p.x >= n.x-4 && p.x <= n.x+n.width+4 && p.y >= n.y-4 && p.y <= n.y+n.height+4;
+        const target = nodes.find(n => contains(n,b));
+        // A bottom-entry port would force an above-node detour through the node.
+        // Reattach to a free left-side approach, retaining the same destination.
+        const leftEntry = target && b.y > target.y + target.height - 4;
+        if (leftEntry) b = { x:target.x-4, y:target.y+Math.min(12,target.height/3) };
+        if (b.x - a.x < 120) continue;
+        const tangent = (p, q) => {
+          const size = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+          return { x: (q.x - p.x) / size * 30, y: (q.y - p.y) / size * 30 };
+        };
+        const start = tangent(a, path.points[1]), end = leftEntry ? {x:30,y:0} : tangent(path.points.at(-2), b);
+        const lanes = [...new Set(nodes.flatMap(n => [n.y - 24, n.y + n.height + 24])
+          .concat(positions.flatMap(p => [p.box.y - 16, p.box.y + p.box.height + 16])))];
+        let best;
+        for (const y of lanes) {
+          const span = Math.min(100, (b.x - a.x) / 3);
+          const left = { x: a.x + span, y }, right = { x: b.x - span, y };
+          const c1 = { x: a.x + start.x, y: a.y + start.y };
+          const c2 = { x: left.x - span / 2, y };
+          const c3 = { x: right.x + span / 2, y };
+          const c4 = { x: b.x - end.x, y: b.y - end.y };
+          const points = [];
+          const cubic = (p, q, r, s) => {
+            const count = Math.ceil((Math.hypot(q.x-p.x,q.y-p.y) + Math.hypot(r.x-q.x,r.y-q.y) + Math.hypot(s.x-r.x,s.y-r.y)) / 2);
+            for (let i = 0; i <= count; i++) {
+              const t = i / count, u = 1-t;
+              points.push({ x:u*u*u*p.x+3*u*u*t*q.x+3*u*t*t*r.x+t*t*t*s.x,
+                y:u*u*u*p.y+3*u*u*t*q.y+3*u*t*t*r.y+t*t*t*s.y });
+            }
+          };
+          cubic(a,c1,c2,left);
+          points.push(right);
+          cubic(right,c3,c4,b);
+          if (nodes.some(n => hits(points,{x:n.x+0.5,y:n.y+0.5,width:n.width-1,height:n.height-1}))) continue;
+          if (positions.some(p => p.id !== path.id && hits(points,p.box))) continue;
+          const coord = p => p.x + ',' + p.y;
+          const candidate = { ...path, points, bounds:bounds(points),
+            d:'M'+coord(a)+' C'+coord(c1)+' '+coord(c2)+' '+coord(left)+' L'+coord(right)+' C'+coord(c3)+' '+coord(c4)+' '+coord(b) };
+          const next = routed.map(p => p.id === path.id ? candidate : p);
+          const nextPositions = layout(labels,next,nodes);
+          if (nextPositions.some(p => p.collisions > 0)) continue;
+          const length = points.reduce((sum,p,i) => sum + (i ? Math.hypot(p.x-points[i-1].x,p.y-points[i-1].y) : 0),0);
+          if (!best || length < best.length) best = { paths:next, positions:nextPositions, length };
+        }
+        if (best) { routed = best.paths; positions = best.positions; break; }
+      }
+    }
+    return { paths:routed, positions };
+  }
   function place(svg) {
     if (!svg || svg.dataset.captionLayout) return [];
     // Sequence/ER/state diagrams have their own label geometry. Leave them alone.
     if (!svg.querySelector('path.flowchart-link[data-id]')) return [];
     // Collapsed briefing/diff sections have no measurable geometry. Measure a
-    // temporary copy, then transfer only label positions back to the real SVG.
+    // temporary copy, then transfer captions and any checked edge detour.
     if (!svg.getBoundingClientRect().width) {
       const stage = document.createElement("div");
       stage.className = "architecture-diagram architecture-node-skin";
@@ -114,6 +179,14 @@
       try {
         if (!copy.getBoundingClientRect().width) return [];
         const positions = place(copy);
+        const copiedPaths = new Map([...copy.querySelectorAll('path.flowchart-link[data-id]')].map(p => [p.dataset.id, p]));
+        for (const path of svg.querySelectorAll('path.flowchart-link[data-id]')) {
+          const measured = copiedPaths.get(path.dataset.id);
+          if (measured?.dataset.captionRerouted) {
+            path.setAttribute('d', measured.getAttribute('d'));
+            path.dataset.captionRerouted = 'true';
+          }
+        }
         const leaders = copy.querySelector('[data-caption-leaders]');
         svg.querySelector('[data-caption-leaders]')?.remove();
         if (leaders) svg.prepend(leaders.cloneNode(true));
@@ -144,7 +217,7 @@
       const matrix = matrixFor(element), length = element.getTotalLength();
       const count = Math.max(8, Math.min(2048, Math.ceil(length / 4)));
       const points = Array.from({ length: count + 1 }, (_, i) => pointAt(element.getPointAtLength(length * i / count), matrix));
-      return { id: element.dataset.id, points, bounds: bounds(points) };
+      return { id: element.dataset.id, element, points, bounds: bounds(points), matrix };
     });
     const labels = [...svg.querySelectorAll("g.edgeLabel")].flatMap(element => {
       const id = element.querySelector("g.label[data-id]")?.dataset.id;
@@ -152,7 +225,19 @@
       const b = rectangle(element);
       return [{ id, element, width: b.width, height: b.height, x: b.x + b.width / 2, y: b.y + b.height / 2 }];
     });
-    const positions = layout(labels, paths, [...svg.querySelectorAll("g.node")].map(rectangle));
+    const resolved = resolve(labels, paths, [...svg.querySelectorAll("g.node")].map(rectangle));
+    const positions = resolved.positions;
+    for (const path of resolved.paths) {
+      if (!path.d) continue;
+      // Route coordinates are in root SVG space; retain the path's own transform.
+      const inversePath = path.matrix.inverse();
+      const localD = path.d.replace(/(-?[\d.e+]+),(-?[\d.e+]+)/g, (_, x, y) => {
+        const p = pointAt({x:Number(x),y:Number(y)}, inversePath);
+        return p.x + ',' + p.y;
+      });
+      path.element.setAttribute('d', localD);
+      path.element.dataset.captionRerouted = 'true';
+    }
     const leaders = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     leaders.setAttribute('data-caption-leaders', '');
     leaders.style.pointerEvents = 'none';
@@ -194,5 +279,5 @@
     svg?.setAttribute('aria-hidden', 'true');
     return svg;
   }
-  window.ReviewDiagramLabels = { mount, place, layout, segmentHits };
+  window.ReviewDiagramLabels = { mount, place, layout, resolve, segmentHits };
 })();

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import geometry from "./fixtures/dense-caption-geometry.json";
+import briefingGeometry from "./fixtures/briefing-caption-geometry.json";
 
 type Point = { x: number; y: number };
 type Box = Point & { width: number; height: number };
@@ -11,6 +12,7 @@ type Position = { id: string; point: Point; anchor: Point; box: Box; collisions:
 const window = {} as { ReviewDiagramLabels: {
   mount(target: unknown, markup: string): unknown;
   layout(labels: Label[], paths: Path[], nodes: Box[]): Position[];
+  resolve(labels: Label[], paths: Path[], nodes: Box[]): {positions: Position[]; paths: (Path & {d?: string})[]};
   segmentHits(a: Point, b: Point, box: Box): boolean;
 } };
 runInNewContext(readFileSync(new URL("../public/diagram-labels.js", import.meta.url), "utf8"), { window });
@@ -76,8 +78,34 @@ test("every native Mermaid render mounts through the shared caption boundary", (
   expect(app).not.toContain('curve: "step"');
   expect(exporter).not.toContain('curve:"step"');
   const helper = readFileSync(new URL("../public/diagram-labels.js", import.meta.url), "utf8");
-  expect(helper).not.toMatch(/setAttribute\(['"]d['"]/);
+  expect(helper).toContain('if (!path.d) continue;');
   expect(helper).not.toContain("flowingLayout");
+});
+
+test("unresolved briefing caption crossing reroutes only the offending reads arrow", () => {
+  const paths = briefingGeometry.paths.map(p => ({...p, bounds: bounds(p.points)}));
+  const before = JSON.stringify({paths, nodes:briefingGeometry.nodes});
+  expect(layout(briefingGeometry.labels,paths,briefingGeometry.nodes).some(p => p.collisions > 0)).toBe(true);
+  const result = window.ReviewDiagramLabels.resolve(briefingGeometry.labels,paths,briefingGeometry.nodes);
+  expect(result.positions.every(p => p.collisions === 0)).toBe(true);
+  expect(result.paths.filter(p => p.d).map(p => p.id)).toEqual(['L_component4_component3_0']);
+  for (const path of result.paths) {
+    for (const label of result.positions.filter(p => p.id !== path.id)) {
+      expect(path.points.some((p,i) => i > 0 && segmentHits(path.points[i-1]!,p,label.box))).toBe(false);
+    }
+    if (!path.d) expect(path).toBe(paths.find(p => p.id === path.id)!);
+    else for (const n of briefingGeometry.nodes) {
+      const interior = {x:n.x+0.5,y:n.y+0.5,width:n.width-1,height:n.height-1};
+      expect(path.points.some((p,i) => i > 0 && segmentHits(path.points[i-1]!,p,interior))).toBe(false);
+    }
+  }
+  expect(JSON.stringify({paths,nodes:briefingGeometry.nodes})).toBe(before);
+});
+
+test("a diagram with successful caption placement keeps all original curves", () => {
+  const result = window.ReviewDiagramLabels.resolve(geometry.labels,paths,geometry.nodes);
+  expect(result.paths).toBe(paths);
+  expect(result.positions.every(p => p.collisions === 0)).toBe(true);
 });
 
 test("caption placement does not mutate source geometry and is deterministic", () => {

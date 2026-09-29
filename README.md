@@ -184,9 +184,12 @@ an incomplete Before view does not imply that missing connections never existed.
 
 Native Mermaid component diagrams automatically adjust arrow captions after every
 render, including regeneration, briefing previews, and HTML exports. Caption
-placement preserves Mermaid's original node positions and curves, uses compact
+placement preserves Mermaid's original node positions, uses compact
 background-matched masks, and seeks clearance from other arrows, captions, and
-nodes. This is a renderer rule, not something diagram authors need to prompt for.
+nodes. Original curves are retained when caption placement succeeds. If a caption
+still intersects another arrow, a bounded smooth-detour search can reroute that
+arrow; a candidate is accepted only when it clears nodes and all captions. This
+is a renderer rule, not something diagram authors need to prompt for.
 New native render paths must use `ReviewDiagramLabels.mount`; regression tests
 protect that boundary and the dense-diagram fixture. Extremely crowded diagrams
 can still exceed the available caption space; placement is best-effort rather
