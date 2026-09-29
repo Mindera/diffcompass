@@ -22,19 +22,19 @@ targets=(
 for entry in "${targets[@]}"; do
   platform="${entry%%:*}"
   bun_target="${entry##*:}"
-  package_root="$release_root/code-review-tour-v${version}-${platform}"
-  mkdir -p "$package_root/bin" "$package_root/share/code-review-tour/skills"
-  executable="code-review-tour"
-  [[ "$platform" == windows-* ]] && executable="code-review-tour.exe"
+  package_root="$release_root/diffcompass-v${version}-${platform}"
+  mkdir -p "$package_root/bin" "$package_root/share/diffcompass/skills"
+  executable="diffcompass"
+  [[ "$platform" == windows-* ]] && executable="diffcompass.exe"
   bun build --compile --minify --target="$bun_target" src/cli.ts --outfile "$package_root/bin/$executable"
-  cp -R skills/code-review-tour "$package_root/share/code-review-tour/skills/code-review-tour"
-  cp -R "$archify_stage" "$package_root/share/code-review-tour/archify"
-  cp scripts/install.sh scripts/install.ps1 "$package_root/share/code-review-tour/"
+  cp -R skills/diffcompass "$package_root/share/diffcompass/skills/diffcompass"
+  cp -R "$archify_stage" "$package_root/share/diffcompass/archify"
+  cp scripts/install.sh scripts/install.ps1 "$package_root/share/diffcompass/"
   cp README.md "$package_root/README.md"
   if [[ "$platform" == windows-* ]]; then
-    (cd "$release_root" && zip -qr "code-review-tour-v${version}-${platform}.zip" "$(basename "$package_root")")
+    (cd "$release_root" && zip -qr "diffcompass-v${version}-${platform}.zip" "$(basename "$package_root")")
   else
-    tar -C "$release_root" -czf "$release_root/code-review-tour-v${version}-${platform}.tar.gz" "$(basename "$package_root")"
+    tar -C "$release_root" -czf "$release_root/diffcompass-v${version}-${platform}.tar.gz" "$(basename "$package_root")"
   fi
   rm -rf "$package_root"
 done

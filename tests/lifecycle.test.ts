@@ -203,13 +203,13 @@ async function git(cwd: string, ...args: string[]) {
 }
 
 async function repositoryFixture() {
-  const directory = await mkdtemp(join(tmpdir(), "review-tour-lifecycle-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-lifecycle-"));
   directories.push(directory);
   const repository = join(directory, "repository");
   await mkdir(repository);
   await git(repository, "init", "-b", "main");
   await git(repository, "config", "user.name", "Review Tour Test");
-  await git(repository, "config", "user.email", "review-tour@example.test");
+  await git(repository, "config", "user.email", "diffcompass@example.test");
   await writeFile(join(repository, "app.ts"), "const base = 1;\n");
   await git(repository, "add", "app.ts");
   await git(repository, "commit", "-m", "base");
@@ -289,7 +289,7 @@ test("startup screenshots are snapshotted, authenticated, and persisted across r
   const fetch = createRequestHandler(session, directory);
   const unauthorized = await fetch(new Request(`http://127.0.0.1/api/screenshots/${screenshot.id}`));
   expect(unauthorized.status).toBe(401);
-  const response = await fetch(new Request(`http://127.0.0.1/api/screenshots/${screenshot.id}`, { headers: { "x-review-tour-token": session.browserToken } }));
+  const response = await fetch(new Request(`http://127.0.0.1/api/screenshots/${screenshot.id}`, { headers: { "x-diffcompass-token": session.browserToken } }));
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toBe("image/png");
   expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
@@ -464,7 +464,7 @@ test("pull request tours enable findings unless the caller explicitly disables t
     headRefOid: base,
     sourceRepositoryRoot: repository,
     workspaceRoot: repository,
-    refNamespace: "refs/code-review-tour/test",
+    refNamespace: "refs/diffcompass/test",
     commits: [],
     checks: [],
     threads: [],
@@ -518,7 +518,7 @@ test("a reviewer task stays local and regenerates only its acceptance-criteria a
       headRefOid: head,
       sourceRepositoryRoot: repository,
       workspaceRoot: repository,
-      refNamespace: "refs/code-review-tour/test",
+      refNamespace: "refs/diffcompass/test",
       commits: [], checks: [], threads: [], threadsTruncated: false,
       providerScope: { linkedIssue: "none", relatedResources: "not-requested" },
       updatedAt: new Date().toISOString(),
@@ -572,7 +572,7 @@ test("resuming an incomplete reviewer task assessment continues it without resta
       headRefOid: head,
       sourceRepositoryRoot: repository,
       workspaceRoot: repository,
-      refNamespace: "refs/code-review-tour/test",
+      refNamespace: "refs/diffcompass/test",
       commits: [], checks: [], threads: [], threadsTruncated: false,
       providerScope: { linkedIssue: "none", relatedResources: "not-requested" },
       reviewerTask: {

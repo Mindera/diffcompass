@@ -8,10 +8,10 @@ import { prepareTestFixture } from "../src/test-fixture.ts";
 import branchedMaps from "../tests/fixtures/branched-maps.json";
 import type { TourOutline } from "../src/types.ts";
 
-delete process.env.CODE_REVIEW_TOUR_ARCHIFY_DIR;
+delete process.env.DIFFCOMPASS_ARCHIFY_DIR;
 const renderer = ArchifyRenderer.fromEnvironment();
 assert(renderer, "Installed executable must discover its bundled renderer without an override");
-const root = await mkdtemp(join(tmpdir(), "crt-installed-maps-"));
+const root = await mkdtemp(join(tmpdir(), "diffcompass-installed-maps-"));
 try {
   const fixture = await prepareTestFixture({ root: join(root, "fixture") });
   const saved = JSON.parse(await readFile(fixture.stateFile, "utf8"));

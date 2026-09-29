@@ -11,7 +11,7 @@ import { ArchifyRenderer } from "./archify.ts";
 import type { GitComparison, PersistedReviewSession } from "./types.ts";
 
 const FIXTURE_SCHEMA = 5;
-const FIXTURE_DIRECTORY = "code-review-tour-test-fixture-v2";
+const FIXTURE_DIRECTORY = "diffcompass-test-fixture-v2";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
 function pngCrc32(bytes: Uint8Array): number {
@@ -550,7 +550,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
       updatedAt: FIXTURE_TIME,
     }],
     checkpoints: [],
-    checkpointRefNamespace: "refs/code-review-tour/checkpoints/fixture",
+    checkpointRefNamespace: "refs/diffcompass/checkpoints/fixture",
     messages: [{
       id: "fixture-question",
       threadId: "fixture-question",
@@ -623,7 +623,7 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
       headRefOid: headOid,
       sourceRepositoryRoot: repositoryRoot,
       workspaceRoot: repositoryRoot,
-      refNamespace: "refs/code-review-tour/fixture",
+      refNamespace: "refs/diffcompass/fixture",
       reviewDecision: "REVIEW_REQUIRED",
       mergeable: "MERGEABLE",
       mergeStateStatus: "CLEAN",
@@ -709,7 +709,7 @@ export interface TestFixture {
 
 export async function prepareTestFixture(options: { root?: string; reset?: boolean } = {}): Promise<TestFixture> {
   const root = resolve(options.root ?? join(tmpdir(), FIXTURE_DIRECTORY));
-  const marker = join(root, ".code-review-tour-fixture.json");
+  const marker = join(root, ".diffcompass-fixture.json");
   const repository = join(root, "repository");
   const stateFile = join(root, "session.json");
   const exists = await pathExists(root);
@@ -731,8 +731,8 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
   await mkdir(repository, { recursive: true, mode: 0o700 });
   await writeFile(marker, `${JSON.stringify({ schemaVersion: FIXTURE_SCHEMA })}\n`, { mode: 0o600 });
   await git(repository, "init", "-b", "main");
-  await git(repository, "config", "user.name", "Code Review Tour Fixture");
-  await git(repository, "config", "user.email", "fixture@code-review-tour.test");
+  await git(repository, "config", "user.name", "DiffCompass Fixture");
+  await git(repository, "config", "user.email", "fixture@diffcompass.test");
   await writeFiles(repository, baseFiles);
   await git(repository, "add", ".");
   await git(repository, "commit", "-m", "fixture base");

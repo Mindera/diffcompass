@@ -17,12 +17,12 @@ async function git(cwd: string, ...args: string[]) {
 
 describe("loadComparison", () => {
   test("combines branch commits, working-tree edits, and untracked files", async () => {
-    const repository = await mkdtemp(join(tmpdir(), "review-tour-git-"));
+    const repository = await mkdtemp(join(tmpdir(), "diffcompass-git-"));
     repositories.push(repository);
     await git(repository, "init", "-b", "main");
     await git(repository, "config", "user.name", "Review Tour Test");
-    await git(repository, "config", "user.email", "review-tour@example.test");
-    await git(repository, "remote", "add", "origin", "git@github.com:acme/code-review-tour.git");
+    await git(repository, "config", "user.email", "diffcompass@example.test");
+    await git(repository, "remote", "add", "origin", "git@github.com:acme/diffcompass.git");
     await writeFile(join(repository, "app.txt"), "base\n");
     await git(repository, "add", "app.txt");
     await git(repository, "commit", "-m", "base");
@@ -39,7 +39,7 @@ describe("loadComparison", () => {
     const comparison = await loadComparison(repository);
 
     expect(comparison.base).toBe("origin/main");
-    expect(comparison.repositoryName).toBe("code-review-tour");
+    expect(comparison.repositoryName).toBe("diffcompass");
     expect(comparison.mergeBase).toBe(base);
     expect(comparison.files.map((file) => file.path)).toEqual(["app.txt", "new.txt"]);
     expect(comparison.files[0].additions).toBe(2);
@@ -48,11 +48,11 @@ describe("loadComparison", () => {
   });
 
   test("regenerates a file diff with expanded bounded context", async () => {
-    const repository = await mkdtemp(join(tmpdir(), "review-tour-context-"));
+    const repository = await mkdtemp(join(tmpdir(), "diffcompass-context-"));
     repositories.push(repository);
     await git(repository, "init", "-b", "main");
     await git(repository, "config", "user.name", "Review Tour Test");
-    await git(repository, "config", "user.email", "review-tour@example.test");
+    await git(repository, "config", "user.email", "diffcompass@example.test");
     const original = Array.from({ length: 80 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
     await writeFile(join(repository, "app.txt"), original);
     await git(repository, "add", "app.txt");
@@ -76,11 +76,11 @@ describe("loadComparison", () => {
   });
 
   test("uses a captured working tree as the baseline for a feedback-only comparison", async () => {
-    const repository = await mkdtemp(join(tmpdir(), "review-tour-feedback-base-"));
+    const repository = await mkdtemp(join(tmpdir(), "diffcompass-feedback-base-"));
     repositories.push(repository);
     await git(repository, "init", "-b", "main");
     await git(repository, "config", "user.name", "Review Tour Test");
-    await git(repository, "config", "user.email", "review-tour@example.test");
+    await git(repository, "config", "user.email", "diffcompass@example.test");
     await writeFile(join(repository, "app.txt"), "base\n");
     await git(repository, "add", "app.txt");
     await git(repository, "commit", "-m", "base");
@@ -97,11 +97,11 @@ describe("loadComparison", () => {
   });
 
   test("loads both sides of a changed Markdown file for preview", async () => {
-    const repository = await mkdtemp(join(tmpdir(), "review-tour-markdown-"));
+    const repository = await mkdtemp(join(tmpdir(), "diffcompass-markdown-"));
     repositories.push(repository);
     await git(repository, "init", "-b", "main");
     await git(repository, "config", "user.name", "Review Tour Test");
-    await git(repository, "config", "user.email", "review-tour@example.test");
+    await git(repository, "config", "user.email", "diffcompass@example.test");
     await writeFile(join(repository, "README.md"), "# Before\n");
     await git(repository, "add", "README.md");
     await git(repository, "commit", "-m", "base");

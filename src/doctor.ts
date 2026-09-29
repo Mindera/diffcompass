@@ -26,7 +26,7 @@ export async function runDoctor(): Promise<number> {
     ? { level: "ok", label: "Git", detail: git }
     : { level: "error", label: "Git", detail: "not found on PATH" });
 
-  const stateDirectory = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "code-review-tour", "sessions");
+  const stateDirectory = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "diffcompass", "sessions");
   try {
     await mkdir(stateDirectory, { recursive: true, mode: 0o700 });
     await access(stateDirectory, constants.R_OK | constants.W_OK);

@@ -29,11 +29,11 @@ type ReviewSessionConstructor = new (
 ) => ReviewSession;
 
 async function reviewFixture(options: { extraFiles?: boolean; lineCount?: number } = {}) {
-  const repository = await mkdtemp(join(tmpdir(), "review-tour-remediation-"));
+  const repository = await mkdtemp(join(tmpdir(), "diffcompass-remediation-"));
   repositories.push(repository);
   await git(repository, "init", "-b", "main");
   await git(repository, "config", "user.name", "Review Tour Test");
-  await git(repository, "config", "user.email", "review-tour@example.test");
+  await git(repository, "config", "user.email", "diffcompass@example.test");
   await writeFile(join(repository, "app.ts"), "const base = 1;\n");
 
   if (options.extraFiles) {
@@ -106,7 +106,7 @@ function browserHeaders(url: string, token: string): Headers {
   return new Headers({
     "content-type": "application/json",
     origin: url,
-    "x-review-tour-token": token,
+    "x-diffcompass-token": token,
   });
 }
 
@@ -252,7 +252,7 @@ test("a finding can be queued directly as an inline pull request review comment"
     headRefOid: comparison.head,
     sourceRepositoryRoot: repository,
     workspaceRoot: repository,
-    refNamespace: "refs/code-review-tour/test",
+    refNamespace: "refs/diffcompass/test",
     commits: [],
     checks: [],
     threads: [],
@@ -291,7 +291,7 @@ test("large snapshots return metadata only while the authenticated diff endpoint
   ]);
 
   const response = await fetch(`${url}/api/diff?path=app.ts`, {
-    headers: { "x-review-tour-token": session.browserToken },
+    headers: { "x-diffcompass-token": session.browserToken },
   });
   const body = await response.json() as { file: { path: string; hunks: Array<{ rows: unknown[] }> }; revision: number; offset: number; limit: number; totalRows: number };
   expect(response.status).toBe(200);
@@ -302,7 +302,7 @@ test("large snapshots return metadata only while the authenticated diff endpoint
   expect(body.totalRows).toBeGreaterThan(2_500);
 
   const anchored = await fetch(`${url}/api/diff?path=app.ts&line=2501&side=new`, {
-    headers: { "x-review-tour-token": session.browserToken },
+    headers: { "x-diffcompass-token": session.browserToken },
   });
   const anchoredBody = await anchored.json() as typeof body;
   expect(anchoredBody.offset).toBeGreaterThan(0);
@@ -317,13 +317,13 @@ test("repository file endpoint rejects traversal, symlink, binary, and oversized
 
   for (const path of ["../app.ts", "linked.txt", "binary.bin", "large.txt"]) {
     const response = await fetch(`${url}/api/files?path=${encodeURIComponent(path)}`, {
-      headers: { "x-review-tour-token": session.browserToken },
+      headers: { "x-diffcompass-token": session.browserToken },
     });
     expect(response.status, path).toBe(409);
   }
 
   const plain = await fetch(`${url}/api/files?path=plain.txt`, {
-    headers: { "x-review-tour-token": session.browserToken },
+    headers: { "x-diffcompass-token": session.browserToken },
   });
   expect(plain.status).toBe(200);
   await expect(plain.json()).resolves.toEqual({ path: "plain.txt", content: "plain text\n" });

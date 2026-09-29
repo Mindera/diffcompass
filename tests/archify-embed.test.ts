@@ -43,7 +43,7 @@ test("only lifecycle decoration is hidden, not authored edges or other diagram t
 
 test("embedded and exported maps include the shared node skin without replacing category colours", () => {
   const html = withArchifyEmbedAdapter('<html><body><g data-node-id="test" data-node-kind="backend"></g></body></html>');
-  expect(html).toContain('data-code-review-tour-map-nodes');
+  expect(html).toContain('data-diffcompass-map-nodes');
   expect(html).toContain('--map-node-radius: 8px');
   expect(html).toContain('var(--map-node-title-size)');
   expect(html).toContain('data-node-kind="review-unspecified"');
@@ -79,7 +79,7 @@ test("missing or malformed translation payloads remain intact", () => {
 
 function cameraRuntime() {
   const embedded = withArchifyEmbedAdapter("<!doctype html><html><body><div class=\"diagram-container\"><svg></svg></div></body></html>");
-  return /<script data-code-review-tour-camera>([\s\S]+)<\/script>/.exec(embedded)?.[1] ?? "";
+  return /<script data-diffcompass-camera>([\s\S]+)<\/script>/.exec(embedded)?.[1] ?? "";
 }
 
 function interactiveHarness(dimensions: Partial<{ containerWidth: number; containerHeight: number; svgWidth: number; svgHeight: number }> = {}, panelId = "focus-chip", handleSelector = ".relationship-lens-head") {
@@ -195,7 +195,7 @@ function interactiveHarness(dimensions: Partial<{ containerWidth: number; contai
 test("adapts a validated viewer to a fixed review viewport while preserving supported inspection controls", () => {
   const embedded = withArchifyEmbedAdapter("<!doctype html><html><head><style>html[data-embed=\"true\"]{color:red}</style></head><body><div class=\"diagram-container\"><svg></svg></div></body></html>");
 
-  expect(embedded).toContain('data-code-review-tour-embed="true"');
+  expect(embedded).toContain('data-diffcompass-embed="true"');
   expect(embedded).not.toContain('<html data-embed="true">');
   expect(embedded).toContain("Fit entire map");
   expect(embedded).toContain("Archify.view={zoomIn");
@@ -208,8 +208,8 @@ test("adapts a validated viewer to a fixed review viewport while preserving supp
   expect(embedded).toContain("event.target.closest('[data-node-id],[data-edge-from]')");
   expect(embedded).not.toContain("container.style.height");
   expect(embedded).not.toContain("pointer-events:none!important");
-  expect(embedded).not.toContain("code-review-tour-archify-height");
-  const script = /<script data-code-review-tour-camera>([\s\S]+)<\/script>/.exec(embedded)?.[1];
+  expect(embedded).not.toContain("diffcompass-archify-height");
+  const script = /<script data-diffcompass-camera>([\s\S]+)<\/script>/.exec(embedded)?.[1];
   expect(script).toBeTruthy();
   expect(() => new Function(script!)).not.toThrow();
 });
@@ -217,9 +217,9 @@ test("adapts a validated viewer to a fixed review viewport while preserving supp
 test("keeps an export embed self-contained without a parent resize protocol", () => {
   const embedded = withArchifyEmbedAdapter("<!doctype html><html><body></body></html>");
 
-  expect(embedded).toContain("data-code-review-tour-camera");
-  expect(embedded).toContain("code-review-tour-map-scroll");
-  expect(embedded).not.toContain("code-review-tour-archify-height");
+  expect(embedded).toContain("data-diffcompass-camera");
+  expect(embedded).toContain("diffcompass-map-scroll");
+  expect(embedded).not.toContain("diffcompass-archify-height");
 });
 
 test("the generated camera script fits tall and wide maps without magnifying a small one", () => {
@@ -337,7 +337,7 @@ test("ordinary wheel scrolling is forwarded in pixels without zooming; pinch is 
   const event = { target: null, deltaY: 3, deltaMode: 1, preventDefault() { prevented = true; }, stopImmediatePropagation() {} };
   harness.fireDocument("wheel", event);
   expect(prevented).toBe(true);
-  expect(harness.posted).toEqual([{ type: "code-review-tour-map-scroll", deltaY: 48 }]);
+  expect(harness.posted).toEqual([{ type: "diffcompass-map-scroll", deltaY: 48 }]);
   expect(harness.svg.style.transform).toBe(before);
   harness.fireDocument("wheel", { ...event, ctrlKey: true });
   expect(harness.posted).toHaveLength(1);
@@ -364,7 +364,7 @@ test("scrollable popup content keeps its wheel events until its scroll boundary"
   expect(harness.posted).toHaveLength(0);
   target.scrollTop = 300;
   harness.fireDocument("wheel", event);
-  expect(harness.posted).toEqual([{ type: "code-review-tour-map-scroll", deltaY: 80 }]);
+  expect(harness.posted).toEqual([{ type: "diffcompass-map-scroll", deltaY: 80 }]);
 });
 
 test("pen and touch swipes scroll the review without moving the camera or activating a node", () => {
@@ -375,7 +375,7 @@ test("pen and touch swipes scroll the review without moving the camera or activa
     harness.fireDocument("pointerdown", { pointerType, pointerId: 12, clientX: 200, clientY: 300, target });
     harness.fireDocument("pointermove", { pointerId: 12, clientX: 200, clientY: 240, preventDefault() {}, stopImmediatePropagation() {} });
     harness.fireDocument("pointerup", { pointerId: 12 });
-    expect(harness.posted).toEqual([{ type: "code-review-tour-map-scroll", deltaY: 60 }]);
+    expect(harness.posted).toEqual([{ type: "diffcompass-map-scroll", deltaY: 60 }]);
     expect(harness.svg.style.transform).toBe(before);
     let prevented = false;
     harness.fireDocument("click", { pointerType, preventDefault() { prevented = true; }, stopImmediatePropagation() {} });

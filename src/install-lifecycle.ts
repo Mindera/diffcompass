@@ -22,24 +22,24 @@ interface InstallPaths {
 
 function pathsFor(env: NodeJS.ProcessEnv, platform: Platform): InstallPaths {
   const home = env.HOME || env.USERPROFILE || homedir();
-  const installRoot = resolve(env.CODE_REVIEW_TOUR_INSTALL_ROOT || (platform === "win32"
-    ? join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "code-review-tour")
-    : join(env.XDG_DATA_HOME || join(home, ".local", "share"), "code-review-tour")));
-  const binRoot = resolve(env.CODE_REVIEW_TOUR_BIN_ROOT || (platform === "win32"
+  const installRoot = resolve(env.DIFFCOMPASS_INSTALL_ROOT || (platform === "win32"
+    ? join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "diffcompass")
+    : join(env.XDG_DATA_HOME || join(home, ".local", "share"), "diffcompass")));
+  const binRoot = resolve(env.DIFFCOMPASS_BIN_ROOT || (platform === "win32"
     ? join(installRoot, "bin")
     : join(env.XDG_BIN_HOME || join(home, ".local", "bin"))));
-  const stateRoot = resolve(env.CODE_REVIEW_TOUR_STATE_ROOT || (platform === "win32"
-    ? join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "code-review-tour-state")
-    : join(env.XDG_STATE_HOME || join(home, ".local", "state"), "code-review-tour")));
+  const stateRoot = resolve(env.DIFFCOMPASS_STATE_ROOT || (platform === "win32"
+    ? join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "diffcompass-state")
+    : join(env.XDG_STATE_HOME || join(home, ".local", "state"), "diffcompass")));
   return {
     installRoot,
     binRoot,
     stateRoot,
     skillTargets: [
-      join(env.CODE_REVIEW_TOUR_CODEX_SKILL_ROOT || join(env.CODEX_HOME || join(home, ".codex"), "skills"), "code-review-tour"),
-      join(env.CODE_REVIEW_TOUR_CLAUDE_SKILL_ROOT || join(home, ".claude", "skills"), "code-review-tour"),
-      join(env.CODE_REVIEW_TOUR_GEMINI_SKILL_ROOT || join(home, ".gemini", "skills"), "code-review-tour"),
-      join(env.CODE_REVIEW_TOUR_COPILOT_SKILL_ROOT || join(env.COPILOT_HOME || join(home, ".copilot"), "skills"), "code-review-tour"),
+      join(env.DIFFCOMPASS_CODEX_SKILL_ROOT || join(env.CODEX_HOME || join(home, ".codex"), "skills"), "diffcompass"),
+      join(env.DIFFCOMPASS_CLAUDE_SKILL_ROOT || join(home, ".claude", "skills"), "diffcompass"),
+      join(env.DIFFCOMPASS_GEMINI_SKILL_ROOT || join(home, ".gemini", "skills"), "diffcompass"),
+      join(env.DIFFCOMPASS_COPILOT_SKILL_ROOT || join(env.COPILOT_HOME || join(home, ".copilot"), "skills"), "diffcompass"),
     ].map((path) => resolve(path)),
   };
 }
@@ -79,15 +79,15 @@ async function managedLink(path: string, installRoot: string): Promise<boolean> 
 
 async function switchVersion(paths: InstallPaths, version: string, platform: Platform): Promise<void> {
   const versionRoot = join(paths.installRoot, version);
-  const executable = join(versionRoot, "bin", platform === "win32" ? "code-review-tour.exe" : "code-review-tour");
+  const executable = join(versionRoot, "bin", platform === "win32" ? "diffcompass.exe" : "diffcompass");
   if (!existsSync(executable)) throw new Error(`Installed version ${version} is incomplete.`);
   if (platform === "win32") {
     await mkdir(paths.binRoot, { recursive: true });
-    await writeFile(join(paths.binRoot, ".code-review-tour-managed"), `${paths.installRoot}\n`);
+    await writeFile(join(paths.binRoot, ".diffcompass-managed"), `${paths.installRoot}\n`);
     await writeFile(join(paths.installRoot, "current-version"), `${version}\n`);
     return;
   }
-  const binary = join(paths.binRoot, "code-review-tour");
+  const binary = join(paths.binRoot, "diffcompass");
   if (existsSync(binary) && !(await managedLink(binary, paths.installRoot))) {
     throw new Error(`Refusing to replace an unmanaged command: ${binary}`);
   }
@@ -98,7 +98,7 @@ async function switchVersion(paths: InstallPaths, version: string, platform: Pla
   await rename(temporary, current);
   await mkdir(paths.binRoot, { recursive: true });
   await rm(binary, { force: true });
-  await symlink(join(current, "bin", "code-review-tour"), binary);
+  await symlink(join(current, "bin", "diffcompass"), binary);
 }
 
 function parseValue(args: string[], name: string): string | undefined {
@@ -110,11 +110,11 @@ function parseValue(args: string[], name: string): string | undefined {
 }
 
 async function locateInstaller(environment: Required<Pick<LifecycleEnvironment, "platform" | "executable" | "sourceRoot">> & { env: NodeJS.ProcessEnv }): Promise<string> {
-  if (environment.env.CODE_REVIEW_TOUR_INSTALLER) return resolve(environment.env.CODE_REVIEW_TOUR_INSTALLER);
+  if (environment.env.DIFFCOMPASS_INSTALLER) return resolve(environment.env.DIFFCOMPASS_INSTALLER);
   const name = environment.platform === "win32" ? "install.ps1" : "install.sh";
   const executable = await realpath(environment.executable).catch(() => environment.executable);
   const candidates = [
-    join(dirname(dirname(executable)), "share", "code-review-tour", name),
+    join(dirname(dirname(executable)), "share", "diffcompass", name),
     join(environment.sourceRoot, "scripts", name),
   ];
   const installer = candidates.find(existsSync);
@@ -148,11 +148,11 @@ async function update(args: string[], environment: LifecycleEnvironment): Promis
     ? ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installer, ...installerArgs]
     : ["bash", installer, ...installerArgs];
   const run = environment.spawn ?? (async (parts: string[]) => (await Bun.spawn(parts, {
-    stdin: "inherit", stdout: "inherit", stderr: "inherit", env: { ...process.env, ...env, ...(version ? { CODE_REVIEW_TOUR_VERSION: version } : {}) },
+    stdin: "inherit", stdout: "inherit", stderr: "inherit", env: { ...process.env, ...env, ...(version ? { DIFFCOMPASS_VERSION: version } : {}) },
   }).exited));
   const exitCode = await run(command);
   if (exitCode !== 0) throw new Error(`Update installer exited with ${exitCode}.`);
-  return version ? `Updated Code Review Tour to ${version}.` : "Updated Code Review Tour.";
+  return version ? `Updated DiffCompass to ${version}.` : "Updated DiffCompass.";
 }
 
 async function rollback(args: string[], environment: LifecycleEnvironment): Promise<string> {
@@ -173,7 +173,7 @@ async function rollback(args: string[], environment: LifecycleEnvironment): Prom
   const updated = [...history.filter((version) => version !== target), target];
   await writeFile(join(paths.installRoot, "history"), `${updated.join("\n")}\n`);
   await writeFile(join(paths.installRoot, "history.json"), `${JSON.stringify(updated, null, 2)}\n`);
-  return `Rolled back Code Review Tour from ${current || "unknown"} to ${target}.`;
+  return `Rolled back DiffCompass from ${current || "unknown"} to ${target}.`;
 }
 
 async function removeManagedTarget(target: string, paths: InstallPaths, platform: Platform): Promise<boolean> {
@@ -182,7 +182,7 @@ async function removeManagedTarget(target: string, paths: InstallPaths, platform
     await rm(target, { force: true });
     return true;
   }
-  if (!existsSync(join(target, ".code-review-tour-managed"))) return false;
+  if (!existsSync(join(target, ".diffcompass-managed"))) return false;
   await rm(target, { recursive: true, force: true });
   return true;
 }
@@ -194,7 +194,7 @@ async function uninstall(args: string[], environment: LifecycleEnvironment): Pro
   const paths = pathsFor(environment.env ?? process.env, platform);
   const dryRun = args.includes("--dry-run");
   const purge = args.includes("--purge");
-  const targets = [paths.installRoot, join(paths.binRoot, platform === "win32" ? "code-review-tour.cmd" : "code-review-tour"), ...paths.skillTargets, ...(purge ? [paths.stateRoot] : [])];
+  const targets = [paths.installRoot, join(paths.binRoot, platform === "win32" ? "diffcompass.cmd" : "diffcompass"), ...paths.skillTargets, ...(purge ? [paths.stateRoot] : [])];
   if (dryRun || !args.includes("--yes")) {
     return [
       "Would remove installer-managed files:",
@@ -208,13 +208,13 @@ async function uninstall(args: string[], environment: LifecycleEnvironment): Pro
     if (root === parse(root).root || root === home) throw new Error(`Refusing to remove unsafe root: ${root}`);
   }
   if (!["history", "history.json", "current", "current-version"].some((name) => existsSync(join(paths.installRoot, name)))) {
-    throw new Error(`Refusing to remove an install root without Code Review Tour ownership metadata: ${paths.installRoot}`);
+    throw new Error(`Refusing to remove an install root without DiffCompass ownership metadata: ${paths.installRoot}`);
   }
   for (const target of paths.skillTargets) await removeManagedTarget(target, paths, platform);
-  const binary = join(paths.binRoot, platform === "win32" ? "code-review-tour.cmd" : "code-review-tour");
+  const binary = join(paths.binRoot, platform === "win32" ? "diffcompass.cmd" : "diffcompass");
   const deferredTargets: string[] = [];
   if (platform === "win32") {
-    const marker = join(paths.binRoot, ".code-review-tour-managed");
+    const marker = join(paths.binRoot, ".diffcompass-managed");
     if (existsSync(marker)) {
       deferredTargets.push(binary, marker);
     }
@@ -234,7 +234,7 @@ async function uninstall(args: string[], environment: LifecycleEnvironment): Pro
     const cleanup = Bun.spawn(["powershell.exe", "-NoProfile", "-EncodedCommand", launcherEncoded], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
     if (await cleanup.exited !== 0) throw new Error("Could not schedule Windows uninstall cleanup.");
   }
-  return `Uninstalled Code Review Tour.${purge ? " Review sessions were removed." : " Review sessions were preserved."}`;
+  return `Uninstalled DiffCompass.${purge ? " Review sessions were removed." : " Review sessions were preserved."}`;
 }
 
 export async function runLifecycleCommand(command: string, args: string[], environment: LifecycleEnvironment = {}): Promise<string> {

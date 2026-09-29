@@ -14,7 +14,7 @@ test("selected comment quotations request syntax tokens by their anchored file a
   };
   const requests: Array<{ path: string; body: { groups: Array<{ id: string; path: string; lines: string[] }>; theme: string } }> = [];
   const highlightCommentQuotes = new Function("state", "document", "api", "syntaxTokenHtml", `${source}; return highlightCommentQuotes;`)(
-    { commentQuoteHighlightRequestId: 0, syntaxTheme: "review-tour" },
+    { commentQuoteHighlightRequestId: 0, syntaxTheme: "diffcompass" },
     { querySelectorAll: () => [quote] },
     async (path: string, init: { body: string }) => {
       const body = JSON.parse(init.body);
@@ -34,7 +34,7 @@ test("selected comment quotations request syntax tokens by their anchored file a
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({
     path: "/api/highlight",
-    body: { theme: "review-tour", groups: [{ path: "src/cart.ts", lines: ["const total = subtotal(items);", "return total;"] }] },
+    body: { theme: "diffcompass", groups: [{ path: "src/cart.ts", lines: ["const total = subtotal(items);", "return total;"] }] },
   });
   expect(quote.innerHTML).toBe("<token>const total = subtotal(items);</token>\n<token>return total;</token>");
 });

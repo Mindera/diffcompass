@@ -29,7 +29,7 @@ function session(overrides: Partial<PersistedReviewSession> = {}): PersistedRevi
 }
 
 async function libraryFixture() {
-  const directory = await mkdtemp(join(tmpdir(), "review-tour-library-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-library-"));
   directories.push(directory);
   await savePersistedSession(join(directory, "aaaaaaaa-1111.json"), session({ name: "Primary review" }));
   await savePersistedSession(join(directory, "bbbbbbbb-2222.json"), session({
@@ -125,15 +125,15 @@ test("retention max count is deterministic and CLI requires explicit apply", asy
 });
 
 test("temporary retention removes only stale owned directories", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "review-tour-retention-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-retention-"));
   const sessions = join(directory, "sessions");
   const temporaryRoot = join(directory, "tmp");
   directories.push(directory);
   await mkdir(sessions);
   await mkdir(temporaryRoot);
-  const stale = join(temporaryRoot, "code-review-tour-proposal-ABC123");
-  const recent = join(temporaryRoot, "code-review-tour-index-XYZ789");
-  const active = join(temporaryRoot, "code-review-tour-LIVE123");
+  const stale = join(temporaryRoot, "diffcompass-proposal-ABC123");
+  const recent = join(temporaryRoot, "diffcompass-index-XYZ789");
+  const active = join(temporaryRoot, "diffcompass-LIVE123");
   const unrelated = join(temporaryRoot, "some-other-tool-ABC123");
   await Promise.all([mkdir(stale), mkdir(recent), mkdir(active), mkdir(unrelated)]);
   await writeFile(join(active, ".active.json"), JSON.stringify({ pid: process.pid }));
@@ -165,7 +165,7 @@ test("temporary retention removes only stale owned directories", async () => {
 });
 
 test("retention refuses a persisted PR workspace outside its owned session directory", async () => {
-  const root = await mkdtemp(join(tmpdir(), "review-tour-retention-pr-"));
+  const root = await mkdtemp(join(tmpdir(), "diffcompass-retention-pr-"));
   directories.push(root);
   const directory = join(root, "sessions");
   const id = "aaaaaaaa-1111";
@@ -177,7 +177,7 @@ test("retention refuses a persisted PR workspace outside its owned session direc
     pullRequest: {
       repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
       baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: join(root, "source"),
-      workspaceRoot: maliciousWorkspace, refNamespace: "refs/code-review-tour/session", commits: [], checks: [], threads: [], threadsTruncated: false,
+      workspaceRoot: maliciousWorkspace, refNamespace: "refs/diffcompass/session", commits: [], checks: [], threads: [], threadsTruncated: false,
       updatedAt: "2026-08-01T00:00:00.000Z",
     },
     updatedAt: "2026-08-01T00:00:00.000Z",

@@ -12,13 +12,13 @@ afterEach(async () => {
 });
 
 test("approval patches preserve binary, deleted, and untracked files through apply and undo", async () => {
-  const root = await mkdtemp(join(tmpdir(), "review-tour-approval-"));
+  const root = await mkdtemp(join(tmpdir(), "diffcompass-approval-"));
   directories.push(root);
   const repository = join(root, "repository");
   await mkdir(repository);
   await runProcess(["git", "init", "-b", "main"], repository);
   await runProcess(["git", "config", "user.name", "Review Tour Test"], repository);
-  await runProcess(["git", "config", "user.email", "review-tour@example.test"], repository);
+  await runProcess(["git", "config", "user.email", "diffcompass@example.test"], repository);
   await writeFile(join(repository, "remove.txt"), "remove me\n");
   await writeFile(join(repository, "asset.bin"), Uint8Array.from([0, 1, 2, 3, 4, 5]));
   await runProcess(["git", "add", "-A"], repository);

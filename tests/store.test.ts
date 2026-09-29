@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 async function temporaryStateFile(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "review-tour-store-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-store-"));
   directories.push(directory);
   return join(directory, "nested", "session.json");
 }
@@ -569,7 +569,7 @@ test("pull request state is bounded and cannot redirect its workspace or publica
   valid.pullRequest = {
     repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
     baseRefName: "main", baseRefOid: valid.base, headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/private/tmp/repository",
-    workspaceRoot: workspace, refNamespace: "refs/code-review-tour/session", commits: [], checks: [], threads: [], threadsTruncated: false,
+    workspaceRoot: workspace, refNamespace: "refs/diffcompass/session", commits: [], checks: [], threads: [], threadsTruncated: false,
     publication: { intentId: crypto.randomUUID(), outcome: "feedback", commentIds: ["comment-1"], status: "pending" },
     updatedAt: "2026-08-09T00:00:00.000Z",
   };

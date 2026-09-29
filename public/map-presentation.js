@@ -13,11 +13,11 @@
     else frame.setAttribute('style', restoreStyle);
     inert.forEach(([node, previous]) => { node.inert = previous; });
     inert = [];
-    frame.contentWindow?.postMessage({ type: 'code-review-tour-map-present-state', active: false }, '*');
+    frame.contentWindow?.postMessage({ type: 'diffcompass-map-present-state', active: false }, '*');
     frame.focus({ preventScroll: true });
   }
   window.addEventListener('message', (event) => {
-    if (event.data?.type !== 'code-review-tour-map-present' || typeof event.data.active !== 'boolean') return;
+    if (event.data?.type !== 'diffcompass-map-present' || typeof event.data.active !== 'boolean') return;
     const frame = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame]')]
       .find(node => node.contentWindow === event.source);
     if (!frame || !frame.getClientRects().length) return;
@@ -37,7 +37,7 @@
         inert.push([sibling, sibling.inert]); sibling.inert = true;
       }
     }
-    frame.contentWindow.postMessage({ type: 'code-review-tour-map-present-state', active: true }, '*');
+    frame.contentWindow.postMessage({ type: 'diffcompass-map-present-state', active: true }, '*');
     frame.focus({ preventScroll: true });
   });
   document.addEventListener('keydown', (event) => {

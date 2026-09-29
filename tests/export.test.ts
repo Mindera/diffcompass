@@ -281,7 +281,7 @@ test("exports the bounded issue assessment with its model disclaimer", () => {
   const session = fixture();
   session.pullRequest = {
     repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
-    baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/widgets", workspaceRoot: "/tmp/widgets", refNamespace: "refs/code-review-tour/test",
+    baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/widgets", workspaceRoot: "/tmp/widgets", refNamespace: "refs/diffcompass/test",
     commits: [], checks: [{ name: "verify", state: "IN_PROGRESS", url: "https://github.com/acme/widgets/actions/runs/1" }], threads: [], threadsTruncated: false, mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE", providerScope: { linkedIssue: "same-repository-closing-issue", relatedResources: "not-requested" },
     linkedIssue: { repository: "acme/widgets", number: 12, url: "https://github.com/acme/widgets/issues/12", title: "Retry", access: "available", criteriaStatus: "found", acceptanceCriteria: [{ id: "criterion-1", text: "A request can be retried" }] }, updatedAt: "now",
   } as unknown as NonNullable<ReviewSession["pullRequest"]>;
@@ -301,7 +301,7 @@ test("exports a reviewer task without presenting it as GitHub data", () => {
   const session = fixture();
   session.pullRequest = {
     repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
-    baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/widgets", workspaceRoot: "/tmp/widgets", refNamespace: "refs/code-review-tour/test",
+    baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/widgets", workspaceRoot: "/tmp/widgets", refNamespace: "refs/diffcompass/test",
     commits: [], checks: [], threads: [], threadsTruncated: false, providerScope: { linkedIssue: "none", relatedResources: "not-requested" },
     reviewerTask: {
       body: "## Acceptance Criteria\n- [ ] A reviewer can save a local task",
@@ -327,6 +327,13 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact).toMatchObject({ contentType: "text/html; charset=utf-8", extension: "html" });
   expect(artifact.content).not.toContain('<script src=');
   expect(artifact.content).not.toContain('<link rel="stylesheet"');
+  const brand = artifact.content.match(/class="brand-mark" src="data:image\/svg\+xml;base64,([^\"]+)"/);
+  const favicon = artifact.content.match(/rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml;base64,([^\"]+)"/);
+  expect(brand).not.toBeNull();
+  expect(favicon).not.toBeNull();
+  expect(Buffer.from(brand![1]!, "base64").toString()).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
+  expect(Buffer.from(favicon![1]!, "base64").toString()).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
+  expect(artifact.content).not.toContain('src="/brand/');
   expect(artifact.content).not.toContain("</title><script>bad()");
   expect(artifact.content).not.toContain("<img src=x onerror=bad()>");
   expect(artifact.content).toContain("&lt;/title&gt;&lt;script&gt;bad()");
@@ -362,7 +369,7 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain("className='tour-code-note'");
   expect(artifact.content).toContain('<div class="mermaid sequence-diagram">sequenceDiagram');
   expect(artifact.content).toContain("mermaid.initialize");
-  expect(artifact.content).toContain('await mermaid.render("review-tour-export-diagram-"+index,source)');
+  expect(artifact.content).toContain('await mermaid.render("diffcompass-export-diagram-"+index,source)');
   expect(artifact.content).toContain('svg.style.maxWidth="100%"');
   expect(artifact.content).toContain('svg.style.width=naturalWidth?"min("+naturalWidth+"px, 100%)":"100%"');
   expect(artifact.content).toContain('svg.removeAttribute("width")');
@@ -392,7 +399,7 @@ test("HTML export embeds validated Archify artifacts and preserves the authored-
 
   const artifact = exportReview(session, "html");
   expect(artifact.content).toContain("Validated map");
-  expect(artifact.content).toContain("data-code-review-tour-camera");
+  expect(artifact.content).toContain("data-diffcompass-camera");
   expect(artifact.content).toContain("Fit entire map");
   expect(artifact.content).toContain('sandbox="allow-scripts allow-downloads"');
   expect(artifact.content).toContain('srcdoc="&lt;!doctype html&gt;');
@@ -431,7 +438,7 @@ test("HTML export preserves the selected wrapped diff presentation", () => {
 
 test("HTML export embeds server-prepared syntax highlighting", async () => {
   const session = fixture();
-  const highlightedGroups = await highlightGroups(htmlHighlightGroups(session), "review-tour");
+  const highlightedGroups = await highlightGroups(htmlHighlightGroups(session), "diffcompass");
   const artifact = exportReview(session, "html", { highlightedGroups });
   expect(artifact.content).toContain('class="syntax-token');
   expect(artifact.content).toContain("--syntax-dark:#");

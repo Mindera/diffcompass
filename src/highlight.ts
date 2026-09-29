@@ -31,11 +31,11 @@ const EXTENSIONS: Record<string, BuiltinLanguage> = {
 
 let highlighterPromise: ReturnType<typeof getSingletonHighlighter> | undefined;
 
-export const SYNTAX_THEMES = ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"] as const;
+export const SYNTAX_THEMES = ["github", "vitesse", "diffcompass", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"] as const;
 export type SyntaxTheme = typeof SYNTAX_THEMES[number];
 
-const REVIEW_TOUR_LIGHT: ThemeRegistration = {
-  name: "review-tour-light",
+const DIFFCOMPASS_LIGHT: ThemeRegistration = {
+  name: "diffcompass-light",
   type: "light",
   colors: { "editor.foreground": "#24292F", "editor.background": "#FFFFFF" },
   settings: [
@@ -50,8 +50,8 @@ const REVIEW_TOUR_LIGHT: ThemeRegistration = {
   ],
 };
 
-const REVIEW_TOUR_DARK: ThemeRegistration = {
-  name: "review-tour-dark",
+const DIFFCOMPASS_DARK: ThemeRegistration = {
+  name: "diffcompass-dark",
   type: "dark",
   colors: { "editor.foreground": "#D6DEEB", "editor.background": "#09111B" },
   settings: [
@@ -70,7 +70,7 @@ const REVIEW_TOUR_DARK: ThemeRegistration = {
 const THEME_PAIRS: Record<SyntaxTheme, { light: BuiltinTheme | ThemeRegistration; dark: BuiltinTheme | ThemeRegistration }> = {
   github: { light: "github-light", dark: "github-dark" },
   vitesse: { light: "vitesse-light", dark: "vitesse-dark" },
-  "review-tour": { light: REVIEW_TOUR_LIGHT, dark: REVIEW_TOUR_DARK },
+  "diffcompass": { light: DIFFCOMPASS_LIGHT, dark: DIFFCOMPASS_DARK },
   "catppuccin-frappe": { light: "catppuccin-frappe", dark: "catppuccin-frappe" },
   "catppuccin-macchiato": { light: "catppuccin-macchiato", dark: "catppuccin-macchiato" },
   "catppuccin-mocha": { light: "catppuccin-mocha", dark: "catppuccin-mocha" },
@@ -81,7 +81,7 @@ function highlighter() {
     themes: [
       "github-light", "github-dark", "vitesse-light", "vitesse-dark",
       "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha",
-      REVIEW_TOUR_LIGHT, REVIEW_TOUR_DARK,
+      DIFFCOMPASS_LIGHT, DIFFCOMPASS_DARK,
     ],
     langs: LANGUAGES,
   });

@@ -77,7 +77,7 @@ function stringArray(value: unknown, name: string, defaults: string[]): string[]
 }
 
 export async function loadRepositoryConfig(repositoryRoot: string): Promise<RepositoryConfig> {
-  const path = join(repositoryRoot, ".code-review-tour.json");
+  const path = join(repositoryRoot, ".diffcompass.json");
   let raw: string;
   try {
     const metadata = await lstat(path);

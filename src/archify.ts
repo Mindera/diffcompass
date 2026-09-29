@@ -33,7 +33,7 @@ export interface ArchifyCommandRunner {
 }
 
 export interface ArchifyRendererOptions {
-  /** An explicit local Archify skill checkout. It is never downloaded by Code Review Tour. */
+  /** An explicit local Archify skill checkout. It is never downloaded by DiffCompass. */
   directory?: string;
   runner?: ArchifyCommandRunner;
   now?: () => Date;
@@ -454,21 +454,21 @@ export class ArchifyRenderer {
   }
 
   static fromEnvironment(env: Record<string, string | undefined> = globalThis.process.env): ArchifyRenderer | undefined {
-    const directory = env.CODE_REVIEW_TOUR_ARCHIFY_DIR?.trim() || ArchifyRenderer.bundledDirectory();
+    const directory = env.DIFFCOMPASS_ARCHIFY_DIR?.trim() || ArchifyRenderer.bundledDirectory();
     return directory ? new ArchifyRenderer(directory) : undefined;
   }
 
   static bundledDirectory(executable = process.execPath): string | undefined {
-    const directory = resolve(dirname(realpathSync(executable)), "../share/code-review-tour/archify");
+    const directory = resolve(dirname(realpathSync(executable)), "../share/diffcompass/archify");
     return existsSync(join(directory, "bin/archify.mjs")) ? directory : undefined;
   }
 
   private async cli(): Promise<string> {
-    if (!isAbsolute(this.directory)) throw new Error("CODE_REVIEW_TOUR_ARCHIFY_DIR must be an absolute path to an installed Archify skill.");
+    if (!isAbsolute(this.directory)) throw new Error("DIFFCOMPASS_ARCHIFY_DIR must be an absolute path to an installed Archify skill.");
     const root = resolve(this.directory);
     const script = join(root, "bin", "archify.mjs");
     const [rootMetadata, scriptMetadata] = await Promise.all([lstat(root), lstat(script)]);
-    if (!rootMetadata.isDirectory() || !scriptMetadata.isFile()) throw new Error("Archify is unavailable: expected bin/archify.mjs in CODE_REVIEW_TOUR_ARCHIFY_DIR.");
+    if (!rootMetadata.isDirectory() || !scriptMetadata.isFile()) throw new Error("Archify is unavailable: expected bin/archify.mjs in DIFFCOMPASS_ARCHIFY_DIR.");
     return script;
   }
 
@@ -502,7 +502,7 @@ export class ArchifyRenderer {
   }
 
   private async renderCandidate(cli: string, candidate: ArchifyCandidate): Promise<ArchifyArtifact> {
-    const directory = await mkdtemp(join(tmpdir(), "code-review-tour-archify-"));
+    const directory = await mkdtemp(join(tmpdir(), "diffcompass-archify-"));
     const env = { ARCHIFY_UPDATE_CHECK_DISABLED: "1" };
     try {
       if (candidate.type === "architecture") {

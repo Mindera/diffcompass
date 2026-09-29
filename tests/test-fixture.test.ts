@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 test("materializes, resumes, and resets a complete deterministic tour fixture", async () => {
-  const parent = await mkdtemp(join(tmpdir(), "review-tour-fixture-test-"));
+  const parent = await mkdtemp(join(tmpdir(), "diffcompass-fixture-test-"));
   directories.push(parent);
   const root = join(parent, "fixture");
   const created = await prepareTestFixture({ root });

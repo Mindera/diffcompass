@@ -3,7 +3,7 @@ import { ReviewError } from "./errors.ts";
 import { runLifecycleCommand } from "./install-lifecycle.ts";
 import { runProcess } from "./process.ts";
 
-const RELEASE_REPOSITORY = "rcosteira79/code-review-tour";
+const RELEASE_REPOSITORY = "rcosteira79/diffcompass";
 const CHECK_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export interface UpdateStatus {
@@ -66,7 +66,7 @@ export function createUpdateService(options: {
         cached = { value, checkedAt: now() };
         return value;
       } catch {
-        throw new ReviewError("Could not check for Code Review Tour updates.");
+        throw new ReviewError("Could not check for DiffCompass updates.");
       }
     })().finally(() => { checking = undefined; });
     return checking;

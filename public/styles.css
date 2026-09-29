@@ -225,7 +225,11 @@ button { color: inherit; }
 .brand { gap: 10px; min-width: 0; }
 .brand { overflow: hidden; }
 .brand strong { flex-shrink: 0; white-space: nowrap; }
-.brand-mark { color: var(--accent); font-size: 20px; }
+.brand-mark { display: block; flex: 0 0 20px; width: 20px; height: 20px; }
+.brand-mark img { display: block; width: 20px; height: 20px; }
+.brand-mark .brand-mark-light { display: none; }
+:root[data-theme="light"] .brand-mark-dark { display: none; }
+:root[data-theme="light"] .brand-mark-light { display: block; }
 .review-identity { display: grid; min-width: 0; gap: 2px; }
 .repository-identity { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .comparison-identity { min-width: 0; overflow: hidden; color: var(--text-tree-muted); font: 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
@@ -335,8 +339,8 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .minus { color: var(--deletion-line); }
 
 .diff-panel { position: relative; overflow: auto; background: var(--background); overflow-anchor: none; }
-.current-step-return, .pull-request-return { position: fixed; z-index: 14; border-color: var(--accent-border); color: var(--text); background: color-mix(in srgb, var(--panel-raised) 92%, var(--accent)); box-shadow: 0 10px 28px var(--shadow); font-weight: 700; }
-.current-step-return:hover, .current-step-return:focus-visible, .pull-request-return:hover, .pull-request-return:focus-visible { border-color: var(--accent-strong); background: var(--surface-hover); }
+.diff-return { position: fixed; z-index: 14; border-color: var(--accent-border); color: var(--text); background: color-mix(in srgb, var(--panel-raised) 92%, var(--accent)); box-shadow: 0 10px 28px var(--shadow); padding: 6px 10px; font: 600 12px/1.3 system-ui, sans-serif; max-width: calc(100vw - 28px); }
+.diff-return:hover, .diff-return:focus-visible { border-color: var(--accent-strong); background: var(--surface-hover); }
 #diff { padding: 14px 14px max(180px, 24vh); scroll-padding-bottom: max(180px, 24vh); }
 .review-overview { margin: 12px 14px 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel); }
 .tour-overview h1 { margin: 4px 0 5px; font-size: 17px; line-height: 1.25; }
@@ -993,11 +997,13 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .structural-graph-legend i.root { border-color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 20%, var(--surface-control)); }
 .structural-graph-legend i.direct { border-color: var(--warning); }
 .structural-graph-legend i.external { border-style: dashed; }
-.structural-graph-help { margin-right: auto; color: var(--muted); font-weight: 500; }
-.structural-graph-actions { display: flex; gap: 4px; }
-.structural-graph-actions button { min-width: 27px; border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; color: var(--text); background: var(--surface-hover); font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
-.structural-graph-actions button:hover, .structural-graph-actions button:focus-visible { border-color: var(--accent-strong); outline: 0; }
-.structural-graph { display: block; width: 100%; height: auto; max-height: 340px; touch-action: pan-y; cursor: grab; user-select: none; }
+.structural-graph-help { margin: 0; padding: 7px 10px 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.structural-graph-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-left: auto; }
+.structural-graph-dialog { width: calc(100vw - 32px); max-width: none; height: calc(100dvh - 32px); max-height: none; padding: 0; overflow: hidden; }
+.structural-graph-dialog[open] { display: flex; }
+.structural-graph-dialog .structural-graph-shell { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+.structural-graph-dialog .structural-graph { flex: 1; height: 0; min-height: 0; }
+.structural-graph { display: block; width: 100%; height: clamp(440px, 68vh, 900px); touch-action: pan-y; cursor: grab; user-select: none; }
 .structural-graph.dragging { cursor: grabbing; }
 .structural-graph-backdrop { fill: color-mix(in srgb, var(--surface-code) 88%, var(--surface-control)); }
 .structural-graph-edge { fill: none; stroke: var(--muted); stroke-width: 2; opacity: .75; }

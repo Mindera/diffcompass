@@ -7,29 +7,29 @@
   --map-node-font: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .structural-graph-node rect,
-html[data-code-review-tour-embed] .diagram-container g[data-node-id] > rect,
+html[data-diffcompass-embed] .diagram-container g[data-node-id] > rect,
 .architecture-diagram .node rect {
   rx: var(--map-node-radius);
   ry: var(--map-node-radius);
   stroke-width: 1.5px;
 }
 .structural-graph-symbol,
-html[data-code-review-tour-embed] .diagram-container g[data-node-id] > text[data-node-label] {
+html[data-diffcompass-embed] .diagram-container g[data-node-id] > text[data-node-label] {
   font-family: var(--map-node-font);
   font-size: var(--map-node-title-size);
   font-weight: 600;
 }
 .structural-graph-location,
-html[data-code-review-tour-embed] .diagram-container g[data-node-id] > text[data-detail="context"] {
+html[data-diffcompass-embed] .diagram-container g[data-node-id] > text[data-detail="context"] {
   font-family: var(--map-node-font);
   font-size: var(--map-node-detail-size);
 }
 .structural-graph-node[role="button"]:hover,
-html[data-code-review-tour-embed] .diagram-container g[data-node-id][role="button"]:hover {
+html[data-diffcompass-embed] .diagram-container g[data-node-id][role="button"]:hover {
   filter: brightness(1.12);
 }
 .structural-graph-node[role="button"]:focus-visible rect,
-html[data-code-review-tour-embed] .diagram-container g[data-node-id]:focus-visible > rect:not(.c-mask) {
+html[data-diffcompass-embed] .diagram-container g[data-node-id]:focus-visible > rect:not(.c-mask) {
   stroke-width: 3px;
 }
 .structural-graph-node.root rect { stroke-width: 2px; }

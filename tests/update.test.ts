@@ -38,6 +38,6 @@ test("does not invoke the installer when already current", async () => {
 
 test("turns discovery failures into a bounded user-facing error", async () => {
   const service = createUpdateService({ latestVersion: async () => { throw new Error("sensitive command output"); } });
-  await expect(service.status()).rejects.toThrow("Could not check for Code Review Tour updates.");
+  await expect(service.status()).rejects.toThrow("Could not check for DiffCompass updates.");
   await expect(service.status()).rejects.not.toThrow("sensitive command output");
 });

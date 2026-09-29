@@ -37,17 +37,17 @@ interface Options {
 }
 
 function printHelp(): void {
-  console.log(`Code Review Tour ${packageJson.version}
+  console.log(`DiffCompass ${packageJson.version}
 
 Usage:
-  code-review-tour [options]
-  code-review-tour doctor
-  code-review-tour bridge context|next|respond|ack|renew|refresh [options]
-  code-review-tour pr URL|NUMBER [options]
-  code-review-tour sessions [list|resume|rename|archive|unarchive|delete|prune]
-  code-review-tour update [--version VERSION] [--minimal]
-  code-review-tour rollback [--to VERSION]
-  code-review-tour uninstall [--dry-run|--yes] [--purge]
+  diffcompass [options]
+  diffcompass doctor
+  diffcompass bridge context|next|respond|ack|renew|refresh [options]
+  diffcompass pr URL|NUMBER [options]
+  diffcompass sessions [list|resume|rename|archive|unarchive|delete|prune]
+  diffcompass update [--version VERSION] [--minimal]
+  diffcompass rollback [--to VERSION]
+  diffcompass uninstall [--dry-run|--yes] [--purge]
 
 Options:
   --repo PATH          Repository to review (default: current directory)
@@ -172,7 +172,7 @@ if ((options.callerModel || options.callerReasoning) && !options.attached && !op
 options.pullRequest = pullRequestIdentifier;
 const stateFile = options.resume ?? join(
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),
-  "code-review-tour",
+  "diffcompass",
   "sessions",
   `${crypto.randomUUID()}.json`,
 );
@@ -270,12 +270,12 @@ const server = startServer(session, options.port, undefined, options.previewRedi
 const baseUrl = `http://${server.hostname}:${server.port}`;
 const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${options.startTour ? "&intro=1" : ""}`;
 const deferReviewUrl = options.open && options.startTour;
-if (!deferReviewUrl) console.log(`Code Review Tour: ${reviewUrl}`);
+if (!deferReviewUrl) console.log(`DiffCompass: ${reviewUrl}`);
 console.log(`Repository: ${session.comparison.repositoryRoot}`);
 console.log(`Comparison: ${session.comparison.base} (${session.comparison.mergeBase.slice(0, 8)}) → working tree`);
 console.log(`Tour agents: ${session.agentAdapters.map((adapter) => adapter.label).join(", ") || "none detected"}`);
 console.log(`Session state: ${canonicalStatePath}`);
-console.log(`Resume: code-review-tour --resume ${JSON.stringify(canonicalStatePath)}`);
+console.log(`Resume: diffcompass --resume ${JSON.stringify(canonicalStatePath)}`);
 let shuttingDown = false;
 const shutdown = async (bridgeDirectory?: string, force = false) => {
   if (shuttingDown) return;
@@ -289,7 +289,7 @@ const shutdown = async (bridgeDirectory?: string, force = false) => {
   if (bridgeDirectory) await rm(bridgeDirectory, { recursive: true, force: true });
 };
 if (session.bridge) {
-  const bridgeDirectory = await mkdtemp(join(tmpdir(), "code-review-tour-"));
+  const bridgeDirectory = await mkdtemp(join(tmpdir(), "diffcompass-"));
   await writeFile(join(bridgeDirectory, ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
   const bridgeTokenFile = join(bridgeDirectory, "bridge-token");
   await writeFile(bridgeTokenFile, session.bridge.token, { mode: 0o600 });
@@ -316,7 +316,7 @@ const automaticTour = options.startTour ? session.startTour() : undefined;
 
 if (options.open) {
   await prepareAndOpenReviewPage(automaticTour, reviewUrl);
-  if (deferReviewUrl) console.log(`Code Review Tour: ${reviewUrl}`);
+  if (deferReviewUrl) console.log(`DiffCompass: ${reviewUrl}`);
 } else if (automaticTour) {
   void automaticTour.catch((error) => {
     console.error(`Could not start the tour automatically: ${error instanceof Error ? error.message : String(error)}`);

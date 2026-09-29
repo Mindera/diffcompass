@@ -659,7 +659,7 @@ function progressFromJsonLines(report: ((update: { status: "waiting" | "running"
 }
 
 async function withTemporaryAttachment<T>(attachment: { name: string; content: string }, action: (path: string) => Promise<T>): Promise<T> {
-  const directory = await mkdtemp(join(tmpdir(), "code-review-tour-agent-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-agent-"));
   const path = join(directory, attachment.name);
   try {
     await writeFile(path, attachment.content, { encoding: "utf8", mode: 0o600 });
@@ -859,7 +859,7 @@ async function proposalWorkspaceFromPrompt(prompt: string): Promise<string | und
   try {
     const [workspace, temporary] = await Promise.all([realpath(requested), realpath(tmpdir())]);
     const parts = relative(temporary, workspace).split(sep);
-    if (parts.length !== 2 || !parts[0]?.startsWith("code-review-tour-proposal-") || parts[1] !== "workspace") return undefined;
+    if (parts.length !== 2 || !parts[0]?.startsWith("diffcompass-proposal-") || parts[1] !== "workspace") return undefined;
     return workspace;
   } catch {
     return undefined;
@@ -908,7 +908,7 @@ class AttachedFallbackTransport implements AgentTransport {
     const proposal = workspace ? createProposalTransport(workspace, this.selection, this.signal) : undefined;
     if (!workspace || !proposal) return this.readOnly.send(prompt, kind, attachment, progress);
 
-    const verificationPath = join(workspace, `.code-review-tour-verification-${crypto.randomUUID()}.txt`);
+    const verificationPath = join(workspace, `.diffcompass-verification-${crypto.randomUUID()}.txt`);
     try {
       const fallbackPrompt = `${prompt}\n\nYou are the local fallback for the triggering agent. You have scoped write access only to the isolated proposal workspace, which is your current working directory. Make a concrete requested edit there rather than returning a plan. Do not use or mention plan-mode tools. Run proportionate verification, then write a short plain-text summary of the commands and outcomes to ${JSON.stringify(verificationPath)}. If no edit was requested or made, do not create that file.`;
       const response = await proposal.send(fallbackPrompt, kind, attachment, progress);
@@ -1076,7 +1076,7 @@ export class TourAgent {
       .map((file) => `- ${file.path} (+${file.additions}/-${file.deletions})`)
       .join("\n");
     const issueContext = issueAssessmentPromptContext(issue);
-    const prompt = `You are conducting an interactive code-review tour. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Plan a coherent review sequence that explains intent and behavior, not file order. Do not modify files.
+    const prompt = `You are conducting an interactive change walkthrough. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Plan a coherent review sequence that explains intent and behavior, not file order. Do not modify files.
 
 Changed files:
 ${changedFiles}

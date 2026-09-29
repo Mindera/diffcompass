@@ -1,10 +1,17 @@
-# Code Review Tour
+# DiffCompass
+
+DiffCompass helps you understand a change and how it affects an existing codebase.
+
+Version 2 is a breaking rename: use the `diffcompass` command and skill,
+`.diffcompass.json` configuration, and `DIFFCOMPASS_*` environment variables.
+Installations and saved sessions now live under the `diffcompass` directories.
+Previous installations and saved data are not deleted or automatically migrated.
 
 A local, agent-led walkthrough for Git changes. Understand the change in an
 ordered tour, inspect the full diff, ask contextual questions, propose edits,
 and complete a local or GitHub review without leaving the browser.
 
-![Code Review Tour with changed files, a split diff, conversations, and explicit review decisions](docs/images/overview.png)
+![DiffCompass with changed files, a split diff, conversations, and explicit review decisions](docs/images/overview.png)
 
 [Install](#install) · [Run](#run) · [Capabilities](#capabilities) ·
 [GitHub PRs](#github-pull-requests) · [Configuration](#repository-defaults) ·
@@ -18,16 +25,16 @@ an authenticated GitHub account with repository access:
 
 ```sh
 gh auth login
-gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.sh | bash
-code-review-tour doctor
+gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/diffcompass/contents/scripts/install.sh | bash
+diffcompass doctor
 ```
 
 Windows PowerShell:
 
 ```powershell
 gh auth login
-& ([scriptblock]::Create((gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/code-review-tour/contents/scripts/install.ps1 | Out-String)))
-code-review-tour doctor
+& ([scriptblock]::Create((gh api -H "Accept: application/vnd.github.raw+json" repos/rcosteira79/diffcompass/contents/scripts/install.ps1 | Out-String)))
+diffcompass doctor
 ```
 
 The installer downloads private release assets through authenticated `gh`,
@@ -38,13 +45,13 @@ your token. Users without repository access cannot install private releases.
 | Need | Command or option |
 | --- | --- |
 | Binary only; do not install skills | Append `--minimal` or `--binary-only` (`-Minimal` on Windows) |
-| Pin a release | `CODE_REVIEW_TOUR_VERSION=v1.2.0` before `bash` |
-| Update | `code-review-tour update [--version vX.Y.Z]` |
-| Roll back | `code-review-tour rollback [--to X.Y.Z]` |
-| Preview uninstall | `code-review-tour uninstall --dry-run` |
-| Uninstall | `code-review-tour uninstall --yes` |
-| Also remove saved reviews | `code-review-tour uninstall --yes --purge` |
-| Custom install locations | `CODE_REVIEW_TOUR_BIN_ROOT`, `CODE_REVIEW_TOUR_INSTALL_ROOT`, and per-agent `*_SKILL_ROOT` variables |
+| Pin a release | `DIFFCOMPASS_VERSION=v1.2.0` before `bash` |
+| Update | `diffcompass update [--version vX.Y.Z]` |
+| Roll back | `diffcompass rollback [--to X.Y.Z]` |
+| Preview uninstall | `diffcompass uninstall --dry-run` |
+| Uninstall | `diffcompass uninstall --yes` |
+| Also remove saved reviews | `diffcompass uninstall --yes --purge` |
+| Custom install locations | `DIFFCOMPASS_BIN_ROOT`, `DIFFCOMPASS_INSTALL_ROOT`, and per-agent `*_SKILL_ROOT` variables |
 
 Updates preserve minimal installations unless `--no-minimal` is explicit.
 Uninstall preserves review sessions unless `--purge` is explicit and never
@@ -57,15 +64,15 @@ instead clone the repository and run `./scripts/install.sh` or
 Review a branch or working tree against its merge base:
 
 ```sh
-code-review-tour --repo /path/to/repository --base origin/main --open
+diffcompass --repo /path/to/repository --base origin/main --open
 ```
 
-Ask an agent with the bundled [code-review-tour skill](skills/code-review-tour/SKILL.md)
+Ask an agent with the bundled [diffcompass skill](skills/diffcompass/SKILL.md)
 to start an attached review, or launch one directly while the agent serves the
 bridge:
 
 ```sh
-code-review-tour --attached --start-tour --open --preview-redirect \
+diffcompass --attached --start-tour --open --preview-redirect \
   --repo /path/to/repository
 ```
 
@@ -127,7 +134,7 @@ returns to the active stop.
 | Responsive UI | Files drawer, horizontally scrolling tabs, unified mobile default, touch-sized line actions, keyboard-aware forms, stacked image previews, and separate Tour/Questions controls. |
 
 Application appearance (`System`, `Light`, `Dark`) is independent of syntax
-themes (`GitHub`, `Vitesse`, `Review Tour`, and Catppuccin Frappé, Macchiato,
+themes (`GitHub`, `Vitesse`, `DiffCompass`, and Catppuccin Frappé, Macchiato,
 or Mocha).
 
 ### Questions, comments, and edits
@@ -166,8 +173,8 @@ a pinned Archify renderer, run with the executable's embedded runtime—no Node
 installation or separate checkout is required. Supported diagrams gain interactive
 node inspection and Fit/zoom/pan controls. Other diagrams remain available through
 Mermaid. Developers can override the bundled renderer with
-`CODE_REVIEW_TOUR_ARCHIFY_DIR`. Archify's MIT license, font license, upstream notices,
-and pinned revision are included in `share/code-review-tour/archify`; optional
+`DIFFCOMPASS_ARCHIFY_DIR`. Archify's MIT license, font license, upstream notices,
+and pinned revision are included in `share/diffcompass/archify`; optional
 third-party brand logos are excluded.
 
 Architecture comparisons show Before, Delta, and After when the saved evidence
@@ -239,8 +246,8 @@ Authenticate GitHub CLI and launch from a checkout of the same repository:
 
 ```sh
 gh auth login
-code-review-tour pr 106 --repo /path/to/repository --open
-code-review-tour pr https://github.com/OWNER/REPOSITORY/pull/106 \
+diffcompass pr 106 --repo /path/to/repository --open
+diffcompass pr https://github.com/OWNER/REPOSITORY/pull/106 \
   --repo /path/to/repository --attached --start-tour --open
 ```
 
@@ -280,17 +287,17 @@ return to the launching agent; GitHub publication always requires confirmation.
 Manage saved tours in `Settings → Manage sessions` or from the CLI:
 
 ```sh
-code-review-tour sessions
-code-review-tour sessions --all
-code-review-tour sessions resume 169dedd6 --open
-code-review-tour sessions rename 169dedd6 "Push notification review"
-code-review-tour sessions archive 169dedd6
-code-review-tour sessions unarchive 169dedd6
-code-review-tour sessions delete 169dedd6 --yes
-code-review-tour sessions prune --repo . --days 30 --max 50 [--yes]
+diffcompass sessions
+diffcompass sessions --all
+diffcompass sessions resume 169dedd6 --open
+diffcompass sessions rename 169dedd6 "Push notification review"
+diffcompass sessions archive 169dedd6
+diffcompass sessions unarchive 169dedd6
+diffcompass sessions delete 169dedd6 --yes
+diffcompass sessions prune --repo . --days 30 --max 50 [--yes]
 ```
 
-Sessions live under `${XDG_STATE_HOME:-~/.local/state}/code-review-tour/sessions`
+Sessions live under `${XDG_STATE_HOME:-~/.local/state}/diffcompass/sessions`
 and are written atomically. Pruning previews by default, honors repository
 retention defaults, preserves archived sessions unless requested, and can remove
 stale tool-owned temporary directories with `--temp-hours N`. Process locks
@@ -314,7 +321,7 @@ git config branch.my-feature.reviewTourBase parent-feature
 
 ## Repository defaults
 
-Add `.code-review-tour.json` at the repository root:
+Add `.diffcompass.json` at the repository root:
 
 ```json
 {
@@ -393,7 +400,7 @@ bun run src/cli.ts --repo /path/to/repository --base origin/main --open
 
 For a development-only global command, run `bun install --global .` and ensure
 `bun pm bin -g` is on `PATH`. Internal attached operations use
-`code-review-tour bridge`. See [docs/agent-adapters.md](docs/agent-adapters.md)
+`diffcompass bridge`. See [docs/agent-adapters.md](docs/agent-adapters.md)
 for standalone discovery, continuation, and read-only execution contracts.
 
 ### Reusable test fixture

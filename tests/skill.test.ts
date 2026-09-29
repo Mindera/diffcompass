@@ -5,7 +5,7 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "..");
 
 test("the attached-agent skill defaults to bounded polling and scopes continuous watch to persistent hosts", async () => {
-  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
   expect(skill).toContain("Poll for work with one bounded");
   expect(skill).toContain("Do not put repeated polls in one long-running Bash loop");
   expect(skill).toContain("invoke `bridge next` again immediately");
@@ -16,7 +16,7 @@ test("the attached-agent skill defaults to bounded polling and scopes continuous
 });
 
 test("the attached-agent skill documents authoritative event and anchor shapes", async () => {
-  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
   expect(skill).toContain("event's own JSON and complete prompt in full");
   expect(skill).toContain("{ path, side, startLine, endLine }");
   expect(skill).toContain("not `{ path, side, line }`");
@@ -24,7 +24,7 @@ test("the attached-agent skill documents authoritative event and anchor shapes",
 });
 
 test("the attached-agent skill scopes preview redirects and media evidence", async () => {
-  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
   expect(skill).toContain("--attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH");
   expect(skill).toContain("Pass `--preview-redirect` by default");
   expect(skill).toContain("unrelated to the attached bridge token");
@@ -34,7 +34,7 @@ test("the attached-agent skill scopes preview redirects and media evidence", asy
 });
 
 test("the attached-agent skill keeps reviewer conversations concise, contextual, and scoped", async () => {
-  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
   expect(skill).toContain("Lead with the direct answer and default to a concise response");
   expect(skill).toContain("preceding reviewer conversation");
   expect(skill).toContain("Once the reviewer clarifies the intended scope, follow that clarification");
@@ -43,7 +43,7 @@ test("the attached-agent skill keeps reviewer conversations concise, contextual,
 });
 
 test("the attached-agent skill isolates tour framing and requires conceptual phase layers", async () => {
-  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
   expect(skill).toContain("fresh first-time reading of the selected base-to-tip or working-tree comparison");
   expect(skill).toContain("Ignore prior chat, caller implementation history, remembered iterations");
   expect(skill).toContain('use `fork_turns="none"`');
@@ -59,7 +59,7 @@ test("the attached-agent skill isolates tour framing and requires conceptual pha
 });
 
 test("the attached-agent skill resolves feedback without inventing edits or unrelated fixes", async () => {
-  const skill = await readFile(join(root, "skills/code-review-tour/SKILL.md"), "utf8");
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
   expect(skill).toContain("comments` together as concerns to resolve");
   expect(skill).toContain("For an investigative question, verify the concern");
   expect(skill).toContain("For a pure clarification, report the answer without inventing an edit");

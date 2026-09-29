@@ -5,13 +5,13 @@ const DEFAULT_BRIEFING_ORDER = ["architecture", "sequence-diagrams", "call-flows
 let briefingDrag = null;
 let briefingKeyboardDragKey = null;
 if (fragmentToken) {
-  window.sessionStorage.setItem("review-tour-token", fragmentToken);
+  window.sessionStorage.setItem("diffcompass-token", fragmentToken);
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
 
 const state = {
   session: null,
-  apiToken: fragmentToken ?? window.sessionStorage.getItem("review-tour-token"),
+  apiToken: fragmentToken ?? window.sessionStorage.getItem("diffcompass-token"),
   selectedLine: null,
   codeSelection: null,
   deletingCommentId: null,
@@ -83,6 +83,7 @@ const state = {
   findingReturn: null,
   structuralBlastRadiusId: null,
   structuralGraphViews: new Map(),
+  structuralGraphReturn: null,
   structuralDisclosureStates: new Map(),
   structuralGraphDrag: null,
   pollInFlight: false,
@@ -98,8 +99,8 @@ const state = {
   reviewerTaskCollapsed: false,
   reviewerTaskMode: "write",
   pullRequestWide: false,
-  syntaxTheme: ["github", "vitesse", "review-tour", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("review-tour-syntax-theme"))
-    ? window.localStorage.getItem("review-tour-syntax-theme")
+  syntaxTheme: ["github", "vitesse", "diffcompass", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"].includes(window.localStorage.getItem("diffcompass-syntax-theme"))
+    ? window.localStorage.getItem("diffcompass-syntax-theme")
     : "github",
   commentQuoteHighlightRequestId: 0,
   screenshotUrls: new Map(),
@@ -795,7 +796,7 @@ async function saveReviewerTask() {
 async function api(path, options = {}) {
   if (!state.apiToken) throw new Error("This review URL is missing its session token. Reopen the URL printed by the server.");
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", "X-Review-Tour-Token": state.apiToken },
+    headers: { "Content-Type": "application/json", "X-DiffCompass-Token": state.apiToken },
     ...options,
   });
   const value = await response.json();
@@ -805,7 +806,7 @@ async function api(path, options = {}) {
 
 async function apiBlob(path) {
   if (!state.apiToken) throw new Error("This review URL is missing its session token. Reopen the URL printed by the server.");
-  const response = await fetch(path, { headers: { "X-Review-Tour-Token": state.apiToken } });
+  const response = await fetch(path, { headers: { "X-DiffCompass-Token": state.apiToken } });
   if (!response.ok) {
     const value = await response.json().catch(() => ({}));
     throw new Error(value.error || `Request failed: ${response.status}`);
@@ -893,7 +894,7 @@ async function checkForUpdate() {
     const status = await api("/api/update");
     if (!status.updateAvailable) return;
     elements["update-label"].textContent = `Update ${status.latestVersion}`;
-    elements["update-button"].title = `Install Code Review Tour ${status.latestVersion}`;
+    elements["update-button"].title = `Install DiffCompass ${status.latestVersion}`;
     elements["update-button"].classList.remove("hidden", "updated");
     elements["update-button"].classList.add("available");
   } catch {
@@ -915,8 +916,8 @@ async function installUpdate() {
     button.classList.remove("updating");
     button.classList.add("updated");
     elements["update-label"].textContent = `Updated ${status.latestVersion}`;
-    button.title = "Restart Code Review Tour to use the new version";
-    toast(`Code Review Tour ${status.latestVersion} is installed. Restart this review when convenient.`);
+    button.title = "Restart DiffCompass to use the new version";
+    toast(`DiffCompass ${status.latestVersion} is installed. Restart this review when convenient.`);
   } catch (error) {
     button.classList.remove("updating");
     button.classList.add("available");
@@ -1191,7 +1192,7 @@ function setFilePanelOpen(open, { restoreFocus = false } = {}) {
 
 function preferenceKey(name) {
   const repository = state.session.pullRequest?.sourceRepositoryRoot ?? state.session.comparison.repositoryRoot;
-  return `review-tour:${repository}:${name}`;
+  return `diffcompass:${repository}:${name}`;
 }
 
 function diffLayoutPreferenceKey() {
@@ -3065,7 +3066,7 @@ function archifyArtifactCard(artifact) {
 }
 
 window.addEventListener("message", (event) => {
-  if (event.data?.type !== "code-review-tour-map-scroll" || !Number.isFinite(event.data.deltaY)) return;
+  if (event.data?.type !== "diffcompass-map-scroll" || !Number.isFinite(event.data.deltaY)) return;
   const frame = [...document.querySelectorAll("iframe.archify-frame")].find((candidate) => candidate.contentWindow === event.source);
   if (!frame || !frame.getClientRects().length) return;
   const pane = frame.closest(".diff-panel");
@@ -3143,7 +3144,11 @@ function tourIntroSequenceCard(flow, index) {
   return `<article class="tour-intro-chart tour-intro-flow-card">
     <div class="tour-intro-chart-heading"><div><span class="architecture-label">Sequence diagram</span><h4>${escapeHtml(flow.title)}</h4></div><div class="flow-actions">${dryRunEntryButton("sequence", flow.id)}${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}</div></div>
     <p>${escapeHtml(flow.summary)}</p>
-    <div class="sequence-diagram mermaid-render" data-tour-intro-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
+    <div class="architecture-diagram-shell" data-architecture-key="intro-sequence-${escapeHtml(flow.id)}">
+      ${architectureDiagramControls("Sequence")}
+      <div class="sequence-diagram architecture-diagram mermaid-render" data-architecture-diagram="intro-sequence-${escapeHtml(flow.id)}" data-tour-intro-flow-index="${index}" role="img" tabindex="0" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
+      <p class="diagram-help">${DIAGRAM_INTERACTION_HELP}</p>
+    </div>
     <p class="tour-intro-flow-impact">Affects ${flow.affectedFiles?.length || flow.blastRadiusSize} changed file${(flow.affectedFiles?.length || flow.blastRadiusSize) === 1 ? "" : "s"}.</p>
   </article>`;
 }
@@ -3770,11 +3775,15 @@ function structuralGraphSvg(radius) {
     const source = node.location ? `data-structural-path="${escapeHtml(node.location.path)}" data-structural-side="${escapeHtml(node.location.side)}" data-structural-line="${node.location.line}"` : "";
     const interactive = node.location ? " role=\"button\" tabindex=\"0\"" : "";
     const role = structuralGraphNodeRole(radius, node, root, direct);
-    return `<g class="${classes}" transform="translate(${position.x} ${position.y})"${interactive} ${source} aria-label="${escapeHtml(`${role}: ${node.symbol}, ${location}`)}"><title>${escapeHtml(`${role}: ${node.symbol} · ${location}`)}</title><rect x="-82" y="-30" width="164" height="60" rx="8"></rect>${root ? `<text class="structural-graph-role" x="0" y="-15" text-anchor="middle">${escapeHtml(structuralSelectedLabel(radius))}</text>` : ""}<text class="structural-graph-symbol" x="0" y="${root ? 1 : -3}" text-anchor="middle">${escapeHtml(structuralGraphNodeLabel(node))}</text><text class="structural-graph-location" x="0" y="${root ? 18 : 13}" text-anchor="middle">${escapeHtml(graphLocation)}</text></g>`;
+    return `<g class="${classes}" data-structural-node="${escapeHtml(node.id)}" transform="translate(${position.x} ${position.y})"${interactive} ${source} aria-label="${escapeHtml(`${role}: ${node.symbol}, ${location}`)}"><title>${escapeHtml(`${role}: ${node.symbol} · ${location}`)}</title><rect x="-82" y="-30" width="164" height="60" rx="8"></rect>${root ? `<text class="structural-graph-role" x="0" y="-15" text-anchor="middle">${escapeHtml(structuralSelectedLabel(radius))}</text>` : ""}<text class="structural-graph-symbol" x="0" y="${root ? 1 : -3}" text-anchor="middle">${escapeHtml(structuralGraphNodeLabel(node))}</text><text class="structural-graph-location" x="0" y="${root ? 18 : 13}" text-anchor="middle">${escapeHtml(graphLocation)}</text></g>`;
   }).join("");
   const labels = structuralConnectionLabels(radius);
   const external = structuralExternalLegendLabel(radius);
-  return `<div class="structural-graph-shell"><div class="structural-graph-toolbar"><div><strong>${escapeHtml(structuralGraphHeading(radius))}</strong><div class="structural-graph-legend" aria-label="Graph legend"><span><i class="root"></i>${escapeHtml(structuralSelectedLabel(radius))}</span><span><i class="direct"></i>${escapeHtml(labels.direct)}</span><span><i class="indirect"></i>${escapeHtml(labels.indirect)}</span>${external ? `<span><i class="external"></i>${escapeHtml(external)}</span>` : ""}</div></div><span class="structural-graph-help">Arrows point toward the selected item · drag canvas background · Ctrl/⌘ + scroll to zoom · click a source node to open it</span><div class="structural-graph-actions"><button type="button" data-structural-graph-action="zoom-out" aria-label="Zoom out">−</button><button type="button" data-structural-graph-action="reset" aria-label="Fit entire graph">Fit</button><button type="button" data-structural-graph-action="zoom-in" aria-label="Zoom in">+</button></div></div><svg class="structural-graph" data-structural-graph-radius="${escapeHtml(radius.id)}" data-structural-graph-width="${width}" style="aspect-ratio: ${width} / ${height}; max-width: ${width}px; margin-inline: auto" viewBox="0 0 ${width} ${height}" role="group" aria-label="Static ${escapeHtml(structuralGraphHeading(radius).toLowerCase())} for selected ${escapeHtml(radius.symbol.symbol)}" tabindex="0"><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs><rect class="structural-graph-backdrop" width="${width}" height="${height}" rx="10"></rect><g data-structural-graph-canvas transform="translate(${view.x} ${view.y}) scale(${view.scale})">${edgeMarkup}${nodeMarkup}</g></svg><p class="structural-graph-caption">Static relationships only; not confirmed runtime impact.</p></div>`;
+  const controls = architectureDiagramControls(structuralGraphHeading(radius))
+    .replaceAll("data-diagram-action", "data-structural-graph-action")
+    .replaceAll('="move-', '="pan-')
+    .replace(">100%</button>", `>${Math.round(view.scale * 100)}%</button>`);
+  return `<div class="structural-graph-shell"><div class="structural-graph-toolbar"><div><strong>${escapeHtml(structuralGraphHeading(radius))}</strong><div class="structural-graph-legend" aria-label="Graph legend"><span><i class="root"></i>${escapeHtml(structuralSelectedLabel(radius))}</span><span><i class="direct"></i>${escapeHtml(labels.direct)}</span><span><i class="indirect"></i>${escapeHtml(labels.indirect)}</span>${external ? `<span><i class="external"></i>${escapeHtml(external)}</span>` : ""}</div></div><div class="structural-graph-actions">${controls}<button class="diagram-expand-button" type="button" data-structural-graph-expand aria-label="Expand caller graph"><span aria-hidden="true">⛶</span> Expand</button></div></div><svg class="structural-graph" data-structural-graph-radius="${escapeHtml(radius.id)}" data-structural-graph-width="${width}" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${width} ${height}" role="group" aria-label="Static ${escapeHtml(structuralGraphHeading(radius).toLowerCase())} for selected ${escapeHtml(radius.symbol.symbol)}" tabindex="0"><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs><rect class="structural-graph-backdrop" width="${width}" height="${height}" rx="10"></rect><g data-structural-graph-canvas transform="translate(${view.x} ${view.y}) scale(${view.scale})">${edgeMarkup}${nodeMarkup}</g></svg><p class="structural-graph-help">Arrows point toward the selected item · Drag to pan · Ctrl/⌘ + scroll to zoom · Click a node to open source</p><p class="structural-graph-caption">Static relationships only; not confirmed runtime impact.</p></div>`;
 }
 
 function structuralBlastRadiusCard(radius) {
@@ -3822,10 +3831,50 @@ function structuralGraphElement(radiusId) {
   return [...elements["structural-blast-radius"].querySelectorAll(".structural-graph")].find((graph) => graph.dataset.structuralGraphRadius === radiusId);
 }
 
+function returnToStructuralGraph() {
+  const target = state.structuralGraphReturn;
+  if (!target) return;
+  state.structuralBlastRadiusId = target.radiusId;
+  state.tabScrollPositions.set("structural-blast-radius", target.scrollTop);
+  openMaps("structural-blast-radius");
+  elements["diff-panel"].scrollTop = target.scrollTop;
+  const graph = structuralGraphElement(target.radiusId);
+  const node = [...(graph?.querySelectorAll("[data-structural-node]") ?? [])]
+    .find((entry) => entry.dataset.structuralNode === target.nodeId);
+  (node ?? graph)?.focus({ preventScroll: true });
+  state.structuralGraphReturn = null;
+  document.getElementById("structural-source-return").classList.add("hidden");
+}
+
 function applyStructuralGraphView(radiusId) {
   const graph = structuralGraphElement(radiusId);
   const view = structuralGraphView(radiusId);
   graph?.querySelector("[data-structural-graph-canvas]")?.setAttribute("transform", `translate(${view.x} ${view.y}) scale(${view.scale})`);
+  const label = graph?.closest?.(".structural-graph-shell")?.querySelector("[data-diagram-zoom-label]");
+  if (label) label.textContent = `${Math.round(view.scale * 100)}%`;
+}
+
+function expandStructuralGraph(button) {
+  const shell = button.closest(".structural-graph-shell");
+  const existing = shell.closest(".structural-graph-dialog");
+  if (existing) { existing.close(); return; }
+  const placeholder = document.createComment("caller graph");
+  const dialog = document.createElement("dialog");
+  dialog.className = "structural-graph-dialog";
+  dialog.setAttribute("aria-label", "Expanded caller graph");
+  shell.before(placeholder);
+  shell.parentElement.append(dialog);
+  dialog.append(shell);
+  button.innerHTML = '<span aria-hidden="true">⛶</span> Close';
+  button.setAttribute("aria-label", "Close expanded graph");
+  dialog.addEventListener("close", () => {
+    placeholder.replaceWith(shell);
+    dialog.remove();
+    button.innerHTML = '<span aria-hidden="true">⛶</span> Expand';
+    button.setAttribute("aria-label", "Expand caller graph");
+    button.focus({ preventScroll: true });
+  }, { once: true });
+  dialog.showModal();
 }
 
 function changeStructuralGraphView(radiusId, action) {
@@ -3866,7 +3915,11 @@ function renderSequenceDiagrams() {
     return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
       <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details>${dryRunEntryButton("sequence", flow.id)}${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}<button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
-      <div class="sequence-diagram mermaid-render" data-flow-index="${index}" role="img" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
+      <div class="architecture-diagram-shell" data-architecture-key="sequence-${escapeHtml(flow.id)}">
+        ${architectureDiagramControls("Sequence")}
+        <div class="sequence-diagram architecture-diagram mermaid-render" data-architecture-diagram="sequence-${escapeHtml(flow.id)}" data-flow-index="${index}" role="img" tabindex="0" aria-label="Sequence diagram: ${escapeHtml(flow.title)}"><span class="loading">Rendering diagram…</span></div>
+        <p class="diagram-help">${DIAGRAM_INTERACTION_HELP}</p>
+      </div>
       <div class="flow-warning hidden" data-flow-error>The diagram source is invalid or unsupported. Inspect or edit it below.</div>
       <details class="mermaid-source"><summary>Mermaid source</summary><pre>${escapeHtml(flow.mermaid)}</pre></details>
     </article>`;
@@ -3891,14 +3944,14 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
     maxTextSize: 12_000,
     maxEdges: 500,
     deterministicIds: true,
-    deterministicIDSeed: `review-tour-${state.session.revision}-${theme}`,
+    deterministicIDSeed: `diffcompass-${state.session.revision}-${theme}`,
     sequence: { useMaxWidth: true, wrap: true },
   });
   for (const architecture of architectures) {
     const targets = document.querySelectorAll(`[data-architecture-diagram="${architecture.key}"]`);
     for (const [index, target] of [...targets].entries()) {
       try {
-        const result = await window.mermaid.render(`review-tour-architecture-${architecture.key}-${generation}-${index}`, architecture.value.mermaid);
+        const result = await window.mermaid.render(`diffcompass-architecture-${architecture.key}-${generation}-${index}`, architecture.value.mermaid);
         if (generation !== state.flowRenderGeneration || !target.isConnected) return;
         window.ReviewDiagramLabels.mount(target, result.svg);
         applyArchitectureDiagramView(architecture.key);
@@ -3910,7 +3963,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
     const introTarget = elements["tour-intro-architecture"].querySelector(`[data-tour-intro-architecture-diagram="${architecture.key}"]`);
     if (introTarget) {
       try {
-        const introResult = await window.mermaid.render(`review-tour-intro-architecture-${architecture.key}-${generation}`, architecture.value.mermaid);
+        const introResult = await window.mermaid.render(`diffcompass-intro-architecture-${architecture.key}-${generation}`, architecture.value.mermaid);
         if (generation !== state.flowRenderGeneration || !introTarget.isConnected) return;
         window.ReviewDiagramLabels.mount(introTarget, introResult.svg);
       } catch {
@@ -3923,7 +3976,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
     if (generation !== state.flowRenderGeneration) return;
     const target = elements["adaptive-diagrams"].querySelector(`[data-adaptive-diagram="${CSS.escape(diagram.key)}"]`);
     try {
-      const result = await window.mermaid.render(`review-tour-adaptive-${diagram.key}-${generation}`, diagram.value.mermaid);
+      const result = await window.mermaid.render(`diffcompass-adaptive-${diagram.key}-${generation}`, diagram.value.mermaid);
       if (generation !== state.flowRenderGeneration || !target?.isConnected) return;
       window.ReviewDiagramLabels.mount(target, result.svg);
       applyArchitectureDiagramView(diagram.key);
@@ -3939,9 +3992,10 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
     const introTarget = elements["tour-intro-sequence"].querySelector(`[data-tour-intro-flow-index="${index}"]`);
     if (target) {
       try {
-        const result = await window.mermaid.render(`review-tour-flow-${generation}-${index}`, flows[index].mermaid);
+        const result = await window.mermaid.render(`diffcompass-flow-${generation}-${index}`, flows[index].mermaid);
         if (generation !== state.flowRenderGeneration || !target.isConnected) return;
         window.ReviewDiagramLabels.mount(target, result.svg);
+        applyArchitectureDiagramView(`sequence-${flows[index].id}`);
       } catch {
         target.innerHTML = '<span class="muted">Diagram unavailable</span>';
         card.querySelector("[data-flow-error]")?.classList.remove("hidden");
@@ -3951,9 +4005,10 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
     }
     if (introTarget) {
       try {
-        const introResult = await window.mermaid.render(`review-tour-intro-flow-${generation}-${index}`, flows[index].mermaid);
+        const introResult = await window.mermaid.render(`diffcompass-intro-flow-${generation}-${index}`, flows[index].mermaid);
         if (generation !== state.flowRenderGeneration || !introTarget.isConnected) return;
         window.ReviewDiagramLabels.mount(introTarget, introResult.svg);
+        applyArchitectureDiagramView(`intro-sequence-${flows[index].id}`);
       } catch {
         introTarget.innerHTML = '<span class="muted">Diagram unavailable</span>';
       }
@@ -4595,8 +4650,9 @@ function returnToPullRequest() {
 }
 
 function updatePullRequestReturnVisibility() {
+  updateStructuralGraphReturnVisibility();
   const button = elements["pull-request-return"];
-  const visible = Boolean(state.pullRequestReturn) && state.activeTab === "diff";
+  const visible = Boolean(state.pullRequestReturn) && !state.structuralGraphReturn && state.activeTab === "diff";
   button.classList.toggle("hidden", !visible);
   if (!visible) return;
   const panelBounds = elements["diff-panel"].getBoundingClientRect();
@@ -4606,7 +4662,18 @@ function updatePullRequestReturnVisibility() {
 
 let currentStepReturnFrame = null;
 
+function updateStructuralGraphReturnVisibility() {
+  const visible = Boolean(state.structuralGraphReturn) && state.activeTab === "diff";
+  document.getElementById("structural-source-return").classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const button = document.getElementById("structural-graph-return");
+  const bounds = elements["diff-panel"].getBoundingClientRect();
+  button.style.right = `${Math.max(12, window.innerWidth - bounds.right + 14)}px`;
+  button.style.bottom = `${Math.max(58, window.innerHeight - Math.min(window.innerHeight, bounds.bottom) + 58)}px`;
+}
+
 function updateCurrentStepReturnVisibility() {
+  updateStructuralGraphReturnVisibility();
   currentStepReturnFrame = null;
   const button = elements["current-step-return"];
   if (!state.session || !state.tourMode || state.activeTab !== "diff" || !currentStep()) {
@@ -5230,7 +5297,7 @@ function renderSession() {
   elements["include-archify"].disabled = state.busy || !state.session.archifyAvailable;
   elements["include-archify"].title = state.session.archifyAvailable
     ? "Create interactive maps using the locally available Archify renderer."
-    : "The Archify renderer is missing. Reinstall the release package, or configure CODE_REVIEW_TOUR_ARCHIFY_DIR for a development checkout.";
+    : "The Archify renderer is missing. Reinstall the release package, or configure DIFFCOMPASS_ARCHIFY_DIR for a development checkout.";
   elements["start-tour"].disabled = state.busy || closed || (state.session.agentAdapters ?? []).length === 0;
   elements["chat-input"].disabled = closed;
   elements["chat-form"].querySelector("button").disabled = state.busy || closed;
@@ -5464,7 +5531,7 @@ async function downloadExport(format, options = {}) {
   try {
     const response = await fetch(`/api/export?format=${encodeURIComponent(format)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Review-Tour-Token": state.apiToken },
+      headers: { "Content-Type": "application/json", "X-DiffCompass-Token": state.apiToken },
       body: JSON.stringify(options),
     });
     if (!response.ok) {
@@ -6586,7 +6653,7 @@ elements["theme-select"].addEventListener("change", () => window.reviewTourTheme
 elements["syntax-theme-select"].value = state.syntaxTheme;
 elements["syntax-theme-select"].addEventListener("change", () => {
   state.syntaxTheme = elements["syntax-theme-select"].value;
-  window.localStorage.setItem("review-tour-syntax-theme", state.syntaxTheme);
+  window.localStorage.setItem("diffcompass-syntax-theme", state.syntaxTheme);
   document.documentElement.dataset.syntaxTheme = state.syntaxTheme;
   void highlightRenderedCode();
   void highlightCommentQuotes();
@@ -6858,7 +6925,7 @@ elements.diff.addEventListener("keydown", (event) => {
   const width = event.key === "Home" ? SPLIT_PANE_MIN : event.key === "End" ? SPLIT_PANE_MAX : state.splitOldWidth + (event.key === "ArrowRight" ? amount : -amount);
   setSplitOldWidth(width, true);
 });
-window.addEventListener("review-tour-theme-change", () => {
+window.addEventListener("diffcompass-theme-change", () => {
   void highlightRenderedCode();
   void highlightSymbolPeek();
   elements.diff.querySelectorAll(".inline-edit-form").forEach((form) => void highlightInlineEdit(form));
@@ -6883,7 +6950,7 @@ elements["sessions-list"].addEventListener("click", async (event) => {
   const action = button.dataset.sessionAction;
   try {
     if (action === "copy") {
-      await navigator.clipboard.writeText(`code-review-tour sessions resume ${id.slice(0, 8)} --open`);
+      await navigator.clipboard.writeText(`diffcompass sessions resume ${id.slice(0, 8)} --open`);
       toast("Reopen command copied");
       return;
     }
@@ -7106,6 +7173,8 @@ elements["structural-blast-radius"].addEventListener("toggle", (event) => {
   state.structuralDisclosureStates.set(radiusId, saved);
 }, true);
 elements["structural-blast-radius"].addEventListener("click", (event) => {
+  const expand = event.target.closest("[data-structural-graph-expand]");
+  if (expand) { expandStructuralGraph(expand); return; }
   const graphAction = event.target.closest("[data-structural-graph-action]");
   if (graphAction) {
     if (state.structuralBlastRadiusId) changeStructuralGraphView(state.structuralBlastRadiusId, graphAction.dataset.structuralGraphAction);
@@ -7114,11 +7183,20 @@ elements["structural-blast-radius"].addEventListener("click", (event) => {
   const location = event.target.closest("[data-structural-path]");
   const file = event.target.closest("[data-structural-file]");
   if (!location && !file) return;
+  const expanded = event.target.closest(".structural-graph-dialog");
+  if (expanded) expanded.close();
+  state.structuralGraphReturn = {
+    radiusId: state.structuralBlastRadiusId,
+    nodeId: location?.dataset.structuralNode,
+    scrollTop: elements["diff-panel"].scrollTop,
+  };
+  document.getElementById("structural-source-return").classList.remove("hidden");
   state.activeTab = "diff";
   renderActiveTab();
   if (location) void showAnalysisFile(location.dataset.structuralPath, Number(location.dataset.structuralLine), location.dataset.structuralSide);
   else void showAnalysisFile(file.dataset.structuralFile);
 });
+document.getElementById("structural-graph-return").addEventListener("click", returnToStructuralGraph);
 elements["structural-blast-radius"].addEventListener("wheel", (event) => {
   const graph = event.target.closest(".structural-graph");
   if (!graph || !state.structuralBlastRadiusId || (!event.ctrlKey && !event.metaKey)) return;
@@ -7135,11 +7213,14 @@ elements["structural-blast-radius"].addEventListener("pointerdown", (event) => {
 elements["structural-blast-radius"].addEventListener("pointermove", (event) => {
   const drag = state.structuralGraphDrag;
   if (!drag || drag.pointerId !== event.pointerId) return;
-  const width = Number(drag.graph.dataset.structuralGraphWidth) || drag.graph.clientWidth || 1;
-  const movement = width / Math.max(drag.graph.clientWidth, 1);
+  const matrix = drag.graph.getScreenCTM();
+  if (!matrix) return;
+  const inverse = matrix.inverse();
+  const previous = new DOMPoint(drag.x, drag.y).matrixTransform(inverse);
+  const current = new DOMPoint(event.clientX, event.clientY).matrixTransform(inverse);
   const view = structuralGraphView(drag.radiusId);
-  view.x += (event.clientX - drag.x) * movement / view.scale;
-  view.y += (event.clientY - drag.y) * movement / view.scale;
+  view.x += current.x - previous.x;
+  view.y += current.y - previous.y;
   drag.x = event.clientX;
   drag.y = event.clientY;
   applyStructuralGraphView(drag.radiusId);
@@ -7259,6 +7340,7 @@ registerArchitectureDiagramInteractions(elements["tour-intro-call-flows"]);
 registerArchitectureDiagramInteractions(elements.architecture);
 registerArchitectureDiagramInteractions(document.getElementById("maps-architecture"));
 registerArchitectureDiagramInteractions(elements["adaptive-view"]);
+registerArchitectureDiagramInteractions(elements.flows);
 registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"]);
 document.querySelector(".tabs").addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

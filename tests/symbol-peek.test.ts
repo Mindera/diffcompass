@@ -113,7 +113,7 @@ test("symbol peek is authenticated and bounded at the review API boundary", asyn
 
   const response = await fetch(new Request("http://127.0.0.1/api/symbol-peek", {
     method: "POST",
-    headers: { "content-type": "application/json", origin: "http://127.0.0.1", "x-review-tour-token": session.browserToken },
+    headers: { "content-type": "application/json", origin: "http://127.0.0.1", "x-diffcompass-token": session.browserToken },
     body: JSON.stringify(body),
   }));
   expect(response.status).toBe(200);
@@ -121,7 +121,7 @@ test("symbol peek is authenticated and bounded at the review API boundary", asyn
 
   const malformed = await fetch(new Request("http://127.0.0.1/api/symbol-peek", {
     method: "POST",
-    headers: { "content-type": "application/json", origin: "http://127.0.0.1", "x-review-tour-token": session.browserToken },
+    headers: { "content-type": "application/json", origin: "http://127.0.0.1", "x-diffcompass-token": session.browserToken },
     body: JSON.stringify({ ...body, command: "cat /etc/hosts" }),
   }));
   expect(malformed.status).toBe(422);

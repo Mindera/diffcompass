@@ -30,11 +30,11 @@ type ReviewSessionConstructor = new (
 ) => ReviewSession;
 
 async function fixture() {
-  const repository = await mkdtemp(join(tmpdir(), "review-tour-server-"));
+  const repository = await mkdtemp(join(tmpdir(), "diffcompass-server-"));
   repositories.push(repository);
   await git(repository, "init", "-b", "main");
   await git(repository, "config", "user.name", "Review Tour Test");
-  await git(repository, "config", "user.email", "review-tour@example.test");
+  await git(repository, "config", "user.email", "diffcompass@example.test");
   await writeFile(join(repository, "app.ts"), "const base = 1;\n");
   await git(repository, "add", "app.ts");
   await git(repository, "commit", "-m", "base");
@@ -57,7 +57,7 @@ function browserHeaders(url: string, token: string, headers: HeadersInit = {}): 
   return new Headers({
     "content-type": "application/json",
     "origin": url,
-    "x-review-tour-token": token,
+    "x-diffcompass-token": token,
     ...headers,
   });
 }
@@ -71,17 +71,17 @@ test("browser and bridge endpoints require their own non-interchangeable token",
 
   expect((await jsonRequest(url, "/api/session")).status).toBe(401);
   expect((await jsonRequest(url, "/api/session", {
-    headers: { "x-review-tour-token": bridge.token },
+    headers: { "x-diffcompass-token": bridge.token },
   })).status).toBe(401);
   expect((await jsonRequest(url, "/api/session", {
-    headers: { "x-review-tour-token": session.browserToken },
+    headers: { "x-diffcompass-token": session.browserToken },
   })).status).toBe(200);
 
   expect((await jsonRequest(url, "/api/bridge/context", {
-    headers: { "x-review-tour-token": session.browserToken },
+    headers: { "x-diffcompass-token": session.browserToken },
   })).status).toBe(401);
   expect((await jsonRequest(url, "/api/bridge/context", {
-    headers: { "x-review-tour-token": bridge.token },
+    headers: { "x-diffcompass-token": bridge.token },
   })).status).toBe(200);
 });
 
@@ -89,7 +89,7 @@ test("attached bridge long-polls survive beyond Bun's ten-second default", async
   const { bridge, url } = await fixture();
   const startedAt = Date.now();
   const response = await jsonRequest(url, "/api/bridge/events?after=0&waitMs=11000", {
-    headers: { "x-review-tour-token": bridge.token },
+    headers: { "x-diffcompass-token": bridge.token },
   });
   expect(response.status).toBe(200);
   expect(Date.now() - startedAt).toBeGreaterThanOrEqual(10_500);
@@ -112,7 +112,7 @@ test("GitHub publication requires confirmation, current head, and uses only sele
     else throw new Error(`Unexpected command: ${command.join(" ")}`);
     return { stdout: JSON.stringify(value), stderr: "", exitCode: 0 };
   };
-  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/code-review-tour/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
+  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/diffcompass/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
   (session as unknown as { defaults: { githubRunner?: typeof runner } }).defaults.githubRunner = runner;
 
   const added = await (await jsonRequest(url, "/api/comments", { method: "POST", headers, body: JSON.stringify({ path: "app.ts", side: "new", line: 2, body: "Fix this" }) })).json() as { comments: Array<{ id: string }> };
@@ -140,7 +140,7 @@ test("GitHub review rejection reports the provider response instead of an agent 
     if (command.includes("--method")) throw new ProcessError(command, 1, "gh: Unprocessable Entity (HTTP 422)\n");
     throw new Error(`Unexpected command: ${command.join(" ")}`);
   };
-  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/code-review-tour/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
+  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/diffcompass/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
   (session as unknown as { defaults: { githubRunner?: typeof runner } }).defaults.githubRunner = runner;
 
   const response = await jsonRequest(url, "/api/github/review", { method: "POST", headers, body: JSON.stringify({ outcome: "accepted", headOid: head, confirm: true }) });
@@ -153,7 +153,7 @@ test("local-only approval closes a pull request review without publication", asy
   const { comparison, repository, session, url } = await fixture();
   const headers = browserHeaders(url, session.browserToken);
   const head = (await git(repository, "rev-parse", "HEAD")).stdout.trim();
-  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: comparison.mergeBase, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/code-review-tour/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
+  session.pullRequest = { repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: comparison.mergeBase, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository, refNamespace: "refs/diffcompass/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
 
   const comment = await jsonRequest(url, "/api/comments", { method: "POST", headers, body: JSON.stringify({ path: "app.ts", side: "new", line: 2, body: "Local note" }) });
   expect(comment.status).toBe(200);
@@ -280,11 +280,11 @@ test("bridge responses require the active event lease", async () => {
   const { bridge, url } = await fixture();
   const answer = bridge.send("Explain", "tour.explanation");
   const eventResponse = await jsonRequest(url, "/api/bridge/events?after=0", {
-    headers: { "x-review-tour-token": bridge.token },
+    headers: { "x-diffcompass-token": bridge.token },
   });
   const { events } = await eventResponse.json() as { events: Array<{ id: string; leaseId: string }> };
   const event = events[0]!;
-  const headers = { "content-type": "application/json", "x-review-tour-token": bridge.token };
+  const headers = { "content-type": "application/json", "x-diffcompass-token": bridge.token };
 
   expect((await jsonRequest(url, "/api/bridge/respond", {
     method: "POST", headers, body: JSON.stringify({ eventId: event.id, leaseId: "wrong", message: "No" }),
@@ -303,7 +303,7 @@ test("a same-code-unit Unicode token mismatch is rejected as unauthorized rather
   (session as { browserToken: string }).browserToken = "é";
 
   const response = await jsonRequest(url, "/api/session", {
-    headers: { "x-review-tour-token": "a" },
+    headers: { "x-diffcompass-token": "a" },
   });
   expect(response.status).toBe(401);
 });
@@ -314,7 +314,7 @@ test("browser mutations require an authenticated same-origin JSON request", asyn
 
   expect((await jsonRequest(url, "/api/comments", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-review-tour-token": session.browserToken },
+    headers: { "content-type": "application/json", "x-diffcompass-token": session.browserToken },
     body: JSON.stringify(validComment),
   })).status).toBe(403);
   expect((await jsonRequest(url, "/api/comments", {
@@ -374,7 +374,7 @@ test.each([
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({ outcome, decision, note, comments: [] });
   const eventsResponse = await jsonRequest(url, "/api/bridge/events?after=0&waitMs=0", {
-    headers: { "x-review-tour-token": bridge.token },
+    headers: { "x-diffcompass-token": bridge.token },
   });
   expect(eventsResponse.status).toBe(200);
   const { events } = await eventsResponse.json();

@@ -545,7 +545,7 @@ function validCheckpoint(value: unknown): value is SourceCheckpoint {
   const validOid = (candidate: unknown) => typeof candidate === "string" && /^[0-9a-f]{40,64}$/.test(candidate);
   return /^[0-9a-f-]{36}$/.test(String(value.id)) && ["manual", "decision"].includes(String(value.kind)) &&
     (value.label === undefined || nonEmptyString(value.label, 500)) &&
-    /^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}\/[0-9a-f-]{36}$/.test(String(value.ref)) &&
+    /^refs\/diffcompass\/checkpoints\/[A-Za-z0-9._-]{1,128}\/[0-9a-f-]{36}$/.test(String(value.ref)) &&
     validOid(value.sourceTree) && validOid(value.sourceHead) && nonEmptyString(value.base, 4_096) && validOid(value.baseTree) &&
     Array.isArray(value.reviewedFiles) && value.reviewedFiles.length <= 10_000 && value.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) &&
     new Set(value.reviewedFiles).size === value.reviewedFiles.length &&
@@ -623,7 +623,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     value.outline.phases = [{
       id: "legacy-tour",
       title: "Guided review",
-      summary: typeof value.outline.summary === "string" ? value.outline.summary : "Imported from an earlier Code Review Tour session.",
+      summary: typeof value.outline.summary === "string" ? value.outline.summary : "Imported from an earlier DiffCompass session.",
       fileChanges: legacyPaths.map((filePath) => ({ path: filePath, summary: "Changed file included in the original tour." })),
       steps: legacySteps,
     }];
@@ -634,7 +634,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     value.schemaVersion = 3;
     value.checkpointRefNamespace ??= typeof value.checkpoints[0] === "object" && value.checkpoints[0] && "ref" in value.checkpoints[0]
       ? String(value.checkpoints[0].ref).replace(/\/[^/]+$/, "")
-      : `refs/code-review-tour/checkpoints/${basename(path, ".json").replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128) || "migrated"}`;
+      : `refs/diffcompass/checkpoints/${basename(path, ".json").replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128) || "migrated"}`;
   }
   if (value.schemaVersion === 2 && record(value.outline)) {
     value.outline.callFlows ??= [];
@@ -701,7 +701,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.reviewedFiles !== undefined && (!Array.isArray(session.reviewedFiles) || session.reviewedFiles.length > 10_000 ||
       !session.reviewedFiles.every((path) => nonEmptyString(path, 4_096)) || new Set(session.reviewedFiles).size !== session.reviewedFiles.length)) ||
     ((session.schemaVersion === 3 || session.schemaVersion === 4) && (!Array.isArray(session.checkpoints) || session.checkpoints.length > 100 || !session.checkpoints.every(validCheckpoint) ||
-      !nonEmptyString(session.checkpointRefNamespace, 256) || !/^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}$/.test(session.checkpointRefNamespace))) ||
+      !nonEmptyString(session.checkpointRefNamespace, 256) || !/^refs\/diffcompass\/checkpoints\/[A-Za-z0-9._-]{1,128}$/.test(session.checkpointRefNamespace))) ||
     (session.schemaVersion === 2 && session.checkpointRefNamespace !== undefined) ||
     (session.schemaVersion === 2 && session.checkpoints !== undefined) ||
     (session.comparisonView !== undefined && !["full", "since-last-review"].includes(String(session.comparisonView))) ||

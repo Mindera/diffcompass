@@ -8,8 +8,8 @@ import type { TourOutline } from "../src/types.ts";
 test("discovers bundled Archify relative to the real executable, including install symlinks", async () => {
   const root = await mkdtemp(join(tmpdir(), "archify-package-test-"));
   try {
-    const executable = join(root, "version", "bin", "code-review-tour");
-    const directory = join(root, "version", "share", "code-review-tour", "archify");
+    const executable = join(root, "version", "bin", "diffcompass");
+    const directory = join(root, "version", "share", "diffcompass", "archify");
     await mkdir(join(root, "version", "bin"), { recursive: true });
     await writeFile(executable, "fixture");
     expect(ArchifyRenderer.bundledDirectory(executable)).toBeUndefined();

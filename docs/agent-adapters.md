@@ -1,6 +1,6 @@
 # Standalone agent adapter contract
 
-Code Review Tour supports Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI.
+DiffCompass supports Codex, Claude Code, Gemini CLI, and GitHub Copilot CLI.
 An adapter is eligible for the picker only when its executable is present on
 `PATH`. Authentication remains owned by that CLI.
 

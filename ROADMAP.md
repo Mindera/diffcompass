@@ -30,13 +30,13 @@ Enabled by default, with an option to skip generation entirely. Prepare detailed
 
 Support [Archify](https://github.com/tt-a1i/archify) as an optional diagram renderer for architecture, workflow, sequence, data-flow, and lifecycle views. Generate typed JSON IR from the same bounded repository evidence used by the tour, run Archify validation before displaying an artifact, and preserve the last valid diagram when a generated revision fails validation.
 
-Embed the resulting self-contained interactive HTML in the briefing and exported review where practical, including search, authored upstream/downstream reach, exact routes, and Before / Delta / After architecture views. Keep Code Review Tour's current validated Mermaid path as the built-in fallback; integration must not require network access or imply runtime impact from authored topology.
+Embed the resulting self-contained interactive HTML in the briefing and exported review where practical, including search, authored upstream/downstream reach, exact routes, and Before / Delta / After architecture views. Keep DiffCompass's current validated Mermaid path as the built-in fallback; integration must not require network access or imply runtime impact from authored topology.
 
 ### Skill extraction
 
 Add a feedback-handoff step that asks the receiving agent to assess whether reviewer comments, clarifications, requested changes, or corrected assumptions reveal a reusable lesson. When they do, the agent should propose or apply the lesson to the most relevant existing skill—or create a narrowly scoped skill when no suitable one exists—so the same class of mistake is less likely to recur.
 
-Implement this by extending the Code Review Tour skill or introducing a companion feedback-processing skill. Extraction should require evidence from the completed review, distinguish general guidance from repository-specific convention and one-off preference, avoid duplicating existing instructions, and report what was extracted and where. Do not turn every comment into a rule or silently modify unrelated skills.
+Implement this by extending the DiffCompass skill or introducing a companion feedback-processing skill. Extraction should require evidence from the completed review, distinguish general guidance from repository-specific convention and one-off preference, avoid duplicating existing instructions, and report what was extracted and where. Do not turn every comment into a rule or silently modify unrelated skills.
 
 ## Delivered product refinements
 
@@ -70,6 +70,6 @@ updates, rollback, and preview-first uninstall are already shipped.
 
 ## Out of scope
 
-- Hosting repositories or source code on a remote Code Review Tour service.
+- Hosting repositories or source code on a remote DiffCompass service.
 - Multi-user review rooms and real-time reviewer collaboration.
 - Autonomous code changes that the reviewer did not request.

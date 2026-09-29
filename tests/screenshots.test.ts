@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 test("screenshot imports are session-owned and a failed batch leaves no partial copies", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "review-tour-screenshots-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-screenshots-"));
   directories.push(directory);
   const valid = join(directory, "built.png");
   const invalid = join(directory, "not-an-image.txt");
@@ -29,7 +29,7 @@ test("screenshot imports are session-owned and a failed batch leaves no partial 
 });
 
 test("MP4 evidence is accepted as review media", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "review-tour-media-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-media-"));
   directories.push(directory);
   const source = join(directory, "walkthrough.mp4");
   const stateFile = join(directory, "session.json");

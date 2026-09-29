@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "review-tour-png-"));
+  const root = await mkdtemp(join(tmpdir(), "diffcompass-png-"));
   roots.push(root);
   const repository = join(root, "repository");
   await mkdir(repository);
@@ -91,7 +91,7 @@ test("PNG endpoint requires session authentication and returns private binary im
   const session = new (ReviewSession as unknown as Constructor)(comparison, [], {});
   const fetch = createRequestHandler(session, join(root, "sessions"));
   const request = (path: string, authenticated = true) => fetch(new Request(`http://127.0.0.1${path}`, {
-    headers: authenticated ? { "x-review-tour-token": session.browserToken } : {},
+    headers: authenticated ? { "x-diffcompass-token": session.browserToken } : {},
   }));
   expect((await request("/api/diff/image?path=modified.png&side=new", false)).status).toBe(401);
   const response = await request("/api/diff/image?path=modified.png&side=old");

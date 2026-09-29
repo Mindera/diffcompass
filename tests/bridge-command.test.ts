@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 test("bridge watch ignores empty polls and returns the first real event", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "review-tour-bridge-watch-"));
+  const directory = await mkdtemp(join(tmpdir(), "diffcompass-bridge-watch-"));
   directories.push(directory);
   const tokenFile = join(directory, "token");
   await writeFile(tokenFile, "secret-token\n", { mode: 0o600 });
@@ -21,7 +21,7 @@ test("bridge watch ignores empty polls and returns the first real event", async 
     port: 0,
     fetch(request) {
       requests += 1;
-      expect(request.headers.get("x-review-tour-token")).toBe("secret-token");
+      expect(request.headers.get("x-diffcompass-token")).toBe("secret-token");
       const url = new URL(request.url);
       expect(url.searchParams.get("after")).toBe("7");
       expect(url.searchParams.get("waitMs")).toBe("1");

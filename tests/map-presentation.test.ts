@@ -26,7 +26,7 @@ test("presentation expands the same iframe, validates the sender, and restores l
   };
   const window = { addEventListener: document.addEventListener };
   new Function('window', 'document', 'HTMLElement', 'MutationObserver', script)(window, document, Element, class { observe() {} });
-  const data = { type: 'code-review-tour-map-present', active: true };
+  const data = { type: 'diffcompass-map-present', active: true };
   listeners.message!({ data, source: {} });
   expect(open).toBe(false);
   listeners.message!({ data, source: frame.contentWindow });
@@ -38,7 +38,7 @@ test("presentation expands the same iframe, validates the sender, and restores l
   expect(sibling.inert).toBe(false);
   expect(attributes.get('style')).toBe('width:700px;height:450px');
   expect(messages).toEqual([
-    { type: 'code-review-tour-map-present-state', active: true },
-    { type: 'code-review-tour-map-present-state', active: false },
+    { type: 'diffcompass-map-present-state', active: true },
+    { type: 'diffcompass-map-present-state', active: false },
   ]);
 });

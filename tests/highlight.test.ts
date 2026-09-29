@@ -22,7 +22,7 @@ test("returns escaped-by-construction token data with both local themes", async 
   expect(keyword).toMatchObject({ light: "d73a49", dark: "f97583" });
   expect(string).toMatchObject({ light: "032f62", dark: "9ecbff" });
 
-  const [alternate] = await highlightGroups([{ id: "app", path: "app.ts", lines: ["const value = 'text';"] }], "review-tour");
+  const [alternate] = await highlightGroups([{ id: "app", path: "app.ts", lines: ["const value = 'text';"] }], "diffcompass");
   expect(alternate!.lines[0]!.find((token) => token.content === "const"))
     .toMatchObject({ light: "cf222e", dark: "c792ea" });
 

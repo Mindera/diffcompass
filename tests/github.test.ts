@@ -190,7 +190,7 @@ test("loads one same-repository linked issue and degrades when issue access is u
 async function git(cwd: string, ...args: string[]) { return runProcess(["git", ...args], cwd); }
 
 async function repositoryFixture() {
-  const root = await mkdtemp(join(tmpdir(), "review-tour-pr-"));
+  const root = await mkdtemp(join(tmpdir(), "diffcompass-pr-"));
   roots.push(root);
   await git(root, "init", "-b", "main");
   await git(root, "config", "user.name", "Test");
@@ -206,7 +206,7 @@ async function repositoryFixture() {
   const context: PullRequestContext = {
     repository: "acme/widgets", number: 7, url: "https://github.com/acme/widgets/pull/7", title: "PR", body: "", author: "author",
     baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: root, workspaceRoot: "",
-    refNamespace: `refs/code-review-tour/${crypto.randomUUID()}`, commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString(),
+    refNamespace: `refs/diffcompass/${crypto.randomUUID()}`, commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString(),
   };
   return { root, base, head, context };
 }
@@ -214,7 +214,7 @@ async function repositoryFixture() {
 test("workspace creation never changes the source checkout and cleanup refuses dirty work", async () => {
   const { root, context } = await repositoryFixture();
   const sourceHead = (await git(root, "rev-parse", "HEAD")).stdout.trim();
-  const container = join(root, "..", `review-tour-worktree-${crypto.randomUUID()}`); roots.push(container);
+  const container = join(root, "..", `diffcompass-worktree-${crypto.randomUUID()}`); roots.push(container);
   const workspace = await createPullRequestWorkspace(context, container);
   expect((await git(root, "rev-parse", "HEAD")).stdout.trim()).toBe(sourceHead);
   expect((await git(root, "status", "--porcelain")).stdout).toBe("");
@@ -226,7 +226,7 @@ test("workspace creation never changes the source checkout and cleanup refuses d
 
 test("PR refresh refuses to overwrite a dirty isolated workspace", async () => {
   const { root, context } = await repositoryFixture();
-  const container = join(root, "..", `review-tour-worktree-${crypto.randomUUID()}`); roots.push(container);
+  const container = join(root, "..", `diffcompass-worktree-${crypto.randomUUID()}`); roots.push(container);
   await createPullRequestWorkspace(context, container);
   await writeFile(join(context.workspaceRoot, "file.txt"), "dirty\n");
   const tree = (await git(root, "rev-parse", `${context.headRefOid}^{tree}`)).stdout.trim();
@@ -242,7 +242,7 @@ test("PR refresh refuses to overwrite a dirty isolated workspace", async () => {
 
 test("PR refresh advances only a clean isolated workspace", async () => {
   const { root, context } = await repositoryFixture();
-  const container = join(root, "..", `review-tour-worktree-${crypto.randomUUID()}`); roots.push(container);
+  const container = join(root, "..", `diffcompass-worktree-${crypto.randomUUID()}`); roots.push(container);
   await createPullRequestWorkspace(context, container);
   const sourceHead = (await git(root, "rev-parse", "HEAD")).stdout.trim();
   const tree = (await git(root, "rev-parse", `${context.headRefOid}^{tree}`)).stdout.trim();
@@ -266,7 +266,7 @@ test("publication detects head races and retries by durable marker without dupli
   await expect(publishPullRequestReview(context, [comment], "feedback", crypto.randomUUID(), githubRunner({ head: "c".repeat(40) }))).rejects.toThrow("changed on GitHub");
   let posts = 0;
   const intent = crypto.randomUUID();
-  const marker = `<!-- code-review-tour:${intent} -->`;
+  const marker = `<!-- diffcompass:${intent} -->`;
   const result = await publishPullRequestReview(context, [comment], "feedback", intent, githubRunner({ head, reviews: [{ id: 99, body: marker, html_url: "https://github.com/review/99" }], post: () => { posts += 1; } }));
   expect(result).toEqual({ id: "99", url: "https://github.com/review/99" });
   expect(posts).toBe(0);
@@ -289,5 +289,5 @@ test("publication includes the reviewer's overall note without changing the GitH
   await publishPullRequestReview(context, [], "accepted", crypto.randomUUID(), githubRunner({ head, post: (body) => { payload = body; } }), "Useful cleanup. Ship it.");
   const review = JSON.parse(payload);
   expect(review.event).toBe("APPROVE");
-  expect(review.body).toStartWith("Useful cleanup. Ship it.\n\nSubmitted from Code Review Tour.");
+  expect(review.body).toStartWith("Useful cleanup. Ship it.\n\nSubmitted from DiffCompass.");
 });

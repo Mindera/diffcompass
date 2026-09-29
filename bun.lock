@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "code-review-tour",
+      "name": "diffcompass",
       "dependencies": {
         "@dagrejs/dagre": "1.1.8",
         "mermaid": "^11.16.1",

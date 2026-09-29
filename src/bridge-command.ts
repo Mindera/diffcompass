@@ -39,7 +39,7 @@ async function bridgeRequest(options: BridgeOptions, path: string, init?: Reques
   if (!token) throw new Error("The attached-agent token file is empty.");
   const response = await fetch(new URL(path, options.url), {
     ...init,
-    headers: { "content-type": "application/json", "x-review-tour-token": token, ...init?.headers },
+    headers: { "content-type": "application/json", "x-diffcompass-token": token, ...init?.headers },
   });
   const value = await response.json();
   if (!response.ok) throw new Error((value as { error?: string }).error ?? `Bridge request failed with ${response.status}.`);
@@ -56,7 +56,7 @@ function bridgeEvents(value: unknown): unknown[] {
 export async function runBridgeCommand(args: string[]): Promise<number> {
   const options = parseBridgeOptions([...args]);
   if (!options.command) {
-    console.log("Usage: code-review-tour bridge context|next|watch|respond|ack|renew|progress|refresh --url URL --token-file PATH [options]");
+    console.log("Usage: diffcompass bridge context|next|watch|respond|ack|renew|progress|refresh --url URL --token-file PATH [options]");
     return 0;
   }
   let result: unknown;

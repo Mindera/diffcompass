@@ -196,7 +196,7 @@ export class ReviewSession {
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.screenshots = structuredClone(persisted?.screenshots ?? []);
     this.checkpoints = structuredClone(persisted?.checkpoints ?? []);
-    this.checkpointRefNamespace = persisted?.checkpointRefNamespace ?? `refs/code-review-tour/checkpoints/${this.refKey(defaults.stateFile)}`;
+    this.checkpointRefNamespace = persisted?.checkpointRefNamespace ?? `refs/diffcompass/checkpoints/${this.refKey(defaults.stateFile)}`;
     this.comments = structuredClone(persisted?.comments ?? []);
     this.messages = structuredClone(persisted?.messages ?? []);
     this.activities = structuredClone(persisted?.activities ?? []);
@@ -999,7 +999,7 @@ export class ReviewSession {
       outline.archifyFailures = candidates.map((candidate) => ({
         id: candidate.id,
         type: candidate.type,
-        message: "The Archify renderer is missing. Reinstall the release package, or configure CODE_REVIEW_TOUR_ARCHIFY_DIR for a development checkout.",
+        message: "The Archify renderer is missing. Reinstall the release package, or configure DIFFCOMPASS_ARCHIFY_DIR for a development checkout.",
         preservedLastValid: prior.has(candidate.id),
       }));
       return;

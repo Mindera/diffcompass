@@ -1,5 +1,5 @@
 (() => {
-  const storageKey = "code-review-tour-theme";
+  const storageKey = "diffcompass-theme";
   const choices = new Set(["system", "dark", "light"]);
   const media = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -16,7 +16,7 @@
     const resolved = choice === "system" ? (media.matches ? "dark" : "light") : choice;
     document.documentElement.dataset.theme = resolved;
     document.documentElement.style.colorScheme = resolved;
-    window.dispatchEvent(new CustomEvent("review-tour-theme-change", { detail: { theme: resolved } }));
+    window.dispatchEvent(new CustomEvent("diffcompass-theme-change", { detail: { theme: resolved } }));
     return resolved;
   }
 

@@ -49,7 +49,7 @@ async function treeId(cwd: string, ref: string): Promise<string> {
 }
 
 function checkpointRefIsSafe(ref: string): boolean {
-  return /^refs\/code-review-tour\/checkpoints\/[A-Za-z0-9._-]{1,128}\/[0-9a-f-]{36}$/.test(ref);
+  return /^refs\/diffcompass\/checkpoints\/[A-Za-z0-9._-]{1,128}\/[0-9a-f-]{36}$/.test(ref);
 }
 
 /** Keep the tree reachable from a private ref so repository maintenance cannot prune it. */
@@ -77,7 +77,7 @@ async function resolveRepositoryName(repositoryRoot: string): Promise<string> {
 }
 
 export async function captureWorkingTreeSnapshot(repositoryRoot: string): Promise<WorkingTreeSnapshot> {
-  const temporary = await mkdtemp(join(tmpdir(), "code-review-tour-index-"));
+  const temporary = await mkdtemp(join(tmpdir(), "diffcompass-index-"));
   const indexFile = join(temporary, "index");
   const options = { env: { GIT_INDEX_FILE: indexFile } };
   try {
@@ -93,7 +93,7 @@ export async function captureWorkingTreeSnapshot(repositoryRoot: string): Promis
 
 export async function createProposalWorkspace(repositoryRoot: string): Promise<ProposalWorkspace> {
   const baseline = await captureWorkingTreeSnapshot(repositoryRoot);
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "code-review-tour-proposal-"));
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "diffcompass-proposal-"));
   await writeFile(join(temporaryRoot, ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
   const path = join(temporaryRoot, "workspace");
   try {

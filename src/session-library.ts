@@ -63,7 +63,7 @@ async function saveLibraryMetadata(directory: string, metadata: LibraryMetadata)
 }
 
 export function reviewSessionDirectory(): string {
-  return join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "code-review-tour", "sessions");
+  return join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "diffcompass", "sessions");
 }
 
 function lockPath(sessionPath: string): string {
@@ -188,7 +188,7 @@ export async function pruneReviewSessions(
     const temporaryCutoff = now.getTime() - policy.temporaryMaxAgeHours * 3_600_000;
     const entries = await readdir(temporaryRoot, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory() || !/^code-review-tour-(?:proposal-|index-)?[A-Za-z0-9]+$/.test(entry.name)) continue;
+      if (!entry.isDirectory() || !/^diffcompass-(?:proposal-|index-)?[A-Za-z0-9]+$/.test(entry.name)) continue;
       const path = join(temporaryRoot, entry.name);
       const metadata = await lstat(path);
       if (metadata.isSymbolicLink() || metadata.mtimeMs >= temporaryCutoff || await activeTemporaryDirectory(path)) continue;
@@ -393,12 +393,12 @@ export async function runSessionCommand(args: string[], directory = reviewSessio
   }
   if (command === "help" || command === "--help" || command === "-h") {
     return { output: `Usage:
-  code-review-tour sessions [list] [--all]
-  code-review-tour sessions resume ID [--open]
-  code-review-tour sessions rename ID NAME
-  code-review-tour sessions archive|unarchive ID
-  code-review-tour sessions delete ID --yes
-  code-review-tour sessions prune [--repo PATH] [--days N] [--max N] [--temp-hours N] [--include-archived] [--yes]` };
+  diffcompass sessions [list] [--all]
+  diffcompass sessions resume ID [--open]
+  diffcompass sessions rename ID NAME
+  diffcompass sessions archive|unarchive ID
+  diffcompass sessions delete ID --yes
+  diffcompass sessions prune [--repo PATH] [--days N] [--max N] [--temp-hours N] [--include-archived] [--yes]` };
   }
   throw new Error(`Unknown sessions command: ${command}`);
 }

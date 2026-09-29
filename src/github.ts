@@ -151,7 +151,7 @@ const THREAD_QUERY = `query($owner:String!,$name:String!,$number:Int!){repositor
 export async function loadPullRequestContext(
   sourceRepositoryRoot: string,
   identifier: string,
-  refNamespace = `refs/code-review-tour/${crypto.randomUUID()}`,
+  refNamespace = `refs/diffcompass/${crypto.randomUUID()}`,
   runner: Runner = runProcess,
 ): Promise<PullRequestContext> {
   const parsed = parsePullRequestIdentifier(identifier);
@@ -347,7 +347,7 @@ export async function removePullRequestWorkspace(context: PullRequestContext, ru
   if (!context.workspaceRoot) return;
   const workspace = resolve(context.workspaceRoot);
   const container = dirname(workspace);
-  if (basename(workspace) !== "workspace") throw new ReviewError("The pull request workspace path is not owned by Code Review Tour.");
+  if (basename(workspace) !== "workspace") throw new ReviewError("The pull request workspace path is not owned by DiffCompass.");
   const [workspaceMetadata, containerMetadata] = await Promise.all([lstat(workspace), lstat(container)]);
   if (!workspaceMetadata.isDirectory() || workspaceMetadata.isSymbolicLink() || !containerMetadata.isDirectory() || containerMetadata.isSymbolicLink()) {
     throw new ReviewError("The pull request workspace path is not a safe directory.");
@@ -386,7 +386,7 @@ export async function publishPullRequestReview(
   if (latest.headRefOid !== context.headRefOid) throw new ReviewError("The pull request changed on GitHub. Refresh it before publishing this review.");
   if (comments.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(intentId)) throw new ReviewError("The GitHub publication intent is invalid.");
-  const marker = `<!-- code-review-tour:${intentId} -->`;
+  const marker = `<!-- diffcompass:${intentId} -->`;
   const existing = await jsonValue(runner, ["gh", "api", `repos/${context.repository}/pulls/${context.number}/reviews?per_page=100`], context.sourceRepositoryRoot);
   if (!Array.isArray(existing)) throw new ReviewError("GitHub CLI returned an unexpected review list.");
   const prior = existing.find((review) => review && typeof review === "object" && typeof (review as Record<string, unknown>).body === "string" && ((review as Record<string, unknown>).body as string).includes(marker)) as Record<string, unknown> | undefined;
@@ -399,7 +399,7 @@ export async function publishPullRequestReview(
   const body = {
     commit_id: context.headRefOid,
     event: outcome === "accepted" ? "APPROVE" : "REQUEST_CHANGES",
-    body: `${note?.trim() ? `${note.trim()}\n\n` : ""}Submitted from Code Review Tour.\n\n${marker}`,
+    body: `${note?.trim() ? `${note.trim()}\n\n` : ""}Submitted from DiffCompass.\n\n${marker}`,
     comments: comments.map((comment) => ({ path: comment.path, line: comment.line, side: comment.side === "old" ? "LEFT" : "RIGHT", body: comment.body })),
   };
   const response = await jsonCommand(runner, ["gh", "api", `repos/${context.repository}/pulls/${context.number}/reviews`, "--method", "POST", "--input", "-"], context.sourceRepositoryRoot, JSON.stringify(body));

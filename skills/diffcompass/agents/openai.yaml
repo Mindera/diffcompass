@@ -1,0 +1,4 @@
+interface:
+  display_name: "DiffCompass"
+  short_description: "Run an interactive attached-agent code tour"
+  default_prompt: "Use $diffcompass to walk me through the current branch changes."

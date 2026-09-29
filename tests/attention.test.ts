@@ -14,7 +14,7 @@ const outline = (overrides: Partial<TourOutline> = {}): TourOutline => ({
 });
 
 const pullRequest = (overrides: Partial<PullRequestContext> = {}): PullRequestContext => ({
-  repository: "acme/repository", number: 7, url: "https://github.com/acme/repository/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/repository", workspaceRoot: "/tmp/worktree", refNamespace: "refs/code-review-tour/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: "now", ...overrides,
+  repository: "acme/repository", number: 7, url: "https://github.com/acme/repository/pull/7", title: "PR", body: "", author: "author", baseRefName: "main", baseRefOid: "a".repeat(40), headRefName: "feature", headRefOid: "b".repeat(40), sourceRepositoryRoot: "/tmp/repository", workspaceRoot: "/tmp/worktree", refNamespace: "refs/diffcompass/test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: "now", ...overrides,
 });
 
 test("derives grounded signals and a factorized estimate deterministically", () => {

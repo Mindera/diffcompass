@@ -33,11 +33,11 @@ test("classifies new, changed-again, resolved, and unchanged paths with a concis
 });
 
 test("checkpoint refs keep a captured source tree reachable", async () => {
-  const repository = await mkdtemp(join(tmpdir(), "review-tour-checkpoint-git-"));
+  const repository = await mkdtemp(join(tmpdir(), "diffcompass-checkpoint-git-"));
   directories.push(repository);
   await git(repository, "init", "-b", "main");
   await git(repository, "config", "user.name", "Review Tour Test");
-  await git(repository, "config", "user.email", "review-tour@example.test");
+  await git(repository, "config", "user.email", "diffcompass@example.test");
   await writeFile(join(repository, "app.ts"), "base\n");
   await git(repository, "add", "app.ts");
   await git(repository, "commit", "-m", "base");
@@ -45,18 +45,18 @@ test("checkpoint refs keep a captured source tree reachable", async () => {
   await git(repository, "update-ref", "refs/remotes/origin/main", base);
   await writeFile(join(repository, "app.ts"), "reviewed\n");
   const snapshot = await captureWorkingTreeSnapshot(repository);
-  const ref = "refs/code-review-tour/checkpoints/test/00000000-0000-4000-8000-000000000000";
+  const ref = "refs/diffcompass/checkpoints/test/00000000-0000-4000-8000-000000000000";
   await writeCheckpointRef(repository, ref, snapshot.tree);
   expect(await git(repository, "cat-file", "-t", ref)).toBe("tree");
   expect(await git(repository, "rev-parse", `${ref}^{tree}`)).toBe(snapshot.tree);
 });
 
 test("manual checkpoints preserve unchanged reviewed files and reset changed files after refresh", async () => {
-  const repository = await mkdtemp(join(tmpdir(), "review-tour-revision-"));
+  const repository = await mkdtemp(join(tmpdir(), "diffcompass-revision-"));
   directories.push(repository);
   await git(repository, "init", "-b", "main");
   await git(repository, "config", "user.name", "Review Tour Test");
-  await git(repository, "config", "user.email", "review-tour@example.test");
+  await git(repository, "config", "user.email", "diffcompass@example.test");
   await writeFile(join(repository, "base.ts"), "base\n");
   await git(repository, "add", "base.ts");
   await git(repository, "commit", "-m", "base");
@@ -65,7 +65,7 @@ test("manual checkpoints preserve unchanged reviewed files and reset changed fil
   await git(repository, "switch", "-c", "feature");
   await writeFile(join(repository, "a.ts"), "one\n");
   await writeFile(join(repository, "b.ts"), "one\n");
-  const stateDirectory = await mkdtemp(join(tmpdir(), "review-tour-revision-state-"));
+  const stateDirectory = await mkdtemp(join(tmpdir(), "diffcompass-revision-state-"));
   directories.push(stateDirectory);
   const stateFile = join(stateDirectory, "session.json");
   const session = await ReviewSession.create(repository, undefined, { agentAdapters: [], stateFile });
@@ -92,11 +92,11 @@ test("manual checkpoints preserve unchanged reviewed files and reset changed fil
 });
 
 test("deleting checkpoints removes their refs and falls back to the remaining comparison", async () => {
-  const repository = await mkdtemp(join(tmpdir(), "review-tour-delete-checkpoint-"));
+  const repository = await mkdtemp(join(tmpdir(), "diffcompass-delete-checkpoint-"));
   directories.push(repository);
   await git(repository, "init", "-b", "main");
   await git(repository, "config", "user.name", "Review Tour Test");
-  await git(repository, "config", "user.email", "review-tour@example.test");
+  await git(repository, "config", "user.email", "diffcompass@example.test");
   await writeFile(join(repository, "base.ts"), "base\n");
   await git(repository, "add", "base.ts");
   await git(repository, "commit", "-m", "base");

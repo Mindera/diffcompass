@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { withArchifyEmbedAdapter } from "./archify-embed.ts";
+import { BRAND_FILES } from "./brand.ts";
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
 import appScript from "../public/app.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared browser runtime.
@@ -39,7 +40,8 @@ import {
   requiredString,
 } from "./validation.ts";
 
-const PUBLIC_FILES: Record<string, { body: string; contentType: string }> = {
+const PUBLIC_FILES: Record<string, { body: BodyInit; contentType: string }> = {
+  ...BRAND_FILES,
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
   "app.js": { body: String(diagramLabelsScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
@@ -88,7 +90,7 @@ function secureEqual(actual: string | null, expected: string): boolean {
 }
 
 function requireBrowserAuthorization(request: Request, session: ReviewSession): void {
-  if (!secureEqual(request.headers.get("x-review-tour-token"), session.browserToken)) {
+  if (!secureEqual(request.headers.get("x-diffcompass-token"), session.browserToken)) {
     throw new HttpError(401, "Invalid review session token.");
   }
   if (!["GET", "HEAD"].includes(request.method)) {
@@ -107,7 +109,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
     try {
       if (url.pathname.startsWith("/api/bridge/")) {
         if (!session.bridge) throw new HttpError(404, "Attached-agent mode is not enabled.");
-        if (!session.bridge.isAuthorized(request.headers.get("x-review-tour-token"))) {
+        if (!session.bridge.isAuthorized(request.headers.get("x-diffcompass-token"))) {
           throw new HttpError(401, "Invalid attached-agent bridge token.");
         }
         if (request.method === "GET" && url.pathname === "/api/bridge/context") {
@@ -193,7 +195,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "GET" && url.pathname === "/api/about") {
         const snapshot = session.snapshot();
         return json({
-          name: "Code Review Tour",
+          name: "DiffCompass",
           version: packageJson.version,
           runtime: `Bun ${Bun.version}`,
           repository: snapshot.comparison.repositoryName,
@@ -263,7 +265,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         }
         if (input.diffWrap !== undefined && input.diffWrap !== "scroll" && input.diffWrap !== "wrap") throw new HttpError(422, "diffWrap must be scroll or wrap.");
         if (format === "html" && input.prepareMissingSteps === true) await session.prepareTourForExport();
-        const highlightedGroups = format === "html" ? await highlightGroups(htmlHighlightGroups(session), "review-tour") : undefined;
+        const highlightedGroups = format === "html" ? await highlightGroups(htmlHighlightGroups(session), "diffcompass") : undefined;
         const markdownPreviews = format === "html"
           ? (await Promise.all(session.comparison.files
             .filter((file) => /\.md$/i.test(file.path))

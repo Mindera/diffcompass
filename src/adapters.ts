@@ -50,7 +50,7 @@ async function discoverCodexModels(executable: string, cwd: string): Promise<Age
     stderr: "pipe",
   });
   const requests = [
-    { method: "initialize", id: 1, params: { clientInfo: { name: "code-review-tour", version: packageJson.version } } },
+    { method: "initialize", id: 1, params: { clientInfo: { name: "diffcompass", version: packageJson.version } } },
     { method: "initialized", params: {} },
     { method: "model/list", id: 2, params: { limit: 100, includeHidden: false } },
   ];

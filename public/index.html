@@ -3,15 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Code Review Tour</title>
+    <title>DiffCompass</title>
+    <link rel="icon" href="/brand/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <link rel="manifest" href="/brand/site.webmanifest" />
     <script src="/theme.js"></script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="topbar">
       <div class="brand">
-        <span class="brand-mark">⌘</span>
-        <strong>Code Review Tour</strong>
+        <span class="brand-mark" aria-hidden="true">
+          <img class="brand-mark-dark" src="/brand/diffcompass-on-dark.svg" width="20" height="20" alt="" />
+          <img class="brand-mark-light" src="/brand/diffcompass-on-light.svg" width="20" height="20" alt="" />
+        </span>
+        <strong>DiffCompass</strong>
         <span class="review-identity">
           <span id="repository-label" class="repository-identity"></span>
           <span id="comparison-label" class="comparison-identity"></span>
@@ -74,7 +81,7 @@
                 <option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option>
               </select></label>
               <label><span>Syntax</span><select id="syntax-theme-select" aria-label="Syntax theme">
-                <option value="github">GitHub</option><option value="vitesse">Vitesse</option><option value="review-tour">Review Tour</option>
+                <option value="github">GitHub</option><option value="vitesse">Vitesse</option><option value="diffcompass">DiffCompass</option>
                 <option value="catppuccin-frappe">Catppuccin Frappé</option><option value="catppuccin-macchiato">Catppuccin Macchiato</option><option value="catppuccin-mocha">Catppuccin Mocha</option>
               </select></label>
               <label><span>Show +/− line markers</span><input id="show-diff-markers" type="checkbox" /></label>
@@ -93,7 +100,7 @@
             </section>
             <section class="settings-section settings-actions">
               <strong>Application</strong>
-              <button id="about-button" class="text-button" type="button">About Code Review Tour</button>
+              <button id="about-button" class="text-button" type="button">About DiffCompass</button>
             </section>
           </div>
         </details>
@@ -271,8 +278,9 @@
         <div id="pull-request-view" class="review-view hidden" role="tabpanel" aria-labelledby="pull-request-tab">
           <div id="pull-request-content" class="pull-request-content"></div>
         </div>
-        <button id="pull-request-return" class="button pull-request-return hidden" type="button">↩ Return to pull request</button>
-        <button id="current-step-return" class="button current-step-return hidden" type="button">↩ Current step</button>
+        <span id="structural-source-return" class="hidden"><button id="structural-graph-return" class="button diff-return" type="button">↩ Back to caller graph</button></span>
+        <button id="pull-request-return" class="button diff-return pull-request-return hidden" type="button">↩ Return to pull request</button>
+        <button id="current-step-return" class="button diff-return current-step-return hidden" type="button">↩ Current step</button>
       </section>
 
       <aside id="agent-panel" class="agent-panel">
@@ -573,7 +581,7 @@
           <label><input id="export-diagrams" type="checkbox" checked /> Maps, component and sequence diagrams</label>
           <label><input id="export-dry-runs" type="checkbox" checked /> Dry-run traces</label>
         </fieldset>
-        <p class="field-hint">The downloaded file is self-contained and can be opened without Code Review Tour.</p>
+        <p class="field-hint">The downloaded file is self-contained and can be opened without DiffCompass.</p>
         <div class="dialog-actions">
           <button id="cancel-html-export" type="button" class="button secondary">Cancel</button>
           <button type="submit" class="button primary">Export</button>
@@ -597,7 +605,7 @@
       <div class="dialog-heading">
         <div>
           <div class="eyebrow">Application information</div>
-          <h2 id="about-title">About Code Review Tour</h2>
+          <h2 id="about-title">About DiffCompass</h2>
         </div>
         <button id="close-about" type="button" class="button secondary">Close</button>
       </div>

@@ -254,7 +254,7 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(app).toContain("function updateCurrentStepReturnVisibility()");
   expect(app).toContain('elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate');
   expect(app).toContain('elements["current-step-return"].addEventListener("click", () => void focusCurrentStep())');
-  expect(styles).toContain(".current-step-return, .pull-request-return { position: fixed;");
+  expect(styles).toContain(".diff-return { position: fixed;");
   expect(renderTour).not.toContain("scrollIntoView");
   expect(renderTour).not.toContain("showChangedFile");
   expect(app).not.toContain("Planning tour · 0s");
@@ -972,7 +972,7 @@ test("pull request content can use and persist the full available width", async 
       workspace: { classList: { toggle: (name: string, enabled: boolean) => { if (enabled) workspaceClasses.add(name); else workspaceClasses.delete(name); } } },
     },
     { localStorage: { setItem: (key: string, value: string) => writes.push([key, value]) } },
-    (name: string) => `review-tour:test:${name}`,
+    (name: string) => `diffcompass:test:${name}`,
   ) as (wide: boolean, persist?: boolean) => void;
 
   setWidth(true, true);
@@ -980,7 +980,7 @@ test("pull request content can use and persist the full available width", async 
   expect(state.pullRequestWide).toBe(true);
   expect(classes.has("wide")).toBe(true);
   expect(workspaceClasses.has("pull-request-wide")).toBe(true);
-  expect(writes).toEqual([["review-tour:test:pull-request-wide", "true"]]);
+  expect(writes).toEqual([["diffcompass:test:pull-request-wide", "true"]]);
   expect(styles).toContain(".workspace.pull-request-wide");
   expect(styles).toContain(".workspace.pull-request-wide .file-panel,");
   expect(styles).toContain(".workspace.pull-request-wide .agent-panel { display: none; }");
@@ -1049,7 +1049,7 @@ test("pull request file links retain their reading position and provide a return
   expect(activations).toEqual(["pull-request"]);
   expect(html).toContain('id="pull-request-return"');
   expect(app).toContain('elements["pull-request-return"].addEventListener("click", returnToPullRequest)');
-  expect(styles).toContain(".current-step-return, .pull-request-return {");
+  expect(styles).toContain(".diff-return {");
 });
 
 test("GitHub review threads open their file and remain visible beside the diff", async () => {
@@ -1079,7 +1079,7 @@ test("agent-launched tours introduce the change before navigating to the first s
   ]);
   expect(cli).toContain('options.startTour ? "&intro=1" : ""');
   expect(cli).toContain("if (options.attached && options.open) options.startTour = true");
-  expect(cli).toContain("if (!deferReviewUrl) console.log(`Code Review Tour: ${reviewUrl}`)");
+  expect(cli).toContain("if (!deferReviewUrl) console.log(`DiffCompass: ${reviewUrl}`)");
   expect(html).toContain('id="tour-intro-dialog"');
   expect(html).toContain('id="begin-tour"');
   expect(html).toContain('id="tour-intro-architecture"');
@@ -1344,7 +1344,7 @@ test("validated Archify artifacts use a dedicated workspace pane and replace Mer
   expect(app).toContain('state.archifyArtifactId = elements["archify-select"].value || null');
   expect(app).toContain('selected ? archifyArtifactCard(selected) : ""');
   expect(app).not.toContain("function resizeArchifyFrame(event)");
-  expect(app).not.toContain('code-review-tour-archify-height');
+  expect(app).not.toContain('diffcompass-archify-height');
   expect(app).toContain("function hasArchifyArtifact(id)");
   expect(app).toContain("function legacyCallFlows()");
   expect(app).toContain("function legacySequenceFlows()");
@@ -1694,7 +1694,7 @@ test("images and videos are exposed through an authenticated media tab with an e
   expect(app).toContain('"conversations", "screenshots", ...(state.session?.pullRequest');
   expect(app).toContain('elements["screenshots-tab-count"].classList.toggle("hidden", mediaCount === 0)');
   expect(app).toContain('No media is available for this review.');
-  expect(app).toContain('"X-Review-Tour-Token": state.apiToken');
+  expect(app).toContain('"X-DiffCompass-Token": state.apiToken');
   expect(app).toContain('apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`)');
   expect(app).toContain('apiBlob(`/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`)');
   expect(app).toContain('shot.mimeType === "video/mp4"');
@@ -1963,7 +1963,7 @@ test("structural UI labels exact totals, lower bounds, and legacy completeness w
 
 test("structural graph emits bounded interactive source nodes and controls", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
-  const source = app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function structuralBlastRadiusCard"));
+  const source = app.slice(app.indexOf("function architectureDiagramControls"), app.indexOf("function architectureDiagramExpandButton")) + app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function structuralBlastRadiusCard"));
   const graph = new Function("state", "escapeHtml", `${source}; return structuralGraphSvg;`)({ structuralGraphViews: new Map() }, (value: unknown) => String(value)) as (radius: unknown) => string;
   const markup = graph({
     id: "radius:total",
@@ -1973,12 +1973,129 @@ test("structural graph emits bounded interactive source nodes and controls", asy
     directCallerIds: ["src/receipt.ts:new:3:receipt"],
   });
   expect(markup).toContain('data-structural-graph-canvas');
+  expect(markup).toContain('data-structural-node="src/receipt.ts:new:3:receipt"');
+  expect(markup).not.toContain("max-width:");
+  expect(markup).toContain('preserveAspectRatio="xMidYMid meet"');
   expect(markup).toContain('data-structural-graph-action="zoom-in"');
+  expect(markup).toContain('data-structural-graph-action="pan-left"');
+  expect(markup).toContain('data-structural-graph-action="pan-up"');
+  expect(markup).toContain('data-structural-graph-action="pan-down"');
+  expect(markup).toContain('data-structural-graph-action="pan-right"');
+  expect(markup).toContain('data-structural-graph-expand');
+  expect(markup.indexOf('class="structural-graph-help"')).toBeGreaterThan(markup.indexOf("</svg>"));
+  expect(markup).toContain('data-diagram-zoom-label');
   expect(markup).toContain('data-structural-path="src/receipt.ts"');
   expect(markup).toContain('marker-end="url(#structural-arrow-radius-total)"');
   expect(markup).toContain("Selected function");
   expect(markup).toContain("Direct caller");
   expect(markup).toContain("Static caller graph for selected total");
+});
+
+test("returning from source restores the caller graph, scroll and node without resetting its camera", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function returnToStructuralGraph"), app.indexOf("function applyStructuralGraphView"));
+  const camera = { scale: 1.7, x: -80, y: 35 };
+  const state = {
+    structuralGraphReturn: { radiusId: "radius", nodeId: "caller", scrollTop: 250 },
+    structuralBlastRadiusId: "other",
+    structuralGraphViews: new Map([["radius", camera]]),
+    tabScrollPositions: new Map(),
+  };
+  let focused = false;
+  let opened = "";
+  let hidden = false;
+  const panel = { scrollTop: 0 };
+  const back = new Function("state", "elements", "openMaps", "structuralGraphElement", "document", `${source}; return returnToStructuralGraph;`)(
+    state, { "diff-panel": panel },
+    (view: string) => { opened = view; },
+    () => ({ querySelectorAll: () => [{ dataset: { structuralNode: "caller" }, focus: (options: { preventScroll: boolean }) => { focused = options.preventScroll; } }] }),
+    { getElementById: () => ({ classList: { add: () => { hidden = true; } } }) },
+  );
+  back();
+  expect(opened).toBe("structural-blast-radius");
+  expect(state.structuralBlastRadiusId).toBe("radius");
+  expect(panel.scrollTop).toBe(250);
+  expect(state.tabScrollPositions.get("structural-blast-radius")).toBe(250);
+  expect(focused).toBe(true);
+  expect(hidden).toBe(true);
+  expect(state.structuralGraphReturn).toBeNull();
+  expect(state.structuralGraphViews.get("radius")).toEqual(camera);
+});
+
+test("caller graph viewport is tall and full width with screen-coordinate panning", async () => {
+  const css = await readFile(join(root, "public", "styles.css"), "utf8");
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  expect(css).toContain("height: clamp(440px, 68vh, 900px)");
+  expect(css).toContain("padding: 6px 10px; font: 600 12px/1.3 system-ui, sans-serif;");
+  expect(app).toContain("drag.graph.getScreenCTM()");
+  expect(app).toContain("view.x += current.x - previous.x");
+  expect(app).not.toContain("movement / view.scale");
+});
+
+test("caller graph return floats inside the diff pane and hides outside the diff", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const html = await readFile(join(root, "public", "index.html"), "utf8");
+  expect(html).toContain('id="structural-graph-return" class="button diff-return"');
+  expect(html).toContain('id="current-step-return" class="button diff-return current-step-return');
+  expect(html).toContain('id="pull-request-return" class="button diff-return pull-request-return');
+  const source = app.slice(app.indexOf("function updateStructuralGraphReturnVisibility"), app.indexOf("function updateCurrentStepReturnVisibility"));
+  const state = { structuralGraphReturn: { radiusId: "a" }, activeTab: "diff" };
+  const button = { style: { right: "", bottom: "" } };
+  let hidden = true;
+  const update = new Function("state", "elements", "window", "document", `${source}; return updateStructuralGraphReturnVisibility;`)(
+    state,
+    { "diff-panel": { getBoundingClientRect: () => ({ right: 900, bottom: 700 }) } },
+    { innerWidth: 1200, innerHeight: 800 },
+    { getElementById: (id: string) => id === "structural-graph-return" ? button : { classList: { toggle: (_name: string, value: boolean) => { hidden = value; } } } },
+  );
+  update();
+  expect(hidden).toBe(false);
+  expect(button.style).toEqual({ right: "314px", bottom: "158px" });
+  state.activeTab = "structural-blast-radius";
+  update();
+  expect(hidden).toBe(true);
+});
+
+test("caller graph expansion moves the live canvas and restores it on close", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  const source = app.slice(app.indexOf("function expandStructuralGraph"), app.indexOf("function changeStructuralGraphView"));
+  let expanded = false;
+  let restored: unknown;
+  let moved: unknown;
+  let closed = () => {};
+  let focused = false;
+  const dialog = {
+    className: "", setAttribute() {}, remove() {},
+    append(node: unknown) { moved = node; },
+    addEventListener(_event: string, callback: () => void) { closed = callback; },
+    showModal() { expanded = true; },
+    close() { expanded = false; closed(); },
+  };
+  const shell = { closest: () => expanded ? dialog : null, before() {}, parentElement: { append() {} } };
+  const button = { closest: () => shell, innerHTML: "", setAttribute() {}, focus() { focused = true; } };
+  const expand = new Function("document", `${source}; return expandStructuralGraph;`)({
+    createComment: () => ({ replaceWith(node: unknown) { restored = node; } }),
+    createElement: () => dialog,
+  });
+  expand(button);
+  expect(expanded).toBe(true);
+  expect(moved).toBe(shell);
+  expect(button.innerHTML).toContain("Close");
+  expand(button);
+  expect(expanded).toBe(false);
+  expect(restored).toBe(shell);
+  expect(button.innerHTML).toContain("Expand");
+  expect(focused).toBe(true);
+});
+
+test("inline and briefing sequence diagrams share architecture controls and interactions", async () => {
+  const app = await readFile(join(root, "public", "app.js"), "utf8");
+  expect(app).toContain('data-architecture-key="sequence-${escapeHtml(flow.id)}"');
+  expect(app).toContain('data-architecture-key="intro-sequence-${escapeHtml(flow.id)}"');
+  expect(app).toContain('registerArchitectureDiagramInteractions(elements.flows)');
+  const renderer = app.slice(app.indexOf("for (let index = 0; index < flows.length; index += 1)"));
+  expect(renderer).toContain('applyArchitectureDiagramView(`sequence-${flows[index].id}`)');
+  expect(renderer).toContain('applyArchitectureDiagramView(`intro-sequence-${flows[index].id}`)');
 });
 
 test("structural graph controls retain an independent view per analysed symbol", async () => {
@@ -2008,7 +2125,7 @@ test("structural graph controls retain an independent view per analysed symbol",
 
 test("structural cards group analysis and test evidence without exposing raw data by default", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
-  const source = app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function renderStructuralBlastRadii"));
+  const source = app.slice(app.indexOf("function architectureDiagramControls"), app.indexOf("function architectureDiagramExpandButton")) + app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function renderStructuralBlastRadii"));
   const card = new Function("state", "escapeHtml", `${source}; return structuralBlastRadiusCard;`)({ structuralGraphViews: new Map(), structuralDisclosureStates: new Map() }, (value: unknown) => String(value)) as (radius: unknown) => string;
   const markup = card({
     id: "radius:total",
@@ -2058,7 +2175,7 @@ test("structural cards group analysis and test evidence without exposing raw dat
   expect(markup).toContain("Contains selected function.");
   expect(markup).toContain("Contains direct caller.");
   const beforeTechnicalData = markup.slice(0, markup.indexOf("Technical data"));
-  expect(beforeTechnicalData).not.toContain("src/cart.ts:new:14:total");
+  expect(beforeTechnicalData.replace(/data-structural-node="[^"]*"/g, "")).not.toContain("src/cart.ts:new:14:total");
   expect(beforeTechnicalData).not.toContain("Saved summary");
   expect(beforeTechnicalData).not.toContain("Confidence");
   expect(beforeTechnicalData).not.toContain("provenance");
@@ -2067,7 +2184,7 @@ test("structural cards group analysis and test evidence without exposing raw dat
 
 test("structural disclosures preserve an opened section for the selected result", async () => {
   const app = await readFile(join(root, "public", "app.js"), "utf8");
-  const source = app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function renderStructuralBlastRadii"));
+  const source = app.slice(app.indexOf("function architectureDiagramControls"), app.indexOf("function architectureDiagramExpandButton")) + app.slice(app.indexOf("function structuralLocationLabel"), app.indexOf("function renderStructuralBlastRadii"));
   const state = { structuralGraphViews: new Map(), structuralDisclosureStates: new Map([["radius:total", { analysis: true, technical: true, files: true, tests: true, "test-search": true }]]) };
   const card = new Function("state", "escapeHtml", `${source}; return structuralBlastRadiusCard;`)(state, (value: unknown) => String(value)) as (radius: unknown) => string;
   const markup = card({

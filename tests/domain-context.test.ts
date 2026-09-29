@@ -42,12 +42,12 @@ test("domain map candidates use definitions, not code-change comparison states",
 test("glossary details are safely embedded and absent for unmatched components", () => {
   const details = {receipt:{...domainFixtureModel.concepts[0]!,context:"Checkout",definition:"</script><script>alert(1)</script>"}};
   const html = withArchifyEmbedAdapter("<html><body></body></html>","architecture",details);
-  expect(html).toContain("data-code-review-tour-domain");
+  expect(html).toContain("data-diffcompass-domain");
   expect(html).not.toContain("</script><script>alert(1)");
-  expect(withArchifyEmbedAdapter("<html><body></body></html>")).not.toContain("data-code-review-tour-domain");
+  expect(withArchifyEmbedAdapter("<html><body></body></html>")).not.toContain("data-diffcompass-domain");
 });
 test("discovery finds scoped glossaries and context-map links but skips symlinks and unrelated modules", async () => {
-  const root = await mkdtemp(join(tmpdir(),"crt-domain-test-"));
+  const root = await mkdtemp(join(tmpdir(),"diffcompass-domain-test-"));
   await mkdir(join(root,"one")); await mkdir(join(root,"two")); await mkdir(join(root,"three"));
   await writeFile(join(root,"CONTEXT-MAP.md"),"[One](one/CONTEXT.md) [Two](two/CONTEXT.md)");
   await writeFile(join(root,"one/CONTEXT.md"),"# One");
@@ -58,7 +58,7 @@ test("discovery finds scoped glossaries and context-map links but skips symlinks
   expect(found.map(doc=>doc.path).sort()).toEqual(["CONTEXT-MAP.md","one/CONTEXT.md","two/CONTEXT.md"]);
 });
 test("tree reviews read glossary content from the reviewed tree, not the working copy", async () => {
-  const root = await mkdtemp(join(tmpdir(),"crt-domain-snapshot-"));
+  const root = await mkdtemp(join(tmpdir(),"diffcompass-domain-snapshot-"));
   await runProcess(["git","init"],root);
   await writeFile(join(root,"CONTEXT.md"),"# Original vocabulary");
   await runProcess(["git","add","CONTEXT.md"],root);
