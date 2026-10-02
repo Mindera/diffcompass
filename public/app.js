@@ -84,6 +84,7 @@ const state = {
   structuralBlastRadiusId: null,
   structuralGraphViews: new Map(),
   structuralGraphReturn: null,
+  sequenceSourceReturn: null,
   structuralDisclosureStates: new Map(),
   structuralGraphDrag: null,
   pollInFlight: false,
@@ -1898,7 +1899,7 @@ async function highlightRenderedCode() {
     for (const group of results.flatMap((result) => result.groups)) {
       if (group.id === "source") {
         const target = elements.diff.querySelector('.source-code[data-highlight-group="source"]');
-        if (target) target.innerHTML = group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n");
+        if (target) target.innerHTML = sourceCodeLines(group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")), Number(target.dataset.selectedLine));
         continue;
       }
       const nodes = [...elements.diff.querySelectorAll(`.line-code[data-highlight-group="${CSS.escape(group.id)}"]`)];
@@ -2088,7 +2089,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   return true;
 }
 
-async function showRepositoryFile(path) {
+async function showRepositoryFile(path, line) {
   state.activeTab = "diff";
   state.proposalPreview = false;
   state.proposalActivityId = null;
@@ -2102,6 +2103,13 @@ async function showRepositoryFile(path) {
     state.repositoryFileContent = file.content;
     state.repositoryFileView = /\.md$/i.test(path) ? "preview" : "source";
     renderRepositoryFile(path, file.content);
+    if (Number.isSafeInteger(line) && line > 0) {
+      const source = elements.diff.querySelector('.source-code');
+      if (source) source.dataset.selectedLine = String(line);
+      const row = source?.querySelector(`[data-source-line="${line}"]`);
+      row?.classList.add("sequence-source-highlight");
+      row?.scrollIntoView({ block: "center" });
+    }
     elements["empty-diff"].classList.add("hidden");
     return true;
   } catch (error) {
@@ -2110,11 +2118,18 @@ async function showRepositoryFile(path) {
   }
 }
 
+function sourceCodeLines(lines, selectedLine) {
+  return lines.map((line, index) => `<span data-source-line="${index + 1}"${index + 1 === selectedLine ? ' class="sequence-source-highlight"' : ""}>${line}</span>`).join("\n");
+}
+
 function renderRepositoryFile(path, content) {
   const markdown = /\.md$/i.test(path);
   const preview = markdown && state.repositoryFileView === "preview";
   elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">unchanged</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
-  if (!preview) void highlightRenderedCode();
+  if (!preview) {
+    elements.diff.querySelector('.source-code').innerHTML = sourceCodeLines(content.split("\n").map(escapeHtml));
+    void highlightRenderedCode();
+  }
 }
 
 function symbolPeekContext() {
@@ -3057,10 +3072,10 @@ function archifyArtifactCard(artifact) {
   const comparisonControls = views.length > 1 ? `<div class="archify-comparison" role="group" aria-label="${escapeHtml(`${artifact.title} comparison view`)}">${views.map((view) => `<button type="button" data-archify-comparison-view="${view.id}" data-archify-comparison-artifact="${escapeHtml(artifact.id)}"${view.id === selectedView.id ? ' class="active" aria-pressed="true"' : ' aria-pressed="false"'}>${escapeHtml(view.label)}</button>`).join("")}</div>` : "";
   return `<article class="flow-card architecture-card archify-artifact">
     <header class="architecture-card-heading"><div><span class="architecture-label">Validated map</span><h2>${escapeHtml(artifact.title)}</h2></div><span class="archify-view">${escapeHtml(archifyArtifactTypeLabel(artifact.type, artifact.purpose))}</span></header>
-    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it. Drag the background to pan; use Fit to see the whole map.</p>
+    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it.${artifact.type === "sequence" ? " Click an arrow or its caption to inspect its source link." : ""} Drag the background to pan; use Fit to see the whole map.</p>
     ${comparisonControls}
     ${selectedView.id === "delta" ? '<p class="archify-delta-key" aria-label="Change legend"><span>+ Added</span><span>~ Changed</span><span>− Removed</span><span>Unchanged context</span></p>' : ""}
-    <iframe class="archify-frame" data-archify-artifact-id="${escapeHtml(artifact.id)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
+    <iframe class="archify-frame" data-archify-artifact-id="${escapeHtml(artifact.id)}" data-archify-rendered-at="${escapeHtml(artifact.renderedAt)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
     <details class="archify-evidence"><summary>Sources and technical validation</summary><ul>${evidence}</ul><div class="flow-impact-list"><strong>Affected changed files</strong>${affected || "<span class=\"muted\">No exact changed file was captured.</span>"}</div><details><summary>Validated ${escapeHtml(selectedView.label.toLowerCase())} map data</summary><pre>${ir}</pre></details><details><summary>Renderer diagnostics</summary><pre>${escapeHtml(displayed?.validationReceipt ?? artifact.validationReceipt)}</pre></details></details>
   </article>`;
 }
@@ -3077,6 +3092,75 @@ function archifyFailureCards() {
   const failures = state.session.outline?.archifyFailures ?? [];
   return failures.map((failure) => `<article class="flow-card archify-failure"><strong>Archify ${escapeHtml(failure.type)} unavailable</strong><p>${escapeHtml(failure.message)}</p><small>${failure.preservedLastValid ? "The last validated diagram remains on display." : "The Mermaid fallback remains available."}</small></article>`).join("");
 }
+
+async function openSequenceSource(event) {
+  if (event.data?.type !== "diffcompass-sequence-source" || typeof event.data.edgeId !== "string" || !Number.isInteger(event.data.anchorIndex) || event.data.anchorIndex < 0 || event.data.anchorIndex > 7) return;
+  const frame = [...document.querySelectorAll("iframe.archify-frame")].find((frame) => frame.contentWindow === event.source);
+  if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
+  const id = frame.dataset.archifyArtifactId;
+  try {
+    // The iframe supplies only an identity. Resolve paths from current,
+    // server-validated evidence, never from a postMessage path or line.
+    const sources = await api(`/api/sequence-sources/${encodeURIComponent(id)}?edge=${encodeURIComponent(event.data.edgeId)}`);
+    if (!frame.isConnected || state.activeTab !== "archify") { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); return; }
+    const anchor = sources[event.data.edgeId]?.[event.data.anchorIndex];
+    if (!anchor) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); toast("This source link is no longer available. Regenerate the map to refresh its evidence."); return; }
+    state.structuralGraphReturn = null;
+    state.sequenceSourceReturn = { artifactId: id, frame, present: event.data.present === true, scrollTop: elements["diff-panel"].scrollTop };
+    window.diffcompassMapPresentation?.suspend(frame);
+    state.activeTab = "diff";
+    renderActiveTab();
+    await showAnalysisFile(anchor.path, anchor.startLine, anchor.side);
+    for (let line = anchor.startLine; line <= anchor.endLine; line++) {
+      const row = diffViewRow(anchor.path, anchor.side, line);
+      row?.classList.add("sequence-source-highlight");
+    }
+    updateSequenceSourceReturnVisibility();
+  } catch (error) {
+    frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*");
+    toast(error.message || "Could not open the sequence source.");
+  }
+}
+
+function returnToSequenceDiagram() {
+  const target = state.sequenceSourceReturn;
+  if (!target) return;
+  state.archifyArtifactId = target.artifactId;
+  openMaps("archify");
+  elements["diff-panel"].scrollTop = target.scrollTop;
+  if (target.frame.isConnected) {
+    if (target.present) window.diffcompassMapPresentation?.resume(target.frame);
+    target.frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*");
+    target.frame.focus({ preventScroll: true });
+  } else toast("The map changed while you were viewing the source; showing its latest version.");
+  state.sequenceSourceReturn = null;
+  elements.diff.querySelectorAll(".sequence-source-highlight").forEach((row) => row.classList.remove("sequence-source-highlight"));
+  updateSequenceSourceReturnVisibility();
+}
+
+function updateSequenceSourceReturnVisibility() {
+  const button = document.getElementById("sequence-source-return");
+  const visible = Boolean(state.sequenceSourceReturn) && state.activeTab === "diff";
+  button.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const bounds = elements["diff-panel"].getBoundingClientRect();
+  button.style.right = `${Math.max(12, window.innerWidth - bounds.right + 14)}px`;
+  button.style.bottom = `${Math.max(58, window.innerHeight - Math.min(window.innerHeight, bounds.bottom) + 58)}px`;
+}
+window.addEventListener("message", (event) => { void openSequenceSource(event); });
+window.addEventListener("message", async (event) => {
+  if (event.data?.type !== "diffcompass-sequence-lookup" || typeof event.data.edgeId !== "string") return;
+  const frame = [...document.querySelectorAll("iframe.archify-frame")].find((candidate) => candidate.contentWindow === event.source);
+  if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
+  const edgeId = event.data.edgeId;
+  try {
+    const sources = await api(`/api/sequence-sources/${encodeURIComponent(frame.dataset.archifyArtifactId)}?edge=${encodeURIComponent(edgeId)}`);
+    if (frame.isConnected) frame.contentWindow.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: sources[edgeId] ?? [] }, "*");
+  } catch {
+    frame.contentWindow?.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: [], error: "Definition lookup failed. You can retry." }, "*");
+  }
+});
+document.getElementById("sequence-source-return").addEventListener("click", returnToSequenceDiagram);
 
 function renderArchify() {
   const artifacts = archifyArtifacts();
@@ -4652,7 +4736,7 @@ function returnToPullRequest() {
 function updatePullRequestReturnVisibility() {
   updateStructuralGraphReturnVisibility();
   const button = elements["pull-request-return"];
-  const visible = Boolean(state.pullRequestReturn) && !state.structuralGraphReturn && state.activeTab === "diff";
+  const visible = Boolean(state.pullRequestReturn) && !state.structuralGraphReturn && !state.sequenceSourceReturn && state.activeTab === "diff";
   button.classList.toggle("hidden", !visible);
   if (!visible) return;
   const panelBounds = elements["diff-panel"].getBoundingClientRect();
@@ -4673,6 +4757,7 @@ function updateStructuralGraphReturnVisibility() {
 }
 
 function updateCurrentStepReturnVisibility() {
+  updateSequenceSourceReturnVisibility();
   updateStructuralGraphReturnVisibility();
   currentStepReturnFrame = null;
   const button = elements["current-step-return"];
@@ -5433,7 +5518,7 @@ async function showAnalysisFile(path, line, side) {
     renderSession();
   }
   if (changedFile) await showChangedFile(path, line, side);
-  else await showRepositoryFile(path);
+  else await showRepositoryFile(path, line);
   if (outsidePhase) toast("Tour paused so this evidence can be shown. Resume the tour when you are ready.", { duration: 7_000 });
 }
 
@@ -7185,6 +7270,7 @@ elements["structural-blast-radius"].addEventListener("click", (event) => {
   if (!location && !file) return;
   const expanded = event.target.closest(".structural-graph-dialog");
   if (expanded) expanded.close();
+  state.sequenceSourceReturn = null;
   state.structuralGraphReturn = {
     radiusId: state.structuralBlastRadiusId,
     nodeId: location?.dataset.structuralNode,

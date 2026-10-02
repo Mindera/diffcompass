@@ -170,6 +170,11 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
+      if (request.method === "GET" && url.pathname.startsWith("/api/sequence-sources/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/sequence-sources/".length));
+        const edge = url.searchParams.get("edge");
+        return json(edge ? await session.resolveArchifySequenceSources(id, edge) : session.archifySequenceSources(id));
+      }
       if (request.method === "GET" && url.pathname.startsWith("/archify/")) {
         const id = decodeURIComponent(url.pathname.slice("/archify/".length));
         const artifact = session.archifyArtifact(id);
@@ -181,7 +186,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         // Archify artifacts are validated at generation time and additionally
         // sandboxed by the iframe. This CSP makes their self-contained viewer
         // interactive while forbidding all network and parent-page access.
-        return new Response(withArchifyEmbedAdapter(html, artifact.type, requestedView === "before" ? undefined : artifact.domainDetails, artifact.purpose === "domain-model", requestedView === "before" ? undefined : artifact.nodeRoles), {
+        return new Response(withArchifyEmbedAdapter(html, artifact.type, requestedView === "before" ? undefined : artifact.domainDetails, artifact.purpose === "domain-model", requestedView === "before" ? undefined : artifact.nodeRoles, session.archifySequenceSources(id)), {
           headers: {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",

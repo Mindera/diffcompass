@@ -244,7 +244,7 @@ function workflowCandidate(flow: CallFlow): ArchifyCandidate | undefined {
   };
 }
 
-function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefined {
+export function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefined {
   const affectedFiles = flow.affectedFiles ?? [];
   const labels = new Map<string, string>();
   const messages: Array<{ from: string; to: string; label: string; variant?: "return" }> = [];

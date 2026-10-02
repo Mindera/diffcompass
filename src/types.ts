@@ -397,6 +397,8 @@ export interface ArchifyFailure {
 }
 
 export interface ReviewFlow {
+  /** One-based message order plus exact caption guards against stale links. */
+  messageSources?: SequenceMessageSource[];
   nodeRoles?: import("./map-node-roles.ts").MapNodeRoles;
   id: string;
   title: string;
@@ -406,6 +408,22 @@ export interface ReviewFlow {
   blastRadiusSize: number;
   affectedFiles?: string[];
   outdated?: boolean;
+}
+
+export interface SequenceSourceAnchor {
+  /** Runtime lookup candidate, not authored evidence of the message. */
+  definition?: boolean;
+  path: string;
+  side: "old" | "new";
+  startLine: number;
+  endLine: number;
+  quote: string;
+}
+
+export interface SequenceMessageSource {
+  message: number;
+  label: string;
+  anchors: SequenceSourceAnchor[];
 }
 
 /**

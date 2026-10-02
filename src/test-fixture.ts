@@ -411,6 +411,18 @@ function persistedFixture(repositoryRoot: string, browserToken: string, baseOid:
         provenance: "verified",
         blastRadiusSize: 2,
         affectedFiles: ["src/cart.ts", "src/receipt.ts"],
+        messageSources: [
+          { message: 2, label: "total(items, discount)", anchors: [
+            { path: "src/receipt.ts", side: "new", startLine: 4, endLine: 4, quote: "  const amount = total(items, discount);" },
+          ] },
+          { message: 3, label: "discounted amount", anchors: [
+            { path: "src/cart.ts", side: "new", startLine: 16, endLine: 16, quote: "  if (!discount) return amount;" },
+            { path: "src/cart.ts", side: "new", startLine: 17, endLine: 17, quote: "  return amount - amount * discount.percentage;" },
+          ] },
+          { message: 4, label: "formatted total", anchors: [
+            { path: "src/receipt.ts", side: "new", startLine: 5, endLine: 5, quote: "  return `Total: ${amount.toFixed(2)}`;" },
+          ] },
+        ],
       }],
       dryRunPlans: [{
         flowId: "receipt-total-behavior",

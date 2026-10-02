@@ -41,4 +41,13 @@ test("presentation expands the same iframe, validates the sender, and restores l
     { type: 'diffcompass-map-present-state', active: true },
     { type: 'diffcompass-map-present-state', active: false },
   ]);
+  const controls = (window as any).diffcompassMapPresentation;
+  controls.resume(frame);
+  expect(open).toBe(true);
+  controls.suspend(frame);
+  expect(open).toBe(false);
+  expect(sibling.inert).toBe(false);
+  controls.resume(frame);
+  expect(open).toBe(true);
+  controls.suspend(frame);
 });

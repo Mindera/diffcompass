@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { runProcess } from "./process.ts";
 import { validateReviewFlow } from "./flows.ts";
+import { groundedSequenceSources, SEQUENCE_SOURCE_PROMPT } from "./sequence-sources.ts";
 import { validateReviewArchitecture } from "./architecture.ts";
 import { validateReviewAdaptiveDiagram } from "./adaptive-diagrams.ts";
 import { validateCallFlow, validateCallFlows } from "./call-flows.ts";
@@ -475,16 +476,18 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
     return [{ id: phase.id, title: phase.title, summary: phase.summary, fileChanges, steps }];
   });
   if (phases.length === 0) throw new Error("The agent did not anchor any tour phases to the diff.");
+  const diagnostics: string[] = [];
   const flowIds = new Set<string>();
   const flows = outline.flows.flatMap((candidate) => {
-    if (!validFlow(candidate)) return [];
-    const flow = validateReviewFlow(candidate);
+    const diagram = { ...candidate, messageSources: undefined };
+    if (!validFlow(diagram)) return [];
+    const flow = validateReviewFlow(diagram);
+    if (candidate.messageSources !== undefined) flow.messageSources = groundedSequenceSources({ ...flow, messageSources: candidate.messageSources }, comparison, diagnostics);
     if (!flow.affectedFiles?.length || flow.affectedFiles.some((path) => !comparison.files.some((file) => file.path === path))) return [];
     if (flowIds.has(flow.id)) return [];
     flowIds.add(flow.id);
     return [flow];
   }).slice(0, 3);
-  const diagnostics: string[] = [];
   const callFlows = validOptionalCallFlows(outline.callFlows, comparison, diagnostics);
   // Correlations are optional. Never change a scenario's own source evidence.
   const plans = Array.isArray(outline.dryRunPlans) ? outline.dryRunPlans.map((plan, index) => {
@@ -566,7 +569,9 @@ function parseFlows(message: string, comparison: GitComparison): ReviewFlow[] {
   const ids = new Set<string>();
   return value.flows.flatMap((candidate) => {
     try {
-      const flow = validateReviewFlow(candidate);
+      const authored = candidate as ReviewFlow;
+      const flow = validateReviewFlow({ ...authored, messageSources: undefined });
+      if (authored.messageSources !== undefined) flow.messageSources = groundedSequenceSources({ ...flow, messageSources: authored.messageSources }, comparison);
       if (!flow.affectedFiles?.length || flow.affectedFiles.some((path) => !comparison.files.some((file) => file.path === path))) return [];
       if (ids.has(flow.id)) return [];
       ids.add(flow.id);
@@ -1103,6 +1108,8 @@ Add "architecture": the implementation journey, answering how this PR's concrete
 
 Both diagrams are architecture maps, not runtime sequences. Use plain-language component names rather than build-module labels. Use flowchart LR, declare each node on its own line with a quoted label, and label every subject-to-object edge. Use neutral node IDs such as component1; never use Mermaid keywords such as graph, flowchart, subgraph, end, class, classDef, style, or click as node IDs. Mark every component with :::new, :::touched, :::removed, or :::external and include the exact four classDef lines shown in the example without fills. Edges touching removed components describe the old state; all other edges describe the target state. dependencyChanges explicitly lists every added, removed, or reversed relationship, or one item saying there are no dependency-direction changes. affectedFiles lists only changed paths that support that specific map. When architecture is omitted above, omit behaviorArchitectureStatus, behaviorArchitecture, and architecture, and spend no analysis on them.
 
+${SEQUENCE_SOURCE_PROMPT}
+
 Always include structuralBlastRadii. First identify every changed declaration you can support from changed diff rows (functions, methods, constructors, components, types, and modules). These are analysed symbols, not a claim that every changed declaration in the PR was found or analysed. For each analysed root, collect upstream static caller/reference reach into that one symbol only: do not mix in downstream callees, whole-PR reach, or runtime effects. Prefer CodeGraph when this repository is indexed; otherwise use an available language server; otherwise use a bounded repository search. Record the provider actually used as codegraph, language-server, repository-search, or unavailable. Never silently turn unavailable or partial data into zero impact: an unavailable provider uses confidence unresolved and provenance unverified, has the root node only, zero reported caller/reachable counts, coverage state unavailable with reportedCounts not-reported, and explains the limitation. Repository search and unresolved dispatch are partial or unverified, not verified. Structural reach is an authored/static dependency path, not proof of runtime impact; say this in every summary without suggesting a runtime trace.
 
 Each radius is one isolated, selectable subgraph. Use unambiguous source identities for every node, for example path:side:line:qualified-symbol; never merge same-named symbols, and reuse the exact identity when the same source symbol appears in more than one root graph. Changed root identities must be unique. Its root symbol location must point to a diff row in a changed file. Edges are caller/reference source -> target; directCallerIds exactly list visible nodes with an edge into the root. Include visible source paths in impactedFiles. reportedDirectCallerCount and reportedReachableNodeCount count callers/reachable nodes excluding the root; reachable-node counts may include unresolved or external nodes. impacted-file counts are unique known source paths and include the root file; external or unresolved nodes without a source location do not add a file. Add coverage for every new result: state complete means every identity returned by the provider is saved and all reported counts are exact/equal to visible counts; partial means a provider result is incomplete and needs an omissionReason; unavailable means no caller analysis ran; unknown is reserved for legacy data. Set reportedCounts exact only for evidence-backed totals, lower-bound when the number is only known to be at least that value, and not-reported when no total exists. Never invent omitted nodes or exact totals. Use no more than 80 visible nodes and 160 edges per root.
@@ -1268,6 +1275,8 @@ Evidence must name the decisive repository paths and symbols or line ranges and 
     const prompt = `${TOUR_CONTEXT_BOUNDARY}
 
 You are updating grounded sequence diagrams for an interactive code review. Inspect the repository and the diff from merge base ${comparison.mergeBase} to the current working tree. Do not modify files.
+
+${SEQUENCE_SOURCE_PROMPT}
 
 Comparison fingerprint: ${this.comparisonFingerprint}
 ${selected ? `Regenerate only this flow, preserving its id: ${JSON.stringify(selected)}` : `Regenerate the complete flow set. Current flows: ${JSON.stringify(currentFlows)}`}

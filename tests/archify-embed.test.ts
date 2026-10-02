@@ -182,15 +182,36 @@ function interactiveHarness(dimensions: Partial<{ containerWidth: number; contai
   const documentListeners = new Map<string, Array<(event: Record<string, unknown>) => void>>();
   const windowValue = { Archify: {} as { view?: unknown }, parent: { postMessage(message: unknown) { posted.push(message); } }, addEventListener() {} };
   const documentValue = { readyState: "complete", querySelector: () => container, getElementById: (id: string) => id === panelId ? passport : null, addEventListener(type: string, listener: (event: Record<string, unknown>) => void) { documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]); } };
-  const ResizeObserverValue = class { constructor(_callback: () => void) {} observe() {} };
+  let resize = () => {};
+  const ResizeObserverValue = class { constructor(callback: () => void) { resize = callback; } observe() {} };
   const runtime = new Function("window", "document", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "Archify", cameraRuntime());
   runtime(windowValue, documentValue, ResizeObserverValue, (callback: () => void) => callback(), () => {}, (node: { testOverflowY?: string }) => ({ paddingLeft: "24px", paddingRight: "24px", paddingTop: "16px", paddingBottom: "72px", overflowY: node?.testOverflowY }), windowValue.Archify);
   const fire = (type: string, event: Record<string, unknown>) => (listeners.get(type) ?? []).forEach((listener) => listener(event));
   const firePassport = (type: string, event: Record<string, unknown>) => (passportListeners.get(type) ?? []).forEach((listener) => listener(event));
   const click = (selector: string) => (buttonListeners.get(`${selector}:click`) ?? []).forEach((listener) => listener());
   const fireDocument = (type: string, event: Record<string, unknown>) => (documentListeners.get(type) ?? []).forEach((listener) => listener(event));
-  return { svg, container, passport, fire, fireDocument, posted, firePassport, click, inspected: () => inspected, view: windowValue.Archify.view as { state(): { scale: number }; reveal(ids: string[], options?: Record<string, unknown>): { state: string; finished: Promise<{ state: string }> } } };
+  return { svg, container, passport, fire, fireDocument, posted, firePassport, click, resize: () => resize(), inspected: () => inspected, view: windowValue.Archify.view as { state(): { scale: number }; suspend(): void; restore(saved: unknown): void; reveal(ids: string[], options?: Record<string, unknown>): { state: string; finished: Promise<{ state: string }> } } };
 }
+
+test("source navigation preserves the camera across hidden and presentation-sized viewports", () => {
+  const harness = interactiveHarness();
+  harness.click('[data-view="in"]');
+  const saved = harness.view.state();
+  const transform = harness.svg.style.transform;
+  harness.view.suspend();
+  harness.container.clientWidth = 0;
+  harness.container.clientHeight = 0;
+  harness.resize();
+  expect(harness.svg.style.transform).toBe(transform);
+  harness.container.clientWidth = 1200;
+  harness.container.clientHeight = 800;
+  harness.resize();
+  harness.view.restore(saved);
+  expect(harness.view.state()).toEqual(saved);
+  expect(harness.svg.style.transform).toBe(transform);
+  harness.resize();
+  expect(harness.svg.style.transform).not.toBe(transform); // Ordinary resize works again.
+});
 
 test("adapts a validated viewer to a fixed review viewport while preserving supported inspection controls", () => {
   const embedded = withArchifyEmbedAdapter("<!doctype html><html><head><style>html[data-embed=\"true\"]{color:red}</style></head><body><div class=\"diagram-container\"><svg></svg></div></body></html>");

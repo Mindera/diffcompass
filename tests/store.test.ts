@@ -83,6 +83,18 @@ test("persists a complete session atomically and with owner-only permissions whe
   }
 });
 
+test("sequence source anchors survive persistence and malformed message references are rejected", async () => {
+  const path = await temporaryStateFile();
+  const session = persistedSession();
+  const anchors = [{ path: "src/app.ts", side: "new" as const, startLine: 2, endLine: 2, quote: "run();" }];
+  session.outline!.flows = [{ id: "flow", title: "Flow", summary: "Call", mermaid: "sequenceDiagram\n participant A\n participant B\n A->>B: run", provenance: "partial", blastRadiusSize: 1, affectedFiles: ["src/app.ts"], messageSources: [{ message: 1, label: "run", anchors }] }];
+  await savePersistedSession(path, session);
+  expect((await loadPersistedSession(path))?.outline?.flows[0]?.messageSources?.[0]?.anchors).toEqual(anchors);
+  session.outline!.flows[0]!.messageSources![0]!.message = 10;
+  await writeFile(path, JSON.stringify(session));
+  await expect(loadPersistedSession(path)).rejects.toThrow();
+});
+
 test("persists bounded structural blast-radius evidence and accepts older outlines without it", async () => {
   const path = await temporaryStateFile();
   const session = persistedSession();

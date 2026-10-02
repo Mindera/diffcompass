@@ -22,7 +22,10 @@
       .find(node => node.contentWindow === event.source);
     if (!frame || !frame.getClientRects().length) return;
     if (!event.data.active) { if (expanded === frame) close(); return; }
-    if (expanded === frame) return;
+    open(frame);
+  });
+  function open(frame) {
+    if (!frame?.isConnected || expanded === frame) return;
     close();
     expanded = frame;
     restoreStyle = frame.getAttribute('style');
@@ -39,7 +42,8 @@
     }
     frame.contentWindow.postMessage({ type: 'diffcompass-map-present-state', active: true }, '*');
     frame.focus({ preventScroll: true });
-  });
+  }
+  window.diffcompassMapPresentation = { suspend(frame) { if (expanded === frame) close(); }, resume: open };
   document.addEventListener('keydown', (event) => {
     if (expanded && event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); close(); }
   }, true);
