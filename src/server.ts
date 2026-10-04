@@ -4,6 +4,8 @@ import { withArchifyEmbedAdapter } from "./archify-embed.ts";
 import { BRAND_FILES } from "./brand.ts";
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
 import appScript from "../public/app.js" with { type: "text" };
+// @ts-expect-error Bun embeds the sequence iframe lifecycle bridge.
+import sequenceWalkthroughHost from "../public/sequence-walkthrough-host.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared browser runtime.
 import mapPresentationScript from "../public/map-presentation.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared caption layout runtime.
@@ -45,6 +47,7 @@ const PUBLIC_FILES: Record<string, { body: BodyInit; contentType: string }> = {
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
   "app.js": { body: String(diagramLabelsScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
+  "sequence-walkthrough-host.js": { body: String(sequenceWalkthroughHost), contentType: "text/javascript; charset=utf-8" },
   "mermaid.min.js": { body: String(mermaidScript), contentType: "text/javascript; charset=utf-8" },
   "styles.css": { body: `${styles}\n${mapNodeStyles}`, contentType: "text/css; charset=utf-8" },
 };
@@ -186,7 +189,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         // Archify artifacts are validated at generation time and additionally
         // sandboxed by the iframe. This CSP makes their self-contained viewer
         // interactive while forbidding all network and parent-page access.
-        return new Response(withArchifyEmbedAdapter(html, artifact.type, requestedView === "before" ? undefined : artifact.domainDetails, artifact.purpose === "domain-model", requestedView === "before" ? undefined : artifact.nodeRoles, session.archifySequenceSources(id)), {
+        return new Response(withArchifyEmbedAdapter(html, artifact.type, requestedView === "before" ? undefined : artifact.domainDetails, artifact.purpose === "domain-model", requestedView === "before" ? undefined : artifact.nodeRoles, comparisonView ? {} : session.archifySequenceSources(id), { ir: comparisonView?.ir ?? artifact.ir }), {
           headers: {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",

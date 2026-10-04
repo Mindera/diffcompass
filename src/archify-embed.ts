@@ -9,6 +9,7 @@ import mapNodeStyles from "../public/map-nodes.css" with { type: "text" };
 import type { DomainNodeDetail } from "./domain-context.ts";
 import { withRouteChoices } from "./map-routes.ts";
 import { sequenceSourceScript } from "./sequence-source-embed.ts";
+import { sequenceWalkthroughScript } from "./sequence-walkthrough.ts";
 import type { SequenceSourceAnchor } from "./types.ts";
 import { applyMapNodeRoles, MAP_NODE_ROLES, type MapNodeRoles } from "./map-node-roles.ts";
 
@@ -103,6 +104,15 @@ function install(){
   function updateControls(m){var percent=Math.round(state.scale*100)+'%';if(out)out.disabled=state.scale<=.05;if(inButton)inButton.disabled=state.scale>=3;if(fit){fit.setAttribute('aria-label','Fit entire map');fit.title='Fit entire map';var detail=fit.querySelector('[data-view-detail]'),label=fit.querySelector('[data-view-percent]');if(detail){detail.hidden=false;detail.textContent='Fit';}if(label)label.textContent=percent;}container.classList.add('is-pannable');}
   function apply(){var m=metrics();svg.style.transform='translate('+Math.round(state.x*100)/100+'px,'+Math.round(state.y*100)/100+'px) scale('+state.scale+')';svg.setAttribute('data-view-scale',String(state.scale));updateControls(m);if(window.Archify&&Archify.radar&&typeof Archify.radar.sync==='function')Archify.radar.sync();}
   function fitAll(){var m=metrics(),view=m.viewport;state.scale=Math.min(1,view.width/m.contentWidth,view.height/m.contentHeight);state.x=view.left+(view.width-m.contentWidth*state.scale)/2;state.y=view.top+(view.height-m.contentHeight*state.scale)/2;apply();}
+  function initialFrame(){
+    if(!${diagramType === "sequence"}){fitAll();return;}
+    // Sequence captions are 9px in the bundled renderer. Start at a readable
+    // 12px instead of forcing the complete canvas into a small review pane.
+    // Fit remains an explicit overview; pan/zoom reveals the rest unchanged.
+    var m=metrics(),box=svg.viewBox&&svg.viewBox.baseVal,first=svg.querySelector('[data-node-id]'),bounds=null;
+    try{bounds=first&&first.getBBox();}catch(_){}
+    state.scale=4/3;state.x=m.viewport.left+12-(bounds?bounds.x-(box?.x||0):0)*state.scale;state.y=m.viewport.top+12-(bounds?bounds.y-(box?.y||0):0)*state.scale;apply();
+  }
   function zoom(next,anchor){var m=metrics(),view=m.viewport,previous=state.scale;next=Math.max(.05,Math.min(3,next));if(Math.abs(next-previous)<.0001)return;anchor=anchor||{x:view.left+view.width/2,y:view.top+view.height/2};var logicalX=(anchor.x-state.x)/previous,logicalY=(anchor.y-state.y)/previous;state.scale=next;state.x=anchor.x-logicalX*next;state.y=anchor.y-logicalY*next;apply();}
   function zoomStep(direction,anchor){var next=state.scale+direction*.25;if(direction<0&&state.scale<=.25)next=state.scale*.75;zoom(next,anchor);}
   function receipt(){var resolve;var result={state:'complete',finished:new Promise(function(done){resolve=done;}),cancel:function(){return false;}};resolve({state:'complete'});return result;}
@@ -134,8 +144,8 @@ function install(){
   container.addEventListener('pointerup',endDrag);container.addEventListener('pointercancel',endDrag);
   function installPassportDrag(panelId,handleSelector){var passport=document.getElementById&&document.getElementById(panelId),handle=passport&&passport.querySelector(handleSelector),passportDrag=null;if(!passport||!handle||passport.hasAttribute('data-diffcompass-passport-drag'))return;passport.setAttribute('data-diffcompass-passport-drag','true');handle.setAttribute('data-diffcompass-passport-handle','true');handle.title='Drag to move this panel';function endPassportDrag(event){if(!passportDrag||event.pointerId!==passportDrag.id)return;passport.classList.remove('is-dragging');try{handle.releasePointerCapture(event.pointerId);}catch(_){}passportDrag=null;}handle.addEventListener('pointerdown',function(event){if(event.button!==0||event.target.closest('button,a,input,select,textarea,[contenteditable="true"]'))return;passportDrag={id:event.pointerId,startX:event.clientX,startY:event.clientY,left:passport.offsetLeft||0,top:passport.offsetTop||0,moved:false};try{handle.setPointerCapture(event.pointerId);}catch(_){} });handle.addEventListener('pointermove',function(event){if(!passportDrag||event.pointerId!==passportDrag.id)return;var dx=event.clientX-passportDrag.startX,dy=event.clientY-passportDrag.startY;if(!passportDrag.moved&&Math.hypot(dx,dy)<5)return;passportDrag.moved=true;event.preventDefault();var width=passport.offsetWidth||(passport.getBoundingClientRect&&passport.getBoundingClientRect().width)||0,height=passport.offsetHeight||(passport.getBoundingClientRect&&passport.getBoundingClientRect().height)||0,left=Math.max(0,Math.min(container.clientWidth-width,passportDrag.left+dx)),top=Math.max(0,Math.min(container.clientHeight-height,passportDrag.top+dy));passport.style.left=Math.round(left)+'px';passport.style.top=Math.round(top)+'px';passport.style.right='auto';passport.setAttribute('data-review-panel-moved','true');if(passport.style.setProperty){passport.style.setProperty('--review-panel-x',Math.round(left)+'px');passport.style.setProperty('--review-panel-y',Math.round(top)+'px');}passport.classList.add('is-dragging');try{handle.setPointerCapture(event.pointerId);}catch(_){}});handle.addEventListener('pointerup',endPassportDrag);handle.addEventListener('pointercancel',endPassportDrag);}
   [['focus-chip','.relationship-lens-head'],['route-probe','.route-probe-head'],['semantic-lens','.semantic-lens-head'],['node-finder','.node-finder-head'],['diagram-guide','.diagram-guide-head']].forEach(function(entry){installPassportDrag(entry[0],entry[1]);});
-  function refit(){if(sourcePaused)return;if(resizeFrame)cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(function(){resizeFrame=0;if(!sourcePaused)fitAll();});}
-  if(typeof ResizeObserver==='function')new ResizeObserver(refit).observe(container);window.addEventListener('resize',refit,{passive:true});fitAll();
+  function refit(){if(sourcePaused)return;if(resizeFrame)cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(function(){resizeFrame=0;if(!sourcePaused){if(${diagramType === "sequence"})apply();else fitAll();}});}
+  if(typeof ResizeObserver==='function')new ResizeObserver(refit).observe(container);window.addEventListener('resize',refit,{passive:true});initialFrame();
 }
 if(document.readyState==='loading')window.addEventListener('load',function(){requestAnimationFrame(install);},{once:true});else requestAnimationFrame(install);
 }())</script>`;
@@ -164,7 +174,7 @@ function reviewKindLabels(html: string, domainModel = false): string {
   });
 }
 
-export function withArchifyEmbedAdapter(html: string, diagramType?: string, domainDetails?: Record<string, DomainNodeDetail>, domainModel = false, nodeRoles?: MapNodeRoles, sequenceSources?: Record<string, SequenceSourceAnchor[]>): string {
+export function withArchifyEmbedAdapter(html: string, diagramType?: string, domainDetails?: Record<string, DomainNodeDetail>, domainModel = false, nodeRoles?: MapNodeRoles, sequenceSources?: Record<string, SequenceSourceAnchor[]>, walkthrough?: { ir: Record<string, unknown>; offline?: boolean }): string {
   html = applyMapNodeRoles(html, nodeRoles, domainModel).replace("setPassportValue(kind, viewerKindLabel(node.getAttribute('data-node-kind') || 'node'));", "setPassportValue(kind, viewerKindLabel(node.getAttribute('data-node-kind') || 'node')); if(kind)kind.hidden=node.getAttribute('data-node-kind')==='review-unspecified';");
   html = withRouteChoices(html, diagramType === "sequence");
   // Route playback is useful even in artifacts without decorative trace
@@ -172,6 +182,9 @@ export function withArchifyEmbedAdapter(html: string, diagramType?: string, doma
   // but make playback available and on by default for embedded review maps.
   html = html.replace("var capable = !!(svg && svg.getAttribute('data-animation') === 'trace');", "var capable = !!svg;")
     .replace("readerPaused = readStored() !== 'live';", "readerPaused = readStored() === 'still';")
+    // The bundled zero-view API only has count/active. Keep real playback
+    // pausing intact while respecting that both methods are optional.
+    .replace("Archify.guidedViews && Archify.guidedViews.isPlaying()", "Archify.guidedViews && typeof Archify.guidedViews.isPlaying === 'function' && typeof Archify.guidedViews.pause === 'function' && Archify.guidedViews.isPlaying()")
     .replace("if (options.persist !== false) writeStored();", "if (options.persist !== false) { writeStored(); window.dispatchEvent(new CustomEvent('diffcompass-motion-preference', { detail: !readerPaused })); }");
   const style = `<style data-diffcompass-embed>
 html[data-diffcompass-embed="true"],html[data-diffcompass-embed="true"] body{width:100%;height:100%;min-height:0!important;overflow:hidden!important}
@@ -201,5 +214,5 @@ html[data-diffcompass-embed="true"] .focus-chip[data-diffcompass-passport-drag="
 html[data-diffcompass-embed="true"] .focus-chip[data-diffcompass-passport-drag="true"] .relationship-lens-head:active,html[data-diffcompass-embed="true"] .focus-chip.is-dragging .relationship-lens-head{cursor:grabbing}
 ${diagramType === "lifecycle" ? 'html[data-diffcompass-embed="true"] .diagram-container>svg>path.a-emphasis:not([data-edge-from]){display:none!important}' : ""}
 </style>`;
-  return appendToBody(reviewEmbedRoot(reviewKindLabels(html, domainModel)), `${style}<style data-diffcompass-map-nodes>${mapNodeStyles}</style>${domainDetailsScript(domainDetails, domainModel)}${roleEvidenceScript(nodeRoles)}${mapPreferencesScript()}${quietNodeTooltipsScript()}${diagramType === "sequence" && sequenceSources ? sequenceSourceScript(sequenceSources) : ""}${cameraScript(diagramType)}`);
+  return appendToBody(reviewEmbedRoot(reviewKindLabels(html, domainModel)), `${style}<style data-diffcompass-map-nodes>${mapNodeStyles}</style>${domainDetailsScript(domainDetails, domainModel)}${roleEvidenceScript(nodeRoles)}${mapPreferencesScript()}${quietNodeTooltipsScript()}${diagramType === "sequence" && sequenceSources ? sequenceSourceScript(sequenceSources, walkthrough?.offline) : ""}${diagramType === "sequence" && walkthrough ? sequenceWalkthroughScript(walkthrough.ir, walkthrough.offline) : ""}${cameraScript(diagramType)}`);
 }

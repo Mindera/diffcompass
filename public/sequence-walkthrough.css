@@ -1,0 +1,12 @@
+html[data-diffcompass-embed="true"] .sequence-walkthrough{height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(280px,34%,420px);overflow:hidden}
+html[data-diffcompass-embed="true"] .sequence-walkthrough .diagram-container{min-width:0!important;min-height:0!important}
+.sequence-code-pane{box-sizing:border-box;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;touch-action:pan-y;padding:14px;border-left:1px solid var(--panel-border,#475569);background:var(--bg,#101418);color:var(--text,#e2e8f0);font:12px/1.5 system-ui}
+.sequence-code-pane h2{font-size:15px;margin:0 0 6px}.sequence-code-pane p{margin:8px 0;overflow-wrap:anywhere}.sequence-step-note{opacity:.75}
+.sequence-code-step{border:1px solid var(--border-color,#475569);border-radius:8px;padding:12px;margin:14px 0;min-height:145px;scroll-margin-top:12px}
+.sequence-code-step.selected{border-color:var(--frontend-stroke,#67e8f9);box-shadow:inset 3px 0 var(--frontend-stroke,#67e8f9)}
+.sequence-code-pane button{max-width:100%;white-space:normal;text-align:left;color:inherit;border:1px solid var(--border-color,#64748b);border-radius:5px;background:transparent;padding:7px 9px;cursor:pointer;font:inherit;overflow-wrap:anywhere}
+.sequence-code-pane button:disabled{opacity:.6;cursor:wait}.sequence-code-pane .sequence-step-select{font-weight:650;width:100%;border:0;padding:0 0 7px}.sequence-code-pane :focus-visible{outline:2px solid var(--frontend-stroke,#67e8f9);outline-offset:3px}
+.sequence-step-source{font-size:11px;opacity:.8}.sequence-step-code{margin:8px 0;padding:8px;overflow:auto;border:1px solid var(--panel-border,#334155);border-radius:4px;font:12px/1.6 ui-monospace,SFMono-Regular,monospace;tab-size:2;max-height:340px;background:var(--panel,#17202b);color:inherit}
+.sequence-step-code>span{display:block;white-space:pre}.sequence-step-line{display:inline-block;min-width:3ch;padding-right:12px;opacity:.55;user-select:none}
+html[data-diffcompass-embed="true"] .sequence-walkthrough-stacked{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(180px,35%)}
+.sequence-walkthrough-stacked .sequence-code-pane{border-left:0;border-top:1px solid var(--panel-border,#475569)}

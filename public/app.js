@@ -1,3 +1,5 @@
+import { refreshSequenceEvidence, sequenceEvidenceRevision } from "/sequence-walkthrough-host.js";
+
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 const fragmentToken = fragment.get("token");
 const launchTourIntro = fragment.get("intro") === "1";
@@ -2089,7 +2091,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   return true;
 }
 
-async function showRepositoryFile(path, line) {
+async function showRepositoryFile(path, line, sourceLabel = "unchanged") {
   state.activeTab = "diff";
   state.proposalPreview = false;
   state.proposalActivityId = null;
@@ -2101,6 +2103,7 @@ async function showRepositoryFile(path, line) {
     if (requestId !== state.fileRequestId) return false;
     state.repositoryFilePath = path;
     state.repositoryFileContent = file.content;
+    state.repositoryFileSourceLabel = sourceLabel;
     state.repositoryFileView = /\.md$/i.test(path) ? "preview" : "source";
     renderRepositoryFile(path, file.content);
     if (Number.isSafeInteger(line) && line > 0) {
@@ -2125,7 +2128,7 @@ function sourceCodeLines(lines, selectedLine) {
 function renderRepositoryFile(path, content) {
   const markdown = /\.md$/i.test(path);
   const preview = markdown && state.repositoryFileView === "preview";
-  elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">unchanged</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
+  elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">${escapeHtml(state.repositoryFileSourceLabel ?? "unchanged")}</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
   if (!preview) {
     elements.diff.querySelector('.source-code').innerHTML = sourceCodeLines(content.split("\n").map(escapeHtml));
     void highlightRenderedCode();
@@ -3080,10 +3083,10 @@ function archifyArtifactCard(artifact) {
   const comparisonControls = views.length > 1 ? `<div class="archify-comparison" role="group" aria-label="${escapeHtml(`${artifact.title} comparison view`)}">${views.map((view) => `<button type="button" data-archify-comparison-view="${view.id}" data-archify-comparison-artifact="${escapeHtml(artifact.id)}"${view.id === selectedView.id ? ' class="active" aria-pressed="true"' : ' aria-pressed="false"'}>${escapeHtml(view.label)}</button>`).join("")}</div>` : "";
   return `<article class="flow-card architecture-card archify-artifact">
     <header class="architecture-card-heading"><div><span class="architecture-label">Validated map</span><h2>${escapeHtml(artifact.title)}</h2></div><span class="archify-view">${escapeHtml(archifyArtifactTypeLabel(artifact.type, artifact.purpose))}</span></header>
-    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it.${artifact.type === "sequence" ? " Click an arrow or its caption to inspect its source link." : ""} Drag the background to pan; use Fit to see the whole map.</p>
+    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it.${artifact.type === "sequence" ? " Click an arrow or its caption to follow its code step; scroll Code steps to select an arrow." : ""} Drag the background to pan; use Fit to see the whole map.</p>
     ${comparisonControls}
     ${selectedView.id === "delta" ? '<p class="archify-delta-key" aria-label="Change legend"><span>+ Added</span><span>~ Changed</span><span>− Removed</span><span>Unchanged context</span></p>' : ""}
-    <iframe class="archify-frame" data-archify-artifact-id="${escapeHtml(artifact.id)}" data-archify-rendered-at="${escapeHtml(artifact.renderedAt)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
+    <iframe class="archify-frame" data-archify-type="${escapeHtml(artifact.type)}" data-archify-artifact-id="${escapeHtml(artifact.id)}" data-archify-rendered-at="${escapeHtml(artifact.renderedAt)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
     <details class="archify-evidence"><summary>Sources and technical validation</summary><ul>${evidence}</ul><div class="flow-impact-list"><strong>Affected changed files</strong>${affected || "<span class=\"muted\">No exact changed file was captured.</span>"}</div><details><summary>Validated ${escapeHtml(selectedView.label.toLowerCase())} map data</summary><pre>${ir}</pre></details><details><summary>Renderer diagnostics</summary><pre>${escapeHtml(displayed?.validationReceipt ?? artifact.validationReceipt)}</pre></details></details>
   </article>`;
 }
@@ -3106,11 +3109,12 @@ async function openSequenceSource(event) {
   const frame = [...document.querySelectorAll("iframe.archify-frame")].find((frame) => frame.contentWindow === event.source);
   if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
   const id = frame.dataset.archifyArtifactId;
+  const evidenceRevision = frame._sequenceEvidenceRevision;
   try {
     // The iframe supplies only an identity. Resolve paths from current,
     // server-validated evidence, never from a postMessage path or line.
     const sources = await api(`/api/sequence-sources/${encodeURIComponent(id)}?edge=${encodeURIComponent(event.data.edgeId)}`);
-    if (!frame.isConnected || state.activeTab !== "archify") { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); return; }
+    if (!frame.isConnected || state.activeTab !== "archify" || frame._sequenceEvidenceRevision !== evidenceRevision) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); return; }
     const anchor = sources[event.data.edgeId]?.[event.data.anchorIndex];
     if (!anchor) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); toast("This source link is no longer available. Regenerate the map to refresh its evidence."); return; }
     state.structuralGraphReturn = null;
@@ -3118,9 +3122,12 @@ async function openSequenceSource(event) {
     window.diffcompassMapPresentation?.suspend(frame);
     state.activeTab = "diff";
     renderActiveTab();
-    await showAnalysisFile(anchor.path, anchor.startLine, anchor.side);
+    // Lookup candidates came from the current workspace, not the comparison.
+    const sourcePath = anchor.definition ? anchor.path : state.session.comparison.files.find((file) => file.path === anchor.path || file.oldPath === anchor.path)?.path ?? anchor.path;
+    if (anchor.definition) await showRepositoryFile(sourcePath, anchor.startLine, "Current workspace · name match");
+    else await showAnalysisFile(sourcePath, anchor.startLine, anchor.side);
     for (let line = anchor.startLine; line <= anchor.endLine; line++) {
-      const row = diffViewRow(anchor.path, anchor.side, line);
+      const row = anchor.definition ? null : diffViewRow(sourcePath, anchor.side, line);
       row?.classList.add("sequence-source-highlight");
     }
     updateSequenceSourceReturnVisibility();
@@ -3161,11 +3168,12 @@ window.addEventListener("message", async (event) => {
   const frame = [...document.querySelectorAll("iframe.archify-frame")].find((candidate) => candidate.contentWindow === event.source);
   if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
   const edgeId = event.data.edgeId;
+  const evidenceRevision = frame._sequenceEvidenceRevision;
   try {
     const sources = await api(`/api/sequence-sources/${encodeURIComponent(frame.dataset.archifyArtifactId)}?edge=${encodeURIComponent(edgeId)}`);
-    if (frame.isConnected) frame.contentWindow.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: sources[edgeId] ?? [] }, "*");
+    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: sources[edgeId] ?? [] }, "*");
   } catch {
-    frame.contentWindow?.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: [], error: "Definition lookup failed. You can retry." }, "*");
+    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow?.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: [], error: "Definition lookup failed. You can retry." }, "*");
   }
 });
 document.getElementById("sequence-source-return").addEventListener("click", returnToSequenceDiagram);
@@ -3187,6 +3195,10 @@ function renderArchify() {
   if (elements["archify-artifacts"]._mapMarkup !== markup) {
     elements["archify-artifacts"].innerHTML = markup;
     elements["archify-artifacts"]._mapMarkup = markup;
+  }
+  if (selected?.type === "sequence") {
+    const frame = elements["archify-artifacts"].querySelector('iframe.archify-frame');
+    if (frame) refreshSequenceEvidence(frame, sequenceEvidenceRevision(state.session, selected), () => api(`/api/sequence-sources/${encodeURIComponent(selected.id)}`));
   }
 }
 

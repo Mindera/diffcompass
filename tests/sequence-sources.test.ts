@@ -76,7 +76,7 @@ test("arrow navigation resolves only trusted identities and returns to the same 
   const script = app.slice(app.indexOf("async function openSequenceSource("), app.indexOf("function renderArchify()"));
   const messages: unknown[] = [], calls: unknown[] = [];
   const frame = { isConnected: true, dataset: { archifyArtifactId: "sequence-run" }, getClientRects: () => [{}], contentWindow: { postMessage: (v: unknown) => messages.push(v) }, focus() {} };
-  const state: any = { activeTab: "archify", structuralGraphReturn: {}, sequenceSourceReturn: null };
+  const state: any = { activeTab: "archify", structuralGraphReturn: {}, sequenceSourceReturn: null, session: { comparison: { files: [] } } };
   const button = { style: {}, classList: { toggle() {} }, addEventListener() {} };
   const elements = { "diff-panel": { scrollTop: 125, getBoundingClientRect: () => ({ right: 900, bottom: 700 }) }, diff: { querySelectorAll: () => [] } };
   const presentation = { suspend: (v: unknown) => calls.push(["suspend", v]), resume: (v: unknown) => calls.push(["resume", v]) };

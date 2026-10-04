@@ -867,6 +867,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .archify-comparison button:hover, .archify-comparison button:focus-visible { color: var(--text); background: var(--surface-hover); }
 .archify-comparison button.active { color: var(--text); background: var(--accent-muted); box-shadow: inset 0 0 0 1px var(--accent-border); }
 .archify-frame { display: block; width: 100%; height: clamp(360px, 65vh, 640px); min-height: 280px; margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; background: #101418; }
+.archify-frame[data-archify-type="sequence"] { height: clamp(680px, 80vh, 900px); }
 .archify-delta-key { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; }
 .archify-evidence { margin-top: 16px; line-height: 1.65; }
 .archify-evidence summary { padding: 6px 0; cursor: pointer; }
