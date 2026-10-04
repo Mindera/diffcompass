@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DiffCompass · Diff lab</title><link rel="icon" href="/brand/favicon.ico"><link rel="stylesheet" href="/prototype/styles.css"></head>
+<body>
+<header class="masthead"><div><span class="eyebrow">DIFFCOMPASS / INTERACTION LAB</span><h1>Same change. Two ways to read it.</h1></div><span class="badge">Isolated prototype</span></header>
+<div class="controls"><label>File <select id="file"></select></label><label>Layout <select id="layout"><option value="unified">Unified</option><option value="split">Split</option></select></label><label><input type="checkbox" id="wrap" checked> Wrap</label><button id="theme">Light theme</button><span class="spacer"></span><button id="finding">Jump to finding</button><button id="hidden">Reveal hidden source</button><button id="activity">Review activity <span id="count">0</span></button></div>
+<p class="notice">One disposable review · Comments use the real API · Questions use a labelled fixture responder, not AI · No production renderer changes</p>
+<main class="comparison" id="comparison">
+<section class="pane current"><header class="pane-heading"><div><span class="pill">CURRENT</span><strong>DiffCompass</strong><small>Existing renderer, unchanged</small></div><button id="focus-current" aria-pressed="false">Expand</button></header><iframe id="current" title="Current DiffCompass diff"></iframe></section>
+<section class="pane prototype"><header class="pane-heading"><div><span class="pill purple">PROTOTYPE</span><strong>Monaco</strong><small>Inline context + review adapter</small></div><button id="focus-prototype" aria-pressed="false">Expand</button></header>
+<div class="tools"><span id="selection">Click a line or select code</span><button id="comment">Comment</button><button id="ask">Ask agent</button><button id="source">View source</button><button id="peek">Peek symbol ↗</button><button id="copy">Copy</button></div>
+<div class="context-tools"><span>Gap arrows reveal context · Function folding is in View source</span><button id="collapse">Collapse unchanged</button><button id="expand">Show all context</button></div>
+<div id="editor"></div><div id="source-pane" hidden><div class="source-heading"><strong id="source-title"></strong><button id="return">← Back to diff</button></div><div id="source-editor"></div></div>
+<footer id="status" role="status">Loading locally bundled Monaco…</footer></section>
+</main>
+<aside id="activity-panel" hidden><header><h2 id="activity-title">Review activity</h2><button id="all-activity" hidden>Show all</button><button id="close-activity">Close</button></header><p>Comments and questions are shared by both renderers. All responses below are fixture responses.</p><div id="activity-list"></div></aside>
+<script src="/vendor/vs/loader.js"></script><script type="module" src="/prototype/app.mjs"></script>
+</body></html>

@@ -1,0 +1,7 @@
+{
+  "name": "diffcompass-diff-viewer-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "bun run server.ts", "test": "bun test fixtures.test.mjs annotations.test.mjs" },
+  "dependencies": { "monaco-editor": "0.55.1" }
+}
