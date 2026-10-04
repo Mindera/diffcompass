@@ -1,0 +1,9 @@
+.semantic-summary { padding: 12px 18px; border-bottom: 1px solid var(--border); font-size: 13px; overflow-wrap: anywhere; }
+.semantic-summary p { margin: 8px 0; }
+.semantic-summary ol { padding-left: 22px; }
+.semantic-summary li { padding: 8px 0; }
+.semantic-summary pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.semantic-summary li p { display: flex; flex-wrap: wrap; gap: 16px; }
+.semantic-summary button { text-align: left; }
+.semantic-summary summary { cursor: pointer; }
+.semantic-summary :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

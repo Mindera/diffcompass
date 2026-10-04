@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { createRequestHandler } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
@@ -33,6 +34,21 @@ function authorizedRequest(session: ReviewSession, path: string, body: unknown) 
     body: JSON.stringify(body),
   });
 }
+
+test("the served app bundle includes caption placement before its consumers", async () => {
+  const { fetch } = fixture();
+  const response = await fetch(new Request("http://127.0.0.1/app.js"));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("javascript");
+  const bundle = await response.text();
+  const captions = readFileSync(new URL("../public/diagram-labels.js", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  const captionStart = bundle.indexOf(captions);
+  const appStart = bundle.indexOf(app);
+  expect(captionStart).toBeGreaterThanOrEqual(0);
+  expect(appStart).toBeGreaterThanOrEqual(0);
+  expect(captionStart + captions.length).toBeLessThanOrEqual(appStart);
+});
 
 test("session API exposes the evidence briefing without a second agent pass", async () => {
   const { session, fetch } = fixture();

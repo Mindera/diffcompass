@@ -7,6 +7,13 @@ import { BRAND_FILES } from "./brand.ts";
 import appScript from "../public/app.js" with { type: "text" };
 // @ts-expect-error Bun embeds the sequence iframe lifecycle bridge.
 import sequenceWalkthroughHost from "../public/sequence-walkthrough-host.js" with { type: "text" };
+// @ts-expect-error Bun embeds the syntax summary UI.
+import semanticDiffScript from "../public/semantic-diff.js" with { type: "text" };
+// @ts-expect-error Bun embeds the syntax summary styles.
+import semanticDiffStyles from "../public/semantic-diff.css" with { type: "text" };
+// Bun embeds required parser/grammar notices in release binaries.
+import semanticDiffNotices from "./semantic-diff-notices.txt" with { type: "text" };
+import { semanticDiffForFile } from "./semantic-diff.ts";
 // @ts-expect-error Bun embeds the shared browser runtime.
 import mapPresentationScript from "../public/map-presentation.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared caption layout runtime.
@@ -46,11 +53,12 @@ import {
 const PUBLIC_FILES: Record<string, { body: BodyInit; contentType: string }> = {
   ...BRAND_FILES,
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
-  "app.js": { body: String(diagramLabelsScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
+  "app.js": { body: String(diagramLabelsScript) + "\n" + String(semanticDiffScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
+  "semantic-diff-notices.txt": { body: String(semanticDiffNotices), contentType: "text/plain; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
   "sequence-walkthrough-host.js": { body: String(sequenceWalkthroughHost), contentType: "text/javascript; charset=utf-8" },
   "mermaid.min.js": { body: String(mermaidScript), contentType: "text/javascript; charset=utf-8" },
-  "styles.css": { body: `${styles}\n${mapNodeStyles}`, contentType: "text/css; charset=utf-8" },
+  "styles.css": { body: `${styles}\n${mapNodeStyles}\n${semanticDiffStyles}`, contentType: "text/css; charset=utf-8" },
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
@@ -407,9 +415,14 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         const full = fullValue === null ? false : enumValue(fullValue, "full", ["true", "false"]) === "true";
         if ((line === undefined) !== (side === undefined)) throw new HttpError(400, "line and side must be provided together.");
         const diff = full || context > 3
-          ? await session.expandedDiffFile(path, context, offset, limit, full)
+          ? await session.expandedDiffFile(path, context, offset, limit, full, line && side ? { line, side } : undefined)
           : session.diffFile(path, offset, limit, line && side ? { line, side } : undefined);
         return json({ ...diff, revision: session.revision, context, full });
+      }
+      if (request.method === "GET" && url.pathname === "/api/diff/semantic") {
+        const path = requiredString(url.searchParams.get("path"), "path", 4_096);
+        if (!session.comparison.files.some((file) => file.path === path)) throw new HttpError(404, "Changed file does not exist in this comparison.");
+        return json(await semanticDiffForFile(session.comparison, path));
       }
       if (request.method === "GET" && url.pathname === "/api/diff/image") {
         const path = requiredString(url.searchParams.get("path"), "path", 4_096);

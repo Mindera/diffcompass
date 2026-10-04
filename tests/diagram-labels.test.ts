@@ -61,7 +61,6 @@ test("crossing segments are detected even if both sampled endpoints are outside 
 test("every native Mermaid render mounts through the shared caption boundary", () => {
   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   const exporter = readFileSync(new URL("../src/export.ts", import.meta.url), "utf8");
-  const server = readFileSync(new URL("../src/server.ts", import.meta.url), "utf8");
   // Every render result, including regenerated/adaptive/briefing diagrams, must
   // use mount. Catch a future renderer that bypasses caption placement.
   const renders = [...app.matchAll(/const (\w+) = await window\.mermaid\.render\(/g)];
@@ -72,7 +71,8 @@ test("every native Mermaid render mounts through the shared caption boundary", (
     expect(block).toMatch(new RegExp('ReviewDiagramLabels\\.mount\\(\\w+, ' + render[1] + '\\.svg\\)'));
     expect(block).not.toMatch(/innerHTML = \w+\.svg/);
   }
-  expect(server).toContain('String(diagramLabelsScript) + "\\n" + String(appScript)');
+  // The served helper's presence and order are checked in server-handler.test.ts;
+  // other UI modules may legitimately sit between it and the app script.
   expect(exporter).toContain('String(diagramLabelsScript)');
   expect(exporter).toContain('window.ReviewDiagramLabels.mount(node,result.svg)');
   expect(app).not.toContain('curve: "step"');

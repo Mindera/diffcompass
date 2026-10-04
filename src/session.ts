@@ -1059,9 +1059,9 @@ export class ReviewSession {
     return { file: structuredClone({ ...file, hunks }), offset, limit, totalRows };
   }
 
-  async expandedDiffFile(path: string, context: number, requestedOffset = 0, requestedLimit = 1_000, fullFile = false) {
+  async expandedDiffFile(path: string, context: number, requestedOffset = 0, requestedLimit = 1_000, fullFile = false, anchor?: { line: number; side: "old" | "new" }) {
     const file = await loadDiffFileWithContext(this.comparison, path, context, fullFile);
-    return this.pageDiffFile(file, requestedOffset, requestedLimit);
+    return this.pageDiffFile(file, requestedOffset, requestedLimit, anchor);
   }
 
   diffImage(path: string, side: "old" | "new") {

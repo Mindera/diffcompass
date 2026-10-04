@@ -1605,7 +1605,7 @@ function renderDiffFileHeader(file, collapsed, fullContent = false) {
   return `<header class="diff-file-header">
     <span class="status mobile-file-status">${escapeHtml(file.status)}</span>
     <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">⌄</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
-    <span class="file-stats">${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}</span>
+    <span class="file-stats">${globalThis.DiffCompassSemantic?.control(file) ?? ""}${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}</span>
   </header>`;
 }
 
@@ -1656,6 +1656,7 @@ function renderDiff(files, { proposalActivityId = null } = {}) {
   if (files.some((file) => /\.md$/i.test(file.path) && state.markdownPreviewPaths?.has(file.path))) void hydrateMarkdownPreviews(files);
   renderConversationBadges();
   renderGitHubReviewThreads();
+  globalThis.DiffCompassSemantic?.hydrate();
 }
 
 function currentDiffRenderOptions() {

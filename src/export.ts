@@ -1,4 +1,5 @@
 import type { ReviewSession } from "./session.ts";
+import { semanticExport } from "./semantic-diff-export.ts";
 import { withArchifyEmbedAdapter } from "./archify-embed.ts";
 import { sequenceArtifactSources } from "./sequence-sources.ts";
 import { sequencePreviewGroups, sequenceSourcePreviews } from "./sequence-walkthrough-preview.ts";
@@ -1152,6 +1153,6 @@ ${architecture || flows || adaptive ? `<script>${String(diagramLabelsScript)}</s
 
 export function exportReview(session: ReviewSession, format: ExportFormat, options: HtmlExportOptions = {}): { content: string; contentType: string; extension: string } {
   return format === "markdown"
-    ? { content: markdown(session, options), contentType: "text/markdown; charset=utf-8", extension: "md" }
-    : { content: html(session, options), contentType: "text/html; charset=utf-8", extension: "html" };
+    ? { content: markdown(session, options) + semanticExport(session.comparison, format), contentType: "text/markdown; charset=utf-8", extension: "md" }
+    : { content: html(session, options).replace("</body></html>", `${semanticExport(session.comparison, format)}</body></html>`), contentType: "text/html; charset=utf-8", extension: "html" };
 }
