@@ -83,6 +83,19 @@ test("persists a complete session atomically and with owner-only permissions whe
   }
 });
 
+test("persists impact repair diagnostics and rejects malformed diagnostics", async () => {
+  const path = await temporaryStateFile();
+  const session = persistedSession();
+  session.outline!.structuralAnalysisWarnings = ["structuralBlastRadii[1] was omitted: invalid provider."];
+  session.outline!.structuralAnalysisOmissionReason = "No declarations could be identified.";
+  await savePersistedSession(path, session);
+  expect((await loadPersistedSession(path))?.outline?.structuralAnalysisWarnings).toEqual(session.outline!.structuralAnalysisWarnings);
+  expect((await loadPersistedSession(path))?.outline?.structuralAnalysisOmissionReason).toBe("No declarations could be identified.");
+  session.outline!.structuralAnalysisWarnings = ["x".repeat(2_001)];
+  await writeFile(path, JSON.stringify(session));
+  await expect(loadPersistedSession(path)).rejects.toThrow();
+});
+
 test("sequence source anchors survive persistence and malformed message references are rejected", async () => {
   const path = await temporaryStateFile();
   const session = persistedSession();

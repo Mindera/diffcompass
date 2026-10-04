@@ -232,6 +232,7 @@
         </div>
         <div id="structural-blast-radius-view" class="review-view hidden" role="tabpanel" aria-labelledby="structural-blast-radius-tab">
           <div class="flows-toolbar structural-toolbar"><div><strong>What could this change affect?</strong><span class="muted">Static callers and references for the selected item—not the whole pull request or proof of runtime impact.</span></div><label class="structural-picker"><span>Analysed symbol</span><select id="structural-blast-radius-select" aria-label="Analysed symbol structural caller graph"></select><small id="structural-blast-radius-picker-count" aria-live="polite"></small></label></div>
+          <section id="structural-analysis-warning" class="structural-completeness hidden" role="status"></section>
           <div id="structural-blast-radius-empty" class="empty">Start the tour to inspect static blast radius for changed symbols.</div>
           <div id="structural-blast-radius" class="structural-blast-radii"></div>
         </div>

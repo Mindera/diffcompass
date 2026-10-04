@@ -126,6 +126,10 @@ export interface TourOutline {
   callFlows: CallFlow[];
   /** Static caller/reachability evidence for changed symbols. This is not a runtime trace. */
   structuralBlastRadii?: StructuralBlastRadius[];
+  /** Validation failures remaining after bounded repair; not evidence of zero impact. */
+  structuralAnalysisWarnings?: string[];
+  /** Why no changed declarations could be analysed (not a claim of zero impact). */
+  structuralAnalysisOmissionReason?: string;
   flows: ReviewFlow[];
   /** Scenario suggestions only. Detailed execution traces are prepared on demand. */
   dryRunPlans?: DryRunPlan[];

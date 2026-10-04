@@ -27,6 +27,7 @@ const outline = {
   behaviorArchitecture: diagram, architecture: diagram,
   phases: [{ id: "phase", title: "Change", summary: "Change", fileChanges: [{ path: "app.ts", summary: "Change" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
   findings: [], flows: [], callFlows: [],
+  structuralBlastRadii: [], structuralAnalysisOmissionReason: "No changed declarations in this diagram fixture.",
 };
 
 test("attached outline repairs both rejected diagrams and retains every response receipt", async () => {

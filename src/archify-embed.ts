@@ -28,6 +28,46 @@ function appendToBody(html: string, additions: string): string {
   return /<\/body\s*>/i.test(html) ? html.replace(/<\/body\s*>/i, `${additions}</body>`) : `${html}\n${additions}`;
 }
 
+function mapPreferencesScript(): string {
+  return `<script data-diffcompass-preferences>(function(){
+function install(){
+  var api=window.Archify,root=document.documentElement,ready=false,last='';
+  if(!api)return;
+  function snapshot(){return {theme:root.getAttribute('data-theme'),preset:root.getAttribute('data-preset')};}
+  function publish(){if(!ready)return;var value=snapshot(),json=JSON.stringify(value);if(json===last)return;last=json;parent.postMessage({type:'diffcompass-map-preferences-change',preferences:value},'*');}
+  window.addEventListener('message',function(event){
+    if(event.source!==parent||event.data?.type!=='diffcompass-map-preferences')return;
+    var value=event.data.preferences||{};
+    if(['dark','light'].includes(value.theme)&&root.getAttribute('data-theme')!==value.theme)api.theme?.toggle();
+    if(['classic','blueprint','signal-flow','editorial'].includes(value.preset))api.preset?.apply(value.preset);
+    if(typeof value.motion==='boolean')api.motionGovernor?.setMode(value.motion?'live':'still',{persist:false});
+    last=JSON.stringify(snapshot());ready=true;
+  });
+  new MutationObserver(publish).observe(root,{attributes:true,attributeFilter:['data-theme','data-preset']});
+  window.addEventListener('diffcompass-motion-preference',function(event){
+    if(ready)parent.postMessage({type:'diffcompass-map-preferences-change',preferences:{motion:event.detail}},'*');
+  });
+  parent.postMessage({type:'diffcompass-map-preferences-ready'},'*');
+}
+if(document.readyState==='loading')window.addEventListener('load',install,{once:true});else install();
+}())</script>`;
+}
+
+function quietNodeTooltipsScript(): string {
+  return `<script data-diffcompass-quiet-tooltips>(function(){
+function install(){
+  document.querySelectorAll('.diagram-container svg [data-node-id]').forEach(function(node){
+    var title=node.querySelector('title'),label=(title&&title.textContent)||node.getAttribute('title');
+    if(label&&!node.hasAttribute('aria-label'))node.setAttribute('aria-label',label);
+    node.removeAttribute('title');
+    node.querySelectorAll('title').forEach(function(item){item.remove();});
+    node.querySelectorAll('[title]').forEach(function(item){item.removeAttribute('title');});
+  });
+}
+if(document.readyState==='loading')window.addEventListener('load',install,{once:true});else install();
+}())</script>`;
+}
+
 function reviewEmbedRoot(html: string): string {
   if (!/<html\b/i.test(html)) return html;
   return html.replace(/<html\b([^>]*)>/i, (_match, attributes: string) => {
@@ -129,9 +169,10 @@ export function withArchifyEmbedAdapter(html: string, diagramType?: string, doma
   html = withRouteChoices(html, diagramType === "sequence");
   // Route playback is useful even in artifacts without decorative trace
   // animation. Keep the upstream governor (including reduced-motion checks),
-  // but make playback available and opt-in for embedded review maps.
+  // but make playback available and on by default for embedded review maps.
   html = html.replace("var capable = !!(svg && svg.getAttribute('data-animation') === 'trace');", "var capable = !!svg;")
-    .replace("readerPaused = readStored() === 'still';", "readerPaused = readStored() !== 'live';");
+    .replace("readerPaused = readStored() !== 'live';", "readerPaused = readStored() === 'still';")
+    .replace("if (options.persist !== false) writeStored();", "if (options.persist !== false) { writeStored(); window.dispatchEvent(new CustomEvent('diffcompass-motion-preference', { detail: !readerPaused })); }");
   const style = `<style data-diffcompass-embed>
 html[data-diffcompass-embed="true"],html[data-diffcompass-embed="true"] body{width:100%;height:100%;min-height:0!important;overflow:hidden!important}
 html[data-diffcompass-embed="true"] body{padding:0!important;background-image:none!important;display:flex!important;flex-direction:column!important}
@@ -160,5 +201,5 @@ html[data-diffcompass-embed="true"] .focus-chip[data-diffcompass-passport-drag="
 html[data-diffcompass-embed="true"] .focus-chip[data-diffcompass-passport-drag="true"] .relationship-lens-head:active,html[data-diffcompass-embed="true"] .focus-chip.is-dragging .relationship-lens-head{cursor:grabbing}
 ${diagramType === "lifecycle" ? 'html[data-diffcompass-embed="true"] .diagram-container>svg>path.a-emphasis:not([data-edge-from]){display:none!important}' : ""}
 </style>`;
-  return appendToBody(reviewEmbedRoot(reviewKindLabels(html, domainModel)), `${style}<style data-diffcompass-map-nodes>${mapNodeStyles}</style>${domainDetailsScript(domainDetails, domainModel)}${roleEvidenceScript(nodeRoles)}${diagramType === "sequence" && sequenceSources ? sequenceSourceScript(sequenceSources) : ""}${cameraScript(diagramType)}`);
+  return appendToBody(reviewEmbedRoot(reviewKindLabels(html, domainModel)), `${style}<style data-diffcompass-map-nodes>${mapNodeStyles}</style>${domainDetailsScript(domainDetails, domainModel)}${roleEvidenceScript(nodeRoles)}${mapPreferencesScript()}${quietNodeTooltipsScript()}${diagramType === "sequence" && sequenceSources ? sequenceSourceScript(sequenceSources) : ""}${cameraScript(diagramType)}`);
 }

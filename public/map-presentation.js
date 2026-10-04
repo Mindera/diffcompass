@@ -3,6 +3,17 @@
   let expanded = null;
   let restoreStyle = null;
   let inert = [];
+  const preferencesKey = 'diffcompass-map-preferences';
+  let preferences = { motion: true };
+  function validated(value) {
+    const result = {};
+    if (!value || typeof value !== 'object') return result;
+    if (['dark', 'light'].includes(value.theme)) result.theme = value.theme;
+    if (['classic', 'blueprint', 'signal-flow', 'editorial'].includes(value.preset)) result.preset = value.preset;
+    if (typeof value.motion === 'boolean') result.motion = value.motion;
+    return result;
+  }
+  try { Object.assign(preferences, validated(JSON.parse(window.localStorage.getItem(preferencesKey)))); } catch (_) {}
   function close() {
     const frame = expanded;
     if (!frame) return;
@@ -17,6 +28,18 @@
     frame.focus({ preventScroll: true });
   }
   window.addEventListener('message', (event) => {
+    if (['diffcompass-map-preferences-ready', 'diffcompass-map-preferences-change'].includes(event.data?.type)) {
+      const frames = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame]')];
+      const source = frames.find(frame => frame.contentWindow === event.source);
+      if (!source) return;
+      if (event.data.type === 'diffcompass-map-preferences-change') {
+        Object.assign(preferences, validated(event.data.preferences));
+        try { window.localStorage.setItem(preferencesKey, JSON.stringify(preferences)); } catch (_) {}
+      }
+      const recipients = event.data.type === 'diffcompass-map-preferences-ready' ? [source] : frames;
+      recipients.forEach(frame => frame.contentWindow?.postMessage({ type: 'diffcompass-map-preferences', preferences }, '*'));
+      return;
+    }
     if (event.data?.type !== 'diffcompass-map-present' || typeof event.data.active !== 'boolean') return;
     const frame = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame]')]
       .find(node => node.contentWindow === event.source);

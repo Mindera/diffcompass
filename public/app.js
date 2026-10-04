@@ -3012,15 +3012,23 @@ function architectureEntries() {
 function archifyArtifacts() {
   // Impact maps already have a complete, source-linked view with test evidence.
   // Do not offer a second, truncated rendering of the same result here.
-  return (state.session.outline?.archifyArtifacts ?? []).filter((artifact) => !artifact.id.startsWith("structural-"));
+  // Saved workflow duplicates remain readable on disk, but call flows have
+  // one complete presentation regardless of artifact availability or age.
+  return (state.session.outline?.archifyArtifacts ?? []).filter((artifact) => !artifact.id.startsWith("structural-") && artifact.type !== "workflow");
 }
 
 function hasArchifyArtifact(id) {
   return archifyArtifacts().some((artifact) => artifact.id === id);
 }
 
-function legacyCallFlows() {
-  return (state.session.outline?.callFlows ?? []).filter((flow) => !hasArchifyArtifact(`workflow-${flow.id}`));
+function savedCallFlows() {
+  return state.session.outline?.callFlows ?? [];
+}
+
+function openCallFlow(id) {
+  if (!savedCallFlows().some((flow) => flow.id === id)) return toast("This call flow is no longer available.");
+  openMaps("call-flows");
+  window.requestAnimationFrame(() => document.querySelector(`[data-call-flow-id="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 }
 
 function legacySequenceFlows() {
@@ -3089,7 +3097,7 @@ window.addEventListener("message", (event) => {
 });
 
 function archifyFailureCards() {
-  const failures = state.session.outline?.archifyFailures ?? [];
+  const failures = (state.session.outline?.archifyFailures ?? []).filter((failure) => failure.type !== "workflow");
   return failures.map((failure) => `<article class="flow-card archify-failure"><strong>Archify ${escapeHtml(failure.type)} unavailable</strong><p>${escapeHtml(failure.message)}</p><small>${failure.preservedLastValid ? "The last validated diagram remains on display." : "The Mermaid fallback remains available."}</small></article>`).join("");
 }
 
@@ -3456,10 +3464,7 @@ function renderAdaptiveDiagrams() {
 }
 
 function renderCallFlows() {
-  const callFlows = legacyCallFlows();
-  const savedCallFlows = state.session.outline?.callFlows ?? [];
-  const allReplaced = savedCallFlows.length > 0 && callFlows.length === 0;
-  if (state.activeTab === "call-flows" && allReplaced) state.activeTab = "diff";
+  const callFlows = savedCallFlows();
   elements["call-flows-tab"].classList.add("hidden");
   elements["regenerate-call-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["call-flows-empty"].classList.toggle("hidden", callFlows.length > 0);
@@ -3896,12 +3901,16 @@ function structuralBlastRadiusCard(radius) {
 
 function renderStructuralBlastRadii() {
   const radii = state.session.outline?.structuralBlastRadii ?? [];
+  const warnings = state.session.outline?.structuralAnalysisWarnings ?? [];
+  const warning = document.getElementById("structural-analysis-warning");
+  warning.classList.toggle("hidden", warnings.length === 0);
+  warning.innerHTML = warnings.length ? `<strong>Impact analysis is incomplete</strong><span>Some results could not be validated after automatic repair. Valid results are retained; missing results do not mean no impact.</span><details><summary>Validation details</summary><ul>${warnings.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></details>` : "";
   if (!radii.some((radius) => radius.id === state.structuralBlastRadiusId)) state.structuralBlastRadiusId = radii[0]?.id ?? null;
   const selected = radii.find((radius) => radius.id === state.structuralBlastRadiusId);
   elements["structural-blast-radius-tab"].classList.add("hidden");
   elements["structural-blast-radius-empty"].classList.toggle("hidden", radii.length > 0);
   elements["structural-blast-radius-empty"].textContent = state.session.outline
-    ? "No analysed symbols had a saved structural result for this comparison."
+    ? `No impact analysis is available for this comparison. This does not mean the change has no impact.${state.session.outline.structuralAnalysisOmissionReason ? ` ${state.session.outline.structuralAnalysisOmissionReason}` : ""}`
     : "Start the tour to inspect static blast radius for analysed symbols.";
   elements["structural-blast-radius-select"].disabled = radii.length === 0;
   elements["structural-blast-radius-select"].innerHTML = radii.map((radius) => `<option value="${escapeHtml(radius.id)}">${escapeHtml(structuralPickerOptionLabel(radius))}</option>`).join("");
@@ -4601,7 +4610,7 @@ const MAP_VIEWS = ["archify", "call-flows", "sequence", "adaptive", "structural-
 function understandMapViews() {
   const views = [
     ...(archifyArtifacts().length || componentArchitectureEntries().length ? [{ id: "archify", label: "Component and behaviour maps" }] : []),
-    ...(legacyCallFlows().length ? [{ id: "call-flows", label: "Call flows" }] : []),
+    ...(savedCallFlows().length ? [{ id: "call-flows", label: "Call flows" }] : []),
     ...(legacySequenceFlows().length ? [{ id: "sequence", label: "Sequence diagrams" }] : []),
     ...(adaptiveEntries().length ? [{ id: "adaptive", label: "Data and lifecycle diagrams" }] : []),
   ];
@@ -5559,6 +5568,7 @@ async function saveFlow(event) {
   } finally {
     setBusy(false);
     renderSession();
+    if (id && state.activeTab === "call-flows" && savedCallFlows().some((flow) => flow.id === id)) openCallFlow(id);
   }
 }
 
@@ -6349,8 +6359,7 @@ elements["tour-intro-dialog"].addEventListener("click", (event) => {
   renderSession();
   if (kind === "file") return void showChangedFile(target.dataset.attentionPath, Number(target.dataset.attentionLine) || undefined, target.dataset.attentionSide);
   if (kind === "call-flow") {
-    activateReviewTab("call-flows", renderCallFlows);
-    window.requestAnimationFrame(() => document.querySelector(`[data-call-flow-id="${CSS.escape(target.dataset.attentionId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    openCallFlow(target.dataset.attentionId);
     return;
   }
   if (kind === "structural-blast-radius") {

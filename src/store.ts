@@ -206,6 +206,8 @@ function validOutline(value: unknown): boolean {
     if (!validPlans) return false;
   }
   if (value.structuralBlastRadii !== undefined && !validStructuralBlastRadii(value.structuralBlastRadii)) return false;
+  if (value.structuralAnalysisWarnings !== undefined && (!Array.isArray(value.structuralAnalysisWarnings) || value.structuralAnalysisWarnings.length > 501 || value.structuralAnalysisWarnings.some((warning) => !nonEmptyString(warning, 2_000)))) return false;
+  if (value.structuralAnalysisOmissionReason !== undefined && !nonEmptyString(value.structuralAnalysisOmissionReason, 2_000)) return false;
   const structuralNodeIds = new Set(
     Array.isArray(value.structuralBlastRadii)
       ? value.structuralBlastRadii.flatMap((radius) => record(radius) && Array.isArray(radius.nodes)

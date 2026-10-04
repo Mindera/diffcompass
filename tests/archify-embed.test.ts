@@ -1,10 +1,73 @@
 import { expect, test } from "bun:test";
 import { withArchifyEmbedAdapter } from "../src/archify-embed.ts";
 
-test("review maps expose opt-in motion without requiring decorative trace animation", () => {
+test("node hover tooltips are removed while accessible names remain", () => {
+  const html = withArchifyEmbedAdapter("<html><body></body></html>");
+  const source = html.match(/<script data-diffcompass-quiet-tooltips>([\s\S]*?)<\/script>/)![1];
+  for (const existing of [undefined, "Existing accessible name"]) {
+    const attrs = new Map<string, string>([["title", "Native tooltip"]]);
+    if (existing) attrs.set("aria-label", existing);
+    let titleRemoved = false;
+    let childRemoved = false;
+    const title = { textContent: "Shell restoration store", remove() { titleRemoved = true; } };
+    const node = {
+      querySelector: () => title,
+      getAttribute: (key: string) => attrs.get(key),
+      hasAttribute: (key: string) => attrs.has(key),
+      setAttribute: (key: string, value: string) => attrs.set(key, value),
+      removeAttribute: (key: string) => attrs.delete(key),
+      querySelectorAll: (selector: string) => selector === "title" ? [title] : [{ removeAttribute() { childRemoved = true; } }],
+    };
+    new Function("document", source)({ readyState: "complete", querySelectorAll: (selector: string) => {
+      expect(selector).toBe(".diagram-container svg [data-node-id]");
+      return [node];
+    } });
+    expect(attrs.get("aria-label")).toBe(existing ?? "Shell restoration store");
+    expect(attrs.has("title")).toBe(false);
+    expect(titleRemoved).toBe(true);
+    expect(childRemoved).toBe(true);
+  }
+});
+
+test("embedded maps restore preferences through the viewer APIs without republishing them", () => {
+  const html = withArchifyEmbedAdapter("<html><body></body></html>");
+  const source = html.match(/<script data-diffcompass-preferences>([\s\S]*?)<\/script>/)![1];
+  const attributes = new Map([["data-theme", "dark"], ["data-preset", "classic"]]);
+  const events: Record<string, Function> = {};
+  const messages: any[] = [];
+  const motion: unknown[] = [];
+  let observer = () => {};
+  const parent = { postMessage: (value: unknown) => messages.push(value) };
+  const window = {
+    Archify: {
+      theme: { toggle: () => attributes.set("data-theme", attributes.get("data-theme") === "dark" ? "light" : "dark") },
+      preset: { apply: (value: string) => attributes.set("data-preset", value) },
+      motionGovernor: { setMode: (mode: string, options: unknown) => motion.push([mode, options]) },
+    },
+    addEventListener: (name: string, listener: Function) => { events[name] = listener; },
+  };
+  new Function("window", "document", "parent", "MutationObserver", source)(
+    window, { readyState: "complete", documentElement: { getAttribute: (key: string) => attributes.get(key) } },
+    parent, class { constructor(callback: () => void) { observer = callback; } observe() {} },
+  );
+  expect(messages).toEqual([{ type: "diffcompass-map-preferences-ready" }]);
+  const data = { type: "diffcompass-map-preferences", preferences: { theme: "light", preset: "editorial", motion: false } };
+  events.message!({ source: {}, data });
+  expect(motion).toEqual([]);
+  events.message!({ source: parent, data });
+  expect(attributes.get("data-theme")).toBe("light");
+  expect(attributes.get("data-preset")).toBe("editorial");
+  expect(motion).toEqual([["still", { persist: false }]]);
+  observer();
+  expect(messages).toHaveLength(1);
+  events["diffcompass-motion-preference"]!({ detail: true });
+  expect(messages.at(-1).preferences).toEqual({ motion: true });
+});
+
+test("review maps default motion on without requiring decorative trace animation", () => {
   const html = withArchifyEmbedAdapter(`<html><body><script>var capable = !!(svg && svg.getAttribute('data-animation') === 'trace'); readerPaused = readStored() === 'still';</script></body></html>`);
   expect(html).toContain('var capable = !!svg;');
-  expect(html).toContain("readerPaused = readStored() !== 'live';");
+  expect(html).toContain("readerPaused = readStored() === 'still';");
 });
 
 test("all inspection overlays drag by their headers and stay within the viewport", () => {
