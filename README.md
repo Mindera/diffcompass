@@ -17,6 +17,44 @@ and complete a local or GitHub review without leaving the browser.
 [GitHub PRs](#github-pull-requests) · [Configuration](#repository-defaults) ·
 [Development](#development)
 
+## Availability
+
+Status checked on 2026-10-04. The latest published release is
+[v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0), published
+2026-09-29. The authenticated remote `main` query and peeled tag observed earlier
+both returned `ec3c045`; the observed installed command reports `2.0.0`. Local
+`main` remains `716edb8`, with unreleased sequence-card source navigation.
+These observations are separate from the isolated review branches below; running
+a checkout does not update an installed release.
+
+Start with [Review branches](REVIEW_BRANCHES.md) for the clean main checkout,
+branch locations and validation status. The shared implementation was preserved
+as safety snapshot `39206b4`, **not a merge candidate**. The unreviewed common base
+`8262d97` contains only the earlier map preferences/tooltips/motion, native
+Call-flow consolidation, impact repair and final-commentary fixes. Decision log,
+sequence/code and syntax diff are committed on three independent review
+branches sharing that base, with separate branch-specific test results. Documentation and the viewer/provider prototype
+have separate branches. This documentation branch does not contain the three
+feature implementations or the prototypes described below.
+
+The capabilities below describe the released baseline unless marked otherwise.
+Impact analysis, dry runs and bundled Archify maps are already released. New
+feature descriptions record the implementations under review, not merged or
+shipped capabilities. The earlier combined `bun run verify` passed 668 automated
+tests; it does not validate branch extraction or approve a merge. Branch-specific
+results are recorded separately in RESEARCH. Corrected sequence visuals were
+accepted on the combined tree, but resized-Present pointer matrices remain
+partial (app 15/16, plain iframe 14/16), with no proven cause. The isolated
+prototype has a separate unresolved badges keyboard timeout. Before considering
+the baseline map-motion change without sequence/code, its missing optional-
+`guidedViews` guard must be reviewed/extracted separately; see the reviewer entry.
+
+The Monaco and language-support labs are isolated prototypes. No production
+renderer migration is approved, and no project-aware language-server provider is
+bundled. The local syntax-diff parsers below are a separate bounded capability.
+See the [roadmap](ROADMAP.md) for delivery state and the [research inventory](RESEARCH.md)
+for evidence, limitations and verification details.
+
 ## Install
 
 Releases contain self-contained binaries for macOS, Linux, and Windows on Intel
@@ -45,7 +83,7 @@ your token. Users without repository access cannot install private releases.
 | Need | Command or option |
 | --- | --- |
 | Binary only; do not install skills | Append `--minimal` or `--binary-only` (`-Minimal` on Windows) |
-| Pin a release | `DIFFCOMPASS_VERSION=v1.2.0` before `bash` |
+| Pin a release | `DIFFCOMPASS_VERSION=v2.0.0` before `bash` |
 | Update | `diffcompass update [--version vX.Y.Z]` |
 | Roll back | `diffcompass rollback [--to X.Y.Z]` |
 | Preview uninstall | `diffcompass uninstall --dry-run` |
@@ -109,7 +147,7 @@ local preview tooling.
 | --- | --- |
 | Comparison | Merge-base comparison covering committed, staged, unstaged, and untracked changes; explicit parent support for stacked branches. |
 | Guided route | Agent-organized `Tour → Phases → Stops`, precise old/new anchors, inline stop cards, plain-language explanations, Previous/Next navigation, and configurable preparation of 0–5 upcoming stops. |
-| Briefing | Configurable and reorderable pre-tour summary with review cues, effort estimate, component diagrams, call flows, and sequence diagrams; expandable previews and `View briefing` after starting. |
+| Briefing | Configurable and reorderable pre-tour summary with review cues, effort estimate, component previews, links into relevant analysis, and `View briefing` after starting. Call-flow and sequence browsing lives in Maps; dedicated briefing sections for those diagrams are currently hidden. |
 | Free navigation | Browse the repository and diff at any time; `Current step` returns to an off-screen stop. Finishing the tour leaves the review and questions open. |
 | Review state | Per-file reviewed status, test-only and status filters, `All files in this tour`, automatic stale-annotation detection, atomic persistence, and restart/resume. |
 | Checkpoints | Named snapshots, revision history, `Full change` / `Since last review`, reopened files that changed again, and preserved state for unchanged files. |
@@ -137,6 +175,25 @@ Application appearance (`System`, `Light`, `Dark`) is independent of syntax
 themes (`GitHub`, `Vitesse`, `DiffCompass`, and Catppuccin Frappé, Macchiato,
 or Mocha).
 
+**Syntax diff (`review/syntax-diff`, unreleased):** in **Diff**, choose **Syntax
+changes** in a changed file's header. TypeScript/TSX (`.ts`, `.mts`, `.cts`, `.tsx`)
+and Kotlin (`.kt`, `.kts`) report bounded declaration additions/removals,
+signature changes and body/initializer changes, with nested owners and
+conservative overload matching. Keyboard-accessible Before/After links reuse the
+existing split/unified source navigation and full-file paging. This is syntax
+analysis, not proof of behavior or compiler correctness. Unsupported, generated,
+large/complex or unparsable files, unavailable captured snapshots and unsafe text
+inputs retain an explicit text-diff fallback; newer Kotlin syntax may exceed the
+bundled grammar. Results are computed on demand, not persisted as ASTs. Exports
+include only requested cached results with X/Y coverage, not review-wide analysis.
+JavaScript and other extensions remain unsupported. Moves/renames are conservative
+removed/added declaration pairs; ambiguous overloads remain unpaired. Any parser
+error suppresses structural claims for the whole file. Initial bounds are 256,000
+bytes and 10,000 lines per version, 1,000 declarations and 200 displayed changes;
+the cache holds 32 files with four concurrent requests. These are limits, not a
+latency guarantee. Full assumptions, grammar notices and exact verification are
+recorded in RESEARCH.
+
 ### Questions, comments, and edits
 
 | Action | Scope and behavior |
@@ -152,6 +209,22 @@ or Mocha).
 Suggestion bundles retain text, binary, added, deleted, and renamed files. They
 never commit or push automatically, and the review cannot be completed while a
 proposal is pending. The reviewed working tree stays untouched until `Apply`.
+
+**Decision log (`review/decision-log`, unreleased):** open **Conversations → Decision log → Add
+decision**; use **Correct decision** or **Remove** on a card while the review is
+open. Manually record a decision or hypothesis (the default), citing 1–8
+existing messages, comments, findings or activity entries. “Recorded” is the
+reviewer's assertion, not proof of the original author's intent. Corrections
+retain captured evidence unless it is explicitly replaced; missing, edited,
+ambiguous or stale references are not silently retargeted. Entries persist with
+the session and appear in the existing Markdown/HTML exports. The captured
+comparison records the context at capture time, not the message's original
+authorship revision. This adds no generated rationale, immutable audit history,
+GitHub publication or historical source resolver.
+Code links require a fresh exact match; unavailable evidence remains inspectable
+as saved text. Nonempty logs appear in exports independently of other section
+filters, without live editing or source lookup. Old sessions without a log still
+load; saving through an older binary may discard the new optional data.
 
 ### Findings and evidence
 
@@ -188,6 +261,57 @@ an incomplete Before view does not imply that missing connections never existed.
 | Call flows | Concrete changed entrypoints, Before/After/Changes call trees, added/removed edge counts, exact diff evidence, affected files, honest labels for dynamic dispatch, and single/all regeneration. |
 | Sequence diagrams | Goal-critical runtime interactions rendered locally from a validated Mermaid subset, with affected files, provenance, editable source, single/all regeneration, and source fallback. |
 | Adaptive diagrams | Evidence-gated state machines and data-model/ER views, repository observations, changed-file support, notation legends, and honest empty results when no extra diagram is justified. |
+| Explore impact | Per-symbol static caller/reference graphs, involved files, related tests, source navigation and return, with provider/confidence/completeness labels and bounded displayed counts. These are evidence of structural relationships, not runtime execution. |
+
+**Call-flow consolidation (unreviewed base `8262d97`):** open **Maps → Understand the change → Call
+flows**. Every saved call flow uses the existing native viewer, including Changes,
+Before and After, branching, recursion markers, source links, regeneration and
+linked dry-run scenarios. The category selector is hidden when only one view is
+available; the standalone Call flows tab is hidden. With no saved flows there is
+no Call flows option. Old Archify workflow duplicates remain in saved data but
+are hidden from Maps and exports, and new duplicates are no longer generated.
+In released v2.0.0, converted simple flows instead appear as Workflow maps and
+only unconverted flows remain in the native view.
+
+**Locally committed sequence navigation:** select an arrow/caption in an
+interactive sequence map, then **View code** in its semantics card. Validated
+anchors retain their old/new side; **Back to diagram** restores the diagram
+camera. **Find definition** reuses Symbol Peek for call-shaped captions without
+saved evidence. Results are name matches from available workspace source, not
+validated historical call targets. The synchronized sequence/code integration
+below is a separate extension on `review/sequence-code`.
+
+**Synchronized sequence/code (`review/sequence-code`, unreleased):** open
+**Maps → select an existing Sequence map → Code steps**.
+Supported interactive sequences show scrollable **Code steps** beside the
+existing canvas, stacked below it when the actual map width is below 1040px. The
+accepted 133.333% initial scale makes bundled 9px captions 12px and may clip
+participants from the viewport; use pan/zoom or explicit Fit to inspect the rest.
+The artifact itself is not cropped. Selecting an
+arrow/caption selects and reveals its code step; scrolling code updates selection
+without scrolling it again. Home/End/Up/Down provide keyboard navigation. Captured
+old/new excerpts are distinct from current-workspace definition candidates;
+candidates are neither persisted nor exported. HTML exports include the offline
+walkthrough and captured excerpts without lookup/source-navigation actions;
+Markdown is unchanged. Branches/loops retain the native Mermaid presentation
+without a synchronized pane. Up to 40 valid authored message IDs are supported;
+selection and scroll state are local to the live frame and do not survive reload
+or regeneration. This is a read-only excerpt integration, not a replacement diff
+viewer. Coordinator visual sign-off for the corrected layout is accepted.
+Final focused tests, eight main browser groups and four fresh framing scenarios
+passed. Separate pointer matrices remain partial: app 15/16, plain iframe 14/16.
+The resized-Present failures have no proven cause; headed passes do not establish
+immunity in other environments. Resize and Present preserve the camera instead
+of automatically refitting; Fit is an explicit overview. Real touch,
+assistive technology and genuine background-tab behavior remain unverified.
+
+**Other local fixes:** interactive maps share theme, preset and motion settings
+through browser storage for the same origin; motion respects reduced-motion
+preferences. Impact analysis retains valid entries during bounded repair and
+shows remaining warnings or an omission reason. Those diagnostics persist in
+sessions but are not yet rendered in Markdown/HTML exports. Codex explanations
+use the final output file rather than mixing streamed progress into the answer.
+These fixes are not in the published release.
 
 Native Mermaid component diagrams automatically adjust arrow captions after every
 render, including regeneration, briefing previews, and HTML exports. Caption
@@ -214,6 +338,18 @@ If repair fails, the tour keeps valid content and reports omitted diagrams or
 links in its planning notes. Dry-run scenarios retain their independent source
 validation. Unchanged calls may anchor unchanged source lines; added and removed
 calls still require matching changed diff rows.
+
+### Dry runs
+
+Open the **Dry runs** tab, or **Simulate** on a diagram with a linked scenario.
+Choose or edit inputs, mocks and assumptions, then prepare a walkthrough on
+demand. Previous/Next steps, source excerpts, value changes, branch choices and
+outputs are independent of tour navigation. Preparation can be cancelled;
+changed inputs or source make an existing trace stale. Plans and prepared traces
+survive session resume, and prepared traces can be included in Markdown/HTML
+exports. Generation starts enabled and can be disabled in setup. Empty or
+unprepared scenarios do not imply successful execution: dry runs are
+agent-produced simulations, **not execution of the reviewed application**.
 
 ### Markdown, images, and supplied media
 
@@ -563,8 +699,10 @@ bun run build:release
 Pushing a matching `v*` tag runs the full suite, builds all six platform
 archives, publishes checksums, and creates a GitHub Release.
 
-See [ROADMAP.md](ROADMAP.md) for shipped scope, upcoming work, and remaining
-review-workflow gaps.
+See [ROADMAP.md](ROADMAP.md) for released scope, unreleased local changes,
+prototypes, and remaining review-workflow gaps. Automated unit/integration and
+source/DOM-contract tests do not establish browser usability; browser checks and
+their limits are recorded separately in [RESEARCH.md](RESEARCH.md).
 
 ### Monaco PR-comment fixture
 
