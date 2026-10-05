@@ -15,11 +15,15 @@ const root = await mkdtemp(join(tmpdir(), "diffcompass-installed-maps-"));
 try {
   const fixture = await prepareTestFixture({ root: join(root, "fixture") });
   const saved = JSON.parse(await readFile(fixture.stateFile, "utf8"));
+  const callFlows = structuredClone(saved.outline.callFlows);
+  assert(callFlows.length > 0, "Fixture must retain native Call flows");
   // No host Node, Bun, npm, checkout, or network is needed for map generation.
   process.env.PATH = join(root, "no-system-executables");
   const result = await renderer.render(saved.outline);
   assert.deepEqual(result.failures, []);
-  assert.deepEqual([...new Set(result.artifacts.map((item) => item.type))].sort(), ["architecture", "dataflow", "lifecycle", "sequence", "workflow"]);
+  // Call flows stay in their native viewer; do not duplicate them as workflows.
+  assert.deepEqual([...new Set(result.artifacts.map((item) => item.type))].sort(), ["architecture", "dataflow", "lifecycle", "sequence"]);
+  assert.deepEqual(saved.outline.callFlows, callFlows, "Rendering maps must preserve native Call flows");
   assert(result.artifacts.some((item) => item.comparison?.before && item.comparison?.delta), "Before/Delta/After must render");
   assert(result.artifacts.every((item) => item.html.includes("<html")));
   const branched = await renderer.render(branchedMaps as unknown as TourOutline);
@@ -30,7 +34,7 @@ try {
   assert((await readFile(join(directory, "LICENSE"), "utf8")).includes("Permission is hereby granted"));
   assert((await readFile(join(directory, "assets/JetBrainsMono-OFL.txt"), "utf8")).includes("SIL OPEN FONT LICENSE"));
   assert((await readFile(join(directory, "renderers/shared/generated-brand-marks.mjs"), "utf8")).includes("Object.freeze([])"));
-  console.log(`Installed renderer: ${result.artifacts.length} maps passed, including all five types and Before/Delta/After, without host runtimes.`);
+  console.log(`Installed renderer: ${result.artifacts.length} maps passed, including all four generated types and Before/Delta/After, with native Call flows preserved and without host runtimes.`);
 } finally {
   await rm(root, { recursive: true, force: true });
 }
