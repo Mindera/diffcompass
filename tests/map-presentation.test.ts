@@ -1,5 +1,47 @@
 import { expect, test } from "bun:test";
 
+test("map preferences survive frame replacement and reload without trusting unknown senders", async () => {
+  const script = await Bun.file(new URL('../public/map-presentation.js', import.meta.url)).text();
+  const storage = new Map<string, string>();
+  function setup(blocked = false) {
+    let receive: Function = () => {};
+    const messages: any[] = [];
+    const frame = { contentWindow: { postMessage: (message: any) => messages.push(structuredClone(message)) } };
+    const frames = [frame];
+    const window = {
+      localStorage: {
+        getItem: (key: string) => { if (blocked) throw Error("blocked"); return storage.get(key) ?? null; },
+        setItem: (key: string, value: string) => { if (blocked) throw Error("blocked"); storage.set(key, value); },
+      },
+      addEventListener: (_name: string, listener: Function) => { receive = listener; },
+    };
+    new Function('window', 'document', 'HTMLElement', 'MutationObserver', script)(
+      window, { querySelectorAll: () => frames, addEventListener() {}, documentElement: {} }, class {}, class { observe() {} },
+    );
+    return { messages, frames, send: (type: string, preferences?: unknown, source = frame.contentWindow) => receive({ source, data: { type, preferences } }) };
+  }
+  const first = setup();
+  first.send('diffcompass-map-preferences-ready');
+  expect(first.messages.at(-1).preferences).toEqual({ motion: true });
+  first.send('diffcompass-map-preferences-change', { motion: false, theme: 'light', preset: 'editorial', arbitrary: 'ignored' });
+  first.send('diffcompass-map-preferences-change', { motion: true }, {} as any);
+  first.send('diffcompass-map-preferences-ready');
+  expect(first.messages.at(-1).preferences).toEqual({ motion: false, theme: 'light', preset: 'editorial' });
+  first.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 640, sequenceCodeHeight: 360 });
+  first.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 2000, sequenceCodeHeight: '500' });
+  first.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 800 }, {} as any);
+  const reloaded = setup();
+  reloaded.send('diffcompass-map-preferences-ready');
+  expect(reloaded.messages.at(-1).preferences).toEqual({ motion: false, theme: 'light', preset: 'editorial', sequenceCodeWidth: 640, sequenceCodeHeight: 360 });
+  reloaded.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 0 });
+  reloaded.send('diffcompass-map-preferences-ready');
+  expect(reloaded.messages.at(-1).preferences.sequenceCodeWidth).toBe(0);
+  const isolated = setup(true);
+  isolated.send('diffcompass-map-preferences-change', { theme: 'dark', preset: 'blueprint', motion: false });
+  isolated.send('diffcompass-map-preferences-ready');
+  expect(isolated.messages.at(-1).preferences).toEqual({ theme: 'dark', preset: 'blueprint', motion: false });
+});
+
 test("presentation expands the same iframe, validates the sender, and restores layout", async () => {
   const script = await Bun.file(new URL('../public/map-presentation.js', import.meta.url)).text();
   const listeners: Record<string, Function> = {};
@@ -41,4 +83,13 @@ test("presentation expands the same iframe, validates the sender, and restores l
     { type: 'diffcompass-map-present-state', active: true },
     { type: 'diffcompass-map-present-state', active: false },
   ]);
+  const controls = (window as any).diffcompassMapPresentation;
+  controls.resume(frame);
+  expect(open).toBe(true);
+  controls.suspend(frame);
+  expect(open).toBe(false);
+  expect(sibling.inert).toBe(false);
+  controls.resume(frame);
+  expect(open).toBe(true);
+  controls.suspend(frame);
 });

@@ -6,6 +6,11 @@ import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promise
 import { basename, dirname } from "node:path";
 import { isBriefingSectionOrder, type PersistedReviewSession, type SourceCheckpoint } from "./types.ts";
 import { normalizeSequenceDiagram } from "./flows.ts";
+import { validateSequenceSources } from "./sequence-sources.ts";
+
+function validSequenceSources(flow: Record<string, unknown>): boolean {
+  try { validateSequenceSources(flow.messageSources, String(flow.mermaid)); return true; } catch { return false; }
+}
 import { normalizeReviewArchitectureMermaid, validateReviewArchitecture } from "./architecture.ts";
 import { normalizeReviewAdaptiveDiagram, validateReviewAdaptiveDiagram } from "./adaptive-diagrams.ts";
 
@@ -182,7 +187,7 @@ function validOutline(value: unknown): boolean {
       ["verified", "partial", "unverified"].includes(String(flow.provenance)) &&
       Array.isArray(flow.affectedFiles) && flow.affectedFiles.length <= 100 && flow.affectedFiles.every((path) => nonEmptyString(path, 4_096)) && new Set(flow.affectedFiles).size === flow.affectedFiles.length &&
       Number.isInteger(flow.blastRadiusSize) && Number(flow.blastRadiusSize) >= 0);
-  if (!validFlows) return false;
+  if (!validFlows || !value.flows.every((flow) => record(flow) && validSequenceSources(flow))) return false;
   if (value.dryRunPlans !== undefined) {
     if (!Array.isArray(value.dryRunPlans) || value.dryRunPlans.length > 16) return false;
     const identities = new Set<string>();
@@ -201,6 +206,8 @@ function validOutline(value: unknown): boolean {
     if (!validPlans) return false;
   }
   if (value.structuralBlastRadii !== undefined && !validStructuralBlastRadii(value.structuralBlastRadii)) return false;
+  if (value.structuralAnalysisWarnings !== undefined && (!Array.isArray(value.structuralAnalysisWarnings) || value.structuralAnalysisWarnings.length > 501 || value.structuralAnalysisWarnings.some((warning) => !nonEmptyString(warning, 2_000)))) return false;
+  if (value.structuralAnalysisOmissionReason !== undefined && !nonEmptyString(value.structuralAnalysisOmissionReason, 2_000)) return false;
   const structuralNodeIds = new Set(
     Array.isArray(value.structuralBlastRadii)
       ? value.structuralBlastRadii.flatMap((radius) => record(radius) && Array.isArray(radius.nodes)

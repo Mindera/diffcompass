@@ -8,6 +8,7 @@ import { ProcessError, runProcess } from "../src/process.ts";
 import { startServer } from "../src/server.ts";
 import { ReviewSession } from "../src/session.ts";
 import { savePersistedSession } from "../src/store.ts";
+import { sequenceCandidate } from "../src/archify.ts";
 import type { PersistedReviewSession } from "../src/types.ts";
 
 const repositories: string[] = [];
@@ -83,6 +84,29 @@ test("browser and bridge endpoints require their own non-interchangeable token",
   expect((await jsonRequest(url, "/api/bridge/context", {
     headers: { "x-diffcompass-token": bridge.token },
   })).status).toBe(200);
+});
+
+test("sequence source navigation exposes only authenticated current evidence", async () => {
+  const { session, url } = await fixture();
+  const flow = { id: "call", title: "Call", summary: "Defines a value.", provenance: "partial" as const, blastRadiusSize: 1, affectedFiles: ["app.ts"],
+    mermaid: "sequenceDiagram\n participant A\n participant B\n A->>B: read value",
+    messageSources: [{ message: 1, label: "read value", anchors: [{ path: "app.ts", side: "new" as const, startLine: 2, endLine: 2, quote: "const changed = 2;" }] }],
+  };
+  const candidate = sequenceCandidate(flow)!;
+  const artifact = { ...candidate, comparison: undefined, html: "<html><body></body></html>", view: "single" as const, validationReceipt: "valid", renderedAt: new Date().toISOString() };
+  session.outline = { title: "Test", summary: "Test", phases: [], callFlows: [], flows: [flow], findings: [], archifyArtifacts: [artifact] };
+  const path = "/api/sequence-sources/sequence-call";
+  expect((await jsonRequest(url, path)).status).toBe(401);
+  const response = await jsonRequest(url, path, { headers: { "x-diffcompass-token": session.browserToken } });
+  const returned = Object.values(await response.json())[0] as any[];
+  expect(returned.map(({ preview, ...anchor }) => anchor)).toEqual(flow.messageSources[0]!.anchors);
+  expect(returned[0].preview.language).toBe('typescript');
+  expect(returned[0].preview.kinds).toEqual(['addition']);
+  expect(returned[0].preview.tokens[0].map((token: any) => token.content).join('')).toBe('const changed = 2;');
+  const embed = await (await jsonRequest(url, "/archify/sequence-call")).text();
+  expect(embed).toContain("data-diffcompass-sequence-sources");
+  flow.messageSources[0]!.anchors[0]!.quote = "stale evidence";
+  expect(await (await jsonRequest(url, path, { headers: { "x-diffcompass-token": session.browserToken } })).json()).toEqual({});
 });
 
 test("attached bridge long-polls survive beyond Bun's ten-second default", async () => {

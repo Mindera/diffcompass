@@ -15,6 +15,7 @@ const comparison: GitComparison = {
 function outline(valid = false) {
   return {
     title: "Review", summary: "Review the changed call.",
+    structuralBlastRadii: [], structuralAnalysisOmissionReason: "Only a top-level call changed in this fixture.",
     phases: [{ id: "behavior", title: "Behavior", summary: "Changes behavior.", fileChanges: [{ path: "app.ts", summary: "Changes call." }],
       steps: [{ id: "step", title: "Call", objective: "Inspect call.", anchor: { path: "app.ts", side: "new" as const, startLine: 1, endLine: 1 } }] }],
     callFlows: [{ id: "call", title: "Call", summary: "Changed call", entrypointNodeId: "entry", provenance: "partial",

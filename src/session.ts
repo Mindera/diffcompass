@@ -4,6 +4,7 @@ import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./ag
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
 import { validateStructuralBlastRadii } from "./structural-blast-radius.ts";
+import { groundedSequenceSources, sequenceArtifactSources, lookupSequenceDefinition } from "./sequence-sources.ts";
 import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadComparisonBetweenTrees, loadDiffFileWithContext, loadDiffImage, loadDiffText, loadRepositoryFile, removeCheckpointRef, removeProposalWorkspace, writeCheckpointRef, writeProposalFile, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
@@ -976,6 +977,18 @@ export class ReviewSession {
     return this.outline?.archifyArtifacts?.find((artifact) => artifact.id === id);
   }
 
+  archifySequenceSources(id: string) {
+    const artifact = this.archifyArtifact(id);
+    return artifact ? sequenceArtifactSources(artifact, this.outline?.flows ?? [], this.comparison) : {};
+  }
+
+  async resolveArchifySequenceSources(id: string, edgeId: string) {
+    const sources = this.archifySequenceSources(id);
+    const artifact = this.archifyArtifact(id);
+    if (artifact && !sources[edgeId]) sources[edgeId] = await lookupSequenceDefinition(artifact, this.outline?.flows ?? [], this.comparison, edgeId);
+    return sources;
+  }
+
   /**
    * Archify is optional. A renderer failure is kept beside the tour as a
    * diagnostic and never discards the normal Mermaid review path.
@@ -1564,6 +1577,7 @@ export class ReviewSession {
       let flow: ReviewFlow;
       try {
         flow = validateReviewFlow({ id, ...input });
+        if (flow.messageSources) flow.messageSources = groundedSequenceSources(flow, this.comparison);
         if (flow.affectedFiles?.some((path) => !this.comparison.files.some((file) => file.path === path))) {
           throw new Error("Flow affectedFiles must reference changed files in this comparison.");
         }

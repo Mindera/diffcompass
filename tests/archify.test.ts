@@ -73,7 +73,7 @@ const outline: TourOutline = {
 
 test("derives bounded, typed Archify IR with component-level Before, Delta, and After states", () => {
   const candidates = archifyCandidates(outline);
-  expect(candidates.map((candidate) => candidate.type)).toEqual(["architecture", "workflow", "sequence", "dataflow", "lifecycle"]);
+  expect(candidates.map((candidate) => candidate.type)).toEqual(["architecture", "sequence", "dataflow", "lifecycle"]);
   const architecture = candidates.find((candidate) => candidate.type === "architecture")!;
   expect(architecture.ir).toMatchObject({ schema_version: 1, diagram_type: "architecture" });
   expect("baselineIr" in architecture).toBe(false);
@@ -95,10 +95,7 @@ test("derives bounded, typed Archify IR with component-level Before, Delta, and 
   ]);
   expect(delta?.connections).toHaveLength(2);
   expect(delta?.connections[1]).toMatchObject({ label: "+ calculates total" });
-  const workflow = candidates.find((candidate) => candidate.type === "workflow")!;
-  expect(workflow.ir).toMatchObject({ schema_version: 2, diagram_type: "workflow" });
-  expect(workflow.ir.mainPath).toEqual(["receipt-flow-formatter", "receipt-flow-totals"]);
-  expect((workflow.ir.meta as { views?: unknown }).views).toBeUndefined();
+  expect(candidates.some((candidate) => candidate.type === "workflow")).toBe(false);
   const sequence = candidates.find((candidate) => candidate.type === "sequence")!;
   expect(sequence.ir).toMatchObject({ schema_version: 1, diagram_type: "sequence" });
   const messages = sequence.ir.messages as Array<{ label: string; variant?: string; y: number }>;
@@ -194,7 +191,7 @@ test("keeps a last validated Archify artifact if regenerated delivery fails", as
   const renderer = new ArchifyRenderer(root, { runner, now: () => new Date("2026-09-18T12:00:00.000Z") });
   const initial = await renderer.render(outline);
   expect(initial.failures).toEqual([]);
-  expect(initial.artifacts).toHaveLength(5);
+  expect(initial.artifacts).toHaveLength(4);
   expect(initial.artifacts[0]?.html).toContain("validated");
   expect(initial.artifacts[0]?.comparison?.before?.html).toContain("validated");
   expect(initial.artifacts[0]?.comparison?.delta?.html).toContain("validated");
@@ -202,7 +199,7 @@ test("keeps a last validated Archify artifact if regenerated delivery fails", as
   fail = true;
   const retried = await renderer.render(outline, initial.artifacts);
   expect(retried.artifacts.map((artifact) => artifact.id)).toEqual(initial.artifacts.map((artifact) => artifact.id));
-  expect(retried.failures).toHaveLength(5);
+  expect(retried.failures).toHaveLength(4);
   expect(retried.failures.every((failure) => failure.preservedLastValid)).toBe(true);
   expect(retried.failures.every((failure) => failure.message.includes("could not be prepared") && !failure.message.includes("candidate.json"))).toBe(true);
 });
@@ -212,7 +209,7 @@ test("renders generated IR through an explicitly supplied official Archify check
   if (!directory) return;
   const rendered = await new ArchifyRenderer(directory).render(outline);
   expect(rendered.failures).toEqual([]);
-  expect(rendered.artifacts).toHaveLength(5);
+  expect(rendered.artifacts).toHaveLength(4);
   expect(rendered.artifacts.every((artifact) => artifact.html.includes("<html"))).toBe(true);
   const architecture = rendered.artifacts.find((artifact) => artifact.id === "architecture-behavior");
   expect(architecture?.comparison?.before?.html).toContain("<html");

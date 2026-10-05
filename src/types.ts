@@ -1,3 +1,5 @@
+import type { HighlightToken } from "./highlight.ts";
+
 export type DiffRowKind = "context" | "addition" | "deletion" | "meta";
 
 export interface DiffRow {
@@ -126,6 +128,10 @@ export interface TourOutline {
   callFlows: CallFlow[];
   /** Static caller/reachability evidence for changed symbols. This is not a runtime trace. */
   structuralBlastRadii?: StructuralBlastRadius[];
+  /** Validation failures remaining after bounded repair; not evidence of zero impact. */
+  structuralAnalysisWarnings?: string[];
+  /** Why no changed declarations could be analysed (not a claim of zero impact). */
+  structuralAnalysisOmissionReason?: string;
   flows: ReviewFlow[];
   /** Scenario suggestions only. Detailed execution traces are prepared on demand. */
   dryRunPlans?: DryRunPlan[];
@@ -397,6 +403,8 @@ export interface ArchifyFailure {
 }
 
 export interface ReviewFlow {
+  /** One-based message order plus exact caption guards against stale links. */
+  messageSources?: SequenceMessageSource[];
   nodeRoles?: import("./map-node-roles.ts").MapNodeRoles;
   id: string;
   title: string;
@@ -406,6 +414,30 @@ export interface ReviewFlow {
   blastRadiusSize: number;
   affectedFiles?: string[];
   outdated?: boolean;
+}
+
+export interface SequenceSourceAnchor {
+  /** Runtime lookup candidate, not authored evidence of the message. */
+  definition?: boolean;
+  /** Runtime-only proof that this candidate quote also matches captured rows. */
+  comparisonMatch?: boolean;
+  /** Derived display data; never persisted as authored message evidence. */
+  preview?: {
+    language: string;
+    kinds: Array<"addition" | "deletion" | "context" | "unknown">;
+    tokens?: HighlightToken[][];
+  };
+  path: string;
+  side: "old" | "new";
+  startLine: number;
+  endLine: number;
+  quote: string;
+}
+
+export interface SequenceMessageSource {
+  message: number;
+  label: string;
+  anchors: SequenceSourceAnchor[];
 }
 
 /**

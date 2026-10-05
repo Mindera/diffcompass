@@ -3,6 +3,20 @@
   let expanded = null;
   let restoreStyle = null;
   let inert = [];
+  const preferencesKey = 'diffcompass-map-preferences';
+  let preferences = { motion: true };
+  function validated(value) {
+    const result = {};
+    if (!value || typeof value !== 'object') return result;
+    if (['dark', 'light'].includes(value.theme)) result.theme = value.theme;
+    if (['classic', 'blueprint', 'signal-flow', 'editorial'].includes(value.preset)) result.preset = value.preset;
+    if (typeof value.motion === 'boolean') result.motion = value.motion;
+    for (const [key, minimum] of [['sequenceCodeWidth', 280], ['sequenceCodeHeight', 46]]) {
+      if (Number.isInteger(value[key]) && (value[key] === 0 || value[key] >= minimum && value[key] <= 900)) result[key] = value[key];
+    }
+    return result;
+  }
+  try { Object.assign(preferences, validated(JSON.parse(window.localStorage.getItem(preferencesKey)))); } catch (_) {}
   function close() {
     const frame = expanded;
     if (!frame) return;
@@ -17,12 +31,27 @@
     frame.focus({ preventScroll: true });
   }
   window.addEventListener('message', (event) => {
+    if (['diffcompass-map-preferences-ready', 'diffcompass-map-preferences-change'].includes(event.data?.type)) {
+      const frames = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame]')];
+      const source = frames.find(frame => frame.contentWindow === event.source);
+      if (!source) return;
+      if (event.data.type === 'diffcompass-map-preferences-change') {
+        Object.assign(preferences, validated(event.data.preferences));
+        try { window.localStorage.setItem(preferencesKey, JSON.stringify(preferences)); } catch (_) {}
+      }
+      const recipients = event.data.type === 'diffcompass-map-preferences-ready' ? [source] : frames;
+      recipients.forEach(frame => frame.contentWindow?.postMessage({ type: 'diffcompass-map-preferences', preferences }, '*'));
+      return;
+    }
     if (event.data?.type !== 'diffcompass-map-present' || typeof event.data.active !== 'boolean') return;
     const frame = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame]')]
       .find(node => node.contentWindow === event.source);
     if (!frame || !frame.getClientRects().length) return;
     if (!event.data.active) { if (expanded === frame) close(); return; }
-    if (expanded === frame) return;
+    open(frame);
+  });
+  function open(frame) {
+    if (!frame?.isConnected || expanded === frame) return;
     close();
     expanded = frame;
     restoreStyle = frame.getAttribute('style');
@@ -39,7 +68,8 @@
     }
     frame.contentWindow.postMessage({ type: 'diffcompass-map-present-state', active: true }, '*');
     frame.focus({ preventScroll: true });
-  });
+  }
+  window.diffcompassMapPresentation = { suspend(frame) { if (expanded === frame) close(); }, resume: open };
   document.addEventListener('keydown', (event) => {
     if (expanded && event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); close(); }
   }, true);

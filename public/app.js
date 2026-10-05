@@ -1,3 +1,5 @@
+import { refreshSequenceEvidence, sequenceEvidenceRevision, sequenceSourceSelection } from "/sequence-walkthrough-host.js";
+
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 const fragmentToken = fragment.get("token");
 const launchTourIntro = fragment.get("intro") === "1";
@@ -84,6 +86,7 @@ const state = {
   structuralBlastRadiusId: null,
   structuralGraphViews: new Map(),
   structuralGraphReturn: null,
+  sequenceSourceReturn: null,
   structuralDisclosureStates: new Map(),
   structuralGraphDrag: null,
   pollInFlight: false,
@@ -1898,7 +1901,7 @@ async function highlightRenderedCode() {
     for (const group of results.flatMap((result) => result.groups)) {
       if (group.id === "source") {
         const target = elements.diff.querySelector('.source-code[data-highlight-group="source"]');
-        if (target) target.innerHTML = group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")).join("\n");
+        if (target) target.innerHTML = sourceCodeLines(group.lines.map((line) => line.map((token) => syntaxTokenHtml(token)).join("")), Number(target.dataset.selectedLine));
         continue;
       }
       const nodes = [...elements.diff.querySelectorAll(`.line-code[data-highlight-group="${CSS.escape(group.id)}"]`)];
@@ -2088,7 +2091,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   return true;
 }
 
-async function showRepositoryFile(path) {
+async function showRepositoryFile(path, line, sourceLabel = "unchanged") {
   state.activeTab = "diff";
   state.proposalPreview = false;
   state.proposalActivityId = null;
@@ -2100,8 +2103,16 @@ async function showRepositoryFile(path) {
     if (requestId !== state.fileRequestId) return false;
     state.repositoryFilePath = path;
     state.repositoryFileContent = file.content;
+    state.repositoryFileSourceLabel = sourceLabel;
     state.repositoryFileView = /\.md$/i.test(path) ? "preview" : "source";
     renderRepositoryFile(path, file.content);
+    if (Number.isSafeInteger(line) && line > 0) {
+      const source = elements.diff.querySelector('.source-code');
+      if (source) source.dataset.selectedLine = String(line);
+      const row = source?.querySelector(`[data-source-line="${line}"]`);
+      row?.classList.add("sequence-source-highlight");
+      row?.scrollIntoView({ block: "center" });
+    }
     elements["empty-diff"].classList.add("hidden");
     return true;
   } catch (error) {
@@ -2110,11 +2121,18 @@ async function showRepositoryFile(path) {
   }
 }
 
+function sourceCodeLines(lines, selectedLine) {
+  return lines.map((line, index) => `<span data-source-line="${index + 1}"${index + 1 === selectedLine ? ' class="sequence-source-highlight"' : ""}>${line}</span>`).join("\n");
+}
+
 function renderRepositoryFile(path, content) {
   const markdown = /\.md$/i.test(path);
   const preview = markdown && state.repositoryFileView === "preview";
-  elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">unchanged</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
-  if (!preview) void highlightRenderedCode();
+  elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">${escapeHtml(state.repositoryFileSourceLabel ?? "unchanged")}</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
+  if (!preview) {
+    elements.diff.querySelector('.source-code').innerHTML = sourceCodeLines(content.split("\n").map(escapeHtml));
+    void highlightRenderedCode();
+  }
 }
 
 function symbolPeekContext() {
@@ -2997,15 +3015,23 @@ function architectureEntries() {
 function archifyArtifacts() {
   // Impact maps already have a complete, source-linked view with test evidence.
   // Do not offer a second, truncated rendering of the same result here.
-  return (state.session.outline?.archifyArtifacts ?? []).filter((artifact) => !artifact.id.startsWith("structural-"));
+  // Saved workflow duplicates remain readable on disk, but call flows have
+  // one complete presentation regardless of artifact availability or age.
+  return (state.session.outline?.archifyArtifacts ?? []).filter((artifact) => !artifact.id.startsWith("structural-") && artifact.type !== "workflow");
 }
 
 function hasArchifyArtifact(id) {
   return archifyArtifacts().some((artifact) => artifact.id === id);
 }
 
-function legacyCallFlows() {
-  return (state.session.outline?.callFlows ?? []).filter((flow) => !hasArchifyArtifact(`workflow-${flow.id}`));
+function savedCallFlows() {
+  return state.session.outline?.callFlows ?? [];
+}
+
+function openCallFlow(id) {
+  if (!savedCallFlows().some((flow) => flow.id === id)) return toast("This call flow is no longer available.");
+  openMaps("call-flows");
+  window.requestAnimationFrame(() => document.querySelector(`[data-call-flow-id="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 }
 
 function legacySequenceFlows() {
@@ -3057,10 +3083,10 @@ function archifyArtifactCard(artifact) {
   const comparisonControls = views.length > 1 ? `<div class="archify-comparison" role="group" aria-label="${escapeHtml(`${artifact.title} comparison view`)}">${views.map((view) => `<button type="button" data-archify-comparison-view="${view.id}" data-archify-comparison-artifact="${escapeHtml(artifact.id)}"${view.id === selectedView.id ? ' class="active" aria-pressed="true"' : ' aria-pressed="false"'}>${escapeHtml(view.label)}</button>`).join("")}</div>` : "";
   return `<article class="flow-card architecture-card archify-artifact">
     <header class="architecture-card-heading"><div><span class="architecture-label">Validated map</span><h2>${escapeHtml(artifact.title)}</h2></div><span class="archify-view">${escapeHtml(archifyArtifactTypeLabel(artifact.type, artifact.purpose))}</span></header>
-    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it. Drag the background to pan; use Fit to see the whole map.</p>
+    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it.${artifact.type === "sequence" ? " Click an arrow or its caption to follow its code step. Scrolling Code steps keeps your selection." : ""} Drag the background to pan; use Fit to see the whole map.</p>
     ${comparisonControls}
     ${selectedView.id === "delta" ? '<p class="archify-delta-key" aria-label="Change legend"><span>+ Added</span><span>~ Changed</span><span>− Removed</span><span>Unchanged context</span></p>' : ""}
-    <iframe class="archify-frame" data-archify-artifact-id="${escapeHtml(artifact.id)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
+    <iframe class="archify-frame" data-archify-type="${escapeHtml(artifact.type)}" data-archify-artifact-id="${escapeHtml(artifact.id)}" data-archify-rendered-at="${escapeHtml(artifact.renderedAt)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
     <details class="archify-evidence"><summary>Sources and technical validation</summary><ul>${evidence}</ul><div class="flow-impact-list"><strong>Affected changed files</strong>${affected || "<span class=\"muted\">No exact changed file was captured.</span>"}</div><details><summary>Validated ${escapeHtml(selectedView.label.toLowerCase())} map data</summary><pre>${ir}</pre></details><details><summary>Renderer diagnostics</summary><pre>${escapeHtml(displayed?.validationReceipt ?? artifact.validationReceipt)}</pre></details></details>
   </article>`;
 }
@@ -3074,9 +3100,87 @@ window.addEventListener("message", (event) => {
 });
 
 function archifyFailureCards() {
-  const failures = state.session.outline?.archifyFailures ?? [];
+  const failures = (state.session.outline?.archifyFailures ?? []).filter((failure) => failure.type !== "workflow");
   return failures.map((failure) => `<article class="flow-card archify-failure"><strong>Archify ${escapeHtml(failure.type)} unavailable</strong><p>${escapeHtml(failure.message)}</p><small>${failure.preservedLastValid ? "The last validated diagram remains on display." : "The Mermaid fallback remains available."}</small></article>`).join("");
 }
+
+async function openSequenceSource(event) {
+  if (event.data?.type !== "diffcompass-sequence-source" || typeof event.data.edgeId !== "string" || !Number.isInteger(event.data.anchorIndex) || event.data.anchorIndex < 0 || event.data.anchorIndex > 7) return;
+  const frame = [...document.querySelectorAll("iframe.archify-frame")].find((frame) => frame.contentWindow === event.source);
+  if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
+  const id = frame.dataset.archifyArtifactId;
+  const evidenceRevision = frame._sequenceEvidenceRevision;
+  try {
+    // The iframe supplies only an identity. Resolve paths from current,
+    // server-validated evidence, never from a postMessage path or line.
+    const sources = await api(`/api/sequence-sources/${encodeURIComponent(id)}?edge=${encodeURIComponent(event.data.edgeId)}`);
+    if (!frame.isConnected || state.activeTab !== "archify" || frame._sequenceEvidenceRevision !== evidenceRevision) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); return; }
+    const selection = sequenceSourceSelection(sources[event.data.edgeId], event.data.anchorIndex, event.data.anchorIndices);
+    if (!selection) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); toast("This source link is no longer available. Regenerate the map to refresh its evidence."); return; }
+    const { anchor } = selection;
+    state.structuralGraphReturn = null;
+    state.sequenceSourceReturn = { artifactId: id, frame, present: event.data.present === true, scrollTop: elements["diff-panel"].scrollTop };
+    window.diffcompassMapPresentation?.suspend(frame);
+    state.activeTab = "diff";
+    renderActiveTab();
+    // The server checks candidates against the same captured rows as saved
+    // anchors. Only exact matches share the comparison's source destination.
+    const currentSource = anchor.definition && !anchor.comparisonMatch;
+    const sourcePath = currentSource ? anchor.path : state.session.comparison.files.find((file) => file.path === anchor.path || file.oldPath === anchor.path)?.path ?? anchor.path;
+    if (currentSource) await showRepositoryFile(sourcePath, anchor.startLine, "Current workspace · name match");
+    else await showAnalysisFile(sourcePath, anchor.startLine, anchor.side);
+    for (const source of selection.anchors) for (let line = source.startLine; line <= source.endLine; line++) {
+      const row = currentSource ? null : diffViewRow(sourcePath, anchor.side, line);
+      row?.classList.add("sequence-source-highlight");
+    }
+    updateSequenceSourceReturnVisibility();
+  } catch (error) {
+    frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*");
+    toast(error.message || "Could not open the sequence source.");
+  }
+}
+
+function returnToSequenceDiagram() {
+  const target = state.sequenceSourceReturn;
+  if (!target) return;
+  state.archifyArtifactId = target.artifactId;
+  openMaps("archify");
+  elements["diff-panel"].scrollTop = target.scrollTop;
+  if (target.frame.isConnected) {
+    if (target.present) window.diffcompassMapPresentation?.resume(target.frame);
+    target.frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*");
+    target.frame.focus({ preventScroll: true });
+  } else toast("The map changed while you were viewing the source; showing its latest version.");
+  state.sequenceSourceReturn = null;
+  elements.diff.querySelectorAll(".sequence-source-highlight").forEach((row) => row.classList.remove("sequence-source-highlight"));
+  updateSequenceSourceReturnVisibility();
+}
+
+function updateSequenceSourceReturnVisibility() {
+  const button = document.getElementById("sequence-source-return");
+  const visible = Boolean(state.sequenceSourceReturn) && state.activeTab === "diff";
+  button.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const bounds = elements["diff-panel"].getBoundingClientRect();
+  button.style.right = `${Math.max(12, window.innerWidth - bounds.right + 14)}px`;
+  button.style.bottom = `${Math.max(58, window.innerHeight - Math.min(window.innerHeight, bounds.bottom) + 58)}px`;
+}
+window.addEventListener("message", (event) => { void openSequenceSource(event); });
+window.addEventListener("message", async (event) => {
+  if (event.data?.type !== "diffcompass-sequence-lookup" || typeof event.data.edgeId !== "string") return;
+  const frame = [...document.querySelectorAll("iframe.archify-frame")].find((candidate) => candidate.contentWindow === event.source);
+  if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
+  const edgeId = event.data.edgeId;
+  const requestId = event.data.requestId;
+  const evidenceRevision = frame._sequenceEvidenceRevision;
+  try {
+    const sources = await api(`/api/sequence-sources/${encodeURIComponent(frame.dataset.archifyArtifactId)}?edge=${encodeURIComponent(edgeId)}`);
+    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, requestId, anchors: sources[edgeId] ?? [] }, "*");
+  } catch {
+    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow?.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, requestId, anchors: [], error: "Definition lookup failed. You can retry." }, "*");
+  }
+});
+document.getElementById("sequence-source-return").addEventListener("click", returnToSequenceDiagram);
 
 function renderArchify() {
   const artifacts = archifyArtifacts();
@@ -3095,6 +3199,10 @@ function renderArchify() {
   if (elements["archify-artifacts"]._mapMarkup !== markup) {
     elements["archify-artifacts"].innerHTML = markup;
     elements["archify-artifacts"]._mapMarkup = markup;
+  }
+  if (selected?.type === "sequence") {
+    const frame = elements["archify-artifacts"].querySelector('iframe.archify-frame');
+    if (frame) refreshSequenceEvidence(frame, sequenceEvidenceRevision(state.session, selected), () => api(`/api/sequence-sources/${encodeURIComponent(selected.id)}`));
   }
 }
 
@@ -3372,10 +3480,7 @@ function renderAdaptiveDiagrams() {
 }
 
 function renderCallFlows() {
-  const callFlows = legacyCallFlows();
-  const savedCallFlows = state.session.outline?.callFlows ?? [];
-  const allReplaced = savedCallFlows.length > 0 && callFlows.length === 0;
-  if (state.activeTab === "call-flows" && allReplaced) state.activeTab = "diff";
+  const callFlows = savedCallFlows();
   elements["call-flows-tab"].classList.add("hidden");
   elements["regenerate-call-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
   elements["call-flows-empty"].classList.toggle("hidden", callFlows.length > 0);
@@ -3812,12 +3917,16 @@ function structuralBlastRadiusCard(radius) {
 
 function renderStructuralBlastRadii() {
   const radii = state.session.outline?.structuralBlastRadii ?? [];
+  const warnings = state.session.outline?.structuralAnalysisWarnings ?? [];
+  const warning = document.getElementById("structural-analysis-warning");
+  warning.classList.toggle("hidden", warnings.length === 0);
+  warning.innerHTML = warnings.length ? `<strong>Impact analysis is incomplete</strong><span>Some results could not be validated after automatic repair. Valid results are retained; missing results do not mean no impact.</span><details><summary>Validation details</summary><ul>${warnings.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></details>` : "";
   if (!radii.some((radius) => radius.id === state.structuralBlastRadiusId)) state.structuralBlastRadiusId = radii[0]?.id ?? null;
   const selected = radii.find((radius) => radius.id === state.structuralBlastRadiusId);
   elements["structural-blast-radius-tab"].classList.add("hidden");
   elements["structural-blast-radius-empty"].classList.toggle("hidden", radii.length > 0);
   elements["structural-blast-radius-empty"].textContent = state.session.outline
-    ? "No analysed symbols had a saved structural result for this comparison."
+    ? `No impact analysis is available for this comparison. This does not mean the change has no impact.${state.session.outline.structuralAnalysisOmissionReason ? ` ${state.session.outline.structuralAnalysisOmissionReason}` : ""}`
     : "Start the tour to inspect static blast radius for analysed symbols.";
   elements["structural-blast-radius-select"].disabled = radii.length === 0;
   elements["structural-blast-radius-select"].innerHTML = radii.map((radius) => `<option value="${escapeHtml(radius.id)}">${escapeHtml(structuralPickerOptionLabel(radius))}</option>`).join("");
@@ -4517,7 +4626,7 @@ const MAP_VIEWS = ["archify", "call-flows", "sequence", "adaptive", "structural-
 function understandMapViews() {
   const views = [
     ...(archifyArtifacts().length || componentArchitectureEntries().length ? [{ id: "archify", label: "Component and behaviour maps" }] : []),
-    ...(legacyCallFlows().length ? [{ id: "call-flows", label: "Call flows" }] : []),
+    ...(savedCallFlows().length ? [{ id: "call-flows", label: "Call flows" }] : []),
     ...(legacySequenceFlows().length ? [{ id: "sequence", label: "Sequence diagrams" }] : []),
     ...(adaptiveEntries().length ? [{ id: "adaptive", label: "Data and lifecycle diagrams" }] : []),
   ];
@@ -4525,6 +4634,7 @@ function understandMapViews() {
 }
 
 function openMaps(view = state.mapsLastView) {
+  if (!state.session) return;
   if (view !== "structural-blast-radius" && !understandMapViews().some((entry) => entry.id === view)) view = understandMapViews()[0].id;
   const render = { archify: renderArchify, "call-flows": renderCallFlows, sequence: renderSequenceDiagrams, adaptive: renderAdaptiveDiagrams, "structural-blast-radius": renderStructuralBlastRadii }[view];
   activateReviewTab(view, render);
@@ -4540,6 +4650,7 @@ function renderMapsNavigation() {
   for (const view of MAP_VIEWS) elements[`${view}-tab`].classList.toggle("hidden", view !== "archify");
   for (const view of MAP_VIEWS) elements[`${view}-view`].setAttribute("aria-labelledby", "archify-tab");
   const tab = elements["archify-tab"];
+  tab.disabled = !state.session;
   tab.classList.toggle("active", inMaps);
   tab.setAttribute("aria-selected", String(inMaps));
   tab.setAttribute("aria-controls", inMaps ? `${state.activeTab}-view` : "archify-view");
@@ -4621,7 +4732,7 @@ async function renderScreenshots() {
 }
 
 function activateReviewTab(tabName, render = null) {
-  if (tabName === state.activeTab) return;
+  if (!state.session || tabName === state.activeTab) return;
   if (tabName !== "diff") state.pullRequestReturn = null;
   state.tabScrollPositions.set(state.activeTab, elements["diff-panel"].scrollTop);
   state.activeTab = tabName;
@@ -4652,7 +4763,7 @@ function returnToPullRequest() {
 function updatePullRequestReturnVisibility() {
   updateStructuralGraphReturnVisibility();
   const button = elements["pull-request-return"];
-  const visible = Boolean(state.pullRequestReturn) && !state.structuralGraphReturn && state.activeTab === "diff";
+  const visible = Boolean(state.pullRequestReturn) && !state.structuralGraphReturn && !state.sequenceSourceReturn && state.activeTab === "diff";
   button.classList.toggle("hidden", !visible);
   if (!visible) return;
   const panelBounds = elements["diff-panel"].getBoundingClientRect();
@@ -4673,6 +4784,7 @@ function updateStructuralGraphReturnVisibility() {
 }
 
 function updateCurrentStepReturnVisibility() {
+  updateSequenceSourceReturnVisibility();
   updateStructuralGraphReturnVisibility();
   currentStepReturnFrame = null;
   const button = elements["current-step-return"];
@@ -5433,7 +5545,7 @@ async function showAnalysisFile(path, line, side) {
     renderSession();
   }
   if (changedFile) await showChangedFile(path, line, side);
-  else await showRepositoryFile(path);
+  else await showRepositoryFile(path, line);
   if (outsidePhase) toast("Tour paused so this evidence can be shown. Resume the tour when you are ready.", { duration: 7_000 });
 }
 
@@ -5474,6 +5586,7 @@ async function saveFlow(event) {
   } finally {
     setBusy(false);
     renderSession();
+    if (id && state.activeTab === "call-flows" && savedCallFlows().some((flow) => flow.id === id)) openCallFlow(id);
   }
 }
 
@@ -6264,8 +6377,7 @@ elements["tour-intro-dialog"].addEventListener("click", (event) => {
   renderSession();
   if (kind === "file") return void showChangedFile(target.dataset.attentionPath, Number(target.dataset.attentionLine) || undefined, target.dataset.attentionSide);
   if (kind === "call-flow") {
-    activateReviewTab("call-flows", renderCallFlows);
-    window.requestAnimationFrame(() => document.querySelector(`[data-call-flow-id="${CSS.escape(target.dataset.attentionId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    openCallFlow(target.dataset.attentionId);
     return;
   }
   if (kind === "structural-blast-radius") {
@@ -7185,6 +7297,7 @@ elements["structural-blast-radius"].addEventListener("click", (event) => {
   if (!location && !file) return;
   const expanded = event.target.closest(".structural-graph-dialog");
   if (expanded) expanded.close();
+  state.sequenceSourceReturn = null;
   state.structuralGraphReturn = {
     radiusId: state.structuralBlastRadiusId,
     nodeId: location?.dataset.structuralNode,

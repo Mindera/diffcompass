@@ -1021,7 +1021,7 @@ test("a refresh rejects an in-flight outline generated for the previous comparis
   await writeFile(join(repository, "app.ts"), "const base = 1;\nconst refreshed = 3;\n");
   await session.refreshComparison();
   await bridge.respond(prompt!.id, JSON.stringify({
-    title: "Old outline", summary: "Generated before refresh", flows: [], findings: [],
+    title: "Old outline", summary: "Generated before refresh", flows: [], findings: [], structuralBlastRadii: [], structuralAnalysisOmissionReason: "No declarations identified in this fixture.",
     phases: [{ id: "old-phase", title: "Old", summary: "Old phase", fileChanges: [{ path: "app.ts", summary: "Old file" }], steps: [{ id: "old", title: "Old", objective: "Old", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
   }));
 
@@ -1051,7 +1051,7 @@ test("an ignored-file watcher event does not invalidate an in-flight attached ou
   expect(session.currentComparisonGeneration).toBe(generation);
 
   await bridge.respond(outlinePrompt!.id, JSON.stringify({
-    title: "Current outline", summary: "Generated for the unchanged comparison", phases: [{
+    title: "Current outline", summary: "Generated for the unchanged comparison", structuralBlastRadii: [], structuralAnalysisOmissionReason: "No declarations identified in this fixture.", phases: [{
       id: "current-phase", title: "Current", summary: "Current phase", fileChanges: [{ path: "app.ts", summary: "Current file" }],
       steps: [{ id: "current", title: "Current", objective: "Current", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
     }], callFlows: [], flows: [], findings: [],

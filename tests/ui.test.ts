@@ -1346,11 +1346,11 @@ test("validated Archify artifacts use a dedicated workspace pane and replace Mer
   expect(app).not.toContain("function resizeArchifyFrame(event)");
   expect(app).not.toContain('diffcompass-archify-height');
   expect(app).toContain("function hasArchifyArtifact(id)");
-  expect(app).toContain("function legacyCallFlows()");
+  expect(app).toContain("function savedCallFlows()");
   expect(app).toContain("function legacySequenceFlows()");
   expect(app).toContain("function componentArchitectureEntries()");
   expect(app).toContain("function architectureEntries() {\n  return componentArchitectureEntries();\n}");
-  expect(app).toContain('!hasArchifyArtifact(`workflow-${flow.id}`)');
+  expect(app).toContain('artifact.type !== "workflow"');
   expect(app).toContain('!hasArchifyArtifact(`sequence-${flow.id}`)');
   expect(app).toContain('"lifecycle-state-machine" : "dataflow-data-model"');
   const briefing = app.slice(app.indexOf("function renderTourIntro()"), app.indexOf("function maybeShowTourIntro()"));

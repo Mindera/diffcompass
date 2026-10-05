@@ -1,0 +1,60 @@
+html[data-diffcompass-embed="true"] .sequence-walkthrough{height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 10px var(--sequence-code-size,clamp(280px,34%,420px));overflow:hidden}
+html[data-diffcompass-embed="true"] .sequence-walkthrough .diagram-container{min-width:0!important;min-height:0!important}
+/* Upstream subtracts 25rem for a different sidebar. This viewer already
+   allocated the code pane, so measure Paths against its actual diagram. */
+html[data-diffcompass-embed="true"] .sequence-walkthrough #route-probe{box-sizing:border-box;width:min(46rem,calc(100% - 24px))!important}
+/* Keep native scrollbar input/size; use the viewer's current theme/preset. */
+.sequence-walkthrough{color-scheme:light;scrollbar-color:var(--text-muted,#64748b) var(--bg,#f8fafc)}
+html[data-theme="dark"] .sequence-walkthrough{color-scheme:dark}
+.sequence-walkthrough ::-webkit-scrollbar{width:14px;height:14px}
+.sequence-walkthrough ::-webkit-scrollbar-track,.sequence-walkthrough ::-webkit-scrollbar-corner{background:var(--bg,#f8fafc)}
+.sequence-walkthrough ::-webkit-scrollbar-thumb{background:var(--text-muted,#64748b);border:3px solid var(--bg,#f8fafc);border-radius:8px}
+@media (forced-colors:active){.sequence-walkthrough{scrollbar-color:auto}}
+.sequence-code-sidebar{display:flex;flex-direction:column;min-width:0;min-height:0;border-left:1px solid var(--panel-border,#475569);background:var(--bg,#101418);color:var(--text,#e2e8f0);font:12px/1.5 system-ui}
+.sequence-code-toggle{flex:none;align-self:flex-start;margin:6px 10px;padding:6px 10px;min-height:32px;border:1px solid var(--border-color,#64748b);border-radius:5px;background:transparent;color:inherit;cursor:pointer;font:inherit}
+.sequence-code-toggle:focus-visible{outline:2px solid var(--frontend-stroke,#67e8f9);outline-offset:2px}
+.sequence-code-pane{flex:1;box-sizing:border-box;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;touch-action:pan-y;padding:14px;background:var(--bg,#101418);color:var(--text,#e2e8f0);font:12px/1.5 system-ui}
+.sequence-code-pane[hidden]{display:none!important}
+.sequence-code-pane h2{font-size:15px;margin:0 0 6px}.sequence-code-pane p{margin:8px 0;overflow-wrap:anywhere}.sequence-step-note{opacity:.75}
+.sequence-code-step{border:1px solid var(--border-color,#475569);border-radius:8px;padding:12px;margin:14px 0;min-height:145px;scroll-margin-top:12px;cursor:pointer}
+.sequence-step-code,.sequence-step-source{cursor:text}
+.sequence-step-selection-notice{border-left:3px solid var(--frontend-stroke,#67e8f9);padding-left:8px}
+/* The overview overlay otherwise keeps every route arrow brightly lit after
+   its animation ends. Keep it for Overview; journey emphasis is persistent
+   even with Motion off, while the native current-step pulse stays governed. */
+.sequence-walkthrough svg[data-route-journey] .route-probe-overlay{display:none}
+.sequence-walkthrough svg[data-route-journey] [data-edge-from]{opacity:.1;filter:none}
+.sequence-walkthrough svg[data-route-journey] [data-edge-from][data-route-match]{opacity:.22;filter:none}
+.sequence-walkthrough svg[data-route-journey] [data-edge-from][data-sequence-route-current]{opacity:1;filter:none}
+.sequence-walkthrough svg[data-route-journey] [data-sequence-route-current] text{fill:var(--text);font-weight:700}
+.sequence-code-step.selected{border-color:var(--frontend-stroke,#67e8f9);box-shadow:inset 3px 0 var(--frontend-stroke,#67e8f9)}
+.sequence-code-step.selected .sequence-step-code{outline:2px solid var(--frontend-stroke,#67e8f9);outline-offset:1px}
+.sequence-code-resizer{position:relative;min-width:0;min-height:0;cursor:col-resize;touch-action:none;user-select:none;background:var(--bg,#101418)}
+.sequence-code-resizer::after{content:'';position:absolute;inset:0 4px;background:var(--panel-border,#475569)}
+.sequence-code-resizer:is(:hover,:focus-visible,.dragging)::after{background:var(--frontend-stroke,#67e8f9)}
+.sequence-code-resizer:focus-visible{outline:2px solid var(--frontend-stroke,#67e8f9);outline-offset:-2px;z-index:1}
+.sequence-code-resizer[hidden]{display:none!important}
+.sequence-code-pane button{max-width:100%;white-space:normal;text-align:left;color:inherit;border:1px solid var(--border-color,#64748b);border-radius:5px;background:transparent;padding:7px 9px;cursor:pointer;font:inherit;overflow-wrap:anywhere}
+.sequence-code-pane button:disabled{opacity:.6;cursor:wait}.sequence-code-pane .sequence-step-select{font-weight:650;width:100%;border:0;padding:0 0 7px}.sequence-code-pane :focus-visible{outline:2px solid var(--frontend-stroke,#67e8f9);outline-offset:3px}
+.sequence-step-source{font-size:11px;opacity:.8}.sequence-step-code{margin:8px 0;padding:8px;overflow:auto;border:1px solid var(--panel-border,#334155);border-radius:4px;font:12px/1.6 ui-monospace,SFMono-Regular,monospace;tab-size:2;max-height:340px;background:var(--panel,#17202b);color:inherit}
+.sequence-step-code>span{display:block;white-space:pre}.sequence-step-line{display:inline-block;min-width:3ch;padding-right:12px;opacity:.55;user-select:none}
+.sequence-step-progress{display:block;margin-bottom:5px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.75}.sequence-step-title{display:block}
+.sequence-code-header{display:flex;justify-content:space-between;gap:12px;padding:7px 9px;border:1px solid var(--panel-border,#334155);border-bottom:0;border-radius:4px 4px 0 0;font:10px/1.4 system-ui}
+.sequence-code-language{text-transform:uppercase;font-weight:650}.sequence-code-counts{white-space:nowrap}
+/* Native overlay scrollbars do not reserve layout space. Keep one code-line
+   of clearance below the final row so even a one-line excerpt stays readable. */
+.sequence-code-header+.sequence-step-code{margin-top:0;border-radius:0 0 4px 4px;padding:0 0 1.6em}
+.sequence-step-marker{display:inline-block;width:2ch;padding-left:8px;user-select:none}.sequence-code-row{min-width:max-content;padding:2px 8px 2px 0}.sequence-code-row.addition{background:rgba(46,160,67,.15)}.sequence-code-row.deletion{background:rgba(248,81,73,.13)}
+.sequence-added-count,.sequence-code-row.addition .sequence-step-marker{color:#1a7f37}.sequence-removed-count,.sequence-code-row.deletion .sequence-step-marker{color:#cf222e}
+html[data-theme="dark"] .sequence-added-count,html[data-theme="dark"] .sequence-code-row.addition .sequence-step-marker{color:#7ee787}html[data-theme="dark"] .sequence-removed-count,html[data-theme="dark"] .sequence-code-row.deletion .sequence-step-marker{color:#ffa198}
+.sequence-step-code .syntax-token{color:var(--syntax-light,inherit)}html[data-theme="dark"] .sequence-step-code .syntax-token{color:var(--syntax-dark,inherit)}
+.sequence-step-code .syntax-italic{font-style:italic}.sequence-step-code .syntax-bold{font-weight:700}.sequence-step-code .syntax-underline{text-decoration:underline}
+.sequence-step-code>.sequence-code-row{display:grid;grid-template-columns:24px 38px minmax(max-content,1fr)}.sequence-code-row .sequence-step-marker{width:auto;padding:0;text-align:center}.sequence-code-row .sequence-step-line{min-width:0;padding-right:12px;text-align:right}
+html[data-diffcompass-embed="true"] .sequence-walkthrough-stacked{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 10px var(--sequence-code-size,minmax(226px,35%))}
+.sequence-walkthrough-stacked .sequence-code-resizer{cursor:row-resize}
+.sequence-walkthrough-stacked .sequence-code-resizer::after{inset:4px 0}
+.sequence-walkthrough-stacked .sequence-code-sidebar{border-left:0;border-top:1px solid var(--panel-border,#475569)}
+html[data-diffcompass-embed="true"] .sequence-code-collapsed{grid-template-columns:minmax(0,1fr) 48px}
+.sequence-code-collapsed .sequence-code-toggle{writing-mode:vertical-rl;margin:6px;min-height:90px}
+html[data-diffcompass-embed="true"] .sequence-walkthrough-stacked.sequence-code-collapsed{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 46px}
+.sequence-walkthrough-stacked.sequence-code-collapsed .sequence-code-toggle{writing-mode:horizontal-tb;min-height:32px;margin:6px 10px}

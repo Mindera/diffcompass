@@ -28,7 +28,7 @@
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
         <button id="call-flows-tab" class="tab" data-tab="call-flows" role="tab" aria-selected="false" aria-controls="call-flows-view" tabindex="-1">Call flows</button>
         <button id="structural-blast-radius-tab" class="tab" data-tab="structural-blast-radius" role="tab" aria-selected="false" aria-controls="structural-blast-radius-view" tabindex="-1">Blast radius</button>
-        <button id="archify-tab" class="tab" data-tab="archify" role="tab" aria-selected="false" aria-controls="archify-view" tabindex="-1">Maps</button>
+        <button id="archify-tab" class="tab" data-tab="archify" role="tab" aria-selected="false" aria-controls="archify-view" tabindex="-1" disabled>Maps</button>
         <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
         <button id="dry-runs-tab" class="tab" data-tab="dry-runs" role="tab" aria-selected="false" aria-controls="dry-runs-view" tabindex="-1">Dry runs</button>
         <button id="adaptive-tab" class="tab" data-tab="adaptive" role="tab" aria-selected="false" aria-controls="adaptive-view" tabindex="-1">Adaptive diagrams</button>
@@ -232,6 +232,7 @@
         </div>
         <div id="structural-blast-radius-view" class="review-view hidden" role="tabpanel" aria-labelledby="structural-blast-radius-tab">
           <div class="flows-toolbar structural-toolbar"><div><strong>What could this change affect?</strong><span class="muted">Static callers and references for the selected item—not the whole pull request or proof of runtime impact.</span></div><label class="structural-picker"><span>Analysed symbol</span><select id="structural-blast-radius-select" aria-label="Analysed symbol structural caller graph"></select><small id="structural-blast-radius-picker-count" aria-live="polite"></small></label></div>
+          <section id="structural-analysis-warning" class="structural-completeness hidden" role="status"></section>
           <div id="structural-blast-radius-empty" class="empty">Start the tour to inspect static blast radius for changed symbols.</div>
           <div id="structural-blast-radius" class="structural-blast-radii"></div>
         </div>
@@ -279,6 +280,7 @@
           <div id="pull-request-content" class="pull-request-content"></div>
         </div>
         <span id="structural-source-return" class="hidden"><button id="structural-graph-return" class="button diff-return" type="button">↩ Back to caller graph</button></span>
+        <button id="sequence-source-return" class="button diff-return hidden" type="button">↩ Back to diagram</button>
         <button id="pull-request-return" class="button diff-return pull-request-return hidden" type="button">↩ Return to pull request</button>
         <button id="current-step-return" class="button diff-return current-step-return hidden" type="button">↩ Current step</button>
       </section>

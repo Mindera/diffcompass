@@ -88,12 +88,16 @@ function highlighter() {
   return highlighterPromise;
 }
 
-export function languageForPath(path: string): BuiltinLanguage {
+export function knownLanguageForPath(path: string): BuiltinLanguage | undefined {
   const basename = path.split("/").at(-1)?.toLowerCase() ?? "";
   if (basename === "dockerfile" || basename.startsWith("dockerfile.")) return "dockerfile";
   if (basename === "makefile" || basename.startsWith("makefile.")) return "make";
   const extension = basename.includes(".") ? basename.split(".").at(-1)! : "";
-  return EXTENSIONS[extension] ?? "markdown";
+  return EXTENSIONS[extension];
+}
+
+export function languageForPath(path: string): BuiltinLanguage {
+  return knownLanguageForPath(path) ?? "markdown";
 }
 
 function colorClass(color: string | undefined): string {

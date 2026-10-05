@@ -1,10 +1,73 @@
 import { expect, test } from "bun:test";
 import { withArchifyEmbedAdapter } from "../src/archify-embed.ts";
 
-test("review maps expose opt-in motion without requiring decorative trace animation", () => {
+test("node hover tooltips are removed while accessible names remain", () => {
+  const html = withArchifyEmbedAdapter("<html><body></body></html>");
+  const source = html.match(/<script data-diffcompass-quiet-tooltips>([\s\S]*?)<\/script>/)![1];
+  for (const existing of [undefined, "Existing accessible name"]) {
+    const attrs = new Map<string, string>([["title", "Native tooltip"]]);
+    if (existing) attrs.set("aria-label", existing);
+    let titleRemoved = false;
+    let childRemoved = false;
+    const title = { textContent: "Shell restoration store", remove() { titleRemoved = true; } };
+    const node = {
+      querySelector: () => title,
+      getAttribute: (key: string) => attrs.get(key),
+      hasAttribute: (key: string) => attrs.has(key),
+      setAttribute: (key: string, value: string) => attrs.set(key, value),
+      removeAttribute: (key: string) => attrs.delete(key),
+      querySelectorAll: (selector: string) => selector === "title" ? [title] : [{ removeAttribute() { childRemoved = true; } }],
+    };
+    new Function("document", source)({ readyState: "complete", querySelectorAll: (selector: string) => {
+      expect(selector).toBe(".diagram-container svg [data-node-id]");
+      return [node];
+    } });
+    expect(attrs.get("aria-label")).toBe(existing ?? "Shell restoration store");
+    expect(attrs.has("title")).toBe(false);
+    expect(titleRemoved).toBe(true);
+    expect(childRemoved).toBe(true);
+  }
+});
+
+test("embedded maps restore preferences through the viewer APIs without republishing them", () => {
+  const html = withArchifyEmbedAdapter("<html><body></body></html>");
+  const source = html.match(/<script data-diffcompass-preferences>([\s\S]*?)<\/script>/)![1];
+  const attributes = new Map([["data-theme", "dark"], ["data-preset", "classic"]]);
+  const events: Record<string, Function> = {};
+  const messages: any[] = [];
+  const motion: unknown[] = [];
+  let observer = () => {};
+  const parent = { postMessage: (value: unknown) => messages.push(value) };
+  const window = {
+    Archify: {
+      theme: { toggle: () => attributes.set("data-theme", attributes.get("data-theme") === "dark" ? "light" : "dark") },
+      preset: { apply: (value: string) => attributes.set("data-preset", value) },
+      motionGovernor: { setMode: (mode: string, options: unknown) => motion.push([mode, options]) },
+    },
+    addEventListener: (name: string, listener: Function) => { events[name] = listener; },
+  };
+  new Function("window", "document", "parent", "MutationObserver", source)(
+    window, { readyState: "complete", documentElement: { getAttribute: (key: string) => attributes.get(key) } },
+    parent, class { constructor(callback: () => void) { observer = callback; } observe() {} },
+  );
+  expect(messages).toEqual([{ type: "diffcompass-map-preferences-ready" }]);
+  const data = { type: "diffcompass-map-preferences", preferences: { theme: "light", preset: "editorial", motion: false } };
+  events.message!({ source: {}, data });
+  expect(motion).toEqual([]);
+  events.message!({ source: parent, data });
+  expect(attributes.get("data-theme")).toBe("light");
+  expect(attributes.get("data-preset")).toBe("editorial");
+  expect(motion).toEqual([["still", { persist: false }]]);
+  observer();
+  expect(messages).toHaveLength(1);
+  events["diffcompass-motion-preference"]!({ detail: true });
+  expect(messages.at(-1).preferences).toEqual({ motion: true });
+});
+
+test("review maps default motion on without requiring decorative trace animation", () => {
   const html = withArchifyEmbedAdapter(`<html><body><script>var capable = !!(svg && svg.getAttribute('data-animation') === 'trace'); readerPaused = readStored() === 'still';</script></body></html>`);
   expect(html).toContain('var capable = !!svg;');
-  expect(html).toContain("readerPaused = readStored() !== 'live';");
+  expect(html).toContain("readerPaused = readStored() === 'still';");
 });
 
 test("all inspection overlays drag by their headers and stay within the viewport", () => {
@@ -182,15 +245,36 @@ function interactiveHarness(dimensions: Partial<{ containerWidth: number; contai
   const documentListeners = new Map<string, Array<(event: Record<string, unknown>) => void>>();
   const windowValue = { Archify: {} as { view?: unknown }, parent: { postMessage(message: unknown) { posted.push(message); } }, addEventListener() {} };
   const documentValue = { readyState: "complete", querySelector: () => container, getElementById: (id: string) => id === panelId ? passport : null, addEventListener(type: string, listener: (event: Record<string, unknown>) => void) { documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]); } };
-  const ResizeObserverValue = class { constructor(_callback: () => void) {} observe() {} };
+  let resize = () => {};
+  const ResizeObserverValue = class { constructor(callback: () => void) { resize = callback; } observe() {} };
   const runtime = new Function("window", "document", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "Archify", cameraRuntime());
-  runtime(windowValue, documentValue, ResizeObserverValue, (callback: () => void) => callback(), () => {}, (node: { testOverflowY?: string }) => ({ paddingLeft: "24px", paddingRight: "24px", paddingTop: "16px", paddingBottom: "72px", overflowY: node?.testOverflowY }), windowValue.Archify);
+  runtime(windowValue, documentValue, ResizeObserverValue, (callback: () => void) => callback(), () => {}, (node: { testOverflowY?: string; testOverflowX?: string }) => ({ paddingLeft: "24px", paddingRight: "24px", paddingTop: "16px", paddingBottom: "72px", overflowY: node?.testOverflowY, overflowX: node?.testOverflowX }), windowValue.Archify);
   const fire = (type: string, event: Record<string, unknown>) => (listeners.get(type) ?? []).forEach((listener) => listener(event));
   const firePassport = (type: string, event: Record<string, unknown>) => (passportListeners.get(type) ?? []).forEach((listener) => listener(event));
   const click = (selector: string) => (buttonListeners.get(`${selector}:click`) ?? []).forEach((listener) => listener());
   const fireDocument = (type: string, event: Record<string, unknown>) => (documentListeners.get(type) ?? []).forEach((listener) => listener(event));
-  return { svg, container, passport, fire, fireDocument, posted, firePassport, click, inspected: () => inspected, view: windowValue.Archify.view as { state(): { scale: number }; reveal(ids: string[], options?: Record<string, unknown>): { state: string; finished: Promise<{ state: string }> } } };
+  return { svg, container, passport, fire, fireDocument, posted, firePassport, click, resize: () => resize(), inspected: () => inspected, view: windowValue.Archify.view as { state(): { scale: number }; suspend(): void; restore(saved: unknown): void; reveal(ids: string[], options?: Record<string, unknown>): { state: string; finished: Promise<{ state: string }> } } };
 }
+
+test("source navigation preserves the camera across hidden and presentation-sized viewports", () => {
+  const harness = interactiveHarness();
+  harness.click('[data-view="in"]');
+  const saved = harness.view.state();
+  const transform = harness.svg.style.transform;
+  harness.view.suspend();
+  harness.container.clientWidth = 0;
+  harness.container.clientHeight = 0;
+  harness.resize();
+  expect(harness.svg.style.transform).toBe(transform);
+  harness.container.clientWidth = 1200;
+  harness.container.clientHeight = 800;
+  harness.resize();
+  harness.view.restore(saved);
+  expect(harness.view.state()).toEqual(saved);
+  expect(harness.svg.style.transform).toBe(transform);
+  harness.resize();
+  expect(harness.svg.style.transform).not.toBe(transform); // Ordinary resize works again.
+});
 
 test("adapts a validated viewer to a fixed review viewport while preserving supported inspection controls", () => {
   const embedded = withArchifyEmbedAdapter("<!doctype html><html><head><style>html[data-embed=\"true\"]{color:red}</style></head><body><div class=\"diagram-container\"><svg></svg></div></body></html>");
@@ -365,6 +449,25 @@ test("scrollable popup content keeps its wheel events until its scroll boundary"
   target.scrollTop = 300;
   harness.fireDocument("wheel", event);
   expect(harness.posted).toEqual([{ type: "diffcompass-map-scroll", deltaY: 80 }]);
+});
+
+test("horizontal code and route lists keep native wheel input in both directions without changing the camera", () => {
+  const harness = interactiveHarness(), camera = harness.view.state();
+  const scroll = { testOverflowX: "auto", scrollWidth: 600, clientWidth: 200, scrollLeft: 0, parentElement: null };
+  const target = { parentElement: scroll };
+  let prevented = false;
+  const event = { target, deltaX: 80, deltaY: 0, deltaMode: 0, preventDefault() { prevented = true; }, stopImmediatePropagation() {} };
+  harness.fireDocument("wheel", event);
+  expect(prevented).toBe(false); expect(harness.posted).toHaveLength(0);
+  scroll.scrollLeft = 400;
+  harness.fireDocument("wheel", { ...event, deltaX: -80 });
+  expect(prevented).toBe(false); expect(harness.posted).toHaveLength(0);
+  harness.fireDocument("wheel", event); // Right boundary has no more content; no horizontal forwarding.
+  expect(prevented).toBe(true); expect(harness.posted).toHaveLength(0);
+  prevented = false;
+  harness.fireDocument("wheel", { ...event, deltaY: 80 });
+  expect(prevented).toBe(true); expect(harness.posted).toEqual([{ type: "diffcompass-map-scroll", deltaY: 80 }]);
+  expect(harness.view.state()).toEqual(camera);
 });
 
 test("pen and touch swipes scroll the review without moving the camera or activating a node", () => {

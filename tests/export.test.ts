@@ -378,6 +378,21 @@ test("HTML export is a self-contained interactive copy of the review tour", () =
   expect(artifact.content).toContain('<html lang="en" data-diff-wrap="scroll">');
 });
 
+test("exports hide saved workflow duplicates without deleting saved artifacts", () => {
+  const session = fixture();
+  session.outline!.archifyArtifacts = [{
+    id: "workflow-old", type: "workflow", title: "Obsolete duplicate workflow",
+    ir: { schema_version: 2, diagram_type: "workflow" },
+    html: "<html><body>Obsolete duplicate workflow</body></html>",
+    evidence: [], affectedFiles: [], view: "single", validationReceipt: "{}",
+    renderedAt: "2026-09-18T12:00:00.000Z",
+  }];
+  for (const format of ["html", "markdown"] as const) {
+    expect(exportReview(session, format).content).not.toContain("Obsolete duplicate workflow");
+  }
+  expect(session.outline!.archifyArtifacts).toHaveLength(1);
+});
+
 test("HTML export embeds validated Archify artifacts and preserves the authored-topology boundary", () => {
   const session = fixture();
   session.outline!.archifyArtifacts = [{

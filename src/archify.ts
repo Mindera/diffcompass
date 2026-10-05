@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { runProcess } from "./process.ts";
 import { layoutArchitecture } from "./architecture-layout.ts";
-import type { ArchifyArtifact, ArchifyDiagramType, ArchifyFailure, ArchifyJson, CallFlow, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFlow, TourOutline } from "./types.ts";
+import type { ArchifyArtifact, ArchifyDiagramType, ArchifyFailure, ArchifyJson, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFlow, TourOutline } from "./types.ts";
 
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const MAX_RECEIPT_LENGTH = 32_000;
@@ -189,62 +189,8 @@ function architectureCandidate(id: string, architecture: ReviewArchitecture): Ar
   };
 }
 
-function linearWorkflowPath(flow: CallFlow, nodes: CallFlow["nodes"], edges: CallFlow["edges"]): CallFlow["nodes"] | undefined {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const outgoing = new Map<string, CallFlow["edges"]>();
-  const incoming = new Map<string, CallFlow["edges"]>();
-  for (const edge of edges) {
-    if (!nodeById.has(edge.from) || !nodeById.has(edge.to)) return undefined;
-    outgoing.set(edge.from, [...(outgoing.get(edge.from) ?? []), edge]);
-    incoming.set(edge.to, [...(incoming.get(edge.to) ?? []), edge]);
-  }
-  const entry = nodeById.get(flow.entrypointNodeId);
-  if (!entry) return undefined;
-  const ordered = [entry];
-  const visited = new Set([entry.id]);
-  let current = entry;
-  while (true) {
-    const nextEdges = outgoing.get(current.id) ?? [];
-    if (nextEdges.length === 0) break;
-    // A branch, merge, cycle, or disconnected node is useful native call-flow
-    // evidence, but it is not an authored happy path. Do not make a workflow
-    // story by picking whichever node happened to occur first in an array.
-    if (nextEdges.length !== 1) return undefined;
-    const next = nodeById.get(nextEdges[0]!.to);
-    if (!next || visited.has(next.id) || (incoming.get(next.id) ?? []).length !== 1) return undefined;
-    ordered.push(next);
-    visited.add(next.id);
-    current = next;
-  }
-  return visited.size === nodes.length && ordered.length >= 2 ? ordered : undefined;
-}
 
-function workflowCandidate(flow: CallFlow): ArchifyCandidate | undefined {
-  // Workflow v2 exposes six logical columns. A longer call chain remains in
-  // the native call-flow view rather than being wrapped into a false route.
-  if (flow.nodes.length < 2 || flow.nodes.length > 6 || flow.edges.length === 0 || flow.edges.length > 32) return undefined;
-  const ordered = linearWorkflowPath(flow, flow.nodes, flow.edges);
-  if (!ordered) return undefined;
-  const nodeIds = new Map(ordered.map((node) => [node.id, safeId(`${flow.id}-${node.id}`)]));
-  return {
-    id: `workflow-${flow.id}`,
-    type: "workflow",
-    title: flow.title,
-    evidence: evidence(flow.affectedFiles, flow.summary),
-    affectedFiles: flow.affectedFiles,
-    ir: {
-      schema_version: 2,
-      diagram_type: "workflow",
-      meta: { title: flow.title, quality_profile: "standard", locale: "en", legend: { mode: "hidden" } },
-      lanes: [{ id: "execution", label: "Reviewed call path" }],
-      mainPath: ordered.map((node) => nodeIds.get(node.id)!),
-      nodes: ordered.map((node, index) => ({ id: nodeIds.get(node.id)!, lane: "execution", col: index, type: rendererCodeType(node.kind === "external"), label: node.label, sublabel: node.change === "added" ? "Added" : node.change === "modified" ? "Changed" : "Existing", width: Math.max(104, Math.min(144, node.label.length * 7 + 26)) })),
-      edges: flow.edges.map((edge) => ({ id: stableRelationshipId(`workflow-${flow.id}`, edge.id), from: nodeIds.get(edge.from)!, to: nodeIds.get(edge.to)!, label: edge.label ?? "calls", role: "main", route: "auto" })),
-    },
-  };
-}
-
-function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefined {
+export function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefined {
   const affectedFiles = flow.affectedFiles ?? [];
   const labels = new Map<string, string>();
   const messages: Array<{ from: string; to: string; label: string; variant?: "return" }> = [];
@@ -390,7 +336,6 @@ export function archifyCandidates(outline: TourOutline): ArchifyCandidate[] {
     ...(outline.domainModels ?? []).map(model => domainCandidate(model, outline.domainModels ?? [])),
     outline.behaviorArchitecture ? architectureCandidate("architecture-behavior", outline.behaviorArchitecture) : undefined,
     outline.architecture ? architectureCandidate("architecture-journey", outline.architecture) : undefined,
-    ...outline.callFlows.map(workflowCandidate),
     ...outline.flows.map(sequenceCandidate),
     outline.dataModel ? dataflowCandidate(outline.dataModel) : undefined,
     outline.stateDiagram ? lifecycleCandidate(outline.stateDiagram) : undefined,

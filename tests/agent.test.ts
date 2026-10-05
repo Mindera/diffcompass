@@ -22,6 +22,29 @@ test("extracts the resumable Claude session and result", () => {
   }))).toEqual({ sessionId: "session-123", message: "Here is the next stop." });
 });
 
+test("Codex JSONL keeps the completed answer separate from work-in-progress messages", () => {
+  const events = [
+    { type: "thread.started", thread_id: "thread-123" },
+    { type: "item.completed", item: { type: "agent_message", text: "I’ll use the Android baseline skill to check the graph." } },
+    { type: "item.completed", item: { type: "command_execution", text: "private command output" } },
+    { type: "item.completed", item: { type: "agent_message", text: "The process graph retains services.\n\nSelect Next when ready." } },
+  ];
+  expect(parseCodexJsonLines(events.map((event) => JSON.stringify(event)).join("\n"))).toEqual({
+    threadId: "thread-123", message: "The process graph retains services.\n\nSelect Next when ready.",
+  });
+});
+
+test("Codex JSONL ignores explicitly marked commentary and incomplete messages", () => {
+  const stream = (items: unknown[]) => items.map((item) => JSON.stringify({ type: "item.completed", item })).join("\n");
+  expect(parseCodexJsonLines(stream([
+    { type: "agent_message", phase: "commentary", text: "Checking…" },
+  ])).message).toBe("");
+  expect(parseCodexJsonLines(stream([
+    { type: "agent_message", phase: "final_answer", text: "Final explanation." },
+    { type: "agent_message", channel: "commentary", text: "Working…" },
+  ]) + '\n{"type":"item.updated","item":{"type":"agent_message","text":"Partial"}}').message).toBe("Final explanation.");
+});
+
 test("extracts Gemini session continuity and only assistant text from JSONL", () => {
   expect(parseGeminiStreamJson([
     "Gemini CLI startup notice",
@@ -151,7 +174,7 @@ test("normalizes context findings and derives all priority levels from the docum
     finding("p3", 1, "old", 1, true, "file"),
   ];
   const outlineResponse = JSON.stringify({
-    title: "Review", summary: "Review changes", planningNotes: ["Start at the behavior boundary."], flows: [],
+    title: "Review", summary: "Review changes", planningNotes: ["Start at the behavior boundary."], flows: [], structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     callFlows: [
       {
         id: "valid-optional-flow", title: "Valid optional flow", summary: "Grounded in the changed call site.", entrypointNodeId: "caller", provenance: "verified",
@@ -280,6 +303,8 @@ test("asks for short plain-language stop explanations", async () => {
   expect(event.prompt).toContain("Previously established: Accept the input — The function receives the new value.");
   expect(event.prompt).toContain("next link in the tour's causal journey");
   expect(event.prompt).toContain("Keep it under 150 words");
+  expect(event.prompt).toContain("Return only the finished reviewer-facing explanation");
+  expect(event.prompt).toContain("skill announcements, or tool-use commentary");
   expect(event.prompt).toContain("Use short active sentences, one idea per sentence");
   expect(event.prompt).toContain("Avoid metaphors and idioms");
   expect(event.prompt).toContain("Do not predict, name, or summarize the next step");
@@ -315,7 +340,7 @@ test("bounds tour prompts to a first-read comparison and orders phases as concep
   expect(event.prompt).toContain("what its layer establishes and how it enables the next layer");
   expect(event.prompt).toContain("Use only the currently supported architecture and sequence diagram kinds");
   await bridge.respond(event.id, JSON.stringify({
-    title: "First-read review", summary: "The changed value reaches the result.", flows: [],
+    title: "First-read review", summary: "The changed value reaches the result.", flows: [], structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     phases: [{ id: "behavior", title: "Changed behavior", summary: "This layer establishes the changed value and enables the result layer.", fileChanges: [{ path: "app.ts", summary: "Defines the changed behavior." }], steps: [{ id: "step", title: "Changed value", objective: "The changed value is produced.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
   }));
   await expect(pending).resolves.toMatchObject({ value: { title: "First-read review" } });
@@ -346,7 +371,7 @@ test("maps supplied issue criteria with an explicit model-assessment boundary", 
   expect(event.prompt).toContain("For algorithmic criteria, cite paths that together establish the relevant input, decision or transformation, and resulting output or side effect.");
   expect(event.prompt).toContain('"basis":"model-assessment"');
   await bridge.respond(event.id, JSON.stringify({
-    title: "Retry review", summary: "The retry flag is introduced.",
+    title: "Retry review", summary: "The retry flag is introduced.", structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     phases: [{ id: "behavior", title: "Retry", summary: "The flag enables the retry path.", fileChanges: [{ path: "app.ts", summary: "Adds the retry flag." }], steps: [{ id: "retry", title: "Retry flag", objective: "The changed flag enables retry behavior.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
     callFlows: [], flows: [], findings: [],
     issueAssessment: { issueNumber: 12, issueUrl: issue.url, items: [{ criterionId: "criterion-1", criterion: "A request can be retried", status: "implemented", evidence: "app.ts defines the retry flag.", evidencePaths: ["app.ts"], pathExplanations: [{ path: "app.ts", explanation: "The changed retry flag is defined here." }], basis: "model-assessment" }],
@@ -411,7 +436,7 @@ test("repository policy is bounded context and findings are enforced after gener
   });
   const allowedFinding = finding("allowed", "security", "high");
   await bridge.respond(event!.id, JSON.stringify({
-    title: "Review", summary: "Summary", flows: [],
+    title: "Review", summary: "Summary", flows: [], structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     phases: [{ id: "behavior", title: "Behavior", summary: "Inspect behavior", fileChanges: [{ path: "app.ts", summary: "Contains behavior" }], steps: [{ id: "step", title: "Step", objective: "Inspect", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }],
     findings: [allowedFinding, finding("wrong-category", "correctness", "high"), finding("too-low", "security", "low")],
   }));
@@ -444,7 +469,7 @@ test("drops undeclared stops and findings whose declared scope does not match th
   });
   const phaseOnly = finding("phase-only", "new", 2);
   await bridge.respond(event!.id, JSON.stringify({
-    title: "Review", summary: "Summary", flows: [],
+    title: "Review", summary: "Summary", flows: [], structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     phases: [{
       id: "behavior", title: "Behavior", summary: "Inspect behavior",
       fileChanges: [{ path: "app.ts", summary: "Contains behavior" }],
@@ -500,7 +525,7 @@ test("audits release-path candidates to a concrete causal finding before returni
   expect(outlineEvent.prompt).toContain("not a generic instruction to inspect, see, or check code");
   expect(outlineEvent.prompt).toContain('"Observation: ...", "Causal path: ...", "Impact: ...", and "Coverage: ..."');
   await bridge.respond(outlineEvent.id, JSON.stringify({
-    title: "Delivery review", summary: "Review notification delivery.", flows: [],
+    title: "Delivery review", summary: "Review notification delivery.", flows: [], structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     phases: [{ id: "delivery", title: "Delivery", summary: "Inspect delivery settings.", fileChanges: [{ path: "ios/App.entitlements", summary: "Selects the notification environment." }], steps: [{ id: "entitlement", title: "Notification environment", objective: "The entitlement selects the shipped notification environment.", anchor: { path: "ios/App.entitlements", side: "new", startLine: 1, endLine: 1 } }] }],
     findings: [candidate],
   }));
@@ -544,7 +569,7 @@ test("fails closed instead of showing candidates when the finding audit is malfo
   const pending = agent.createOutline(comparison, DEFAULT_REVIEW_POLICY);
   const [outlineEvent] = await bridge.eventsAfter(0, 1_000);
   await bridge.respond(outlineEvent!.id, JSON.stringify({
-    title: "Review", summary: "Summary", flows: [], findings: [finding],
+    title: "Review", summary: "Summary", flows: [], findings: [finding], structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     phases: [{ id: "behavior", title: "Behavior", summary: "Summary", fileChanges: [{ path: "app.ts", summary: "Changes behavior." }], steps: [{ id: "step", title: "Step", objective: "Inspect.", anchor: { path: "app.ts", side: "new", startLine: 1, endLine: 1 } }] }],
   }));
   await bridge.ack(outlineEvent!.id);
@@ -576,7 +601,7 @@ test("skips optional findings and diagrams at generation time", async () => {
   expect(event.prompt).toContain("Adaptive diagrams: omit");
   expect(event.prompt).toContain("Findings: omit");
   await bridge.respond(event.id, JSON.stringify({
-    title: "Review", summary: "Summary",
+    title: "Review", summary: "Summary", structuralBlastRadii: [], structuralAnalysisOmissionReason: "This fixture does not identify changed declarations.",
     behaviorArchitectureStatus: "implemented",
     behaviorArchitecture: { title: "Ignored behavior", summary: "Ignored", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },
     architecture: { title: "Ignored", summary: "Ignored", mermaid: "flowchart LR\n  app[\"App\"]:::touched\n  api[\"API\"]:::external\n  app -->|calls| api\n  classDef new stroke:#2e7d32,stroke-width:3px\n  classDef touched stroke:#f9a825,stroke-width:3px\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\n  classDef external stroke:#888888,stroke-dasharray:3 3", dependencyChanges: ["Added App → API: calls"], affectedFiles: ["app.ts"] },

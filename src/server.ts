@@ -1,9 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { withArchifyEmbedAdapter } from "./archify-embed.ts";
+import { highlightedSequenceSources } from "./sequence-walkthrough-preview.ts";
 import { BRAND_FILES } from "./brand.ts";
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
 import appScript from "../public/app.js" with { type: "text" };
+// @ts-expect-error Bun embeds the sequence iframe lifecycle bridge.
+import sequenceWalkthroughHost from "../public/sequence-walkthrough-host.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared browser runtime.
 import mapPresentationScript from "../public/map-presentation.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared caption layout runtime.
@@ -45,6 +48,7 @@ const PUBLIC_FILES: Record<string, { body: BodyInit; contentType: string }> = {
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
   "app.js": { body: String(diagramLabelsScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
+  "sequence-walkthrough-host.js": { body: String(sequenceWalkthroughHost), contentType: "text/javascript; charset=utf-8" },
   "mermaid.min.js": { body: String(mermaidScript), contentType: "text/javascript; charset=utf-8" },
   "styles.css": { body: `${styles}\n${mapNodeStyles}`, contentType: "text/css; charset=utf-8" },
 };
@@ -170,6 +174,13 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
+      if (request.method === "GET" && url.pathname.startsWith("/api/sequence-sources/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/sequence-sources/".length));
+        const edge = url.searchParams.get("edge");
+        const comparison = session.comparison;
+        const sources = edge ? await session.resolveArchifySequenceSources(id, edge) : session.archifySequenceSources(id);
+        return json(await highlightedSequenceSources(sources, comparison));
+      }
       if (request.method === "GET" && url.pathname.startsWith("/archify/")) {
         const id = decodeURIComponent(url.pathname.slice("/archify/".length));
         const artifact = session.archifyArtifact(id);
@@ -178,10 +189,12 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         const comparisonView = requestedView === "before" ? artifact.comparison?.before : requestedView === "delta" ? artifact.comparison?.delta : undefined;
         if ((requestedView === "before" || requestedView === "delta") && !comparisonView) throw new HttpError(404, "That comparison state is unavailable for this map.");
         const html = comparisonView?.html ?? artifact.html;
+        const sources = artifact.type === "sequence" && !comparisonView
+          ? await highlightedSequenceSources(session.archifySequenceSources(id), session.comparison) : {};
         // Archify artifacts are validated at generation time and additionally
         // sandboxed by the iframe. This CSP makes their self-contained viewer
         // interactive while forbidding all network and parent-page access.
-        return new Response(withArchifyEmbedAdapter(html, artifact.type, requestedView === "before" ? undefined : artifact.domainDetails, artifact.purpose === "domain-model", requestedView === "before" ? undefined : artifact.nodeRoles), {
+        return new Response(withArchifyEmbedAdapter(html, artifact.type, requestedView === "before" ? undefined : artifact.domainDetails, artifact.purpose === "domain-model", requestedView === "before" ? undefined : artifact.nodeRoles, sources, { ir: comparisonView?.ir ?? artifact.ir }), {
           headers: {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",
