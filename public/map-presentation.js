@@ -11,6 +11,9 @@
     if (['dark', 'light'].includes(value.theme)) result.theme = value.theme;
     if (['classic', 'blueprint', 'signal-flow', 'editorial'].includes(value.preset)) result.preset = value.preset;
     if (typeof value.motion === 'boolean') result.motion = value.motion;
+    for (const [key, minimum] of [['sequenceCodeWidth', 280], ['sequenceCodeHeight', 46]]) {
+      if (Number.isInteger(value[key]) && (value[key] === 0 || value[key] >= minimum && value[key] <= 900)) result[key] = value[key];
+    }
     return result;
   }
   try { Object.assign(preferences, validated(JSON.parse(window.localStorage.getItem(preferencesKey)))); } catch (_) {}

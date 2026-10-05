@@ -98,7 +98,11 @@ test("sequence source navigation exposes only authenticated current evidence", a
   const path = "/api/sequence-sources/sequence-call";
   expect((await jsonRequest(url, path)).status).toBe(401);
   const response = await jsonRequest(url, path, { headers: { "x-diffcompass-token": session.browserToken } });
-  expect(Object.values(await response.json())).toEqual([flow.messageSources[0]!.anchors]);
+  const returned = Object.values(await response.json())[0] as any[];
+  expect(returned.map(({ preview, ...anchor }) => anchor)).toEqual(flow.messageSources[0]!.anchors);
+  expect(returned[0].preview.language).toBe('typescript');
+  expect(returned[0].preview.kinds).toEqual(['addition']);
+  expect(returned[0].preview.tokens[0].map((token: any) => token.content).join('')).toBe('const changed = 2;');
   const embed = await (await jsonRequest(url, "/archify/sequence-call")).text();
   expect(embed).toContain("data-diffcompass-sequence-sources");
   flow.messageSources[0]!.anchors[0]!.quote = "stale evidence";

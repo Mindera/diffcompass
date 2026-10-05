@@ -1,4 +1,4 @@
-import type { ArchifyArtifact, GitComparison, ReviewFlow, SequenceMessageSource, SequenceSourceAnchor } from "./types.ts";
+import type { ArchifyArtifact, DiffRow, GitComparison, ReviewFlow, SequenceMessageSource, SequenceSourceAnchor } from "./types.ts";
 import { sequenceCandidate } from "./archify.ts";
 import { resolveSymbolPeek } from "./symbol-peek.ts";
 import { loadRepositoryFile } from "./git.ts";
@@ -27,24 +27,32 @@ export function validateSequenceSources(value: unknown, mermaid: string): Sequen
   });
 }
 
+/** Shared quote check for authored evidence and candidate navigation parity. */
+export function sequenceAnchorEvidence(anchor: SequenceSourceAnchor, comparison: GitComparison): { rows?: DiffRow[]; issue?: string } {
+  if (!Number.isSafeInteger(anchor.startLine) || !Number.isSafeInteger(anchor.endLine) || anchor.startLine < 1 || anchor.endLine < anchor.startLine || anchor.endLine - anchor.startLine > 19) return { issue: "Invalid source excerpt range." };
+  const file = comparison.files.find((file) => anchor.side === "old" ? file.oldPath === anchor.path || file.path === anchor.path : file.path === anchor.path);
+  const rows = new Map<number, DiffRow>();
+  for (const hunk of file?.hunks ?? []) for (const row of hunk.rows) {
+    const line = anchor.side === "old" ? row.oldLine : row.newLine;
+    if (line != null) rows.set(line, row);
+  }
+  const evidence: DiffRow[] = [];
+  for (let line = anchor.startLine; line <= anchor.endLine; line++) {
+    if (!rows.has(line)) return { issue: `${anchor.path}:${line} is not available on the ${anchor.side} side of the diff.` };
+    evidence.push(rows.get(line)!);
+  }
+  if (evidence.map(row => row.content).join("\n") !== anchor.quote) return { issue: `source quote does not match ${anchor.path}:${anchor.startLine}.` };
+  return { rows: evidence };
+}
+
 export function groundedSequenceSources(flow: ReviewFlow, comparison: GitComparison, diagnostics: string[] = []): SequenceMessageSource[] {
   let entries: SequenceMessageSource[];
   try { entries = validateSequenceSources(flow.messageSources, flow.mermaid) ?? []; }
   catch (error) { diagnostics.push(`Flow ${flow.id}: ${String(error)}`); return []; }
   return entries.flatMap((entry) => {
     const anchors = entry.anchors.filter((anchor) => {
-      const file = comparison.files.find((file) => anchor.side === "old" ? file.oldPath === anchor.path || file.path === anchor.path : file.path === anchor.path);
-      const rows = new Map<number, string>();
-      for (const hunk of file?.hunks ?? []) for (const row of hunk.rows) {
-        const line = anchor.side === "old" ? row.oldLine : row.newLine;
-        if (line != null) rows.set(line, row.content);
-      }
-      const lines: string[] = [];
-      for (let line = anchor.startLine; line <= anchor.endLine; line++) {
-        if (!rows.has(line)) { diagnostics.push(`Flow ${flow.id}, message ${entry.message}: ${anchor.path}:${line} is not available on the ${anchor.side} side of the diff.`); return false; }
-        lines.push(rows.get(line)!);
-      }
-      if (lines.join("\n") !== anchor.quote) { diagnostics.push(`Flow ${flow.id}, message ${entry.message}: source quote does not match ${anchor.path}:${anchor.startLine}.`); return false; }
+      const { issue } = sequenceAnchorEvidence(anchor, comparison);
+      if (issue) { diagnostics.push(`Flow ${flow.id}, message ${entry.message}: ${issue}`); return false; }
       return true;
     });
     return anchors.length ? [{ ...entry, anchors }] : [];
@@ -81,7 +89,11 @@ export async function lookupSequenceDefinition(artifact: ArchifyArtifact, flows:
       const lines = (await loadRepositoryFile(comparison, definition.path)).split(/\r?\n/);
       const quote = lines[definition.line - 1];
       if (!quote || !quote.includes(match[1]!)) continue;
-      anchors.push({ path: definition.path, side: "new", startLine: definition.line, endLine: definition.line, quote, definition: true });
+      const anchor: SequenceSourceAnchor = { path: definition.path, side: "new", startLine: definition.line, endLine: definition.line, quote, definition: true };
+      // Matching a captured row permits opening that exact comparison line;
+      // it does not turn a name match into authored evidence of this call.
+      if (sequenceAnchorEvidence(anchor, comparison).rows) anchor.comparisonMatch = true;
+      anchors.push(anchor);
     } catch { /* Missing, binary or inaccessible definitions are not navigable. */ }
   }
   return anchors;

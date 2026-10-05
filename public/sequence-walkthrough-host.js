@@ -1,5 +1,28 @@
 // Revalidate saved excerpts without replacing the iframe/camera. A revision
-// refresh never performs definition lookup and discards prior lookup candidates.
+// refresh discards prior lookup candidates; the frame queues fresh candidates
+// only after evidence revalidation succeeds.
+// The frame supplies bounded identities, never trusted paths or line ranges.
+// Revalidate a grouped action against the freshly loaded server evidence.
+export function sequenceSourceSelection(anchors, anchorIndex, anchorIndices) {
+  const validIndex = index => Number.isInteger(index) && index >= 0 && index < 8;
+  if (!Array.isArray(anchors) || !validIndex(anchorIndex) || !anchors[anchorIndex]) return null;
+  const indices = anchorIndices === undefined ? [anchorIndex] : anchorIndices;
+  if (!Array.isArray(indices) || !indices.length || indices.length > 8 || indices.some(index => !validIndex(index) || !anchors[index]) || new Set(indices).size !== indices.length || !indices.includes(anchorIndex)) return null;
+  const anchor = anchors[anchorIndex], selected = indices.map(index => anchors[index]);
+  if (selected.length > 1) {
+    if (selected.some(item => item.definition || item.path !== anchor.path || item.side !== anchor.side || !Number.isSafeInteger(item.startLine) || !Number.isSafeInteger(item.endLine) || item.startLine < 1 || item.endLine < item.startLine)) return null;
+    const ordered = [...selected].sort((a, b) => a.startLine - b.startLine);
+    if (ordered[0].startLine !== anchor.startLine) return null;
+    let endLine = anchor.startLine - 1;
+    for (const item of ordered) {
+      if (item.startLine > endLine + 1) return null;
+      endLine = Math.max(endLine, item.endLine);
+    }
+    if (endLine - anchor.startLine >= 20) return null;
+  }
+  return { anchor, anchors: selected };
+}
+
 export function sequenceEvidenceRevision(session, artifact) {
   const comparison = session.comparison;
   const flow = session.outline?.flows?.find(flow => artifact.id === `sequence-${flow.id}`);

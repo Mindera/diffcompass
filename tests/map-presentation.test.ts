@@ -27,9 +27,15 @@ test("map preferences survive frame replacement and reload without trusting unkn
   first.send('diffcompass-map-preferences-change', { motion: true }, {} as any);
   first.send('diffcompass-map-preferences-ready');
   expect(first.messages.at(-1).preferences).toEqual({ motion: false, theme: 'light', preset: 'editorial' });
+  first.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 640, sequenceCodeHeight: 360 });
+  first.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 2000, sequenceCodeHeight: '500' });
+  first.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 800 }, {} as any);
   const reloaded = setup();
   reloaded.send('diffcompass-map-preferences-ready');
-  expect(reloaded.messages.at(-1).preferences).toEqual({ motion: false, theme: 'light', preset: 'editorial' });
+  expect(reloaded.messages.at(-1).preferences).toEqual({ motion: false, theme: 'light', preset: 'editorial', sequenceCodeWidth: 640, sequenceCodeHeight: 360 });
+  reloaded.send('diffcompass-map-preferences-change', { sequenceCodeWidth: 0 });
+  reloaded.send('diffcompass-map-preferences-ready');
+  expect(reloaded.messages.at(-1).preferences.sequenceCodeWidth).toBe(0);
   const isolated = setup(true);
   isolated.send('diffcompass-map-preferences-change', { theme: 'dark', preset: 'blueprint', motion: false });
   isolated.send('diffcompass-map-preferences-ready');

@@ -248,7 +248,7 @@ function interactiveHarness(dimensions: Partial<{ containerWidth: number; contai
   let resize = () => {};
   const ResizeObserverValue = class { constructor(callback: () => void) { resize = callback; } observe() {} };
   const runtime = new Function("window", "document", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "Archify", cameraRuntime());
-  runtime(windowValue, documentValue, ResizeObserverValue, (callback: () => void) => callback(), () => {}, (node: { testOverflowY?: string }) => ({ paddingLeft: "24px", paddingRight: "24px", paddingTop: "16px", paddingBottom: "72px", overflowY: node?.testOverflowY }), windowValue.Archify);
+  runtime(windowValue, documentValue, ResizeObserverValue, (callback: () => void) => callback(), () => {}, (node: { testOverflowY?: string; testOverflowX?: string }) => ({ paddingLeft: "24px", paddingRight: "24px", paddingTop: "16px", paddingBottom: "72px", overflowY: node?.testOverflowY, overflowX: node?.testOverflowX }), windowValue.Archify);
   const fire = (type: string, event: Record<string, unknown>) => (listeners.get(type) ?? []).forEach((listener) => listener(event));
   const firePassport = (type: string, event: Record<string, unknown>) => (passportListeners.get(type) ?? []).forEach((listener) => listener(event));
   const click = (selector: string) => (buttonListeners.get(`${selector}:click`) ?? []).forEach((listener) => listener());
@@ -449,6 +449,25 @@ test("scrollable popup content keeps its wheel events until its scroll boundary"
   target.scrollTop = 300;
   harness.fireDocument("wheel", event);
   expect(harness.posted).toEqual([{ type: "diffcompass-map-scroll", deltaY: 80 }]);
+});
+
+test("horizontal code and route lists keep native wheel input in both directions without changing the camera", () => {
+  const harness = interactiveHarness(), camera = harness.view.state();
+  const scroll = { testOverflowX: "auto", scrollWidth: 600, clientWidth: 200, scrollLeft: 0, parentElement: null };
+  const target = { parentElement: scroll };
+  let prevented = false;
+  const event = { target, deltaX: 80, deltaY: 0, deltaMode: 0, preventDefault() { prevented = true; }, stopImmediatePropagation() {} };
+  harness.fireDocument("wheel", event);
+  expect(prevented).toBe(false); expect(harness.posted).toHaveLength(0);
+  scroll.scrollLeft = 400;
+  harness.fireDocument("wheel", { ...event, deltaX: -80 });
+  expect(prevented).toBe(false); expect(harness.posted).toHaveLength(0);
+  harness.fireDocument("wheel", event); // Right boundary has no more content; no horizontal forwarding.
+  expect(prevented).toBe(true); expect(harness.posted).toHaveLength(0);
+  prevented = false;
+  harness.fireDocument("wheel", { ...event, deltaY: 80 });
+  expect(prevented).toBe(true); expect(harness.posted).toEqual([{ type: "diffcompass-map-scroll", deltaY: 80 }]);
+  expect(harness.view.state()).toEqual(camera);
 });
 
 test("pen and touch swipes scroll the review without moving the camera or activating a node", () => {

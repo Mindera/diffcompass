@@ -1,4 +1,4 @@
-import { refreshSequenceEvidence, sequenceEvidenceRevision } from "/sequence-walkthrough-host.js";
+import { refreshSequenceEvidence, sequenceEvidenceRevision, sequenceSourceSelection } from "/sequence-walkthrough-host.js";
 
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 const fragmentToken = fragment.get("token");
@@ -3083,7 +3083,7 @@ function archifyArtifactCard(artifact) {
   const comparisonControls = views.length > 1 ? `<div class="archify-comparison" role="group" aria-label="${escapeHtml(`${artifact.title} comparison view`)}">${views.map((view) => `<button type="button" data-archify-comparison-view="${view.id}" data-archify-comparison-artifact="${escapeHtml(artifact.id)}"${view.id === selectedView.id ? ' class="active" aria-pressed="true"' : ' aria-pressed="false"'}>${escapeHtml(view.label)}</button>`).join("")}</div>` : "";
   return `<article class="flow-card architecture-card archify-artifact">
     <header class="architecture-card-heading"><div><span class="architecture-label">Validated map</span><h2>${escapeHtml(artifact.title)}</h2></div><span class="archify-view">${escapeHtml(archifyArtifactTypeLabel(artifact.type, artifact.purpose))}</span></header>
-    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it.${artifact.type === "sequence" ? " Click an arrow or its caption to follow its code step; scroll Code steps to select an arrow." : ""} Drag the background to pan; use Fit to see the whole map.</p>
+    <p>${escapeHtml(artifact.purpose === "domain-model" ? "Documented business concepts and relationships. Code changes do not imply changes to these definitions." : selectedView.description)} Click a node to inspect it.${artifact.type === "sequence" ? " Click an arrow or its caption to follow its code step. Scrolling Code steps keeps your selection." : ""} Drag the background to pan; use Fit to see the whole map.</p>
     ${comparisonControls}
     ${selectedView.id === "delta" ? '<p class="archify-delta-key" aria-label="Change legend"><span>+ Added</span><span>~ Changed</span><span>− Removed</span><span>Unchanged context</span></p>' : ""}
     <iframe class="archify-frame" data-archify-type="${escapeHtml(artifact.type)}" data-archify-artifact-id="${escapeHtml(artifact.id)}" data-archify-rendered-at="${escapeHtml(artifact.renderedAt)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer" title="${escapeHtml(`Archify ${selectedView.label}: ${artifact.title}`)}" src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"></iframe>
@@ -3115,19 +3115,22 @@ async function openSequenceSource(event) {
     // server-validated evidence, never from a postMessage path or line.
     const sources = await api(`/api/sequence-sources/${encodeURIComponent(id)}?edge=${encodeURIComponent(event.data.edgeId)}`);
     if (!frame.isConnected || state.activeTab !== "archify" || frame._sequenceEvidenceRevision !== evidenceRevision) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); return; }
-    const anchor = sources[event.data.edgeId]?.[event.data.anchorIndex];
-    if (!anchor) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); toast("This source link is no longer available. Regenerate the map to refresh its evidence."); return; }
+    const selection = sequenceSourceSelection(sources[event.data.edgeId], event.data.anchorIndex, event.data.anchorIndices);
+    if (!selection) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); toast("This source link is no longer available. Regenerate the map to refresh its evidence."); return; }
+    const { anchor } = selection;
     state.structuralGraphReturn = null;
     state.sequenceSourceReturn = { artifactId: id, frame, present: event.data.present === true, scrollTop: elements["diff-panel"].scrollTop };
     window.diffcompassMapPresentation?.suspend(frame);
     state.activeTab = "diff";
     renderActiveTab();
-    // Lookup candidates came from the current workspace, not the comparison.
-    const sourcePath = anchor.definition ? anchor.path : state.session.comparison.files.find((file) => file.path === anchor.path || file.oldPath === anchor.path)?.path ?? anchor.path;
-    if (anchor.definition) await showRepositoryFile(sourcePath, anchor.startLine, "Current workspace · name match");
+    // The server checks candidates against the same captured rows as saved
+    // anchors. Only exact matches share the comparison's source destination.
+    const currentSource = anchor.definition && !anchor.comparisonMatch;
+    const sourcePath = currentSource ? anchor.path : state.session.comparison.files.find((file) => file.path === anchor.path || file.oldPath === anchor.path)?.path ?? anchor.path;
+    if (currentSource) await showRepositoryFile(sourcePath, anchor.startLine, "Current workspace · name match");
     else await showAnalysisFile(sourcePath, anchor.startLine, anchor.side);
-    for (let line = anchor.startLine; line <= anchor.endLine; line++) {
-      const row = anchor.definition ? null : diffViewRow(sourcePath, anchor.side, line);
+    for (const source of selection.anchors) for (let line = source.startLine; line <= source.endLine; line++) {
+      const row = currentSource ? null : diffViewRow(sourcePath, anchor.side, line);
       row?.classList.add("sequence-source-highlight");
     }
     updateSequenceSourceReturnVisibility();
@@ -3168,12 +3171,13 @@ window.addEventListener("message", async (event) => {
   const frame = [...document.querySelectorAll("iframe.archify-frame")].find((candidate) => candidate.contentWindow === event.source);
   if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
   const edgeId = event.data.edgeId;
+  const requestId = event.data.requestId;
   const evidenceRevision = frame._sequenceEvidenceRevision;
   try {
     const sources = await api(`/api/sequence-sources/${encodeURIComponent(frame.dataset.archifyArtifactId)}?edge=${encodeURIComponent(edgeId)}`);
-    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: sources[edgeId] ?? [] }, "*");
+    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, requestId, anchors: sources[edgeId] ?? [] }, "*");
   } catch {
-    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow?.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, anchors: [], error: "Definition lookup failed. You can retry." }, "*");
+    if (frame.isConnected && frame._sequenceEvidenceRevision === evidenceRevision) frame.contentWindow?.postMessage({ type: "diffcompass-sequence-lookup-result", edgeId, requestId, anchors: [], error: "Definition lookup failed. You can retry." }, "*");
   }
 });
 document.getElementById("sequence-source-return").addEventListener("click", returnToSequenceDiagram);
@@ -4630,6 +4634,7 @@ function understandMapViews() {
 }
 
 function openMaps(view = state.mapsLastView) {
+  if (!state.session) return;
   if (view !== "structural-blast-radius" && !understandMapViews().some((entry) => entry.id === view)) view = understandMapViews()[0].id;
   const render = { archify: renderArchify, "call-flows": renderCallFlows, sequence: renderSequenceDiagrams, adaptive: renderAdaptiveDiagrams, "structural-blast-radius": renderStructuralBlastRadii }[view];
   activateReviewTab(view, render);
@@ -4645,6 +4650,7 @@ function renderMapsNavigation() {
   for (const view of MAP_VIEWS) elements[`${view}-tab`].classList.toggle("hidden", view !== "archify");
   for (const view of MAP_VIEWS) elements[`${view}-view`].setAttribute("aria-labelledby", "archify-tab");
   const tab = elements["archify-tab"];
+  tab.disabled = !state.session;
   tab.classList.toggle("active", inMaps);
   tab.setAttribute("aria-selected", String(inMaps));
   tab.setAttribute("aria-controls", inMaps ? `${state.activeTab}-view` : "archify-view");
@@ -4726,7 +4732,7 @@ async function renderScreenshots() {
 }
 
 function activateReviewTab(tabName, render = null) {
-  if (tabName === state.activeTab) return;
+  if (!state.session || tabName === state.activeTab) return;
   if (tabName !== "diff") state.pullRequestReturn = null;
   state.tabScrollPositions.set(state.activeTab, elements["diff-panel"].scrollTop);
   state.activeTab = tabName;

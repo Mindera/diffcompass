@@ -10,7 +10,8 @@ const url = process.argv[2];
 const dir = process.env.SEQUENCE_SCREENSHOT_DIR || '/tmp';
 const modes = process.env.SEQUENCE_HEADLESS_ONLY ? [true] : [true, false];
 const plain = process.env.SEQUENCE_POINTER_PLAIN === '1';
-const report = { playwrightVersion, plain, runs: [] };
+const nativeWindow = process.env.SEQUENCE_NATIVE_WINDOW === '1';
+const report = { playwrightVersion, plain, nativeWindow, runs: [] };
 
 function traceInput() {
   window.pointerTrace = [];
@@ -53,13 +54,23 @@ for (const headless of modes) {
   try {
     for (const [name,width,height] of [['desktop',1440,1000],['narrow',600,900]]) {
       for (const present of [false,true]) for (const resized of [false,true]) {
-        const context=await browser.newContext({viewport:{width,height}});
+        const context=await browser.newContext({viewport:nativeWindow?null:{width,height}});
         await context.addInitScript(traceInput);
         const page=await context.newPage(); page.setDefaultTimeout(15000);
-        const result={headless,browser:browser.version(),name,present,resized,errors:[]};
-        page.on('pageerror',e=>result.errors.push(e.message));
+        const result={headless,browser:browser.version(),name,present,resized,errors:[],errorStacks:[]};
+        page.on('pageerror',e=>{result.errors.push(e.message);result.errorStacks.push(e.stack);});
         try {
+          let windowSession,windowId,windowBounds;
+          if(nativeWindow){
+            windowSession=await context.newCDPSession(page);
+            const native=await windowSession.send('Browser.getWindowForTarget');windowId=native.windowId;
+            const chrome=await page.evaluate(()=>({width:outerWidth-innerWidth,height:outerHeight-innerHeight}));
+            windowBounds={width:width+chrome.width,height:height+chrome.height};
+            await windowSession.send('Browser.setWindowBounds',{windowId,bounds:{...windowBounds,windowState:'normal'}});
+            await page.waitForTimeout(200);
+          }
           await page.goto(url);await page.locator('#archify-tab').click();await page.locator('#archify-select').selectOption('sequence-checkout-flow');
+          await page.frameLocator('iframe.archify-frame').locator('.sequence-code-pane').waitFor();
           let iframe=page.locator('iframe.archify-frame'); let frame=await(await iframe.elementHandle()).contentFrame();
           await frame.waitForFunction(()=>window.Archify?.view?.state?.().mode==='review');
           await iframe.scrollIntoViewIfNeeded();await page.waitForTimeout(200);
@@ -88,13 +99,18 @@ for (const headless of modes) {
             await page.waitForTimeout(200);
           }
           const initial=plain?null:await frame.evaluate(()=>Archify.view.state());
-          if(resized){await page.setViewportSize({width:width-20,height});await page.waitForTimeout(150);await page.setViewportSize({width,height});await page.waitForTimeout(150);}
+          if(resized){
+            if(nativeWindow){await windowSession.send('Browser.setWindowBounds',{windowId,bounds:{...windowBounds,width:windowBounds.width-20}});await page.waitForTimeout(150);await windowSession.send('Browser.setWindowBounds',{windowId,bounds:windowBounds});}
+            else{await page.setViewportSize({width:width-20,height});await page.waitForTimeout(150);await page.setViewportSize({width,height});}
+            await page.waitForTimeout(150);
+          }
           result.cameraPreserved=plain?null:JSON.stringify(initial)===JSON.stringify(await frame.evaluate(()=>Archify.view.state()));
           const target=frame.locator(plain?'#plain-button':'[data-diffcompass-action="fit"]');
           if(!plain)await target.scrollIntoViewIfNeeded();await page.waitForTimeout(200);
           await page.evaluate(()=>pointerTrace.length=0);await frame.evaluate(()=>pointerTrace.length=0);
           result.before=await geometry(page,frame,iframe,target);
-          if(result.before.box.y<0 || result.before.box.y+result.before.box.height>height || result.before.box.x<0 || result.before.box.x+result.before.box.width>width)throw new Error('Diagnostic target is not fully within the top-level viewport');
+          const [visibleWidth,visibleHeight]=result.before.parent.inner;
+          if(result.before.box.y<0 || result.before.box.y+result.before.box.height>visibleHeight || result.before.box.x<0 || result.before.box.x+result.before.box.width>visibleWidth)throw new Error('Diagnostic target is not fully within the top-level viewport');
           await page.mouse.click(result.before.point.x,result.before.point.y);await page.waitForTimeout(200);
           result.after=await geometry(page,frame,iframe,target);
           result.childClick=result.after.child.trace.some(e=>e.type==='click');

@@ -1,3 +1,5 @@
+import type { HighlightToken } from "./highlight.ts";
+
 export type DiffRowKind = "context" | "addition" | "deletion" | "meta";
 
 export interface DiffRow {
@@ -417,6 +419,14 @@ export interface ReviewFlow {
 export interface SequenceSourceAnchor {
   /** Runtime lookup candidate, not authored evidence of the message. */
   definition?: boolean;
+  /** Runtime-only proof that this candidate quote also matches captured rows. */
+  comparisonMatch?: boolean;
+  /** Derived display data; never persisted as authored message evidence. */
+  preview?: {
+    language: string;
+    kinds: Array<"addition" | "deletion" | "context" | "unknown">;
+    tokens?: HighlightToken[][];
+  };
   path: string;
   side: "old" | "new";
   startLine: number;
