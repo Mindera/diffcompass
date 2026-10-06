@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { runProcess } from "./process.ts";
 import { layoutArchitecture } from "./architecture-layout.ts";
+import { layoutLifecycle } from "./lifecycle-layout.ts";
 import type { ArchifyArtifact, ArchifyDiagramType, ArchifyFailure, ArchifyJson, ReviewAdaptiveDiagram, ReviewArchitecture, ReviewFlow, TourOutline } from "./types.ts";
 
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
@@ -245,17 +246,23 @@ export function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefine
 
 function lifecycleCandidate(diagram: ReviewAdaptiveDiagram): ArchifyCandidate | undefined {
   if (diagram.kind !== "state-machine") return undefined;
-  const states = new Map<string, { id: string; type: string }>();
+  const states = new Map<string, { id: string; initial: boolean; terminal: boolean }>();
   const transitions: Array<{ from: string; to: string; label?: string }> = [];
   for (const raw of diagram.mermaid.split("\n").slice(1)) {
     const match = /^(\[\*\]|[A-Za-z][A-Za-z0-9_]*)\s+-->\s+(\[\*\]|[A-Za-z][A-Za-z0-9_]*)(?:\s*:\s*(.+))?$/.exec(raw.trim());
-    if (!match) continue;
-    for (const id of [match[1]!, match[2]!]) if (id !== "[*]") states.set(id, { id: safeId(id), type: "active" });
+    if (!raw.trim()) continue;
+    if (!match || (match[1] === "[*]" && match[2] === "[*]")) return undefined;
+    // A boundary event label cannot be represented by a state annotation.
+    if (match[3] && (match[1] === "[*]" || match[2] === "[*]")) return undefined;
+    for (const id of [match[1]!, match[2]!]) if (id !== "[*]" && !states.has(id)) states.set(id, { id: safeId(id), initial: false, terminal: false });
     if (match[1] !== "[*]" && match[2] !== "[*]") transitions.push({ from: match[1]!, to: match[2]!, ...(match[3] ? { label: match[3]!.trim() } : {}) });
-    if (match[1] === "[*]" && match[2] !== "[*]") states.set(match[2]!, { id: safeId(match[2]!), type: "start" });
-    if (match[2] === "[*]" && match[1] !== "[*]") states.set(match[1]!, { id: safeId(match[1]!), type: "success" });
+    if (match[1] === "[*]" && match[2] !== "[*]") states.get(match[2]!)!.initial = true;
+    if (match[2] === "[*]" && match[1] !== "[*]") states.get(match[1]!)!.terminal = true;
   }
-  if (states.size < 2 || transitions.length === 0) return undefined;
+  if (states.size < 2 || transitions.length === 0 || new Set([...states.values()].map(state => state.id)).size !== states.size) return undefined;
+  // A state with both a final arrow and outgoing events needs an explicit
+  // final pseudostate; keep that richer graph in Mermaid.
+  if (transitions.some(transition => states.get(transition.from)!.terminal)) return undefined;
   return {
     id: "lifecycle-state-machine",
     type: "lifecycle",
@@ -266,12 +273,8 @@ function lifecycleCandidate(diagram: ReviewAdaptiveDiagram): ArchifyCandidate | 
       schema_version: 1,
       diagram_type: "lifecycle",
       meta: { title: diagram.title, quality_profile: "standard", locale: "en", legend: { mode: "hidden" } },
-      lanes: [{ id: "main", label: "Observed lifecycle" }],
-      states: [...states.entries()].map(([label, state], index) => ({ id: state.id, type: state.type, label, lane: "main", col: Math.min(index, 4) })),
-      // The constrained Mermaid lifecycle has no authored geometry. Omitting
-      // short transition labels lets Archify validate layout without guessing a
-      // route; the exact event text remains in the evidence card.
-      transitions: transitions.map((transition, index) => ({ id: stableRelationshipId("lifecycle", `${index}:${transition.from}:${transition.label ?? ""}:${transition.to}`), from: states.get(transition.from)!.id, to: states.get(transition.to)!.id, ...(transition.label ? { label: transition.label, labelDy: 55 } : {}), route: "auto" })),
+      states: [...states.entries()].map(([label, state]) => ({ ...state, label })),
+      transitions: transitions.map((transition, index) => ({ id: stableRelationshipId("lifecycle", `${index}:${transition.from}:${transition.label ?? ""}:${transition.to}`), from: states.get(transition.from)!.id, to: states.get(transition.to)!.id, ...(transition.label ? { label: transition.label } : {}) })),
     },
   };
 }
@@ -452,6 +455,11 @@ export class ArchifyRenderer {
     try {
       if (candidate.type === "architecture") {
         await layoutArchitecture([candidate.ir, candidate.comparison?.before, candidate.comparison?.delta].filter((document): document is ArchifyDocument => Boolean(document)));
+      }
+      if (candidate.type === "lifecycle") {
+        const { viewBox, ...layout } = layoutLifecycle(candidate.ir.states as Parameters<typeof layoutLifecycle>[0], candidate.ir.transitions as Parameters<typeof layoutLifecycle>[1]);
+        Object.assign(candidate.ir, layout);
+        (candidate.ir.meta as ArchifyDocument).viewBox = viewBox!;
       }
       const after = await this.renderDocument(cli, candidate.type, candidate.ir, directory, env);
       const comparison: NonNullable<ArchifyArtifact["comparison"]> = {};

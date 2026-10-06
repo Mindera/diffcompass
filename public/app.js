@@ -3143,6 +3143,7 @@ async function openSequenceSource(event) {
 function returnToSequenceDiagram() {
   const target = state.sequenceSourceReturn;
   if (!target) return;
+  if (target.diagram) { returnToAdaptiveDiagram(target); return; }
   state.archifyArtifactId = target.artifactId;
   openMaps("archify");
   elements["diff-panel"].scrollTop = target.scrollTop;
@@ -3165,6 +3166,40 @@ function updateSequenceSourceReturnVisibility() {
   button.style.right = `${Math.max(12, window.innerWidth - bounds.right + 14)}px`;
   button.style.bottom = `${Math.max(58, window.innerHeight - Math.min(window.innerHeight, bounds.bottom) + 58)}px`;
 }
+function rememberAdaptiveDiagramReturn(source) {
+  const view = state.activeTab;
+  if (!["archify", "adaptive"].includes(view) || !source.closest(`#${view}-view`)) return;
+  const card = source.closest(view === "archify" ? ".archify-artifact" : ".adaptive-card");
+  const frame = card?.querySelector("iframe.archify-frame");
+  const artifactId = frame?.dataset.archifyArtifactId;
+  const nativeKey = card?.querySelector("[data-adaptive-diagram]")?.dataset.adaptiveDiagram;
+  if (view === "archify" ? !artifactId : !nativeKey) return;
+  state.structuralGraphReturn = null;
+  state.sequenceSourceReturn = { diagram: true, view, artifactId, nativeKey, source, frame, scrollTop: elements["diff-panel"].scrollTop };
+}
+
+function returnToAdaptiveDiagram(target) {
+  const available = target.view === "archify"
+    ? archifyArtifacts().some(diagram => diagram.id === target.artifactId)
+    : adaptiveEntries().some(diagram => diagram.key === target.nativeKey);
+  const mounted = target.source.isConnected && (target.view !== "archify" || state.archifyArtifactId === target.artifactId);
+  state.sequenceSourceReturn = null;
+  if (available) {
+    if (target.view === "archify") state.archifyArtifactId = target.artifactId;
+    state.tabScrollPositions.set(target.view, target.scrollTop);
+  }
+  if (available && mounted) activateReviewTab(target.view);
+  else openMaps(target.view);
+  if (available) {
+    elements["diff-panel"].scrollTop = target.scrollTop;
+    const selector = target.view === "archify" ? "iframe.archify-frame" : `[data-adaptive-diagram="${target.nativeKey}"]`;
+    const focus = target.frame?.isConnected ? target.frame : target.source.isConnected ? target.source
+      : elements[`${target.view}-view`].querySelector(selector);
+    focus?.focus({ preventScroll: true });
+  } else toast("This diagram is no longer available; showing the available maps.");
+  updateSequenceSourceReturnVisibility();
+}
+
 window.addEventListener("message", (event) => { void openSequenceSource(event); });
 window.addEventListener("message", async (event) => {
   if (event.data?.type !== "diffcompass-sequence-lookup" || typeof event.data.edgeId !== "string") return;
@@ -7397,7 +7432,10 @@ function registerArchitectureDiagramInteractions(container) {
       return;
     }
     const fileButton = event.target.closest("[data-flow-file]");
-    if (fileButton) void showAnalysisFile(fileButton.dataset.flowFile);
+    if (fileButton) {
+      rememberAdaptiveDiagramReturn(fileButton);
+      void showAnalysisFile(fileButton.dataset.flowFile);
+    }
   });
   container.addEventListener("pointerdown", (event) => {
     const diagram = event.target.closest(".architecture-diagram[data-architecture-diagram], .architecture-diagram[data-adaptive-diagram]");
@@ -7452,6 +7490,7 @@ registerArchitectureDiagramInteractions(elements["tour-intro-sequence"]);
 registerArchitectureDiagramInteractions(elements["tour-intro-call-flows"]);
 registerArchitectureDiagramInteractions(elements.architecture);
 registerArchitectureDiagramInteractions(document.getElementById("maps-architecture"));
+registerArchitectureDiagramInteractions(elements["archify-artifacts"]);
 registerArchitectureDiagramInteractions(elements["adaptive-view"]);
 registerArchitectureDiagramInteractions(elements.flows);
 registerArchitectureDiagramInteractions(elements["architecture-viewer-dialog"]);
