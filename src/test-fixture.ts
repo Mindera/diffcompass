@@ -719,7 +719,16 @@ export interface TestFixture {
   created: boolean;
 }
 
-export async function prepareTestFixture(options: { root?: string; reset?: boolean } = {}): Promise<TestFixture> {
+export async function prepareTestFixture(options: { root?: string; reset?: boolean; extraFiles?: Record<string, { before: string; after: string }> } = {}): Promise<TestFixture> {
+  // Optional examples are committed into both real fixture revisions. Never
+  // let an extension replace baseline examples or write outside the repository.
+  const before: Record<string, string> = {}, after: Record<string, string> = {};
+  for (const [path, contents] of Object.entries(options.extraFiles ?? {})) {
+    if (path.includes("\\") || path.includes("\0") || path.split("/").some(part => !part || part === "." || part === ".." || part.toLowerCase() === ".git") || Object.hasOwn(baseFiles, path) || Object.hasOwn(workingFiles, path)) {
+      throw new Error(`Invalid extra fixture path: ${path}`);
+    }
+    before[path] = contents.before; after[path] = contents.after;
+  }
   const root = resolve(options.root ?? join(tmpdir(), FIXTURE_DIRECTORY));
   const marker = join(root, ".diffcompass-fixture.json");
   const repository = join(root, "repository");
@@ -745,14 +754,14 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
   await git(repository, "init", "-b", "main");
   await git(repository, "config", "user.name", "DiffCompass Fixture");
   await git(repository, "config", "user.email", "fixture@diffcompass.test");
-  await writeFiles(repository, baseFiles);
+  await writeFiles(repository, { ...baseFiles, ...before });
   await git(repository, "add", ".");
   await git(repository, "commit", "-m", "fixture base");
   const baseOid = await git(repository, "rev-parse", "HEAD");
   await git(repository, "update-ref", "refs/remotes/origin/main", baseOid);
   await git(repository, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
   await git(repository, "switch", "-c", "fixture-tour");
-  await writeFiles(repository, workingFiles);
+  await writeFiles(repository, { ...workingFiles, ...after });
   await git(repository, "add", ".");
   await git(repository, "commit", "-m", "fixture pull request");
   const headOid = await git(repository, "rev-parse", "HEAD");

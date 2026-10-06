@@ -83,15 +83,19 @@ test("all inspection overlays drag by their headers and stay within the viewport
   }
 });
 
-test("lifecycle bands disappear only when no state occupies them", () => {
+test("lifecycle bands disappear only when empty and visible headings remain consecutive", () => {
   const html = withArchifyEmbedAdapter('<html><body></body></html>', 'lifecycle');
   const code = html.split('\n').find(line => line.includes('if(true){var nodes='))!;
   expect(code).toBeTruthy();
-  for (const positions of [[126], [126, 278], [126, 278, 450]]) {
-    const children = [100, 252, 424].map(y => ({tagName:'text', style:{display:''}, getAttribute:(name:string) => name === 'y' ? String(y) : null}));
+  for (const positions of [[126], [126, 278], [126, 450], [450], [126, 278, 450]]) {
+    const children = [100, 252, 424].map((y, index) => ({tagName:'text', textContent:`0${index + 1} / ${['States', 'Further states', 'Terminal exits'][index]}`, style:{display:''}, getAttribute:(name:string) => name === 'y' ? String(y) : null}));
     const svg = {children, querySelectorAll: () => positions.map(y => ({querySelector: () => ({getAttribute: () => String(y)})}))};
     new Function('svg', code)(svg);
-    expect(children.map(child => child.style.display)).toEqual([0,1,2].map(index => index < positions.length ? '' : 'none'));
+    const occupied = [126, 278, 450].map(y => positions.includes(y));
+    expect(children.map(child => child.style.display)).toEqual(occupied.map(shown => shown ? '' : 'none'));
+    expect(children.filter((_, index) => occupied[index]).map(child => child.textContent)).toEqual(
+      ['States', 'Further states', 'Terminal exits'].filter((_, index) => occupied[index]).map((label, index) => `0${index + 1} / ${label}`),
+    );
   }
   const children = [{tagName:'text', style:{display:''}, getAttribute:()=>'100'}];
   new Function('svg', code)({children,querySelectorAll:()=>[]});
