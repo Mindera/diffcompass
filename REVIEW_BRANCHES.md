@@ -1,63 +1,59 @@
-# Review branches — 2026-10-04
+# Review branches — 2026-10-07
 
-Start in the clean main checkout:
-`/Users/ricardo.costeira/.herdr/worktrees/diffcompass/main`.
-Local `main` is unchanged at `716edb8`; released v2.0.0 is `ec3c045`.
-Nothing below is merged, released or approved to merge.
+**Remote main is `e19cd7e`; the latest release is still v2.0.0 (`ec3c045`).**
+Sequence/code and its earlier prerequisites merged in
+[PR #3](https://github.com/rcosteira79/diffcompass/pull/3) on 2026-10-05; lifecycle
+layout/source-return fixes merged in [PR #4](https://github.com/rcosteira79/diffcompass/pull/4)
+on 2026-10-06. These changes are merged but unreleased.
 
-All review worktrees live under
-`/Users/ricardo.costeira/.herdr/worktrees/diffcompass/`:
+For this documentation review, use
+`/Users/ricardo.costeira/.herdr/worktrees/diffcompass/research-docs` and compare
+`origin/main...review/research-docs`. Its own diff contains documentation only;
+it inherits the merged runtime. The separate `main` checkout under the same root
+is still at local `73f9247`, behind fetched remote main; do not mistake that cached
+checkout for the latest remote state.
 
-| Review unit | Branch / worktree suffix | Compare against | Status |
-| --- | --- | --- | --- |
-| Earlier fixes | `review/pre-research-fixes` / `pre-research-fixes` | `716edb8` | **Unreviewed** base `8262d97`: map preferences/tooltips/motion, native Call-flow consolidation, impact repair, final-commentary fixes. |
-| Sequence/code | `review/sequence-code` / `sequence-code` | `8262d97` | `0d22cbe`: 15 files; 594 tests, 8 interaction groups and 4 framing scenarios pass. Pointer gaps/setup timeout retained below. |
-| Decision log | `review/decision-log` / `decision-log` | `8262d97` | `d5b8bd3`: 12 scoped files; independent 597 tests and 18 Chrome checks pass. Extraction accepted, not merge approval. |
-| Syntax diff | `review/syntax-diff` / `syntax-diff` | `8262d97` | `886e173`: 22 files; 602 tests, 11 Chrome checks and host compiled smoke pass. Captured-source/cache/Kotlin limits retained. |
-| Documentation | `review/research-docs` / `research-docs` | `8262d97` | Four snapshot docs reconciled plus this entry point; no runtime files. All original assumptions retained. |
-| Viewer/provider prototype | `review/diff-viewer-prototype` / `diff-viewer-prototype` | `8262d97` | `2676dea`: 31 snapshot-identical prototype files; 618 tests pass. Fresh browser run failed badges keyboard activation; review blocker remains. |
+| Remaining review unit | Branch / worktree suffix | Observed tip / parent |
+| --- | --- | --- |
+| Documentation | `review/research-docs` / `research-docs` | Rebased on `e19cd7e`; current-status refresh plus preserved historical evidence. |
+| Decision log | `review/decision-log` / `decision-log` | `e0157cf` / `e19cd7e`; unmerged. |
+| Syntax diff | `review/syntax-diff` / `syntax-diff` | `cf6b2a6` / `73f9247`; unmerged and based before PR #4. |
+| Viewer/provider prototype | `review/diff-viewer-prototype` / `diff-viewer-prototype` | `72449d6` / `e19cd7e`; unmerged experiment. |
 
-The three feature branches are mutually independent and share only the
-unreviewed base; no feature imports another research feature. **Review the base
-separately:** its map-motion-on change lacks the optional-`guidedViews` guard,
-which lives in sequence/code. Before considering the baseline without sequence,
-review/extract that guard separately for bundled zero-guided-view maps (a known
-browser exception). The baseline's 581 tests do not establish browser safety.
-The docs branch describes these features but contains none of their runtime
-implementations or the prototypes. Coordinator extraction audit: 69 single-owner
-files match the snapshot, no missing/extra non-doc paths; shared app/export/server/
-session edits still need integration review. No conflict-free merge promise.
-Do not use the safety snapshot as an integration/merge candidate.
+Worktrees above are under `/Users/ricardo.costeira/.herdr/worktrees/diffcompass/`.
+The original `8262d97` base and `0d22cbe` sequence extraction are now ancestors of
+remote main; the eager-excerpt follow-up is included in merged `cc6f99b`, not
+pending as three uncommitted files. Main also includes the optional-guidedViews
+guard. The historical warning about extracting the old base alone still explains
+that checkpoint, but is not a missing-guard warning about today's main.
 
-Coordinator-reported independent `bun run verify`: base **581 passed / 0 failed**;
-prototype **618 / 0**, decision log **597 / 0**, sequence/code **594 / 0** and
-syntax diff **602 / 0**. The prototype browser run exited 1: smoke, quotes and
-gutter passed;
-badges timed out waiting for keyboard activation. Focused/settled retries passed,
-but the cause/intermittency remains unresolved, with no fix or clean-pass claim.
-The old combined **668 / 0** run is historical evidence, **not extraction
-validation or merge approval**. Exact counts, commands and attribution are in
-[RESEARCH](RESEARCH.md#branch-isolated-verification-ledger).
+Review limits to retain:
 
-Keep these review limits visible: sequence pointer matrices **app 15/16, plain
-iframe 14/16**, unknown cause; the first isolated app run also had a setup
-timeout and `Cannot read properties of null (reading outline)` page error before
-artifact selection (14 delivered, 1 routing failure, 1 setup timeout), retained
-separately from its 15/16 recheck. That error's cause is undiagnosed. Genuine
-hidden-tab behavior remains unverified. Overall
-impact repair warnings/omission reasons still missing from exports. Kotlin syntax
-support is bounded by its grammar, not compiler-grade project support. Scope-fold
-arrows remain dropped; inline unchanged-context controls remain required.
+- PR #3 reports 636 passing automated tests and separate browser/renderer checks;
+  PR #4 reports 652 and separate lifecycle/Chrome checks. Original isolated and
+  combined counts are preserved, not carried forward as fresh current-tip tests.
+- The earlier app 15/16, plain-iframe 14/16 and setup `outline` error/timeout are
+  historical failures. Later startup guards and Chrome native-content viewport
+  sizing/negative controls are separate evidence, not retroactive passes. Actual
+  OS background visibility, other browsers, touch and screen readers remain
+  unverified by the recorded work.
+- The prototype's last recorded full browser run failed badges keyboard activation;
+  successful retries did not establish its cause or a clean result. No new
+  prototype validation is claimed here, and no production Monaco migration is
+  approved. Scope-fold arrows remain dropped; inline context controls remain.
+- Overall impact repair warnings/omission reasons still lack export parity.
+  Decision-log provenance and syntax grammar/cache/export limits remain as
+  documented. Combining their shared integration edits needs its own review.
 
-The original `/Users/ricardo.costeira/Documents/diffcompass` is frozen at
-`39206b4` on `wip/research-snapshot-20261004`, preserving combined evidence and
-running fixtures. Do not write there. Archive and checksum are recorded in
-[RESEARCH](RESEARCH.md#snapshot-and-extraction-provenance). No fixture shutdown,
-push, merge, release or DiffCompass installation is part of this handoff.
+The frozen original checkout at `/Users/ricardo.costeira/Documents/diffcompass`
+and safety snapshot `39206b4` remain preservation artifacts, not merge targets.
+The historical 69-file extraction audit and 668-test combined pass do not approve
+integration. No push, merge, release, installation or fixture shutdown is part
+of this documentation refresh. Local `/tmp` logs and fixture URLs are historical,
+transient evidence; this refresh does not assert they still exist or serve the
+current branch.
 
-Use [README](README.md) for feature entry points, [ROADMAP](ROADMAP.md) for delivery
-status, and [RESEARCH](RESEARCH.md) for all **65 peer + 17 original documentation
-assumptions**, the full isolated handoff assumptions and additional isolation
-decisions. Syntax's fresh harness targets 47643; committed fixture defaults still
-target old 47633; decision-log's isolated harness targets 47652 while committed
-browser defaults remain 47632. Do not substitute old-fixture results for a branch.
+Use [README](README.md) for behavior and [ROADMAP](ROADMAP.md) for delivery.
+[RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-07) has the latest
+fact checks, the full chronological evidence, all 65 original peer + 17 audit
+assumptions, isolated handoff assumptions and explicitly superseded decisions.

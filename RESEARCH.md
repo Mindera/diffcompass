@@ -1,15 +1,187 @@
 # DiffCompass feature inventory and research
 
-Inventory started 2026-10-03; delivery and documentation audit updated
-2026-10-04. This preserves the earlier shared-worktree evidence and records the
-subsequent isolated-branch review separately from the published baseline. The
+Inventory started 2026-10-03; current delivery/status refresh: 2026-10-07.
+The historical audits and isolated handoffs are preserved separately from the
+current merged main and published baseline. The
 [roadmap](ROADMAP.md) is the delivery-status index and the
 [README](README.md#capabilities) describes user entry points. A code symbol,
 passing test, local commit and published release are different kinds of evidence.
 
-## Current review topology: isolated branches (2026-10-04)
+## Current delivery and verification (2026-10-07)
 
-This update supersedes the earlier all-uncommitted/shared-worktree status below.
+This section is the current-status overlay. **Everything under the historical
+2026-10-04 topology and handoffs below remains dated evidence**, including its
+then-current branch names, uncommitted states, assumptions, failures, fixture
+ports and test counts. Those records are preserved verbatim where they enumerate
+assumptions; they are not claims that today's main lacks the later merged work.
+[Review branches](REVIEW_BRANCHES.md) is the concise entry point and
+[ROADMAP](ROADMAP.md) is the canonical delivery index.
+
+### Fresh delivery facts
+
+- `git fetch origin main` and `git rev-parse origin/main` returned
+  `e19cd7e20ed21776cc0f9e0741e3e839cac283cb`. The docs branch was rebased on this
+  commit; its own changes are confined to the five owned documentation files.
+- Authenticated `gh release view --repo rcosteira79/diffcompass` still reports
+  [v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0), published
+  `2026-09-29T11:09:45Z`, neither draft nor prerelease, at the previously verified
+  peeled commit `ec3c045`. No newer release was reported. The installed command
+  was not queried again; the 2.0.0 observation below is from 2026-10-04.
+- Authenticated `gh pr view 3` reports [PR #3](https://github.com/rcosteira79/diffcompass/pull/3)
+  merged at `2026-10-05T16:47:03Z`, merge commit `73f9247`. Git ancestry confirms
+  `716edb8`, prerequisite `8262d97`, sequence extraction `0d22cbe` and follow-up
+  `cc6f99b` are on remote main. This includes the earlier saved-excerpt preload
+  work, the optional-guidedViews guard, native Call-flow consolidation, map
+  preferences/tooltips/motion, impact repair and final-commentary filtering.
+- Authenticated `gh pr view 4` reports [PR #4](https://github.com/rcosteira79/diffcompass/pull/4)
+  merged at `2026-10-06T14:38:25Z`, merge commit `e19cd7e`, including `b0b9873`.
+  It adds branching lifecycle layout and diagram source-return improvements.
+  **Both PRs are merged but unreleased.**
+- Observed local review tips: decision log `e0157cf` (parent `e19cd7e`), syntax
+  diff `cf6b2a6` (parent `73f9247`) and prototype `72449d6` (parent `e19cd7e`).
+  They remain unmerged; their feature modules/prototypes are absent from main.
+  Their historical extraction SHAs `d5b8bd3`, `886e173` and `2676dea` below are
+  not the current local tips. Range-diff shows rebase integration context for
+  decision/syntax and an unchanged prototype patch; it is not execution evidence.
+- Local `main` remains at `73f9247`, behind fetched `origin/main`. The original
+  checkout is still the safety snapshot `39206b4`. Neither checkout was changed.
+  The docs branch inherits the merged sequence/lifecycle runtime; only its diff
+  from main is documentation-only. The remaining feature branches no longer all
+  share only the historical `8262d97` base.
+
+### Current sequence behavior and superseded assumptions
+
+Source inspection at `e19cd7e` confirms the following reachable behavior, also
+described in merged PR #3. These observations establish code paths, not a new
+browser run by the documentation agent:
+
+- Maps → existing Sequence map → Code steps uses the original Archify canvas and
+  stable message IDs. The code pane is resizable/collapsible, stacks below 1040px
+  actual map width and retains pane dimensions through existing origin-local map
+  preferences. Sizing is now adjustable; the original fixed sizing assumptions
+  below describe the first implementation rather than the entire current range.
+- Saved excerpts render immediately, including offscreen/live/offline steps.
+  Compatible adjacent/overlapping captured anchors group without filling gaps,
+  mixing source sides or combining name-match candidates. Syntax tokens and
+  change markers are derived from validated captured evidence, with plain-text
+  fallback. Bounds remain 40 steps, 8 anchors, 20 lines/8,000 characters per
+  excerpt; the syntax-highlight preparation budget is 200,000 characters.
+- **Live automatic definition lookup now exists.** `preloadDefinitions` reuses
+  the existing source-action bridge for call-shaped steps without anchors,
+  sequentially, at most one automatic attempt per step until revalidation.
+  The bridge rejects stale replies, keeps manual retry, and stops automatic
+  progress on timeout. Offline export does not look up source. Results remain
+  labelled current-workspace/name-match candidates, or after-side name matches
+  when they match captured source; neither is a proven historical call target.
+  This supersedes the historical explicit-only/no-background-lookup assumption.
+- **Scrolling preserves selection.** Arrow activation reveals its code; code
+  activation selects the exact existing message/path position. Off-path targets
+  show a notice without replacing the route. This supersedes the original
+  scroll-select-only contract. Source return, resize and Present preserve path
+  and camera. The collapsed semantics card offers Show code step; an open pane
+  owns source controls instead of duplicating them in that card.
+- Selection/scroll/camera remain frame state; pane dimensions are preferences,
+  not a new authored-evidence schema. Offline HTML keeps bounded saved excerpts
+  and no live lookup/source-opening actions or transient candidates. Markdown
+  remains unchanged. Unsupported or ambiguous structures retain existing fallback.
+- The original 4/3 readable scale remains in the embed adapter and can clip
+  participants; explicit Fit is an overview, not a readability guarantee.
+  The optional-guidedViews guard is present on main. The old baseline-only
+  compatibility warning is relevant when inspecting that historical base alone,
+  not evidence of a missing guard in current main.
+
+Inspected authorities: `public/sequence-walkthrough.js` (`mount`,
+`preloadDefinitions`, `excerptGroups`, `selectMessage`, `installArchify`),
+`public/sequence-walkthrough-resize.js`, `public/map-presentation.js`,
+`src/sequence-source-embed.ts`, `src/sequence-walkthrough.ts`,
+`src/sequence-walkthrough-preview.ts`, `src/archify-embed.ts`, and the existing
+walkthrough/excerpt/preview tests. No competing runtime implementation was added.
+The impact diagnostics export gap was rechecked: store validation still accepts
+`structuralAnalysisWarnings`/`structuralAnalysisOmissionReason`; `src/export.ts`
+still does not render those overall diagnostics.
+
+### Later verification: attributed, not retroactive
+
+The documentation agent read the merged PR bodies. These are their reported
+results, **not freshly rerun tests or browser checks** in this docs refresh:
+
+| Evidence | Reported checks | Boundary |
+| --- | --- | --- |
+| PR #3 sequence completion | `bun run verify`: 636 passed, 0 failed, 5,406 assertions, 74 files; typecheck/syntax passed. Separate Chrome runs: 19 Paths/layout/source/offline groups plus 6 scrollbar groups (12 excerpts), then 15 final walkthrough groups, zero page errors. | Distinct runs, not summed coverage. Two final listing-count expectations were corrected for adjacent-anchor grouping. |
+| PR #3 installed-renderer smoke | Four generated map types, Before/Delta/After, branched maps and native Call flows passed; typecheck and 13 related map/navigation tests passed. | Reported local smoke, no new release/version or installation by this docs pass. |
+| PR #4 lifecycle completion | Main-based isolated `bun run verify`: 652 passed, 0 failed, 5,582 assertions with installed Archify enabled. Receipt-job fixture checked all 25 state/event pairs; real-renderer branch/reconvergence/self-loop/parallel/long-label/larger cases covered. | These results belong to the PR's tested snapshot; no fresh integrated docs-branch runtime run. |
+| PR #4 Chrome | Desktop/390px geometry, source return, native fallback, zoom/Fit, inspection, drag, resize/expand/close and actual mouse input; zero page errors. | Chrome-only viewport helper aligns native content size with emulated size; plain-iframe negative control reproduces the affected sizing environment. |
+
+The earlier app 15/16, plain-iframe 14/16 and first isolated setup timeout with
+`Cannot read properties of null (reading outline)` remain intact below. PR #3
+added startup navigation guards and later native-window checks. PR #4 documents
+a Playwright 1.63 / Chrome 154 viewport-sizing diagnosis and a **test helper**
+(`scripts/archify-browser-viewport.mjs`, `Browser.setContentsSize`) with a raw
+`DIAGRAM_RAW_VIEWPORT=1` negative control. This is later, specific evidence; it
+neither rewrites the old failures as passes nor proves that every historical
+failure had one cause. The docs agent did not rerun those controls. Safari,
+Firefox, physical touch, screen readers and actual OS background visibility
+remain outside the reported coverage.
+
+The prototype badge-keyboard timeout and successful diagnostic/retry below are
+its last recorded browser evidence, not a fresh validation of `72449d6`. No
+prototype source or browser fix was made here. The old 668 combined pass, isolated
+feature passes and 69-file extraction audit retain their original scope; none is
+a new integration guarantee for the remaining unmerged branches.
+
+### Documentation checks for this refresh
+
+`python3 /tmp/check-diffcompass-docs-refresh.py` passed on the prepared five-file
+diff: 46 local Markdown links/images/heading anchors resolve, code fences balance,
+and all 160 existing assumptions across nine lists match the pre-refresh copies
+verbatim. The original 65 peer + 17 audit assumptions also match snapshot
+`39206b4`. The historical ledger after snapshot provenance is unchanged apart
+from its new current-section index link; upstream lifecycle fixture instructions
+match fetched main exactly. Eight new refresh assumptions are separate below.
+
+`git diff --check HEAD` and `git diff --check origin/main` passed. Scope checks
+confirm only README, ROADMAP, the product-roadmap pointer, RESEARCH and
+REVIEW_BRANCHES changed; Git ancestry and main/frozen-checkout identities match
+the delivery facts above. The local check log is
+`/tmp/diffcompass-docs-refresh-20261007-checks.log` (transient evidence). The 27
+external link occurrences were not blanket-checked; current release/PR metadata
+was authenticated separately. No runtime/browser suite was rerun for this
+documentation-only change.
+
+### Documentation refresh assumptions and validation boundary
+
+1. Delivery is a dated observation of fetched `origin/main`, Git ancestry and
+   authenticated release/PR metadata. Merge status is separate from publication;
+   installed-version evidence remains the earlier explicitly dated observation.
+2. Current behavior above is source-inspected and PR-attributed. This pass does
+   not claim a new runtime suite, browser session, installed-binary smoke,
+   accessibility audit or performance benchmark.
+3. Original 65 peer + 17 audit assumptions, isolated sequence 18/semantic 32,
+   decision clarifications A–F, 11 isolation decisions and 11 preload assumptions
+   remain verbatim. Newer behavior explicitly supersedes old workflow, lazy DOM,
+   explicit-only lookup, scroll-selection and fixed-sizing statements.
+4. Current local branch tips are distinct from original extraction SHAs and old
+   tested snapshots. Rebase/range-diff evidence is not fresh validation of those
+   rebased tips or a promise of conflict-free integration.
+5. Local checkout paths and `/tmp` logs/fixtures are historical or machine-local
+   aids, not portable deliverables. Old fixture reachability and temporary-file
+   availability were not rechecked; no fixture was stopped or mutated.
+6. The baseline guard caveat remains archived. Current main includes the guard;
+   its presence does not certify all renderer/browser combinations. The overall
+   impact-warning export gap and unmerged-feature provenance/support limits stay
+   explicit without becoming blockers for accurate documentation itself.
+7. Changes and the new commit belong only to `review/research-docs`. No runtime,
+   dependency, other-worktree, frozen-root, push, merge, release or installation
+   changes are part of this refresh. Inter-agent communication remains stopped.
+8. README/ROADMAP/REVIEW_BRANCHES provide current guidance; RESEARCH keeps the
+   complete dated ledger. A documentation-only merge is appropriate after content,
+   local-link, whitespace, scope and assumption-preservation checks pass; it is
+   not approval to merge the remaining feature/prototype branches.
+
+## Historical review topology: isolated branches (2026-10-04)
+
+**Historical checkpoint:** this update superseded the earlier shared-worktree
+status on 2026-10-04. The current section above now governs delivery and behavior.
 The preserved descriptions, peer checks and **all 65 peer plus 17 documentation
 assumptions** remain historical evidence; their commit/workflow statements refer
 to the original handoffs. They do not authorize using the frozen snapshot as a
@@ -26,7 +198,9 @@ entry point, not a second feature roadmap.
   consolidation, impact repair and final-commentary fixes beyond `716edb8`.
 - `review/sequence-code`, `review/decision-log` and `review/syntax-diff` are
   mutually independent feature review branches sharing only that base. No
-  feature branch imports another research feature. **Baseline compatibility
+  feature branch imports another research feature. The sequence branch now also
+  has the uncommitted three-file saved-excerpt preload follow-up below; its
+  extraction commit remains `0d22cbe`. **Baseline compatibility
   caveat:** the optional-`guidedViews` `isPlaying`/`pause` guard lives in
   sequence/code, not in the earlier map-motion-on baseline. Before merging that
   baseline without sequence/code, review/extract the guard separately for
@@ -79,6 +253,7 @@ checks establish only the tested branch/fixtures, **not merge approval**.
 | `review/diff-viewer-prototype` (`2676dea`) | `bun run verify` exit 0: 618 passed, 0 failed, 4,821 assertions, 71 files, 56.55s. | Exact 31-file extraction from `39206b4`, all under `prototypes/`; no runtime changes. Fresh browser run exit 1: smoke, quotes and gutter passed; badges timed out. **Review blocker remains.** |
 | `review/decision-log` (`d5b8bd3`) | Independent verify: 597 passed, 0 failed, 4,873 assertions, 69 files; 18 isolated Chrome checks passed, zero page errors. | Coordinator inspected logs/shared hunks: 12 scoped files, no foreign feature imports; accepted for extraction only, not merge approval. |
 | `review/sequence-code` (`0d22cbe`) | Independent `bun run verify`: 594 passed, 0 failed, 4,844 assertions, 69 files; 8 interaction groups and 4/4 framing scenarios passed. | 15 sequence-only files, 8 dedicated files exact to snapshot. App pointer recheck 15/16, plain iframe 14/16; first setup timeout plus null-`outline` page error retained. Genuine hidden-tab behavior unverified. |
+| Sequence follow-up, uncommitted above `0d22cbe` | Separate `bun run verify`: 594 passed, 0 failed, 4,850 assertions, 69 files; 9 browser groups, zero page errors, and 4 framing scenarios passed. | Eager bounded saved excerpts replace lazy DOM; 3 files only. No automatic lookup/schema/dependency change. Earlier routing/setup-outline/visibility gaps not retested or fixed. |
 | `review/syntax-diff` (`886e173`) | Independent `bun run verify`: 602 passed, 0 failed, 4,958 assertions, 71 files, 60.58s; 11/11 Chrome checks and outside-checkout compiled TS/TSX/Kotlin smoke passed. | 22 semantic-only files: 18 exact snapshot files and 4 narrow integrations. Kotlin grammar, platform/accessibility and cache/export limits retained. |
 | `review/research-docs` | Four-file extraction matched `39206b4`; original 65 peer + 17 audit assumptions preserved verbatim; full isolated handoffs reconciled. | Documentation only. Local link/whitespace and preservation checks are recorded below; no runtime/browser rerun or merge approval. |
 
@@ -87,7 +262,7 @@ No new runtime suite or browser check is attributed to the documentation agent.
 The historical **668/0** combined pass does not validate branch isolation,
 resolve browser gaps or justify merging `39206b4`.
 
-**Documentation checks on this isolated branch:**
+**Documentation checks for the committed handoff `07c193b`:**
 `python3 /tmp/diffcompass-docs-isolation-checks.py` passed: exactly the five owned
 documentation files changed; all **43 local links/anchors** resolve; whitespace
 is clean; all original 65 peer + 17 audit assumptions match `39206b4` verbatim;
@@ -179,7 +354,84 @@ F. Handoff, logs, screenshot, and temporary browser harness live under /tmp and
    are transient evidence. Production code and the original test script are
    durable in commit d5b8bd3.
 
+### Sequence saved-excerpt preloading: uncommitted follow-up
+
+The user-requested follow-up is documented by the sequence peer in
+`/tmp/dc-sequence-preload-review.md`. It is **three uncommitted files** on
+`review/sequence-code`; extraction HEAD remains
+`0d22cbece560eebdec63c944971b73aa784b05ed`. This supersedes only the original
+lazy-preview-DOM assumption (original sequence assumption 7 and isolated sequence
+assumption 7, both preserved verbatim below). It is not part of the committed
+snapshot extraction or a merge approval.
+
+Maps → existing Sequence artifact → Code steps now renders every already-supplied
+bounded saved excerpt when the pane mounts, including offscreen steps, live
+reviews and HTML exports. Reuses `materialize`, `mountExcerpt`/`mountPreview`,
+captured-source validation/bridge, authored message identity, selection and
+source return. There is no new resolver/viewer/model/workflow or automatic
+workspace definition lookup; missing/stale evidence keeps its notice and explicit
+Find definition action. Old/new side, provenance, escaping, source return,
+persistence/schema, dependencies and excerpt bounds remain unchanged.
+
+The peer changed only `public/sequence-walkthrough.js` (eager previews, obsolete
+observer/loading placeholder removed), `tests/sequence-walkthrough.test.ts`
+(last-step live/offline preload, multi-anchor cap, no mount side effects), and
+`scripts/sequence-walkthrough-browser.mjs` (preview counts before interaction).
+The documentation agent read the report; the following execution/visual results
+are peer-attributed, not rerun here:
+
+- Tests against the prior runtime reproduced the gap: **11 passed, 2 failed**,
+  `/tmp/dc-sequence-preload-before.log`; retained separately from the fix checks.
+- `bun run verify`: exit 0, **594 passed, 0 failed, 4,850 assertions, 69 files**,
+  `/tmp/dc-sequence-preload-verify.log`.
+- `node scripts/sequence-walkthrough-browser.mjs <fixture URL>`: **9 groups
+  passed, zero page errors**, including pre-interaction live/offline excerpts and
+  existing click/wheel/keyboard/source-return/Retry/motion/responsive behavior.
+  `/tmp/dc-sequence-preload-browser.log`.
+- `node scripts/sequence-framing-browser.mjs <fixture URL>`: **4 scenarios passed**,
+  desktop/narrow × workspace/Present, readability/Fit/camera invariance.
+  `/tmp/dc-sequence-preload-framing.log`.
+- `node --check public/sequence-walkthrough.js`,
+  `node --check scripts/sequence-walkthrough-browser.mjs`, `git diff --check` passed.
+- Fresh initial/Fit desktop/narrow workspace/Present images:
+  `/tmp/dc-sequence-preload-evidence/sequence-{desktop,narrow}-{workspace,present}-{initial,fit}.png`.
+  New fixture `http://127.0.0.1:47741`, root
+  `/tmp/dc-sequence-preload-fixture-20261004`, server log
+  `/tmp/dc-sequence-preload-server.log`. Its token stays in the local peer handoff.
+
+The original **app 15/16 and plain iframe 14/16** routing matrices, the first
+isolated setup timeout with `Cannot read properties of null (reading outline)`,
+and genuine background-visibility limits remain. **None were retested or claimed
+fixed in this follow-up.** Eager rendering stays within 40 steps / 8 anchors /
+20 lines or 8,000 characters per excerpt; worst-case render time was not
+benchmarked. No old fixture, installed renderer, main or frozen root was changed.
+
+Documentation-only follow-up checks passed with
+`python3 /tmp/diffcompass-docs-preload-checks.py` and `git diff --check`: four
+owned documentation files changed, all **44 local links/anchors** resolved, and
+all earlier assumption blocks plus the 11 follow-up assumptions matched their
+sources verbatim. Log: `/tmp/diffcompass-docs-preload-checks.log`. This docs update
+is uncommitted above `07c193b`; no runtime/browser rerun or release is implied.
+
+#### All 11 sequence preloading follow-up assumptions
+
+1. Scope: “preloaded” means the existing saved source evidence is immediately visible for every supported step. Unknown definitions still need an explicit lookup; no background resolver or current-source substitution was added.
+2. UX: mount has no selected message, scroll or camera side effect. Arrow reveal, scroll select-only, keyboard, standard source actions and return navigation retain their existing contracts.
+3. Provenance/source versions: old/new evidence remains validated against the captured comparison. Missing/stale evidence stays labelled. Explicit current-workspace name candidates remain candidates, not historical evidence or verified call targets.
+4. Supported cases: repeated captions, self calls, returns and multiple anchors keep stable existing IDs. Unsupported branch/loop semantics preserve the existing native fallback. Invalid/ambiguous identities are not partially projected.
+5. Performance: eager bounded DOM replaces lazy DOM. Existing limits remain 40 supported steps, 8 anchors per step, 20 lines/8000 characters per excerpt. Tests exercise the last of 40 steps and an over-limit anchor set. Worst-case wall-clock rendering performance was not benchmarked; no unbounded virtualization or indexing was added.
+6. Persistence/export: no schema or saved-session changes. Selection/scroll/camera remain frame state. HTML export uses the same eager rendering and escaped saved side-labelled excerpts; live-only controls/current transient candidates remain excluded. Markdown is unchanged.
+7. Compatibility/dependencies: installed Archify v2.0.0 remains read-only and explicitly selected with DIFFCOMPASS_ARCHIFY_DIR. No production Monaco migration, new renderer, package or lockfile change. Existing optional guided-view guards remain unchanged.
+8. Framing: initial 133% provides 12px labels in the fixture but can clip participants, requiring pan or explicit Fit. Fit is an overview and may be too small for reading. Existing width-based stacking and camera preservation remain unchanged.
+9. Verification limits: current browser checks use the existing local Chrome/Playwright runner. Genuine background visibility, touch/pen, assistive technology, other browsers and broad real repositories remain unverified. Simulated visibility is not actual background visibility.
+10. Known gaps are retained, not retested or claimed fixed here: prior app resized-Present pointer case remained 15/16; plain-iframe matrix 14/16, exact cause unresolved. The first isolated raw run also had a separate headed narrow setup timeout with `Cannot read properties of null (reading outline)`; the later successful sequential setup did not erase that result. See `/tmp/dc-sequence-isolated-review.md` for extraction evidence and `/tmp/dc-sequence-completion.md` for original bounded diagnosis. The original lazy-DOM assumption is superseded by item 5 here.
+11. Review isolation: this follow-up is uncommitted on the feature branch, not merge approval. Prior extraction commit and earlier fixture processes remain available. Coordinator and documentation owner receive verified results; owned project docs are not edited here.
+
 ### Isolated sequence/code final handoff
+
+This section records committed extraction `0d22cbe`. The later uncommitted
+preloading section above supersedes its lazy-DOM assumption only; the original
+assumption list and checks below remain historical evidence.
 
 Peer handoff `/tmp/dc-sequence-isolated-review.md` records commit
 `0d22cbece560eebdec63c944971b73aa784b05ed`, parent `8262d97`, on
@@ -538,6 +790,7 @@ pushes, releases or installation.
 
 ## Quick index
 
+- [Current delivery and verification](#current-delivery-and-verification-2026-10-07)
 - [Where call flows appear](#where-call-flows-appear)
 - [Existing features](#existing-features)
 - [Local work and release status](#local-work-and-release-status)

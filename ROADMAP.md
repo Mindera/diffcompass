@@ -1,74 +1,67 @@
 # Roadmap
 
-This is the canonical delivery roadmap, audited on 2026-10-04. The
-[README](README.md#capabilities) describes entry points and behavior;
-[RESEARCH](RESEARCH.md) records implementation evidence, verification and limits;
-[release history](docs/roadmap-history.md) preserves earlier milestones.
+This is the canonical delivery roadmap, refreshed on **2026-10-07**. The
+[README](README.md#capabilities) describes entry points, [Review branches](REVIEW_BRANCHES.md)
+identifies current review targets, and [RESEARCH](RESEARCH.md) preserves dated
+implementation evidence, verification and every recorded assumption.
+[Release history](docs/roadmap-history.md) retains earlier milestones.
 
-Status terms distinguish **released**, **local review branch**, **unreviewed
-base**, **in progress**, **prototype**, and **research-only**. Code or a passing
-test alone does not prove UI reachability, browser usability, merge approval or
-release delivery. Work is isolated into independent branches; start with
-[Review branches](REVIEW_BRANCHES.md). Historical uncommitted states and all
-assumptions remain preserved in RESEARCH.
+States distinguish **released**, **merged but unreleased**, **unmerged review
+branch**, **prototype** and **research-only**. A passing test or merge does not
+establish release delivery or coverage beyond the reported checks.
 
 ## Released baseline
 
 The latest published release is
 [v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0), published
-2026-09-29. Authenticated GitHub metadata checked on 2026-10-04 reports a normal
-release with six platform archives and checksums. Its annotated tag peels to
-`ec3c045`, also the freshly queried remote `main` commit. The installed command
-reports `2.0.0`; binaries were not replaced or exhaustively retested here.
+2026-09-29 at peeled tag commit `ec3c045`. Authenticated release metadata was
+checked on 2026-10-07. Freshly fetched `origin/main` is `e19cd7e`, ahead of that
+release. The installed command was last observed as 2.0.0 on 2026-10-04; it was
+not queried, updated or installed during this documentation refresh.
 
 | Feature already delivered by v2.0.0 | Reachable scope and boundary |
 | --- | --- |
 | Structural blast radius | Maps → Explore impact: per-symbol callers/references, files, test evidence, source/return navigation, provider/confidence/completeness and bounded counts. Static relationships are not runtime impact. |
 | Dry runs | Dry runs tab and linked Simulate actions: editable scenarios, on-demand preparation/cancellation, independent steps, persisted traces and offline export. These are simulations, not application execution. See the [specification](docs/dry-run-walkthrough-spec.md). |
 | Archify maps | Maps → Understand the change: bundled local validated interactive architecture/sequence and supported data/lifecycle maps, inspection/routes, evidenced Before/Delta/After and last-good artifacts. Mermaid remains the fallback. |
-| Native call flows | Changes/Before/After, branches, recursion and source evidence already exist. v2.0.0 routes converted simple flows to Workflow maps, leaving only unconverted flows in the native category; the local consolidation below fixes that exposure. |
+| Native call flows | Changes/Before/After, branches, recursion and source evidence already exist. v2.0.0 routes converted simple flows to Workflow maps, leaving only unconverted flows in the native category; the merged consolidation below fixes that exposure. |
 
-## Unreleased work under separate review
+## Merged on main, not yet released
 
-| State | Change | Remaining qualification |
+| Change | Delivery evidence | Scope and remaining qualification |
 | --- | --- | --- |
-| Locally committed | `716edb8`: sequence semantics-card source navigation, definition candidates and return/camera restoration. | Not on remote main or in v2.0.0. Definition name matches use available workspace source; they are not historical call evidence. |
-| Unreviewed base `8262d97` | One native Call flows view for all saved flows; stop generating Archify workflow duplicates and hide old duplicates in UI/exports without deleting saved data. | Retains native modes, source links, regeneration and linked dry runs; no replacement call-flow model. |
-| Unreviewed base `8262d97` | Shared interactive-map theme/preset/motion preferences and tooltip cleanup. | Browser storage is origin-local. Map-motion-on lacks the optional-guidedViews guard currently in sequence/code; review/extract that guard before considering this baseline without sequence. Passing unit tests do not establish browser safety. |
-| Unreviewed base `8262d97` | Bounded impact repair retains valid results and displays/persists diagnostics. | Overall repair warnings/omission reasons are not yet included in exports. Missing results are not zero impact. |
-| Unreviewed base `8262d97` | Codex final-output handling separates finished explanations from progress commentary. | Tested transport behavior is not a new guarantee for every external agent version. |
-| `review/decision-log` | Reviewer-curated Decision log inside Conversations, citing existing messages/comments/findings/activity; correction, persistence and Markdown/HTML export. | Final peer report: 161 focused tests and 18 Chrome checks passed; the 35-test approved socket-suite rerun remains separate from the historical 636-pass/24-failure run and later integrated verification below. “Recorded” remains a reviewer assertion, not proven intent. |
-| `review/sequence-code` | Code steps beside supported Archify sequences, captured excerpts, existing source/return routes and offline HTML walkthrough. | Final 160 tests/1,824 assertions, 8 main browser groups and 4 fresh framing scenarios passed; corrected visuals accepted. All 18 assumptions recorded, including readable 133.333% initial scale, actual-map-width stacking below 1040px and explicit Fit/no auto-refit. Pointer matrices remain app 15/16 and plain iframe 14/16 with unknown cause. Native Mermaid fallback, export limits and touch/assistive/background gaps remain. |
-| `review/syntax-diff` | Accepted scoped Syntax changes for TS/TSX and Kotlin, captured-tree old/new anchors, existing source navigation and explicit text-diff fallback. | All 30 assumptions, files and exact peer commands are recorded in RESEARCH. Peer focused/overlap, 11 Chrome checks and compiled smoke passed; coordinator independently passed the 20-test/194-assertion set. On-demand cache and requested-result exports only. Older Kotlin grammar limits remain; no cross-platform or release claim. |
-| `review/research-docs` | Documentation alignment across README, ROADMAP, product-roadmap and RESEARCH. | Final peer handoffs, integrated verification and all assumptions reconciled with attribution; unresolved pointer/visibility and export gaps retained. No release claim. |
+| Sequence source navigation and Code steps | [PR #3](https://github.com/rcosteira79/diffcompass/pull/3), merged 2026-10-05 as `73f9247`; includes `716edb8`, `0d22cbe` and `cc6f99b`. | Resizable/collapsible pane, eager saved excerpts, grouped anchors, source-side markers, sequential live definition candidates, exact Paths selection and source return. Scrolling now preserves selection. Offline lookup remains unavailable. |
+| Native Call flows and earlier fixes | `8262d97` is included in PR #3. | Native Call-flow consolidation, browser-origin map preferences/tooltips/motion, bounded impact repair and final-commentary filtering are merged. The optional-guidedViews guard is present on main; the old isolated-base guard warning is historical. Overall impact warnings/omission reasons still lack export parity. |
+| Lifecycle layout and map source return | [PR #4](https://github.com/rcosteira79/diffcompass/pull/4), merged 2026-10-06 as `e19cd7e`. | Branching/looping lifecycle layout preserves initial/terminal semantics, validates collisions and retains Mermaid fallback. Source return preserves camera/inspection/scroll; visible sections use consecutive numbering. |
 
-The three feature branches share only `8262d97` as their common base; they do
-not depend on one another. Documentation and the prototype are separate. The
-base itself remains unreviewed. The preceding feature check counts describe
-the preserved combined-tree evidence; fresh extracted-branch outcomes are
-recorded separately below and in RESEARCH.
-No push, merge, release or DiffCompass installation is part of this work.
+The old three-file eager-excerpt follow-up is included in the later merged
+sequence work; it is no longer an uncommitted feature. PR #3 reports a 636-test
+verify pass plus separate browser/renderer checks. PR #4 reports a 652-test verify
+pass plus captured fixture and Chrome checks. These are **PR-reported results**,
+not fresh runtime/browser runs by this documentation agent; full details and the
+earlier failed runs remain separately attributed in RESEARCH.
 
-**Historical combined-tree verification:** coordinator `bun run verify` exited 0: typecheck, **668 tests / 0 failures /
-5,216 assertions across 76 files**, then JavaScript syntax checks passed. A prior
-666-pass/1-failure run exposed a brittle bundle-source assertion; the coordinator
-changed only two test files, then passed a 28-test targeted rerun and the fresh
-full run. This automated pass does not resolve the sequence app 15/16 and plain
-iframe 14/16 pointer matrices, validate extraction, or approve merging the
-safety snapshot `39206b4`. The full evidence sequence is retained in RESEARCH.
-Coordinator-reported independent baseline verification passed 581 tests; the
-prototype branch passed 618; decision log `d5b8bd3` passed 597 plus 18 Chrome
-checks and was accepted for extraction only. Prototype `2676dea` has 31 exact
-snapshot files but its fresh browser run failed the badges keyboard check;
-focused/settled retries passed without establishing cause or a fix. This remains
-a review blocker. Sequence `0d22cbe` independently passed 594 tests, 8 browser
-groups and 4 framing scenarios; the original setup timeout with an undiagnosed
-null-`outline` page error and app 15/16 / plain 14/16 pointer gaps remain. Syntax `886e173` independently passed 602 tests,
-11 Chrome checks and host compiled smoke. No branch result approves a merge;
-see the current ledger and complete isolated handoff assumptions in RESEARCH.
-The coordinator confirmed 69 snapshot-identical single-owner files and no
-missing/extra non-doc paths; shared app/export/server/session edits still need
-integration review, without a conflict-free merge promise.
+The original app 15/16 and plain-iframe 14/16 pointer matrices and setup
+null-`outline` error/timeout remain historical evidence. Later work added startup
+guards and diagnosed a Chrome test-viewport sizing issue, with native-content
+sizing and raw negative controls. Do not promote historical failures to passes
+or generalize the later Chrome checks to Safari, Firefox, physical touch,
+assistive technology or actual OS background visibility.
+
+## Still on separate review branches
+
+| Review unit | Observed local tip / base | Verification boundary |
+| --- | --- | --- |
+| Decision log | `review/decision-log`: `e0157cf` / `e19cd7e` | Unmerged reviewer-curated evidence index in Conversations. Original `d5b8bd3` isolated run: 597 tests and 18 Chrome checks passed. Those counts are not a fresh run of this rebased tip; all 17 product assumptions and process clarifications are retained. |
+| Syntax diff | `review/syntax-diff`: `cf6b2a6` / `73f9247` | Unmerged bounded TS/TSX/Kotlin summaries, captured-source navigation and requested-cache exports. Original `886e173` isolated run: 602 tests, 11 Chrome checks and host compiled smoke passed. All original 30 plus isolated 32 assumptions remain; current-tip/release/platform validation is separate. |
+| Viewer/provider prototype | `review/diff-viewer-prototype`: `72449d6` / `e19cd7e` | Unmerged experiment, no production migration. Original `2676dea` run passed 618 tests but its badges keyboard browser check timed out; diagnostic/retry passes did not establish a clean browser result. No newer browser result was verified here. |
+| Documentation | `review/research-docs`, rebased on `e19cd7e` | Documentation-only changes over merged main. Current statuses and historical records are separate; link/consistency/preservation checks do not substitute for runtime verification. |
+
+These branches originally shared `8262d97`; their current bases now differ.
+Shared app/export/server/session integration changes still need review when
+combining unmerged features. The `39206b4` safety snapshot and earlier combined
+668-test pass are historical evidence, not an integration or release candidate.
+The old extraction audit remains recorded without asserting current merge safety.
 
 ## In progress
 

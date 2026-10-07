@@ -19,41 +19,35 @@ and complete a local or GitHub review without leaving the browser.
 
 ## Availability
 
-Status checked on 2026-10-04. The latest published release is
+Delivery status checked on **2026-10-07**. The latest published release remains
 [v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0), published
-2026-09-29. The authenticated remote `main` query and peeled tag observed earlier
-both returned `ec3c045`; the observed installed command reports `2.0.0`. Local
-`main` remains `716edb8`, with unreleased sequence-card source navigation.
-These observations are separate from the isolated review branches below; running
-a checkout does not update an installed release.
+2026-09-29 at `ec3c045`. Freshly fetched `origin/main` is `e19cd7e`.
+**Merged does not mean released:** the changes below are available from source
+on main, but are not in v2.0.0.
 
-Start with [Review branches](REVIEW_BRANCHES.md) for the clean main checkout,
-branch locations and validation status. The shared implementation was preserved
-as safety snapshot `39206b4`, **not a merge candidate**. The unreviewed common base
-`8262d97` contains only the earlier map preferences/tooltips/motion, native
-Call-flow consolidation, impact repair and final-commentary fixes. Decision log,
-sequence/code and syntax diff are committed on three independent review
-branches sharing that base, with separate branch-specific test results. Documentation and the viewer/provider prototype
-have separate branches. This documentation branch does not contain the three
-feature implementations or the prototypes described below.
+- [PR #3](https://github.com/rcosteira79/diffcompass/pull/3), merged 2026-10-05:
+  sequence source navigation and Code steps, the single native Call-flow view,
+  map preferences and motion compatibility, impact recovery and final-commentary
+  filtering. It includes the later sequence interactions and source previews.
+- [PR #4](https://github.com/rcosteira79/diffcompass/pull/4), merged 2026-10-06:
+  branching lifecycle layout and diagram source-return improvements.
+- Decision log and syntax diff remain on separate, **unmerged** review branches.
+  Monaco/language-support experiments remain an **unmerged prototype**; no
+  production renderer migration or bundled project-aware language provider is
+  approved or delivered by these changes.
 
-The capabilities below describe the released baseline unless marked otherwise.
-Impact analysis, dry runs and bundled Archify maps are already released. New
-feature descriptions record the implementations under review, not merged or
-shipped capabilities. The earlier combined `bun run verify` passed 668 automated
-tests; it does not validate branch extraction or approve a merge. Branch-specific
-results are recorded separately in RESEARCH. Corrected sequence visuals were
-accepted on the combined tree, but resized-Present pointer matrices remain
-partial (app 15/16, plain iframe 14/16), with no proven cause. The isolated
-prototype has a separate unresolved badges keyboard timeout. Before considering
-the baseline map-motion change without sequence/code, its missing optional-
-`guidedViews` guard must be reviewed/extracted separately; see the reviewer entry.
+The capabilities below describe the released baseline unless marked as merged
+or on a review branch. Impact analysis, dry runs and bundled Archify maps are
+already released. This docs branch is based on merged main, so it includes that
+inherited runtime; its own changes are documentation only. Running a checkout
+and updating an installed release are separate operations. The installation was
+last observed as 2.0.0 on 2026-10-04 and was not queried again for this refresh.
 
-The Monaco and language-support labs are isolated prototypes. No production
-renderer migration is approved, and no project-aware language-server provider is
-bundled. The local syntax-diff parsers below are a separate bounded capability.
-See the [roadmap](ROADMAP.md) for delivery state and the [research inventory](RESEARCH.md)
-for evidence, limitations and verification details.
+Use [Review branches](REVIEW_BRANCHES.md) for current review targets and the
+[roadmap](ROADMAP.md) for delivery state. [RESEARCH](RESEARCH.md) preserves dated
+assumptions, failures and reported checks, with a current-status section that
+supersedes the old shared-worktree and all-uncommitted descriptions. The earlier
+668-test combined run is historical evidence, not validation of today's branch.
 
 ## Install
 
@@ -175,7 +169,7 @@ Application appearance (`System`, `Light`, `Dark`) is independent of syntax
 themes (`GitHub`, `Vitesse`, `DiffCompass`, and Catppuccin Frappé, Macchiato,
 or Mocha).
 
-**Syntax diff (`review/syntax-diff`, unreleased):** in **Diff**, choose **Syntax
+**Syntax diff (`review/syntax-diff`, unmerged):** in **Diff**, choose **Syntax
 changes** in a changed file's header. TypeScript/TSX (`.ts`, `.mts`, `.cts`, `.tsx`)
 and Kotlin (`.kt`, `.kts`) report bounded declaration additions/removals,
 signature changes and body/initializer changes, with nested owners and
@@ -210,7 +204,7 @@ Suggestion bundles retain text, binary, added, deleted, and renamed files. They
 never commit or push automatically, and the review cannot be completed while a
 proposal is pending. The reviewed working tree stays untouched until `Apply`.
 
-**Decision log (`review/decision-log`, unreleased):** open **Conversations → Decision log → Add
+**Decision log (`review/decision-log`, unmerged):** open **Conversations → Decision log → Add
 decision**; use **Correct decision** or **Remove** on a card while the review is
 open. Manually record a decision or hypothesis (the default), citing 1–8
 existing messages, comments, findings or activity entries. “Recorded” is the
@@ -263,7 +257,7 @@ an incomplete Before view does not imply that missing connections never existed.
 | Adaptive diagrams | Evidence-gated state machines and data-model/ER views, repository observations, changed-file support, notation legends, and honest empty results when no extra diagram is justified. |
 | Explore impact | Per-symbol static caller/reference graphs, involved files, related tests, source navigation and return, with provider/confidence/completeness labels and bounded displayed counts. These are evidence of structural relationships, not runtime execution. |
 
-**Call-flow consolidation (unreviewed base `8262d97`):** open **Maps → Understand the change → Call
+**Call-flow consolidation (merged on main, unreleased):** open **Maps → Understand the change → Call
 flows**. Every saved call flow uses the existing native viewer, including Changes,
 Before and After, branching, recursion markers, source links, regeneration and
 linked dry-run scenarios. The category selector is hidden when only one view is
@@ -273,39 +267,60 @@ are hidden from Maps and exports, and new duplicates are no longer generated.
 In released v2.0.0, converted simple flows instead appear as Workflow maps and
 only unconverted flows remain in the native view.
 
-**Locally committed sequence navigation:** select an arrow/caption in an
-interactive sequence map, then **View code** in its semantics card. Validated
-anchors retain their old/new side; **Back to diagram** restores the diagram
-camera. **Find definition** reuses Symbol Peek for call-shaped captions without
-saved evidence. Results are name matches from available workspace source, not
-validated historical call targets. The synchronized sequence/code integration
-below is a separate extension on `review/sequence-code`.
+**Sequence source navigation (merged on main, unreleased):** select an
+arrow/caption in a supported sequence map, then use **View code** in Code steps.
+With the pane collapsed, the semantics card offers **Show code step**; the
+existing source-card actions remain available when a code pane cannot be mounted.
+Validated anchors retain their old/new side, and **Back to diagram** restores the
+map, path, selection and camera. Definition matches are candidates, not verified
+historical call targets.
 
-**Synchronized sequence/code (`review/sequence-code`, unreleased):** open
-**Maps → select an existing Sequence map → Code steps**.
-Supported interactive sequences show scrollable **Code steps** beside the
-existing canvas, stacked below it when the actual map width is below 1040px. The
-accepted 133.333% initial scale makes bundled 9px captions 12px and may clip
-participants from the viewport; use pan/zoom or explicit Fit to inspect the rest.
-The artifact itself is not cropped. Selecting an
-arrow/caption selects and reveals its code step; scrolling code updates selection
-without scrolling it again. Home/End/Up/Down provide keyboard navigation. Captured
-old/new excerpts are distinct from current-workspace definition candidates;
-candidates are neither persisted nor exported. HTML exports include the offline
-walkthrough and captured excerpts without lookup/source-navigation actions;
-Markdown is unchanged. Branches/loops retain the native Mermaid presentation
-without a synchronized pane. Up to 40 valid authored message IDs are supported;
-selection and scroll state are local to the live frame and do not survive reload
-or regeneration. This is a read-only excerpt integration, not a replacement diff
-viewer. Coordinator visual sign-off for the corrected layout is accepted.
-Final focused tests, eight main browser groups and four fresh framing scenarios
-passed. Separate pointer matrices remain partial: app 15/16, plain iframe 14/16.
-The resized-Present failures have no proven cause; headed passes do not establish
-immunity in other environments. Resize and Present preserve the camera instead
-of automatically refitting; Fit is an explicit overview. Real touch,
-assistive technology and genuine background-tab behavior remain unverified.
+**Sequence/code walkthrough (merged on main, unreleased):** open
+**Maps → select an existing Sequence map → Code steps**. The existing canvas
+shares the frame with a resizable, collapsible code pane, stacked below it when
+the actual map width is below 1040px. Pane dimensions use the existing map
+preferences. The readable initial 133.333% scale makes bundled 9px captions 12px;
+it may clip participants from the viewport. Pan/zoom or explicit Fit provides
+access to the rest, without deleting diagram content.
 
-**Other local fixes:** interactive maps share theme, preset and motion settings
+Clicking an arrow reveals its step. Clicking a code step selects its exact
+message or position in the existing path; an unavailable off-path selection
+shows a notice. **Scrolling preserves selection.** Step headings support
+Home/End/Up/Down; pane scrolling keys retain their normal behavior. Sizing,
+Present and source return preserve the existing camera and path.
+
+All bounded saved excerpts render at mount, including offscreen and offline
+steps. Compatible adjacent anchors are grouped without inventing missing lines
+or merging different sides/candidates. Excerpts reuse syntax highlighting,
+validated change markers and source-side/provenance labels. In a live review,
+missing call-shaped steps also trigger sequential definition lookup through the
+existing source bridge, at most one attempt per eligible step until revalidation;
+manual retry remains available. These results stay explicitly labelled name
+matches. Offline exports do not perform lookup or include transient candidates.
+
+The walkthrough supports up to 40 valid authored message IDs, 8 anchors per
+step and 20 lines/8,000 characters per excerpt. Unsupported or ambiguous diagrams
+retain their existing fallback. Selection/scroll/camera remain live-frame state;
+HTML includes saved evidence and the offline pane, while Markdown is unchanged.
+No second diff viewer, sequence renderer or resolver was introduced.
+
+The merged PRs report later walkthrough, source-return, layout and Chrome pointer
+checks. Earlier pointer-matrix failures and the setup `outline` error/timeout
+remain in the historical ledger. Later startup guards and Chrome test-viewport
+sizing are recorded separately; a later pass does not relabel an earlier failure.
+Safari/Firefox, physical touch, screen readers and actual OS background visibility
+remain unverified. See [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-07)
+for attribution and limits.
+
+**Lifecycle layouts and source return (merged on main, unreleased):** branching
+lifecycle maps retain initial/terminal states and route labelled transitions
+around obstacles, with collision validation and Mermaid fallback on genuine
+rendering failures. Interactive and native adaptive-diagram source links offer
+**Back to diagram** with prior inspection, camera and scroll context. Visible
+lifecycle sections are numbered consecutively; the [fixture instructions](#lifecycle-layout-fixture)
+cover the captured receipt-job example.
+
+**Other merged fixes (unreleased):** interactive maps share theme, preset and motion settings
 through browser storage for the same origin; motion respects reduced-motion
 preferences. Impact analysis retains valid entries during bounded repair and
 shows remaining warnings or an omission reason. Those diagnostics persist in
@@ -699,8 +714,8 @@ bun run build:release
 Pushing a matching `v*` tag runs the full suite, builds all six platform
 archives, publishes checksums, and creates a GitHub Release.
 
-See [ROADMAP.md](ROADMAP.md) for released scope, unreleased local changes,
-prototypes, and remaining review-workflow gaps. Automated unit/integration and
+See [ROADMAP.md](ROADMAP.md) for released scope, merged but unreleased changes,
+unmerged review branches, prototypes and remaining gaps. Automated unit/integration and
 source/DOM-contract tests do not establish browser usability; browser checks and
 their limits are recorded separately in [RESEARCH.md](RESEARCH.md).
 
