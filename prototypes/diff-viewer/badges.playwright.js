@@ -4,6 +4,7 @@ async (page) => {
   await page.waitForFunction(() => !!window.diffLab);
   await page.locator('#layout').selectOption('unified');
   const bubble = page.locator('.review-badge.conversation-badge[data-line="18"][data-side="new"]');
+  await bubble.waitFor({ state: 'visible' });
   await bubble.focus();
   await page.keyboard.press('Enter');
   await page.getByRole('heading', { name: 'Selected-code conversations', exact: true }).waitFor();
@@ -20,7 +21,21 @@ async (page) => {
   await page.getByRole('button', { name: '▴ Collapse unchanged lines 1–14', exact: true }).waitFor();
   await page.getByRole('button', { name: '▴ Collapse unchanged lines 23–100', exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll('[title="Double click to unfold"]')].some(e => e.textContent === '78 hidden lines'));
-  check(!await page.getByText('14 hidden lines', { exact: true }).count(), 'Collapsing the middle gap must not collapse the leading gap');
+  check(!await page.locator('#editor').getByText('14 hidden lines', { exact: true }).count(), 'Collapsing the middle gap must not collapse the leading gap');
+  // Monaco virtualizes its view zones; scrolling the outer file list cannot
+  // reveal a control above the inner editor's current viewport.
+  // Wait for re-collapse/zone anchoring before scrolling; its pending layout
+  // otherwise moves the viewport again after a premature scroll-to-top.
+  await page.evaluate(() => new Promise((resolve,reject) => {
+    let previous="",stable=0;const deadline=performance.now()+4000;
+    const sample=()=>{
+      const next=JSON.stringify([diffLab.editors.new.getScrollTop(),diffLab.editors.new.getContentHeight(),...Array.from(document.querySelectorAll('#editor .context-collapse-zone'),n=>n.getBoundingClientRect().top)]);
+      stable=next===previous?stable+1:0;previous=next;
+      if(stable>=8)return resolve();if(performance.now()>deadline)return reject(Error('Context layout did not settle'));
+      requestAnimationFrame(sample);
+    };requestAnimationFrame(sample);
+  }));
+  await page.evaluate(() => diffLab.editors.new.setScrollTop(0));
   await page.getByRole('button', { name: '▴ Collapse unchanged lines 1–14', exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll('[title="Double click to unfold"]')].some(e => e.textContent === '14 hidden lines'));
 
@@ -41,10 +56,10 @@ async (page) => {
   }
   await page.locator('#file').selectOption('notes.txt');
   await page.waitForFunction(() => diffLab.file.path === 'notes.txt');
-  check(await page.locator('.review-badge').count() === 0, 'Badges from the previous file must be disposed');
+  check(await page.locator('#editor .review-badge').count() === 0, 'Badges must stay in their own file');
   await page.locator('#file').selectOption('checkout.ts');
   await page.locator('#layout').selectOption('unified');
-  await page.locator('#collapse').click();
+  if (await page.locator('#collapse').isEnabled()) await page.locator('#collapse').click();
   await page.evaluate(() => diffLab.editors.new.setScrollTop(0));
   return { passed: true, keyboardBubble: true, priorityDetails: true, independentCollapse: true, coLocatedBadges: true, fileIsolation: true };
 }

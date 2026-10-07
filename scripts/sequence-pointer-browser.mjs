@@ -69,9 +69,9 @@ for (const headless of modes) {
             await windowSession.send('Browser.setWindowBounds',{windowId,bounds:{...windowBounds,windowState:'normal'}});
             await page.waitForTimeout(200);
           }
-          await page.goto(url);await page.locator('#archify-tab').click();await page.locator('#archify-select').selectOption('sequence-checkout-flow');
-          await page.frameLocator('iframe.archify-frame').locator('.sequence-code-pane').waitFor();
-          let iframe=page.locator('iframe.archify-frame'); let frame=await(await iframe.elementHandle()).contentFrame();
+          await page.goto(url);await page.locator('#archify-tab').click();await page.locator('[data-map-view="sequence"]').click(); await page.locator('#sequence-map-select').selectOption('sequence-checkout-flow');
+          await page.frameLocator('#sequence-map-artifacts iframe.archify-frame').locator('.sequence-code-pane').waitFor();
+          let iframe=page.locator('#sequence-map-artifacts iframe.archify-frame'); let frame=await(await iframe.elementHandle()).contentFrame();
           await frame.waitForFunction(()=>window.Archify?.view?.state?.().mode==='review');
           await iframe.scrollIntoViewIfNeeded();await page.waitForTimeout(200);
           if(plain){
@@ -83,13 +83,13 @@ for (const headless of modes) {
               clone.querySelectorAll('script').forEach(n=>n.remove());
               clone.querySelectorAll('iframe:not(.archify-frame)').forEach(n=>n.remove());
               const base=document.createElement('base');base.href=location.origin+'/';clone.querySelector('head').prepend(base);
-              const f=clone.querySelector('iframe.archify-frame');f.removeAttribute('src');
+              const f=clone.querySelector('#sequence-map-artifacts iframe.archify-frame');f.removeAttribute('src');
               f.srcdoc='<style>html,body{margin:0;height:100%;overflow:hidden;background:#eef}button{position:fixed;left:65vw;bottom:20px;width:50px;height:32px}</style><button id="plain-button" onclick="this.dataset.clicked=String(Number(this.dataset.clicked||0)+1)">Click</button>';
               return '<!doctype html>'+clone.outerHTML;
             });
             await writeFile(`${dir}/sequence-pointer-plain-${name}.html`,html);
             await page.goto('about:blank');await page.setContent(html);
-            iframe=page.locator('iframe.archify-frame');frame=await(await iframe.elementHandle()).contentFrame();await frame.locator('#plain-button').waitFor();
+            iframe=page.locator('#sequence-map-artifacts iframe.archify-frame');frame=await(await iframe.elementHandle()).contentFrame();await frame.locator('#plain-button').waitFor();
             await page.evaluate(traceInput);await frame.evaluate(traceInput);
             await iframe.evaluate(f=>f.scrollIntoView({block:'center',behavior:'instant'}));await page.waitForTimeout(200);
           }

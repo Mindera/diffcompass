@@ -197,6 +197,11 @@ test("keeps a last validated Archify artifact if regenerated delivery fails", as
   expect(initial.artifacts[0]?.comparison?.delta?.html).toContain("validated");
 
   fail = true;
+  const failedSequenceId = initial.artifacts.find(artifact => artifact.type === "sequence")!.id;
+  const scoped = await renderer.render(outline, initial.artifacts, new Set([failedSequenceId]));
+  expect(scoped.artifacts).toEqual(initial.artifacts.filter(artifact => artifact.id === failedSequenceId));
+  expect(scoped.failures.map(failure => failure.id)).toEqual([failedSequenceId]);
+  expect(scoped.failures[0]!.preservedLastValid).toBe(true);
   const retried = await renderer.render(outline, initial.artifacts);
   expect(retried.artifacts.map((artifact) => artifact.id)).toEqual(initial.artifacts.map((artifact) => artifact.id));
   expect(retried.failures).toHaveLength(4);
@@ -274,7 +279,7 @@ const lifecycleDirectory = process.env.ARCHIFY_OFFICIAL_DIR ?? process.env.DIFFC
 for (const example of lifecycleCases) test.skipIf(!lifecycleDirectory)(`validates lifecycle geometry: ${example.name}`, async () => {
   const input = lifecycleOutline(example.body);
   const original = structuredClone(input);
-  const result = await new ArchifyRenderer(lifecycleDirectory!).render(input, []);
+  const result = await new ArchifyRenderer(lifecycleDirectory!).render(input, [], new Set(["lifecycle-state-machine"]));
   expect(result.failures).toEqual([]);
   expect(result.artifacts).toHaveLength(1);
   const artifact = result.artifacts[0]!;
@@ -321,13 +326,13 @@ test("lifecycle layout failure retains the native graph and the previous validat
       return { stdout: '{"ok":true}', stderr: "" };
     };
     const renderer = new ArchifyRenderer(root, {runner});
-    const initial = await renderer.render(lifecycleOutline(lifecycleCases[0]!.body), []);
+    const initial = await renderer.render(lifecycleOutline(lifecycleCases[0]!.body), [], new Set(["lifecycle-state-machine"]));
     expect(initial.failures).toEqual([]);
     const wide = "A".repeat(100);
     const input = lifecycleOutline(`[*] --> ${wide}\n${wide} --> Done : finish\nDone --> [*]`);
     const original = structuredClone(input.stateDiagram);
     calls = 0;
-    const failed = await renderer.render(input, initial.artifacts);
+    const failed = await renderer.render(input, initial.artifacts, new Set(["lifecycle-state-machine"]));
     expect(failed.artifacts).toEqual(initial.artifacts);
     expect(failed.failures).toEqual([expect.objectContaining({id:"lifecycle-state-machine",preservedLastValid:true})]);
     expect(calls).toBe(0);

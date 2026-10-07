@@ -27,7 +27,7 @@ describe("source anchors, independent of rendered/folded rows", () => {
   test("a caret selects the entire source line for review", () => {
     expect(sourceAnchor(file, "new", selection(2, 4)).selectedText).toBe("new two");
   });
-  test("normalizes CRLF consistently with the server's source rows", () => {
+  test("legacy normalization remains available; review capture opts into exact CRLF evidence", () => {
     expect(sourceAnchor({ ...file, new: "one\r\ntwo\r\n" }, "new", selection(1, 1, 3, 1)).context).toBe("one\ntwo");
   });
   test("uses Monaco UTF-16 columns without corrupting Unicode", () => {

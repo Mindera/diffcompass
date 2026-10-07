@@ -18,8 +18,8 @@ async function newPage(width = 1440, height = 1000) {
 }
 async function open(page) {
   await page.goto(url); await page.locator('#archify-tab').click();
-  await page.locator('#archify-select').selectOption('sequence-checkout-flow');
-  const frame = await (await page.locator('iframe.archify-frame').elementHandle()).contentFrame();
+  await page.locator('[data-map-view="sequence"]').click(); await page.locator('#sequence-map-select').selectOption('sequence-checkout-flow');
+  const frame = await (await page.locator('#sequence-map-artifacts iframe.archify-frame').elementHandle()).contentFrame();
   await frame.locator('.sequence-step-code').first().waitFor();
   await frame.waitForFunction(() => Archify.view.state().mode === 'review');
   await settle(page); return frame;

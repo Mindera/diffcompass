@@ -98,10 +98,10 @@ try {
     await page.goto(url);
     await page.locator('#archify-tab').waitFor();
     await page.locator('#archify-tab').click();
-    await page.locator('#maps-understand-select').selectOption('archify');
-    await page.locator('#archify-select').selectOption('lifecycle-state-machine');
+    await page.locator('[data-map-view=adaptive]').click();
+    await page.locator('#adaptive-map-select').selectOption('lifecycle-state-machine');
     if (await page.evaluate(() => document.body.classList.contains('file-panel-open'))) await page.locator('#file-panel-close').click();
-    const iframe = page.locator('#archify-artifacts iframe.archify-frame');
+    const iframe = page.locator('#adaptive-map-artifacts iframe.archify-frame');
     const handle = await iframe.elementHandle();
     const frame = await handle.contentFrame();
     await frame.waitForFunction(() => window.Archify?.view?.state().mode === 'review');

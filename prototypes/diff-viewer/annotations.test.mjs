@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
-import { reviewMarkers, highestPriority, collapsedRegionState, commentDescription, commentSubmission } from "./annotations.mjs";
+import { reviewMarkers, highestPriority, collapsedRegionState, unchangedContextState, commentDescription, commentSubmission } from "./annotations.mjs";
+test("context controls distinguish absent, hidden, partially revealed and fully expanded regions", () => {
+  const state = ranges => ({ modelState: { collapsedRegions: ranges.map(range => ({range})) } });
+  const defaults = [[1, 15], [30, 100]];
+  expect(unchangedContextState(state([]), [])).toEqual({canExpand:false,canCollapse:false,expanded:[]});
+  expect(unchangedContextState(state(defaults), defaults)).toEqual({canExpand:true,canCollapse:false,expanded:[]});
+  expect(unchangedContextState(state([[1,5],[30,100]]), defaults)).toEqual({canExpand:true,canCollapse:true,expanded:[0]});
+  expect(unchangedContextState(state([[1,1],[30,30]]), defaults)).toEqual({canExpand:false,canCollapse:true,expanded:[0,1]});
+  for (const invalid of [{}, state([[4,1]]), {modelState:{collapsedRegions:[null]}}, {modelState:{collapsedRegions:{}}}]) {
+    expect(unchangedContextState(invalid, defaults)).toEqual({canExpand:false,canCollapse:false,expanded:[]});
+  }
+});
 const file = { path: "a.ts", old: "before\nreturn 1;", new: "after\nreturn 2;" };
 const anchor = { path: "a.ts", side: "new", line: 2, content: "return 2;" };
 const question = (id, target = anchor) => ({ id, threadId: id, role: "user", body: id, anchor: target });

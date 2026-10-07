@@ -5,10 +5,13 @@ import { createRequestHandler } from "../../src/server.ts";
 import { ReviewSession } from "../../src/session.ts";
 import { runProcess } from "../../src/process.ts";
 import { files, locate, sourceAnchor } from "./fixtures.mjs";
+import { deletedSourceAsset, withDeletedSourceBridge } from "./deleted-source-bridge.mjs";
+import { pullRequestFixture } from "./pull-request-fixture.ts";
 
 // This process only reviews its own disposable fixture, never the user's repo.
 const root = await mkdtemp(join(tmpdir(), "diffcompass-viewer-"));
 const repo = join(root, "repository");
+const showPullRequestFixture = process.env.DIFF_VIEWER_PR_EXAMPLE === "1";
 await mkdir(repo);
 const git = (...args: string[]) => runProcess(["git", ...args], repo);
 await git("init", "-b", "main");
@@ -30,12 +33,14 @@ session.outline = { title: "Diff viewer comparison", summary: "One fixture, two 
 // All explanations are fixture-authored, so starting the tour initializes its
 // selection/step state without asking any agent to generate content.
 await session.startTour({ adapterId: "attached", modelId: "Fixture responder (not AI)", includeArchitecture: false, includeCallFlows: false, includeFlows: false, includeFindings: false, includeAdaptiveDiagrams: false, includeDryRuns: false, includeArchify: false });
+if (showPullRequestFixture) session.pullRequest = pullRequestFixture(await realpath(repo), base, (await git("rev-parse", "HEAD")).stdout.trim());
 for (const body of ["Why clamp the percentage?", "Should invalid discounts be reported instead?"]) {
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   session.messages.push({ id, threadId: id, role: "user", body, createdAt, anchor: sourceAnchor(files[0], "new", { startLineNumber: 18, startColumn: 1, endLineNumber: 19, endColumn: 40 }) });
   session.messages.push({ id: crypto.randomUUID(), threadId: id, role: "agent", body: "Fixture response — not an AI answer. This seeded conversation demonstrates a source-linked discussion.", createdAt });
 }
+await session.addComment({ path: "checkout.ts", side: "new", line: 18, body: "Same-line fixture: this comment shares line 18 with the two agent questions." });
 await session.addComment({ path: "checkout.ts", side: "new", line: 19, body: "Fixture comment: should we clamp invalid discounts or report them?" });
 let answering = false;
 setInterval(async () => {
@@ -51,7 +56,8 @@ const handler = createRequestHandler(session, join(root, "sessions"));
 let vendor = resolve(import.meta.dir, "node_modules/monaco-editor/min");
 if (!await Bun.file(join(vendor, "vs/loader.js")).exists()) vendor = resolve(import.meta.dir, "../../node_modules/monaco-editor/min");
 vendor = await realpath(vendor);
-const assets = new Map(["index.html", "app.mjs", "styles.css", "current-bridge.js", "current.css", "fixtures.mjs", "annotations.mjs"].map(name => [`/prototype/${name}`, join(import.meta.dir, name)]));
+const deletedSourceBundle = withDeletedSourceBridge(await Bun.file(join(vendor, deletedSourceAsset)).text());
+const assets = new Map(["index.html", "app.mjs", "styles.css", "current-bridge.js", "current.css", "fixtures.mjs", "annotations.mjs", "deleted-selection.mjs", "deleted-annotations.mjs", "source-anchor.mjs"].map(name => [`/prototype/${name}`, join(import.meta.dir, ["app.mjs", "styles.css", "annotations.mjs", "deleted-selection.mjs", "deleted-annotations.mjs", "source-anchor.mjs"].includes(name) ? "../../public/monaco" : ".", name)]));
 const server = Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.DIFF_VIEWER_PORT || 47620), idleTimeout: 120, async fetch(request) {
   const url = new URL(request.url);
   if (request.headers.get("host") !== url.host || !["127.0.0.1", "localhost"].includes(url.hostname)) return new Response("Invalid host", { status: 403 });
@@ -61,11 +67,12 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.DIFF_
   if (url.pathname.startsWith("/vendor/")) {
     const requested = resolve(vendor, decodeURIComponent(url.pathname.slice(8)));
     if (!requested.startsWith(vendor + sep)) return new Response("Forbidden", { status: 403 });
+    if (url.pathname === `/vendor/${deletedSourceAsset}`) return new Response(deletedSourceBundle, { headers: { "content-type": "text/javascript", "cache-control": "no-store" } });
     return await Bun.file(requested).exists() ? new Response(Bun.file(requested)) : new Response("Not found", { status: 404 });
   }
   if (url.pathname === "/api/prototype") {
     if (request.headers.get("x-diffcompass-token") !== session.browserToken) return new Response("Unauthorized", { status: 401 });
-    return Response.json({ files, receiptLine, revision: session.revision, root });
+    return Response.json({ files, receiptLine, revision: session.revision, root, pullRequestFixture: showPullRequestFixture });
   }
   // The framed app probes for updates on boot. Keep that probe local and inert.
   if (url.pathname === "/api/update" && request.method === "GET") {

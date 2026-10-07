@@ -238,6 +238,7 @@ export async function loadPullRequestContext(
       line: originalLocation === undefined ? undefined : Number(originalLocation),
       side: diffSide === "LEFT" ? "old" as const : diffSide === "RIGHT" ? "new" as const : undefined,
       resolved: Boolean(item.isResolved),
+      outdated: ![item.line, item.startLine].some(line => Number.isInteger(line) && Number(line) > 0),
       comments: Array.isArray(comments) ? comments.slice(0, 50).map((comment) => {
         if (!comment || typeof comment !== "object" || Array.isArray(comment)) throw new ReviewError("GitHub returned an invalid review thread comment.");
         const entry = comment as Record<string, unknown>;

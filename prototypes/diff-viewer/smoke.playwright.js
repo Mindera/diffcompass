@@ -5,37 +5,40 @@ async (page) => {
   await page.reload();
   await page.waitForFunction(() => !!window.diffLab);
   await page.locator('#layout').selectOption('unified');
-  await page.locator('#collapse').click();
-  const gapCounts = () => page.locator('[title="Double click to unfold"]').evaluateAll(es => es.map(e => parseInt(e.textContent, 10)));
-  await page.waitForFunction(() => document.querySelectorAll('[title="Double click to unfold"]').length === 2);
+  if (await page.locator('#collapse').isEnabled()) await page.locator('#collapse').click();
+  const gapCounts = () => page.locator('#editor [title="Double click to unfold"]').evaluateAll(es => es.map(e => parseInt(e.textContent, 10)));
+  await page.waitForFunction(() => document.querySelectorAll('#editor [title="Double click to unfold"]').length === 2);
   const beforeGaps = await gapCounts();
-  await page.getByRole('button', { name: 'Click or drag to show more below', exact: true }).last().click();
-  await page.waitForFunction(n => parseInt([...document.querySelectorAll('[title="Double click to unfold"]')].at(-1).textContent, 10) === n, beforeGaps.at(-1) - 10);
+  await page.locator('#editor').getByRole('button', { name: 'Click or drag to show more below', exact: true }).last().click();
+  await page.waitForFunction(n => parseInt([...document.querySelectorAll('#editor [title="Double click to unfold"]')].at(-1).textContent, 10) === n, beforeGaps.at(-1) - 10);
   const partialGaps = await gapCounts();
   check(partialGaps[0] === beforeGaps[0], 'Expanding one gap must leave the other gap alone');
-  await page.locator('[title="Double click to unfold"]').last().dblclick();
-  await page.locator('.fold-unchanged').waitFor();
-  await page.locator('.fold-unchanged').click();
-  await page.waitForFunction(() => document.querySelectorAll('[title="Double click to unfold"]').length === 2);
+  await page.locator('#editor [title="Double click to unfold"]').last().dblclick();
+  await page.locator('#editor .fold-unchanged').waitFor();
+  await page.locator('#editor .fold-unchanged').click();
+  await page.waitForFunction(() => document.querySelectorAll('#editor [title="Double click to unfold"]').length === 2);
   check(JSON.stringify(await gapCounts()) === JSON.stringify(beforeGaps), 'Local re-collapse restores the gap');
   check(await page.getByRole('textbox', { name: 'Comment text' }).count() === 0, 'Native fold control must not open a review composer');
 
   await page.locator('#hidden').click();
-  const viewBefore = await page.evaluate(() => ({ scroll: diffLab.editors.new.getScrollTop(), selection: diffLab.editors.new.getSelection() }));
+  // Capture the actual departure: revealing hidden context can still resize
+  // the file section before the source button receives its click.
+  await page.evaluate(()=>document.querySelector("#source").addEventListener("click",()=>{window.sourceDeparture={scroll:diffLab.editors.new.getScrollTop(),selection:diffLab.editors.new.getSelection()};},{capture:true,once:true}));
   await page.locator('#source').click();
+  const viewBefore = await page.evaluate(()=>window.sourceDeparture);
   await page.locator('#source-editor .codicon-folding-expanded[title]').first().waitFor();
   await page.locator('#source-editor .codicon-folding-expanded[title]').first().click();
   await page.locator('#source-editor .codicon-folding-collapsed').first().waitFor();
   await page.locator('#return').click();
   const viewAfter = await page.evaluate(() => ({ scroll: diffLab.editors.new.getScrollTop(), selection: diffLab.editors.new.getSelection() }));
-  check(JSON.stringify(viewBefore) === JSON.stringify(viewAfter), 'View source must restore selection and scroll exactly');
-  check(await page.evaluate(() => monaco.editor.getModels().length) === 2, 'Returning disposes the source model');
+  check(JSON.stringify(viewBefore) === JSON.stringify(viewAfter), 'View source must restore selection and scroll exactly: '+JSON.stringify({viewBefore,viewAfter}));
+  check(await page.evaluate(() => monaco.editor.getModels().length === 2 * diffLab.views.size), 'Returning disposes only the temporary source model');
 
-  // A deleted-row click must not reuse a stale after-side anchor.
-  await page.locator('#collapse').click();
+  // A deleted-row selection must map to Before, never the stale After anchor.
+  if (await page.locator('#collapse').isEnabled()) await page.locator('#collapse').click();
   await page.evaluate(() => diffLab.reveal('new', 18));
   await page.locator('.modified-in-monaco-diff-editor .line-delete-selectable .view-line .char-delete').first().dblclick();
-  check(await page.evaluate(() => diffLab.anchor === null), 'Unified deleted selection must fail closed');
+  check(await page.evaluate(() => diffLab.anchor?.side === 'old' && diffLab.anchor.line === 18), 'Unified deleted selection maps to Before');
 
   const body = `Smoke comment ${Date.now()}`;
   await page.locator('#layout').selectOption('split');
@@ -52,7 +55,7 @@ async (page) => {
   const note = page.locator('.review-zone').filter({ has: page.getByText(body, { exact: true }) });
   await note.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByRole('textbox', { name: 'Comment text', exact: true }).fill(`${body} edited`);
-  await page.getByRole('button', { name: 'Save comment', exact: true }).click();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.waitForFunction(b => diffLab.session.comments.some(c => c.body === `${b} edited`), body);
   page.once('dialog', dialog => dialog.accept());
   await page.locator('.review-zone').filter({ has: page.getByText(`${body} edited`, { exact: true }) }).getByRole('button', { name: 'Delete', exact: true }).click();
@@ -76,7 +79,7 @@ async (page) => {
     await page.waitForFunction(p => diffLab.file.path === p && diffLab.diff.getLineChanges() !== null, path);
     await page.frames()[1].locator(`.diff-file[data-path="${path}"]:visible`).waitFor();
     cases.push(await page.evaluate(() => ({ path: diffLab.file.path, models: monaco.editor.getModels().length, before: diffLab.editors.old.getModel().getLineCount(), after: diffLab.editors.new.getModel().getLineCount() })));
-    check(cases.at(-1).models === 2, `Model leak after ${path}`);
+    check(cases.at(-1).models === 10, `Model leak after ${path}`);
   }
   await page.locator('#theme').click();
   check(await page.evaluate(() => document.documentElement.hasAttribute('data-light') && document.querySelector('#current').contentDocument.documentElement.dataset.theme === 'light'), 'Themes should change together');
@@ -91,7 +94,7 @@ async (page) => {
     return diffLab.editors.new.getValue() === before;
   });
   check(immutable, 'The prototype must be read-only');
-  await page.locator('#collapse').click();
+  if (await page.locator('#collapse').isEnabled()) await page.locator('#collapse').click();
   await page.evaluate(() => { diffLab.editors.new.setScrollTop(0); document.querySelector('#current').contentWindow.diffLabCurrent.show('checkout.ts'); });
   const result = { passed: true, gapExpansion: { before: beforeGaps, after: partialGaps }, exactSourceReturn: true, commentCreateEditDelete: true, questionRange: messages[0].anchor, cases, readOnly: true };
   // A browser tool may yield at the auto-accepted delete confirmation. Retain

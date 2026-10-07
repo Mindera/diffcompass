@@ -34,6 +34,22 @@ async (page) => {
       });
       check(geometry.some(g => g.text === '+') && geometry.some(g => g.text === '−'), `${layout}: both signs must render: ${JSON.stringify(geometry)}`);
       check(geometry.every(g => g.right + 3 <= g.numberLeft && !g.overlap && g.inPane), `${layout}: signs need their own space before numbers, separate from badges: ${JSON.stringify(geometry)}`);
+      const markers=await lab.evaluate(()=>[...document.querySelectorAll('.review-badge:not([hidden])')].map(badge=>{
+        const editor=document.querySelector('#layout').value==='unified'?diffLab.editors.new:diffLab.editors[badge.dataset.side];
+        const info=editor.getLayoutInfo(),bounds=editor.getDomNode().getBoundingClientRect(),rect=badge.getBoundingClientRect();
+        return {left:rect.left,right:rect.right,numbersEnd:bounds.left+info.lineNumbersLeft+info.lineNumbersWidth,codeStart:bounds.left+info.contentLeft};
+      }));
+      check(markers.length>0&&markers.every(m=>m.left>=m.numbersEnd+8&&m.right<=m.codeStart-2),`${layout}: markers need an eight-pixel gap after numbers, plus separate room beside code: ${JSON.stringify(markers)}`);
+      check(markers.some(m=>m.codeStart-m.right<=5),`${layout}: markers should sit immediately beside code`);
+      if (layout === 'unified') {
+        const width=await lab.evaluate(()=>{
+          const root=document.querySelector('#editor').getBoundingClientRect(),editor=diffLab.editors.new;
+          const rows=new Map();
+          for(const badge of document.querySelectorAll('.review-unified-badge')){const key=badge.dataset.side+':'+badge.dataset.line;rows.set(key,(rows.get(key)||0)+1);}
+          return {actual:editor.getDomNode().getBoundingClientRect().left+editor.getLayoutInfo().contentLeft-root.left,lanes:Math.max(0,...rows.values())};
+        });
+        check(width.actual<=145+22*Math.max(0,width.lanes-2),`Unified gutter must not reserve unused badge lanes or duplicate sign padding: ${JSON.stringify(width)}`);
+      }
     }
     await lab.locator('#theme').click();
     await lab.locator('#layout').selectOption('unified');
@@ -54,7 +70,19 @@ async (page) => {
         // Monaco can also mark the opposite empty model's single blank line.
         return signs.length > 0 && (!expected || signs.some(e => e.textContent === expected));
       }, expected, { timeout: 5000 });
-      await lab.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      // Moving the shared editor between file sections also resizes it. Wait
+      // for settled geometry, not the first transient signs from its old size.
+      await lab.evaluate(() => new Promise((resolve,reject) => {
+        let previous="",stable=0; const deadline=performance.now()+4000;
+        const sample=()=>{
+          const r=document.querySelector("#editor").getBoundingClientRect();
+          const value=JSON.stringify([r.x,r.y,r.width,r.height,...[...document.querySelectorAll(".review-diff-sign")].map(n=>{const b=n.getBoundingClientRect();return [n.textContent,b.x,b.y,b.width,b.height];})]);
+          stable=value===previous?stable+1:0;previous=value;
+          if(stable>=6)return resolve();
+          if(performance.now()>deadline)return reject(Error("Gutter geometry did not settle"));
+          requestAnimationFrame(sample);
+        };requestAnimationFrame(sample);
+      }));
       const gap = await lab.evaluate(() => {
         const editor = diffLab.editors.old;
         const { lineNumbersLeft, lineNumbersWidth } = editor.getLayoutInfo();
@@ -62,8 +90,8 @@ async (page) => {
         const start = editor.getDomNode().getBoundingClientRect().left + lineNumbersLeft + lineNumbersWidth - digits * editor.getOption(monaco.editor.EditorOption.fontInfo).typicalHalfwidthCharacterWidth;
         return Math.min(...[...document.querySelectorAll('.review-diff-sign')].map(e => start - e.getBoundingClientRect().right));
       });
-      check(Number.isFinite(gap) && gap >= 3, `${path}: sign must stay separate from line numbers`);
+      check(Number.isFinite(gap) && gap >= 3, `${path}: sign must stay separate from line numbers (gap=${gap})`);
     }
     return { passed: true, unified: true, split: true, signsSeparatedFromNumbersAndBadges: true, priorityBadgeClickable: true, fourDigitNumbers: true, addedDeletedPlainText: true };
-  } finally { await lab.close(); }
+  } catch (error) { await lab.screenshot({path:'/tmp/dc-gutter-active-failure.png'}); throw error; } finally { await lab.close(); }
 }

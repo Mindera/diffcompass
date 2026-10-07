@@ -420,8 +420,8 @@ export class ArchifyRenderer {
     return script;
   }
 
-  async render(outline: TourOutline, previous: ArchifyArtifact[] = []): Promise<{ artifacts: ArchifyArtifact[]; failures: ArchifyFailure[] }> {
-    const candidates = archifyCandidates(outline);
+  async render(outline: TourOutline, previous: ArchifyArtifact[] = [], onlyIds?: ReadonlySet<string>): Promise<{ artifacts: ArchifyArtifact[]; failures: ArchifyFailure[] }> {
+    const candidates = archifyCandidates(outline).filter(candidate => !onlyIds || onlyIds.has(candidate.id));
     if (candidates.length === 0) return { artifacts: [], failures: [] };
     const prior = new Map(previous.map((artifact) => [artifact.id, artifact]));
     const artifacts: ArchifyArtifact[] = [];

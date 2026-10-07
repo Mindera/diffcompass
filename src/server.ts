@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { monacoAsset } from "./monaco-assets.ts";
 import { resolve } from "node:path";
 import { withArchifyEmbedAdapter } from "./archify-embed.ts";
 import { highlightedSequenceSources } from "./sequence-walkthrough-preview.ts";
@@ -25,6 +26,7 @@ import { ProcessError } from "./process.ts";
 import { ReviewError } from "./errors.ts";
 import { exportReview, htmlHighlightGroups, type ExportFormat } from "./export.ts";
 import { loadRepositoryFile } from "./git.ts";
+import { diffSourceIdentity, diffSourceManifest, loadDiffSource } from "./diff-sources.ts";
 import { highlightGroups, SYNTAX_THEMES, type HighlightGroup, type SyntaxTheme } from "./highlight.ts";
 import { resolveSymbolPeek } from "./symbol-peek.ts";
 import { ReviewSession } from "./session.ts";
@@ -174,6 +176,10 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
 
       if (url.pathname.startsWith("/api/")) requireBrowserAuthorization(request, session);
+      const capturedComparison = request.headers.get("x-diffcompass-comparison");
+      if (url.pathname.startsWith("/api/") && !["GET", "HEAD"].includes(request.method) && capturedComparison !== null && capturedComparison !== diffSourceIdentity(session.comparison)) {
+        throw new HttpError(409, "This draft belongs to a previous comparison. Copy or cancel it before reviewing the new source.");
+      }
       if (request.method === "GET" && url.pathname.startsWith("/api/sequence-sources/")) {
         const id = decodeURIComponent(url.pathname.slice("/api/sequence-sources/".length));
         const edge = url.searchParams.get("edge");
@@ -205,6 +211,18 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         });
       }
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "GET" && url.pathname === "/api/diff/sources") {
+        const comparison = session.comparison;
+        const path = url.searchParams.get("path");
+        if (path === null) return json(diffSourceManifest(comparison));
+        const comparisonId = url.searchParams.get("comparisonId") ?? "";
+        const generation = session.currentComparisonGeneration;
+        const result = await loadDiffSource(comparison, comparisonId, path);
+        if (generation !== session.currentComparisonGeneration || comparisonId !== diffSourceIdentity(session.comparison)) {
+          throw new HttpError(409, "The comparison changed while loading source. Reload the diff.");
+        }
+        return json(result);
+      }
       if (request.method === "GET" && url.pathname === "/api/about") {
         const snapshot = session.snapshot();
         return json({
@@ -359,7 +377,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         const input = await readJsonObject(request);
         exactKeys(input, ["path", "reviewed"]);
         if (typeof input.reviewed !== "boolean") throw new HttpError(422, "reviewed must be a boolean.");
-        return json(await session.setFileReviewed(requiredString(input.path, "path", 4_096), input.reviewed));
+        return json(await session.setFileReviewed(requiredString(input.path, "path", 4_096), input.reviewed, capturedComparison ?? undefined));
       }
       if (request.method === "GET" && url.pathname === "/api/diff/search") {
         const queryValue = url.searchParams.get("q");
@@ -455,6 +473,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           expectedContent,
           replacement,
           input.endLine === undefined ? undefined : finitePositiveInteger(input.endLine, "endLine"),
+          capturedComparison ?? undefined,
         ));
       }
       if (request.method === "POST" && url.pathname === "/api/tour/start") {
@@ -484,6 +503,12 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           blastRadiusSize,
           affectedFiles: input.affectedFiles,
         }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/diagrams/retry") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["type"]);
+        enumValue(input.type, "type", ["sequence"]);
+        return json(await session.retrySequenceDiagrams());
       }
       if (request.method === "POST" && url.pathname === "/api/flows/regenerate") {
         const input = await readJsonObject(request);
@@ -576,6 +601,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
             contextPaths: input.contextPaths as string[] | undefined,
             dryRunContext,
           },
+          capturedComparison ?? undefined,
         ));
       }
       if (request.method === "POST" && url.pathname === "/api/comments") {
@@ -601,7 +627,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           ...(input.context === undefined ? {} : { context: input.context as string }),
           ...(input.stepId === undefined ? {} : { stepId: requiredString(input.stepId, "stepId", 128) }),
           body: requiredString(input.body, "body", 8_000),
-        }));
+        }, capturedComparison ?? undefined));
       }
       const commentMatch = /^\/api\/comments\/([^/]+)$/.exec(url.pathname);
       const commentPublicationMatch = /^\/api\/comments\/([^/]+)\/github$/.exec(url.pathname);
@@ -614,7 +640,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (commentMatch && request.method === "PATCH") {
         const input = await readJsonObject(request, 16 * 1024);
         exactKeys(input, ["body"]);
-        return json(await session.updateComment(decodeURIComponent(commentMatch[1]), requiredString(input.body, "body", 8_000)));
+        return json(await session.updateComment(decodeURIComponent(commentMatch[1]), requiredString(input.body, "body", 8_000), capturedComparison ?? undefined));
       }
       if (commentMatch && request.method === "DELETE") {
         return json(await session.removeComment(decodeURIComponent(commentMatch[1])));
@@ -692,6 +718,15 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         return new Response(null, { status: 302, headers: { ...SECURITY_HEADERS, location: `/t#token=${session.browserToken}${launchTourIntro ? "&intro=1" : ""}` } });
       }
 
+      const monacoFile = await monacoAsset(url.pathname);
+      if (monacoFile) {
+        const headers = new Headers({ ...SECURITY_HEADERS, "content-type": monacoFile.type });
+        if (monacoFile.frame) {
+          headers.set("x-frame-options", "SAMEORIGIN");
+          headers.set("content-security-policy", SECURITY_HEADERS["content-security-policy"].replace("frame-ancestors 'none'", "frame-ancestors 'self'") + "; worker-src 'self' blob:; font-src 'self' data:");
+        }
+        return new Response(monacoFile.body, { headers });
+      }
       const shell = url.pathname === "/" || (previewRedirect && url.pathname === "/t");
       const relative = shell ? "index.html" : url.pathname.replace(/^\//, "");
       const publicFile = PUBLIC_FILES[relative];

@@ -29,6 +29,7 @@ for entry in "${targets[@]}"; do
   bun build --compile --minify --target="$bun_target" src/cli.ts --outfile "$package_root/bin/$executable"
   cp -R skills/diffcompass "$package_root/share/diffcompass/skills/diffcompass"
   cp -R "$archify_stage" "$package_root/share/diffcompass/archify"
+  bun scripts/package-monaco.ts "$package_root/share/diffcompass/monaco"
   cp scripts/install.sh scripts/install.ps1 "$package_root/share/diffcompass/"
   cp README.md "$package_root/README.md"
   if [[ "$platform" == windows-* ]]; then

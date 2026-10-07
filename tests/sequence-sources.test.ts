@@ -78,7 +78,7 @@ test("arrow navigation resolves only trusted identities and returns to the same 
   const script = app.slice(app.indexOf("async function openSequenceSource("), app.indexOf("function renderArchify()"));
   const messages: unknown[] = [], calls: unknown[] = [];
   const frame = { isConnected: true, dataset: { archifyArtifactId: "sequence-run" }, getClientRects: () => [{}], contentWindow: { postMessage: (v: unknown) => messages.push(v) }, focus() {} };
-  const state: any = { activeTab: "archify", structuralGraphReturn: {}, sequenceSourceReturn: null, session: { comparison: { files: [] } } };
+  const state: any = { activeTab: "sequence", mapArtifactSelections: new Map(), structuralGraphReturn: {}, sequenceSourceReturn: null, session: { comparison: { files: [] } } };
   const button = { style: {}, classList: { toggle() {} }, addEventListener() {} };
   const elements = { "diff-panel": { scrollTop: 125, getBoundingClientRect: () => ({ right: 900, bottom: 700 }) }, diff: { querySelectorAll: () => [] } };
   const presentation = { suspend: (v: unknown) => calls.push(["suspend", v]), resume: (v: unknown) => calls.push(["resume", v]) };
@@ -86,7 +86,7 @@ test("arrow navigation resolves only trusted identities and returns to the same 
   const api = async () => { requests++; return sourceAvailable ? { edge: [anchor] } : {}; };
   const { open, back } = new Function("state", "elements", "window", "document", "api", "renderActiveTab", "showAnalysisFile", "diffViewRow", "toast", "openMaps", "sequenceSourceSelection", `${script}; return {open:openSequenceSource,back:returnToSequenceDiagram};`)(
     state, elements, { innerWidth: 1000, innerHeight: 800, addEventListener() {}, diffcompassMapPresentation: presentation },
-    { querySelectorAll: () => [frame], getElementById: () => button }, api, () => {}, (...args: unknown[]) => calls.push(args), () => ({ classList: { add() {} } }), () => {}, () => { state.activeTab = "archify"; }, sourceSelection,
+    { querySelectorAll: () => [frame], getElementById: () => button }, api, () => {}, (...args: unknown[]) => calls.push(args), () => ({ classList: { add() {} } }), () => {}, () => { state.activeTab = "sequence"; }, sourceSelection,
   );
   const data = { type: "diffcompass-sequence-source", edgeId: "edge", anchorIndex: 0, present: true, path: "evil.ts", startLine: 900 };
   await open({ data, source: {} });
@@ -98,14 +98,14 @@ test("arrow navigation resolves only trusted identities and returns to the same 
   expect(state.sequenceSourceReturn.frame).toBe(frame);
   elements["diff-panel"].scrollTop = 400;
   back();
-  expect(state.activeTab).toBe("archify");
-  expect(state.archifyArtifactId).toBe("sequence-run");
+  expect(state.activeTab).toBe("sequence");
+  expect(state.mapArtifactSelections.get("sequence")).toBe("sequence-run");
   expect(elements["diff-panel"].scrollTop).toBe(125);
   expect(calls).toContainEqual(["resume", frame]);
   expect(messages.at(-1)).toEqual({ type: "diffcompass-sequence-return" });
   sourceAvailable = false;
   await open({ data, source: frame.contentWindow });
-  expect(state.activeTab).toBe("archify");
+  expect(state.activeTab).toBe("sequence");
 });
 
 test("semantics card offers code and definition lookup without intercepting arrow clicks", () => {

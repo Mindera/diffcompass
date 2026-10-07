@@ -118,7 +118,7 @@ test("exhausted repair retains earlier valid results even if the last responses 
   expect(result.structuralAnalysisWarnings?.[0]).toContain("missing");
 });
 
-test("Explore impact displays escaped repair diagnostics alongside valid results", () => {
+test("Blast radius displays escaped repair diagnostics alongside valid results", () => {
   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   const source = app.slice(app.indexOf("function renderStructuralBlastRadii()"), app.indexOf("function structuralGraphElement"));
   const element = () => ({ innerHTML: "", textContent: "", value: "", disabled: false, classList: { add() {}, toggle() {} } });

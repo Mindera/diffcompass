@@ -11,8 +11,8 @@ async function open(width, height = 1100) {
   const context = await browser.newContext({ viewport: { width, height } }), page = await context.newPage();
   page.setDefaultTimeout(15000); page.on('pageerror', error => errors.push(error.message));
   await page.goto(url); await page.locator('#archify-tab').click();
-  await page.locator('#archify-select').selectOption('sequence-checkout-flow');
-  const frame = await (await page.locator('iframe.archify-frame').elementHandle()).contentFrame();
+  await page.locator('[data-map-view="sequence"]').click(); await page.locator('#sequence-map-select').selectOption('sequence-checkout-flow');
+  const frame = await (await page.locator('#sequence-map-artifacts iframe.archify-frame').elementHandle()).contentFrame();
   await frame.locator('.sequence-step-code').first().waitFor();
   await frame.waitForFunction(() => window.Archify?.view?.state?.().mode === 'review');
   await settle(page); return { context, page, frame };

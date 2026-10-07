@@ -16,8 +16,8 @@ try {
       page.on('pageerror', e => errors.push(e.message));
       await page.goto(url);
       await page.locator('#archify-tab').click();
-      await page.locator('#archify-select').selectOption('sequence-checkout-flow');
-      const iframe = page.locator('iframe.archify-frame');
+      await page.locator('[data-map-view="sequence"]').click(); await page.locator('#sequence-map-select').selectOption('sequence-checkout-flow');
+      const iframe = page.locator('#sequence-map-artifacts iframe.archify-frame');
       const frame = await (await iframe.elementHandle()).contentFrame();
       await frame.locator('.sequence-step-code').first().waitFor();
       await frame.evaluate(() => document.fonts.ready);
@@ -26,7 +26,7 @@ try {
       if (mode === 'present') {
         await frame.locator('#btn-present').click();
         await frame.waitForFunction(() => window.Archify.presentation.active());
-        await page.waitForFunction(() => document.querySelector('iframe.archify-frame').clientWidth >= innerWidth - 2);
+        await page.waitForFunction(() => document.querySelector('#sequence-map-artifacts iframe.archify-frame').clientWidth >= innerWidth - 2);
       }
       await page.waitForTimeout(250);
       const measure = () => frame.evaluate(() => {

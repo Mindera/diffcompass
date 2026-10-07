@@ -26,7 +26,7 @@ async (page) => {
     check(await card.locator('.review-quote pre').textContent() === partial.selectedText, 'Show the saved quote verbatim');
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     await page.getByRole('textbox', { name: 'Comment text', exact: true }).fill(`${prefix} edited`);
-    await page.getByRole('button', { name: 'Save comment', exact: true }).click();
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
     await page.waitForFunction(id => diffLab.session.comments.find(c => c.id === id)?.body.endsWith('edited'), partial.id);
     check(await card.locator('.review-quote pre').textContent() === partial.selectedText, 'Editing body must retain the quote');
     await page.locator('#activity').click();

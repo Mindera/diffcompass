@@ -44,31 +44,39 @@ export const files = [
   { path: "checkout.ts", language: "typescript", old, new: current },
   { path: "large.ts", language: "typescript", old: start + helpers(300) + end, new: current.replace(helpers(9), helpers(300)) },
   { path: "added.ts", language: "typescript", old: "", new: 'export function formatCurrency(value: number): string {\n  return value.toFixed(2);\n}\n' },
-  { path: "removed.ts", language: "typescript", old: 'export function legacyDiscount(value: number): number {\n  return value - 10;\n}\n', new: "" },
+  { path: "removed.ts", language: "typescript", old: [
+    'export function legacyDiscount(value: number): number {',
+    '\treturn value - 10;',
+    '}',
+    '',
+    '\tconst repeated = "café😀";',
+    '\tconst repeated = "café😀";',
+    `// Wrapped deleted source: ${'padding '.repeat(45)}WRAPPED_TARGET end`,
+    '// last line without final newline',
+  ].join('\r\n'), new: "" },
   { path: "notes.txt", language: "plaintext", old: 'Shipping policy\nLocal delivery\nInternational delivery\n', new: 'Shipping policy\nFree local delivery\nInternational delivery\n' },
 ];
+// Two real edits separated by unchanged source. Unique names keep the existing
+// receipt sequence's current-workspace name lookup unambiguous.
+const contextBefore = Array.from({length:24}, (_, i) => `/** Normalize optional display field ${i + 1}. */
+export function contextField${i + 1}(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "—";
+  }
+  return trimmed;
+}
+`).join("\n");
+export const contextFixtureFile = {
+  path: "src/context-example.ts",
+  before: contextBefore,
+  after: contextBefore.replace(/(export function contextField5\([\s\S]*?)return trimmed;/, '$1return trimmed.slice(0, 80);').replace(/(export function contextField20\([\s\S]*?)return trimmed;/, '$1return trimmed.toUpperCase();'),
+};
+
 export function locate(text, needle) {
   const index = text.split("\n").findIndex(line => line.includes(needle));
   if (index < 0) throw new Error(`Missing fixture anchor: ${needle}`);
   return index + 1;
 }
 
-// The source identity is independent of DOM rows, folding, and editor layout.
-export function sourceAnchor(file, side, selection) {
-  if (!["old", "new"].includes(side)) throw new Error("Invalid source side");
-  if (!file[side]) throw new Error("This side has no source");
-  const lines = file[side].split(/\r?\n/);
-  const start = selection.startLineNumber;
-  const rawEnd = selection.endLineNumber;
-  const firstColumn = selection.startColumn;
-  const endColumn = selection.endColumn;
-  if (![start, rawEnd, firstColumn, endColumn].every(Number.isSafeInteger) || start < 1 || rawEnd < start || rawEnd > lines.length || firstColumn < 1 || endColumn < 1 || firstColumn > lines[start - 1].length + 1 || endColumn > lines[rawEnd - 1].length + 1 || (start === rawEnd && endColumn < firstColumn)) throw new Error("Invalid source selection");
-  const end = selection.endLineNumber > start && selection.endColumn === 1 ? selection.endLineNumber - 1 : selection.endLineNumber;
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start || end > lines.length || end - start > 99) throw new Error("Select 1–100 source lines");
-  const context = lines.slice(start - 1, end).join("\n");
-  const lastColumn = end < selection.endLineNumber ? lines[end - 1].length + 1 : selection.endColumn;
-  const selectedText = start === end
-    ? lines[start - 1].slice(firstColumn - 1, lastColumn - 1)
-    : lines.slice(start - 1, end).map((line, index) => index === 0 ? line.slice(firstColumn - 1) : index === end - start ? line.slice(0, lastColumn - 1) : line).join("\n");
-  return { path: file.path, side, line: start, endLine: end, content: lines[start - 1], selectedText: selectedText.trim() ? selectedText : context, context };
-}
+export { sourceAnchor } from "../../public/monaco/source-anchor.mjs";
