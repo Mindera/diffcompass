@@ -49,6 +49,10 @@ assumptions, failures and reported checks, with a current-status section that
 supersedes the old shared-worktree and all-uncommitted descriptions. The earlier
 668-test combined run is historical evidence, not validation of today's branch.
 
+For a visual overview, download the [interactive feature guide](docs/feature-showcase.html)
+and open it in a browser. This self-contained gallery explains 16 capabilities,
+distinguishes delivery states, and includes clearly labelled archival screenshots.
+
 ## Install
 
 Releases contain self-contained binaries for macOS, Linux, and Windows on Intel
