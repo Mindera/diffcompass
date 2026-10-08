@@ -481,6 +481,18 @@ characters. Multiline replacements, empty replacements (deletions), and literal
 backticks are supported; longer Markdown fences preserve embedded fences.
 GitHub remains the final authority on diff anchors and suggestion applicability.
 
+To try the entire suggestion flow without contacting GitHub, run
+`bun run fixture:github-suggestions` and open the printed localhost URL. Each
+launch creates a fresh disposable repository on an unused port. In `src/cart.ts`,
+select After lines, choose **Suggest edit**, save a proposal, then use **Add to
+GitHub review**, **Return to local**, or **Submit suggestions**. Use **Include in
+GitHub review** in the comment sidebar to select a batch. In this offline fixture,
+**Publish suggestions** records a simulated `COMMENT` payload in the printed
+`simulated-reviews.json` file; it never sends a real GitHub request. The tour stays
+open and the ordinary sample comment stays drafted. **Apply locally** still edits
+only the disposable repository. Run `bun run test:github-suggestions-browser` for
+the automated browser regression (Chrome locally, Playwright Chromium in CI).
+
 Implementation references: [GitHub review API](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request),
 [ranged review comments](https://docs.github.com/en/rest/pulls/comments#create-a-review-comment-for-a-pull-request),
 [suggesting changes](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/commenting-on-a-pull-request),

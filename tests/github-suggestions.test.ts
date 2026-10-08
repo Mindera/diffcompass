@@ -45,7 +45,10 @@ async function fixture() {
     if (command.slice(0, 3).join(" ") === "gh repo view") value = { nameWithOwner: context.repository };
     else if (command.slice(0, 3).join(" ") === "gh pr view") value = { ...context, headRefOid: remote.head, author: { login: "author" }, statusCheckRollup: [], reviewDecision: "REVIEW_REQUIRED" };
     else if (command.includes("graphql")) value = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } };
-    else if (command.at(-1)?.includes("reviews?per_page")) value = remote.reviews;
+    else if (command.at(-1)?.includes("reviews?per_page")) {
+      const page = Number(new URL(command.at(-1)!, "https://api.github.com/").searchParams.get("page") ?? 1);
+      value = remote.reviews.slice((page - 1) * 100, page * 100);
+    }
     else if (command.includes("--method")) {
       const payload = JSON.parse(options?.input ?? "{}"); remote.posts.push(payload);
       value = { id: 77, body: payload.body, html_url: "https://github.com/test/suggestions/pull/7#pullrequestreview-77" };
@@ -298,4 +301,20 @@ test("neutral submission checks remote head at final publication and permits loc
   await session.close("cancelled", { decision: "cancel" });
   expect((await loadPersistedSession(stateFile)).status).toBe("cancelled");
   expect(remote.posts).toHaveLength(1);
+});
+
+test("neutral retry recovers its receipt beyond the first hundred GitHub reviews", async () => {
+  const { session, head, repository, defaults, remote } = await fixture();
+  remote.reviews.push(...Array.from({ length: 101 }, (_, index) => ({ id: 1000 + index, body: "Earlier review" })));
+  const { activityId } = await session.proposeInlineEdit("file.txt", "new", 5, "changed 5", "new");
+  await session.setSuggestionPublication(activityId, true, head);
+  const ids = session.comments.map(comment => comment.id);
+  remote.loseResponse = true;
+  await expect(session.publishGitHubSuggestions(head, ids)).rejects.toThrow("Response lost");
+  remote.loseResponse = false;
+  const resumed = await ReviewSession.create(repository, session.comparison.base, { ...defaults, resume: true }); sessions.push(resumed);
+  await resumed.publishGitHubSuggestions(head, ids);
+  expect(remote.posts).toHaveLength(1);
+  expect(resumed.comments[0]?.githubPublication?.reviewId).toBe("77");
+  expect(resumed.status).toBe("open");
 });
