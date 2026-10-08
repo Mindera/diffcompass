@@ -15,6 +15,13 @@ await page.route('**/api/diff/sources?*',async route=>{
   } else await new Promise(resolve=>setTimeout(resolve,180));
   await route.continue().catch(()=>{}); // Cancelling a navigation aborts its frame.
 });
+// A native PNG before the destination changes from its loading placeholder to
+// its decoded height after the phase is already visible. Include that late
+// geometry change in the unchanged per-frame position assertion below.
+await page.route('**/api/diff/image?*', async route => {
+  await new Promise(resolve => setTimeout(resolve, 450));
+  await route.continue().catch(() => {});
+});
 async function at(index,path){
   await page.waitForFunction(({index,path})=>{
     const frame=[...document.querySelectorAll('.monaco-review-frame')].find(frame=>frame.dataset.monacoPath===path&&!frame.closest('.monaco-phase-staging'));
@@ -63,6 +70,10 @@ async function transition(direction,index,path,crossPhase){
     assert.ok(shown.every(sample=>sample.files.some(file=>file.path===path&&file.ready)), 'Destination is ready on the first displayed frame');
     const tops=shown.map(sample=>sample.files.find(file=>file.path===path).top);
     assert.ok(Math.max(...tops)-Math.min(...tops)<=2,'Destination stays anchored while other files settle: '+JSON.stringify(shown));
+    if (path === 'src/receipt.ts') await page.waitForFunction(() => {
+      const img = document.querySelector('[data-diff-image-path="screens/receipt.png"] img');
+      return img?.complete && img.naturalWidth > 0;
+    });
   }
 }
 try{

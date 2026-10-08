@@ -30,12 +30,13 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   let phasePreparation = null, phaseFocusId = null;
   let phaseAnchor = null, phaseAnchorScrollTop = null, tourFocusGeneration = 0;
   let cancelFileScroll = null, cancelTourScroll = null;
-  const phaseGeometry = new ResizeObserver(() => {
+  function preservePhasePosition() {
     if (phasePositionUnchanged() && phaseAnchor.slot.isConnected && owns(phaseAnchor.path) && !snapshot().collapsed.includes(phaseAnchor.path)) {
       revealPreparedEntry(phaseAnchor);
       phaseAnchorScrollTop = scrollRoot.scrollTop;
     }
-  });
+  }
+  const phaseGeometry = new ResizeObserver(preservePhasePosition);
   function releasePhaseAnchor() { phaseAnchor = null; phaseAnchorScrollTop = null; phaseGeometry.disconnect(); }
   function onUserInteraction() { tourFocusGeneration++; cancelFileScroll?.(); cancelTourScroll?.(); releasePhaseAnchor(); }
   function phasePositionUnchanged() {
@@ -240,6 +241,10 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
           scrollRoot.scrollTop += delta;
           if (anchored) phaseAnchorScrollTop = scrollRoot.scrollTop;
         }
+        // Child iframe animation frames can run after the parent's resize
+        // observer. Correct this height change in the same task, before a
+        // paint can show the phase destination at its displaced position.
+        if (!entry.preparing) preservePhasePosition();
       },
       editorHeightLimit: heightLimit,
       fallback(path) { if (hasDraft()) return; fallbacks.add(path); render(); },
@@ -390,7 +395,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     }
   }
   const controller = {
-    owns, sync, hasDraft, setCommentsVisible,
+    owns, sync, hasDraft, setCommentsVisible, preservePhasePosition,
     updateMobileActions: mobileActions.update,
     cancelPhase,
     async preparePhase(session) {

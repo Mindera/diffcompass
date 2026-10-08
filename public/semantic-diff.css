@@ -1,0 +1,20 @@
+ .semantic-summary { padding: 16px 18px; border-bottom: 1px solid var(--border); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+ .semantic-summary p { margin: 6px 0; }
+ .semantic-summary h3 { margin: 0; font-size: 15px; }
+ .semantic-source-links { display: flex; flex-wrap: wrap; gap: 16px; }
+ .semantic-summary .semantic-scope { margin: 12px 0; font-size: 12px; }
+ .semantic-summary details { margin-top: 8px; }
+ .semantic-summary summary { width: fit-content; max-width: 100%; cursor: pointer; }
+ .semantic-code-details ol { padding-left: 22px; }
+ .semantic-code-details li { padding: 10px 0; }
+ .semantic-code-version { margin-top: 8px; }
+ .semantic-code-version > span { font-size: 11px; }
+ .semantic-summary pre { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+ .semantic-caution { color: var(--text); font-size: 12px; }
+ .semantic-evidence { font-size: 12px; }
+.semantic-summary button { text-align: left; }
+.semantic-narrative { margin: 14px 0; }
+.semantic-narrative > p { white-space: pre-line; font-size: 14px; }
+.semantic-narrative ul { padding-left: 20px; }
+.semantic-narrative li { padding: 3px 0; }
+.semantic-summary :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

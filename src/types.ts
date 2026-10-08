@@ -96,6 +96,8 @@ export interface TourStep {
 export interface TourFileChange {
   path: string;
   summary: string;
+  /** Server-stamped identity of the comparison used to generate this explanation. */
+  summarySource?: string;
 }
 
 export interface TourPhase {

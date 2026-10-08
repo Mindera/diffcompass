@@ -258,9 +258,9 @@ export async function loadDiffFileWithContext(comparison: GitComparison, path: s
   const paths = [...new Set([existing.oldPath, existing.newPath].filter((candidate): candidate is string => Boolean(candidate)))];
   let patch = await git(comparison.repositoryRoot, [
     "diff", "--no-ext-diff", "--no-color", "--find-renames", `--unified=${boundedContext}`,
-    ...(comparison.sourceKind === "tree" ? [comparison.mergeBase, comparison.sourceTree ?? "HEAD"] : [comparison.mergeBase]), "--", ...paths,
+    ...(comparison.sourceTree ? [comparison.mergeBase, comparison.sourceTree] : comparison.sourceKind === "tree" ? [comparison.mergeBase, "HEAD"] : [comparison.mergeBase]), "--", ...paths,
   ]);
-  if (!patch && existing.status === "added" && comparison.repositoryFiles.includes(path)) {
+  if (!patch && !comparison.sourceTree && comparison.sourceKind !== "tree" && existing.status === "added" && comparison.repositoryFiles.includes(path)) {
     patch = (await runProcess(
       ["git", "diff", "--no-index", "--no-color", `--unified=${boundedContext}`, "--", "/dev/null", path],
       comparison.repositoryRoot,

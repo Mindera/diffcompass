@@ -206,6 +206,9 @@ try {
   const thread = id => frame.locator(`[data-pr-thread-id="${id}"]`);
   for (const layout of ['split','unified']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
+    // A virtualized file may remount when its layout/viewport changes. Resolve
+    // the captured source target again instead of using a detached Frame handle.
+    frame = await file('src/cart.ts','new',17);
     await thread('live-after').waitFor({state:'attached'});
     assert.equal(await thread('live-after').getAttribute('data-anchor-state'),'current');
     assert.equal(await thread('live-after').getAttribute('data-line'),'17');

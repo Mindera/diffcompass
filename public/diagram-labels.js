@@ -72,7 +72,19 @@
     for (const label of [...labels].sort((a, b) => b.width * b.height - a.width * a.height)) {
       const own = byId.get(label.id);
       if (!own) continue;
+      // A four-pixel sampling grid can miss the only clear point in a narrow
+      // gap. Also try the projection of Mermaid's original caption centre.
+      let nearest, nearestDistance = Infinity;
+      for (let i = 1; i < own.points.length; i++) {
+        const a = own.points[i - 1], b = own.points[i];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((label.x - a.x) * dx + (label.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+        const point = { x: a.x + t * dx, y: a.y + t * dy };
+        const distance = Math.hypot(point.x - label.x, point.y - label.y);
+        if (distance < nearestDistance) { nearest = point; nearestDistance = distance; }
+      }
       const candidates = own.points.filter((_, i) => i > 8 && i < own.points.length - 8)
+        .concat(nearest ? [nearest] : [])
         .flatMap(anchor => [0, -16, 16, -28, 28, -40, 40].map(offset => ({
           point: { x: anchor.x, y: anchor.y + offset }, anchor,
           distance: Math.hypot(anchor.x - label.x, anchor.y - label.y) + Math.abs(offset) * 3,
@@ -85,6 +97,9 @@
         const nodeClearance = boxAt(label, point, 24);
         const nodeHits = nodes.filter(node => intersects(nodeClearance, node)).length;
         const labelHits = placed.filter(other => intersects(box, other.box)).length;
+        // Edge intersections only add to this score. Skip candidates that
+        // cannot improve it before doing the more expensive segment checks.
+        if (best && nodeHits * 100000 + labelHits * 100000 + distance >= best.score) continue;
         let edgeHits = 0;
         for (const path of paths) {
           if (path === own || !intersects(box, path.bounds)) continue;
@@ -108,8 +123,10 @@
   function resolve(labels, paths, nodes) {
     let positions = layout(labels, paths, nodes);
     let routed = paths;
+    let attempts = 0;
     const failures = positions.filter(p => p.collisions > 0);
     for (const failure of failures) {
+      if (positions.every(p => p.collisions === 0) || attempts >= 64) break;
       for (const path of routed.filter(p => p.id !== failure.id && hits(p.points, failure.box))) {
         const a = path.points[0];
         let b = path.points.at(-1);
@@ -129,6 +146,9 @@
           .concat(positions.flatMap(p => [p.box.y - 16, p.box.y + p.box.height + 16])))];
         let best;
         for (const y of lanes) {
+          // Keep dense or unsatisfiable graphs from triggering an unbounded
+          // series of complete caption-placement passes on the UI thread.
+          if (attempts++ >= 64) break;
           const span = Math.min(100, (b.x - a.x) / 3);
           const left = { x: a.x + span, y }, right = { x: b.x - span, y };
           const c1 = { x: a.x + start.x, y: a.y + start.y };
@@ -148,7 +168,9 @@
           points.push(right);
           cubic(right,c3,c4,b);
           if (nodes.some(n => hits(points,{x:n.x+0.5,y:n.y+0.5,width:n.width-1,height:n.height-1}))) continue;
-          if (positions.some(p => p.id !== path.id && hits(points,p.box))) continue;
+          // Captions move during the next placement pass. Crossing an old
+          // caption position is allowed only if the complete new layout clears
+          // every caption, other arrow and node; check that layout below.
           const coord = p => p.x + ',' + p.y;
           const candidate = { ...path, points, bounds:bounds(points),
             d:'M'+coord(a)+' C'+coord(c1)+' '+coord(c2)+' '+coord(left)+' L'+coord(right)+' C'+coord(c3)+' '+coord(c4)+' '+coord(b) };

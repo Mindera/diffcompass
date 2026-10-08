@@ -1627,7 +1627,7 @@ function renderDiffFileHeader(file, collapsed, fullContent = false) {
   return `<header class="diff-file-header">
     <span class="status mobile-file-status">${escapeHtml(file.status)}</span>
     <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
-    <span class="file-stats">${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}${reviewButton}</span>
+    <span class="file-stats">${globalThis.DiffCompassSemantic?.control(file) ?? ""}${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}${reviewButton}</span>
   </header>`;
 }
 
@@ -1682,6 +1682,7 @@ function renderDiff(files, { proposalActivityId = null } = {}) {
   if (files.some((file) => /\.md$/i.test(file.path) && state.markdownPreviewPaths?.has(file.path))) void hydrateMarkdownPreviews(files);
   renderConversationBadges();
   renderGitHubReviewThreads();
+  globalThis.DiffCompassSemantic?.hydrate();
 }
 
 function currentDiffRenderOptions() {
@@ -1875,14 +1876,25 @@ async function hydrateDiffImages(files) {
         url = URL.createObjectURL(blob);
         state.diffImageUrls.set(key, url);
       }
+      // Decode outside the document: an undecoded image can change the card's
+      // height during layout, before its load event can preserve a tour anchor.
+      const img = new Image();
+      img.alt = `${side === "old" ? "Before" : "After"}: ${path}`;
+      img.src = url;
+      let decoded = true;
+      try { await img.decode(); } catch { decoded = false; }
+      if (requestId !== state.diffImageRequestId || !figure.isConnected) return;
       const loading = figure.querySelector(".image-diff-loading");
-      if (loading) loading.outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(`${side === "old" ? "Before" : "After"}: ${path}`)}" /></a>`;
-      const img = figure.querySelector("img");
-      if (img) img.onerror = () => {
-        const link = img.closest("a");
+      if (!loading) return;
+      const link = document.createElement("a");
+      link.href = url; link.target = "_blank"; link.rel = "noopener"; link.title = "Open full-size image";
+      if (decoded) link.append(img);
+      else {
         link.className = "image-diff-loading";
         link.textContent = "Unable to display this PNG. Open the original image.";
-      };
+      }
+      loading.replaceWith(link);
+      state.monacoRenderer?.preservePhasePosition();
     } catch (error) {
       const loading = figure.querySelector(".image-diff-loading");
       if (loading) loading.textContent = error.message;

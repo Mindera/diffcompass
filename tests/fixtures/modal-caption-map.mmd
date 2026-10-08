@@ -1,0 +1,21 @@
+flowchart LR
+  component1["Challenge detail screen"]:::external
+  component2["Navigation controller"]:::external
+  component3["Modal navigator"]:::new
+  component4["Modal host"]:::new
+  component5["Task sheet"]:::touched
+  component6["Challenges navigation host"]:::touched
+  component7["Challenges screen"]:::external
+  component6 -->|registers task route with| component3
+  component6 -->|skips fades while modal shows on| component2
+  component2 -->|delegates task push and pop to| component3
+  component2 -->|keeps STARTED beneath floating task| component1
+  component4 -->|reads entries and transitions from| component3
+  component4 -->|composes and signals isExiting to| component5
+  component5 -->|reports onExitFinished to| component4
+  component4 -->|releases entries through| component3
+  component2 -->|lands finish on| component7
+  classDef new stroke:#2e7d32,stroke-width:3px
+  classDef touched stroke:#f9a825,stroke-width:3px
+  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3
+  classDef external stroke:#888888,stroke-dasharray:3 3
