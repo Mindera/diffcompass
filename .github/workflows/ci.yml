@@ -33,11 +33,15 @@ jobs:
       - run: bun run test:monaco
         env:
           MONACO_CHECK_GROUP: ${{ matrix.group }}
+      - if: matrix.group == 'local'
+        run: bun run test:github-suggestions-browser
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: monaco-browser-failure-${{ matrix.group }}
-          path: /tmp/dc-*.png
+          path: |
+            /tmp/dc-*.png
+            /tmp/diffcompass-suggestions-*.png
           if-no-files-found: ignore
   windows:
     runs-on: windows-latest

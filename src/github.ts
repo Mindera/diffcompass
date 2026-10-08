@@ -2,6 +2,7 @@ import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { ReviewError } from "./errors.ts";
 import { runProcess } from "./process.ts";
+import { githubSuggestionBody } from "./github-suggestions.ts";
 import type { LinkedIssueContext, PullRequestContext, ReviewComment, ReviewOutcome } from "./types.ts";
 
 export type GitHubRunner = typeof runProcess;
@@ -378,7 +379,7 @@ export async function updatePullRequestWorkspace(
 export async function publishPullRequestReview(
   context: PullRequestContext,
   comments: ReviewComment[],
-  outcome: Extract<ReviewOutcome, "accepted" | "feedback">,
+  outcome: Extract<ReviewOutcome, "accepted" | "feedback"> | "comment",
   intentId: string,
   runner: Runner = runProcess,
   note?: string,
@@ -386,22 +387,32 @@ export async function publishPullRequestReview(
   const latest = await loadPullRequestContext(context.sourceRepositoryRoot, String(context.number), context.refNamespace, runner);
   if (latest.headRefOid !== context.headRefOid) throw new ReviewError("The pull request changed on GitHub. Refresh it before publishing this review.");
   if (comments.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
+  if (comments.some(comment => comment.suggestion && (comment.suggestion.headOid !== context.headRefOid || comment.side !== "new" ||
+    comment.body !== githubSuggestionBody(comment.suggestion.replacement)))) throw new ReviewError("This GitHub suggestion no longer matches its saved source or replacement.");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(intentId)) throw new ReviewError("The GitHub publication intent is invalid.");
   const marker = `<!-- diffcompass:${intentId} -->`;
-  const existing = await jsonValue(runner, ["gh", "api", `repos/${context.repository}/pulls/${context.number}/reviews?per_page=100`], context.sourceRepositoryRoot);
-  if (!Array.isArray(existing)) throw new ReviewError("GitHub CLI returned an unexpected review list.");
-  const prior = existing.find((review) => review && typeof review === "object" && typeof (review as Record<string, unknown>).body === "string" && ((review as Record<string, unknown>).body as string).includes(marker)) as Record<string, unknown> | undefined;
-  if (prior) {
-    if ((typeof prior.id !== "number" && typeof prior.id !== "string") || (prior.html_url !== undefined && (typeof prior.html_url !== "string" || prior.html_url.length > 4_096))) {
-      throw new ReviewError("GitHub returned an invalid matching review.");
+  // Reviews are oldest first. A successful POST whose response was lost may
+  // be on any page; checking only the first hundred can duplicate that review.
+  for (let page = 1; ; page += 1) {
+    const existing = await jsonValue(runner, ["gh", "api", `repos/${context.repository}/pulls/${context.number}/reviews?per_page=100${page === 1 ? "" : `&page=${page}`}`], context.sourceRepositoryRoot);
+    if (!Array.isArray(existing)) throw new ReviewError("GitHub CLI returned an unexpected review list.");
+    const prior = existing.find((review) => review && typeof review === "object" && typeof (review as Record<string, unknown>).body === "string" && ((review as Record<string, unknown>).body as string).includes(marker)) as Record<string, unknown> | undefined;
+    if (prior) {
+      if ((typeof prior.id !== "number" && typeof prior.id !== "string") || (prior.html_url !== undefined && (typeof prior.html_url !== "string" || prior.html_url.length > 4_096))) {
+        throw new ReviewError("GitHub returned an invalid matching review.");
+      }
+      return { id: String(prior.id), url: prior.html_url as string | undefined };
     }
-    return { id: String(prior.id), url: prior.html_url as string | undefined };
+    if (existing.length < 100) break;
   }
   const body = {
     commit_id: context.headRefOid,
-    event: outcome === "accepted" ? "APPROVE" : "REQUEST_CHANGES",
+    event: outcome === "comment" ? "COMMENT" : outcome === "accepted" ? "APPROVE" : "REQUEST_CHANGES",
     body: `${note?.trim() ? `${note.trim()}\n\n` : ""}Submitted from DiffCompass.\n\n${marker}`,
-    comments: comments.map((comment) => ({ path: comment.path, line: comment.line, side: comment.side === "old" ? "LEFT" : "RIGHT", body: comment.body })),
+    comments: comments.map((comment) => ({ path: comment.path, line: comment.suggestion ? comment.endLine ?? comment.line : comment.line,
+      side: comment.side === "old" ? "LEFT" : "RIGHT", body: comment.body,
+      ...(comment.suggestion && comment.endLine !== undefined && comment.endLine > comment.line ? { start_line: comment.line, start_side: "RIGHT" } : {}),
+    })),
   };
   const response = await jsonCommand(runner, ["gh", "api", `repos/${context.repository}/pulls/${context.number}/reviews`, "--method", "POST", "--input", "-"], context.sourceRepositoryRoot, JSON.stringify(body));
   if (typeof response.id !== "number" && typeof response.id !== "string") throw new ReviewError("GitHub did not return a review identifier after publication.");

@@ -55,6 +55,7 @@ try {
     return session;
   }, token);
   const samplePr = Boolean(snapshot.pullRequestFixture);
+  const applyLabel = samplePr ? 'Apply locally' : 'Apply';
   if (samplePr) assert.equal(snapshot.fixtureCanApplySuggestions, true);
   await page.reload();
   await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
@@ -163,17 +164,17 @@ try {
   assert.equal(await readFile(join(repository,path),'utf8'),original,'Escape does not reject or modify the source');
   for(const theme of ['dark','light']) {
     await page.evaluate(theme=>reviewTourTheme.set(theme),theme);
-    await card.getByRole('button',{name:'Apply',exact:true}).click();await confirmation.waitFor();
+    await card.getByRole('button',{name:applyLabel,exact:true}).click();await confirmation.waitFor();
     assert.match(await confirmation.textContent(),samplePr?/disposable test repository/:/Local only/);
     assert.match(await confirmation.textContent(),/src\/cart.ts/);
     await page.screenshot({path:`/tmp/dc-themed-apply-${theme}-${samplePr?'pr':'local'}.png`});
     await confirmation.getByRole('button',{name:'Cancel',exact:true}).click();
-    await frame.waitForFunction(()=>document.activeElement?.textContent==='Apply'&&!document.activeElement.disabled);
+    await frame.waitForFunction(label=>document.activeElement?.textContent===label&&!document.activeElement.disabled,applyLabel);
   }
   await page.evaluate(()=>reviewTourTheme.set('dark'));
   {
     const applied=page.waitForResponse(r=>new URL(r.url()).pathname===`/api/activities/${result.activityId}`&&r.status()===200);
-    await card.getByRole('button',{name:'Apply',exact:true}).click();
+    await card.getByRole('button',{name:applyLabel,exact:true}).click();
     await confirmation.getByRole('button',{name:'Apply change',exact:true}).click(); await applied;
     assert.ok((await readFile(join(repository,path),'utf8')).includes(replacement));
     await file(replacement);

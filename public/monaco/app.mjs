@@ -899,9 +899,18 @@ function drawAnnotations() {
       const content = document.createElement("div"); content.className = "review-card-content";
       const description = commentDescription(entry);
       const label = document.createElement("small"); label.textContent = `${description.kind} · ${description.location}${entry.githubUnavailableReason ? " · Local only" : ""}`;
-      const text = document.createElement("p"); text.className = "review-comment-body"; text.textContent = entry.body;
+      const text = document.createElement(entry.suggestion ? "pre" : "p"); text.className = entry.suggestion ? "review-suggestion-code" : "review-comment-body";
+      text.textContent = entry.suggestion ? entry.suggestion.replacement || "Delete the selected lines." : entry.body;
       const actions = document.createElement("div"); actions.className = "review-comment-actions";
-      actions.append(button("Edit", () => openComposer("comment", entry)), button("Delete", async () => {
+      if (entry.suggestion) {
+        const note = document.createElement("p"); note.textContent = entry.githubPublished ? "Published in the GitHub review." : entry.githubUnavailableReason || "Queued locally. Publishes only when you confirm the GitHub review.";
+        content.append(note);
+        if (!entry.githubPublished) {
+          const restore = button("Return to local", () => host.suggestionAction(entry.suggestion.activityId, "return-local"));
+          const submit = button("Submit suggestions", () => host.suggestionAction(entry.suggestion.activityId, "submit-suggestions"));
+          restore.disabled = submit.disabled = session.status !== "open"; actions.append(restore, submit);
+        }
+      } else actions.append(button("Edit", () => openComposer("comment", entry)), button("Delete", async () => {
         if (!confirm(production ? "Delete this comment?" : "Delete this fixture comment?")) return;
         session = await api(`/api/comments/${entry.id}`, {}, "DELETE"); await refresh();
       }));
@@ -1025,16 +1034,23 @@ function drawSuggestions(commentBadgeLines) {
           }).catch(() => { /* Plain source remains readable if tokenization fails. */ });
         }
         const actions = document.createElement("div"); actions.className = "review-comment-actions";
-        const apply = button("Apply", () => act("apply")), reject = button("Reject", () => act("reject"));
+        const apply = button(session.pullRequest ? "Apply locally" : "Apply", () => act("apply")), reject = button("Reject", () => act("reject"));
+        const queue = button("Add to GitHub review", () => act("queue-github"));
+        const queueDisabled = !current || !activity.canQueueGitHubSuggestion || session.status !== "open" || Boolean(session.pullRequestFixture);
+        queue.disabled = queueDisabled;
         const fixtureReadOnly = session.pullRequestFixture && !session.fixtureCanApplySuggestions;
         const applyDisabled = !current || session.status !== "open" || Boolean(fixtureReadOnly);
         apply.disabled = applyDisabled; reject.disabled = session.status !== "open";
         if (fixtureReadOnly) apply.title = "Applying changes is disabled in this synthetic PR fixture";
         async function act(action) {
           const focused = document.activeElement;
-          apply.disabled = reject.disabled = true; host.retainViewport?.();
+          apply.disabled = reject.disabled = queue.disabled = true; host.retainViewport?.();
           try { await host.suggestionAction(activity.id, action); }
-          finally { if (node.isConnected) { apply.disabled = applyDisabled; reject.disabled = session.status !== "open"; focused?.focus({ preventScroll: true }); } }
+          finally { if (node.isConnected) { apply.disabled = applyDisabled; reject.disabled = session.status !== "open"; queue.disabled = queueDisabled; focused?.focus({ preventScroll: true }); } }
+        }
+        if (session.pullRequest) {
+          actions.append(queue);
+          const note = document.createElement("small"); note.textContent = activity.githubSuggestionUnavailableReason || "Queues a suggestion locally; publishes only after review confirmation."; content.append(note);
         }
         actions.append(apply, reject); content.append(actions); node.append(content);
         const card = zone("new", current ? edit.afterLine : 0, node, 130, content);
