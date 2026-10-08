@@ -459,9 +459,15 @@ to the isolated PR workspace. Queueing, returning, and publishing a suggestion
 do not apply the replacement, commit it, or push it.
 
 The final GitHub review confirmation names the number of selected suggestions
-and the PR head. Publishing uses the existing approval/request-changes review;
-there is no separate comment-only publication action. Selected suggestions become
-GitHub suggestion blocks that the PR author can apply on GitHub. The saved source,
+and the PR head. **Submit suggestions** publishes only selected queued suggestions
+as a neutral GitHub `COMMENT` review, without approving or requesting changes,
+including when you own the PR. Other review comments remain in the draft and the
+local tour stays open. Published suggestions retain a receipt, cannot be returned
+to local or republished, and are excluded from later submissions. You can submit
+another suggestion batch or finish with a separate review decision. Suggestions
+can also be included in the existing approval/request-changes review.
+Selected suggestions become GitHub suggestion blocks that the PR author can
+apply on GitHub. The saved source,
 replacement, selected comment IDs, and PR head are checked before publication;
 retries reuse the durable review intent to avoid duplicating a submitted review.
 

@@ -1620,7 +1620,7 @@ function renderDiffFileHeader(file, collapsed, fullContent = false) {
     ? `<span class="proposal-label">pending suggestion</span>${state.proposalActivityId ? ` · <button class="text-button" type="button" data-preview-activity-action="apply" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}"${state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions ? ' disabled title="Applying changes is disabled in this synthetic PR fixture"' : ""}>${state.session.pullRequest ? "Apply locally" : "Apply"}</button> · <button class="text-button danger" type="button" data-preview-activity-action="reject" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Reject</button> · ` : " · "}`
     : `${markdownControl}${fullContent || isPngDiff(file) || markdownPreview ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}`;
   const previewActivity = state.proposalPreview && state.session.activities?.find(activity => activity.id === state.proposalActivityId);
-  if (previewActivity?.changeStatus === "queued") reviewControls = `<span class="proposal-label">${previewActivity.githubSuggestionPublished ? "published GitHub suggestion" : "queued locally for GitHub"}</span>${reviewIsOpen() ? ` · <button class="text-button" type="button" data-preview-activity-action="return-local" data-preview-activity-id="${escapeHtml(previewActivity.id)}">Return to local</button>` : ""} · `;
+  if (previewActivity?.changeStatus === "queued") reviewControls = `<span class="proposal-label">${previewActivity.githubSuggestionPublished ? "published GitHub suggestion" : "queued locally for GitHub"}</span>${reviewIsOpen() && !previewActivity.githubSuggestionPublished ? ` · <button class="text-button" type="button" data-preview-activity-action="return-local" data-preview-activity-id="${escapeHtml(previewActivity.id)}">Return to local</button> · <button class="text-button" type="button" data-preview-activity-action="submit-suggestions" data-preview-activity-id="${escapeHtml(previewActivity.id)}">Submit suggestions</button>` : ""} · `;
   const paging = !fullContent && file._page && file._page.totalRows > file._page.limit
     ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · `
     : "";
@@ -2593,7 +2593,7 @@ function renderComments() {
     inline.innerHTML = `<header class="inline-comment-header${confirmingDelete ? " confirming-delete" : ""}"><span class="inline-comment-label">${escapeHtml(commentScope(comment))}</span><span class="inline-comment-actions${confirmingDelete ? " confirming" : ""}">${confirmingDelete
       ? `<span>Delete this comment?</span><button type="button" data-inline-comment-action="cancel-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Cancel</button><button class="danger confirm" type="button" data-inline-comment-action="confirm-delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`
       : `<button type="button" data-inline-comment-action="edit" data-inline-comment-id="${escapeHtml(comment.id)}">Edit</button><button class="danger" type="button" data-inline-comment-action="delete" data-inline-comment-id="${escapeHtml(comment.id)}">Delete</button>`}</span></header><button class="inline-comment-button" type="button" data-inline-comment-id="${escapeHtml(comment.id)}" aria-label="${escapeHtml(`Edit comment at ${commentLocation(comment)}`)}"><p>${renderInlineMarkdown(comment.body)}</p></button>${selectedQuotation(comment)}`;
-    if (comment.suggestion) inline.innerHTML = `<header><span>${escapeHtml(commentScope(comment))}</span><button type="button" data-inline-comment-action="return-local" data-inline-comment-id="${escapeHtml(comment.id)}">Return to local</button></header>${suggestionCommentMarkup(comment)}`;
+    if (comment.suggestion) inline.innerHTML = `<header><span>${escapeHtml(commentScope(comment))}</span>${!comment.githubPublished && reviewIsOpen() ? `<button type="button" data-inline-comment-action="return-local" data-inline-comment-id="${escapeHtml(comment.id)}">Return to local</button><button type="button" data-inline-comment-action="submit-suggestions" data-inline-comment-id="${escapeHtml(comment.id)}">Submit suggestions</button>` : ""}</header>${suggestionCommentMarkup(comment)}`;
     const splitRow = row.closest(".split-row");
     if (row.classList.contains("image-diff-side")) {
       row.querySelector("figcaption").insertAdjacentElement("beforebegin", inline);
@@ -2617,9 +2617,9 @@ function renderComments() {
       ${selectedQuotation(comment)}
       ${comment.scope === "stop" ? `<div class="comment-anchor-context">Scoped to stop <strong>${escapeHtml(commentScope(comment).replace("Tour stop comment · ", ""))}</strong></div>` : ""}
       ${comment.suggestion ? suggestionCommentMarkup(comment) : `<p>${renderInlineMarkdown(comment.body)}</p>`}
-      ${comment.githubUnavailableReason ? `<small class="muted">${escapeHtml(comment.githubUnavailableReason)}</small>` : state.session.pullRequest && ((comment.scope ?? "line") === "line" || comment.suggestion) && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
+      ${comment.githubUnavailableReason ? `<small class="muted">${escapeHtml(comment.githubUnavailableReason)}</small>` : !comment.githubPublished && state.session.pullRequest && ((comment.scope ?? "line") === "line" || comment.suggestion) && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
-        ${comment.suggestion ? `<button class="text-button" data-action="return-local" type="button"${disabled}>Return to local</button>` : state.deletingCommentId === comment.id
+        ${comment.suggestion ? (comment.githubPublished ? "" : `<button class="text-button" data-action="return-local" type="button"${disabled}>Return to local</button><button class="text-button" data-action="submit-suggestions" type="button"${disabled}>Submit suggestions</button>`) : state.deletingCommentId === comment.id
           ? `<span class="delete-confirmation">Delete this comment?</span><button class="text-button" data-action="cancel-delete" type="button">Cancel</button><button class="text-button danger" data-action="confirm-delete" type="button">Delete</button>`
           : `<button class="text-button" data-action="edit" type="button"${disabled}>Edit</button><button class="text-button danger" data-action="delete" type="button"${disabled}>Delete</button>`}
       </div>
@@ -4300,7 +4300,7 @@ function renderActivities() {
     <section class="activity-verification"><div class="eyebrow">Verification</div>${activity.verification ? renderMarkdown(activity.verification) : `<p class="muted">${reviewerAuthored ? "No automated verification was run for this reviewer-authored suggestion." : activity.status === "verified" ? "No verification summary was supplied." : "Waiting for the agent's explicit refresh."}</p>`}</section>
     ${activity.changeStatus ? `<div class="activity-actions">
       ${activity.changeStatus === "pending" ? `<button type="button" class="button primary" data-activity-action="apply"${state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions ? ' disabled title="Applying changes is disabled in this synthetic PR fixture"' : ""}>${state.session.pullRequest ? "Apply locally" : "Apply"}</button><button type="button" class="button secondary" data-activity-action="reject">Reject</button>${reviewerAuthored && state.session.pullRequest ? `<button type="button" class="button secondary" data-activity-action="queue-github"${!activity.canQueueGitHubSuggestion || state.session.pullRequestFixture ? " disabled" : ""}>Add to GitHub review</button><span class="muted">${escapeHtml(activity.githubSuggestionUnavailableReason || "Queues a suggestion locally; publishes only after review confirmation.")}</span>` : ""}` : ""}
-      ${activity.changeStatus === "queued" ? `<span class="muted">${activity.githubSuggestionPublished ? "Published in the GitHub review. Files are unchanged." : "Queued in the local GitHub review draft. Files are unchanged."}</span>${reviewIsOpen() ? '<button type="button" class="button secondary" data-activity-action="return-local">Return to local</button>' : ""}` : ""}
+      ${activity.changeStatus === "queued" ? `<span class="muted">${activity.githubSuggestionPublished ? "Published in the GitHub review. Files are unchanged." : "Queued in the local GitHub review draft. Files are unchanged."}</span>${reviewIsOpen() && !activity.githubSuggestionPublished ? '<button type="button" class="button secondary" data-activity-action="return-local">Return to local</button><button type="button" class="button primary" data-activity-action="submit-suggestions">Submit suggestions</button>' : ""}` : ""}
       ${activity.changeStatus === "applied" ? `<button type="button" class="button secondary" data-activity-action="undo"${state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions ? ' disabled title="Source changes are disabled in this synthetic PR fixture"' : ""}>Undo</button>` : ""}
       ${["rejected", "undone"].includes(activity.changeStatus) ? `<span class="muted">${activity.changeStatus === "rejected" ? "Proposal discarded" : "Applied change undone"}</span>` : ""}
     </div>` : ""}
@@ -6100,6 +6100,7 @@ function confirmActivityAction(activity, action) {
 
 async function performActivityAction(activityId, action) {
   if (state.busy || !reviewIsOpen()) return;
+  if (action === "submit-suggestions") return openGitHubReviewConfirmation("comment", "comment");
   if (["queue-github", "return-local"].includes(action)) return changeSuggestionPublication(activityId, action === "queue-github");
   if (state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions && action !== "reject") return toast("Source changes are disabled in this synthetic PR fixture.");
   const activity = state.session.activities?.find((candidate) => candidate.id === activityId);
@@ -6505,6 +6506,7 @@ async function askAgent(event) {
 let pendingGitHubReview = null;
 
 function githubReviewActionLabel(decision) {
+  if (decision === "comment") return "Submit suggestions";
   if (decision === "request-changes") return "Request changes";
   if (decision === "approve-with-comments") return "Approve with comments";
   return "Approve";
@@ -6519,12 +6521,14 @@ function updateGitHubReviewConfirmation() {
   elements["github-review-confirmation-title"].textContent = approveTourOnly ? "Approve this tour?" : decision === "approve" ? "Approve this pull request?" : `${action}?`;
   elements["github-review-confirmation-description"].textContent = approveTourOnly
     ? "This closes the local tour as approved. It does not create a GitHub review."
-    : "This creates a GitHub review for the exact pull request revision shown below.";
+    : decision === "comment" ? "This publishes the selected suggestions as a neutral GitHub comment review. It does not approve or request changes. The local tour stays open."
+      : "This creates a GitHub review for the exact pull request revision shown below.";
   elements["github-review-confirmation-action"].textContent = action;
   elements["github-review-confirmation-note"].textContent = approveTourOnly
     ? "The pull request will not be approved or changed on GitHub."
-    : "This action publishes a GitHub review. Only the selected inline comments are included.";
-  elements["submit-github-review-confirmation"].textContent = approveTourOnly ? "Approve tour" : decision === "request-changes" ? "Publish request changes" : decision === "approve-with-comments" ? "Publish approval with comments" : "Publish approval";
+    : decision === "comment" ? "Only the selected suggestions are published. Other review comments stay in your draft. No code is applied or pushed."
+      : "This action publishes a GitHub review. Only the selected inline comments are included.";
+  elements["submit-github-review-confirmation"].textContent = approveTourOnly ? "Approve tour" : decision === "comment" ? "Publish suggestions" : decision === "request-changes" ? "Publish request changes" : decision === "approve-with-comments" ? "Publish approval with comments" : "Publish approval";
   elements["submit-github-review-confirmation"].classList.toggle("danger", decision === "request-changes");
   elements["submit-github-review-confirmation"].classList.toggle("primary", decision !== "request-changes");
 }
@@ -6532,19 +6536,32 @@ function updateGitHubReviewConfirmation() {
 function openGitHubReviewConfirmation(outcome, decision, note) {
   const pullRequest = state.session?.pullRequest;
   if (!pullRequest) return;
-  const selectedComments = state.session.comments.filter((comment) => comment.publishToGitHub);
+  const selectedComments = state.session.comments.filter((comment) => comment.publishToGitHub && !comment.githubPublished && (decision !== "comment" || comment.suggestion));
   const selected = selectedComments.length;
   const suggestions = selectedComments.filter(comment => comment.suggestion).length;
+  if (decision === "comment" && !suggestions) return toast("Select at least one queued suggestion to submit.");
   pendingGitHubReview = { outcome, decision, note, headOid: pullRequest.headRefOid, commentIds: selectedComments.map(comment => comment.id) };
   elements["github-review-confirmation-pull-request"].textContent = `${pullRequest.repository}#${pullRequest.number}`;
   elements["github-review-confirmation-revision"].textContent = pullRequest.headRefOid.slice(0, 8);
   elements["github-review-confirmation-comments"].textContent = `${selected} selected inline ${selected === 1 ? "comment" : "comments"}${suggestions ? `, including ${suggestions} GitHub ${suggestions === 1 ? "suggestion" : "suggestions"}` : ""}`;
   elements["github-review-confirmation-local-only"].checked = false;
-  elements["github-review-confirmation-local-only"].disabled = decision === "request-changes";
-  elements["github-review-confirmation-local-only-option"].hidden = decision === "request-changes";
+  elements["github-review-confirmation-local-only"].disabled = decision === "request-changes" || decision === "comment";
+  elements["github-review-confirmation-local-only-option"].hidden = decision === "request-changes" || decision === "comment";
   updateGitHubReviewConfirmation();
   elements["github-review-confirmation-dialog"].showModal();
   elements["submit-github-review-confirmation"].focus();
+}
+
+async function submitGitHubSuggestions(confirmation) {
+  if (state.busy || !reviewIsOpen()) return;
+  setBusy(true, "Publishing suggestions to GitHub…");
+  try {
+    const previous = state.session;
+    state.session = await api("/api/github/suggestions", { method: "POST", body: JSON.stringify({ headOid: confirmation.headOid, commentIds: confirmation.commentIds, confirm: true }) });
+    renderSessionUpdate(previous);
+    toast("Suggestions published. The tour remains open; no approval or change request was submitted.");
+  } catch (error) { toast(error.message); }
+  finally { setBusy(false); }
 }
 
 async function close(outcome, decision = outcome === "accepted" ? "approve" : outcome === "feedback" ? "request-changes" : "cancel", note, confirmed = false, publishToGitHub = true, confirmation) {
@@ -6898,6 +6915,7 @@ elements["github-review-confirmation-form"].addEventListener("submit", (event) =
   const publishToGitHub = !((pending.decision === "approve" || pending.decision === "approve-with-comments") && elements["github-review-confirmation-local-only"].checked);
   pendingGitHubReview = null;
   elements["github-review-confirmation-dialog"].close();
+  if (pending.decision === "comment") return void submitGitHubSuggestions(pending);
   void close(pending.outcome, pending.decision, pending.note, true, publishToGitHub, pending);
 });
 elements["symbol-peek-open"]?.addEventListener("click", () => {
@@ -7927,6 +7945,7 @@ elements.diff.addEventListener("click", (event) => {
     const comment = state.session.comments.find((candidate) => candidate.id === inlineAction.dataset.inlineCommentId);
     if (!comment || !reviewIsOpen()) return;
     const action = inlineAction.dataset.inlineCommentAction;
+    if (action === "submit-suggestions") return openGitHubReviewConfirmation("comment", "comment");
     if (action === "return-local") return void changeSuggestionPublication(comment.suggestion.activityId, false);
     if (action === "edit") void openCommentEditor(comment);
     else if (action === "delete") { state.deletingCommentId = comment.id; renderComments(); }
@@ -8142,6 +8161,7 @@ elements["comment-list"].addEventListener("click", async (event) => {
     return showChangedFile(comment.path, comment.line, comment.side);
   }
   if (!reviewIsOpen()) return;
+  if (action === "submit-suggestions") return openGitHubReviewConfirmation("comment", "comment");
   if (action === "return-local") return void changeSuggestionPublication(comment.suggestion.activityId, false);
   if (action === "edit") return void openCommentEditor(comment);
   if (action === "delete") { state.deletingCommentId = comment.id; renderComments(); }

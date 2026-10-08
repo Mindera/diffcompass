@@ -603,6 +603,8 @@ export interface ReviewComment {
   publishToGitHub?: boolean;
   /** Native replacement, queued locally until the GitHub review is confirmed. */
   suggestion?: { activityId: string; headOid: string; sourceTree: string; replacement: string };
+  /** Receipt for a neutral suggestion review; retained while the tour stays open. */
+  githubPublication?: { reviewId: string; url?: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -700,7 +702,7 @@ export interface PullRequestContext {
   };
   publication?: {
     intentId: string;
-    outcome: Extract<ReviewOutcome, "accepted" | "feedback">;
+    outcome: Extract<ReviewOutcome, "accepted" | "feedback"> | "comment";
     decision?: ReviewDecisionIntent;
     note?: string;
     commentIds: string[];

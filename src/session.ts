@@ -257,7 +257,7 @@ export class ReviewSession {
   }
 
   private ensurePublicationMutable(): void {
-    if (this.pullRequest?.publication) {
+    if (this.pullRequest?.publication && !(this.pullRequest.publication.outcome === "comment" && this.pullRequest.publication.status === "published")) {
       throw new ReviewError("A GitHub review publication has started. Retry it before changing comments or refreshing the pull request.");
     }
   }
@@ -397,6 +397,7 @@ export class ReviewSession {
 
   private githubCommentUnavailableReason(comment: ReviewComment): string | undefined {
     if (!this.pullRequest) return undefined;
+    if (comment.githubPublication) return undefined;
     if (comment.suggestion) {
       if (comment.status !== "active" || comment.suggestion.headOid !== this.pullRequest.headRefOid || comment.suggestion.sourceTree !== this.fullComparison.sourceTree) return "Local only · this suggestion belongs to an outdated PR source. Return it to local and create a new suggestion.";
       return undefined;
@@ -443,6 +444,7 @@ export class ReviewSession {
       const activity = this.activities.find(candidate => candidate.id === id);
       if (!activity?.inlineEdit || !activity.proposal || activity.source !== "reviewer" || activity.modelId !== "inline-edit") throw new ReviewError("This activity has no saved reviewer suggestion.");
       const existing = this.comments.find(comment => comment.suggestion?.activityId === id);
+      if (existing?.githubPublication) throw new ReviewError("This suggestion was published on GitHub. Create a new suggestion to propose another change.");
       if (queue && activity.changeStatus === "queued" && existing) return this.snapshot();
       if (queue) {
         if (expectedHeadOid !== this.pullRequest?.headRefOid) throw new ReviewError("The suggestion draft is for an outdated pull request revision.");
@@ -1035,14 +1037,14 @@ export class ReviewSession {
       currentStepIndex: this.currentStepIndex,
       comments: this.comments.map(comment => {
         const githubUnavailableReason = this.githubCommentUnavailableReason(comment);
-        const githubPublished = this.pullRequest?.publication?.status === "published" && this.pullRequest.publication.commentIds.includes(comment.id);
+        const githubPublished = Boolean(comment.githubPublication || (this.pullRequest?.publication?.status === "published" && this.pullRequest.publication.commentIds.includes(comment.id)));
         return { ...comment, ...(githubUnavailableReason ? { githubUnavailableReason } : {}), ...(comment.suggestion ? { githubPublished } : {}) };
       }),
       messages: this.messages,
       activities: this.activities.map(({ proposal, ...activity }) => {
         const inlineSuggestions = reviewerSuggestions({ ...activity, proposal });
         const githubSuggestionUnavailableReason = this.githubSuggestionUnavailableReason(activity);
-        const githubSuggestionPublished = this.comments.some(comment => comment.suggestion?.activityId === activity.id && this.pullRequest?.publication?.status === "published" && this.pullRequest.publication.commentIds.includes(comment.id));
+        const githubSuggestionPublished = this.comments.some(comment => comment.suggestion?.activityId === activity.id && (comment.githubPublication || (this.pullRequest?.publication?.status === "published" && this.pullRequest.publication.commentIds.includes(comment.id))));
         return { ...activity, hasProposal: Boolean(proposal), ...(inlineSuggestions.length ? { inlineSuggestions } : {}),
           ...(this.pullRequest && activity.source === "reviewer" ? { githubSuggestionUnavailableReason, canQueueGitHubSuggestion: !githubSuggestionUnavailableReason, githubSuggestionPublished } : {}) };
       }),
@@ -2179,6 +2181,7 @@ export class ReviewSession {
       if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
       const comment = this.comments.find((candidate) => candidate.id === id);
       if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
+      if (comment.githubPublication) throw new ReviewError("This suggestion has already been published to GitHub.");
       if (publish && /\.png$/i.test(comment.path)) throw new ReviewError("Image comments remain local because GitHub cannot publish them as inline diff comments.");
       if (publish && comment.scope && comment.scope !== "line" && !comment.suggestion) throw new ReviewError("Range and stop comments remain local; they are not included in GitHub reviews.");
       if (publish && comment.suggestion && this.githubCommentUnavailableReason(comment)) throw new ReviewError(this.githubCommentUnavailableReason(comment)!);
@@ -2556,26 +2559,66 @@ export class ReviewSession {
     }
   }
 
+  private async validateQueuedGitHubSuggestions(selected: ReviewComment[]): Promise<void> {
+    for (const comment of selected.filter(comment => comment.suggestion)) {
+      const activity = this.activities.find(activity => activity.id === comment.suggestion!.activityId);
+      const edit = activity?.inlineEdit;
+      if (!edit || activity?.changeStatus !== "queued" || comment.githubPublication || comment.path !== edit.path || comment.side !== "new" || comment.line !== edit.line || comment.endLine !== edit.endLine ||
+        comment.context !== edit.expectedContent || comment.suggestion!.headOid !== edit.headOid || comment.suggestion!.sourceTree !== edit.sourceTree ||
+        comment.suggestion!.replacement !== edit.replacement || comment.body !== githubSuggestionBody(edit.replacement)) throw new ReviewError("The queued suggestion no longer matches its saved replacement. Return it to local and try again.");
+      await this.validateGitHubSuggestion(edit);
+    }
+  }
+
+  async publishGitHubSuggestions(expectedHeadOid: string, expectedCommentIds: string[]) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
+      if (expectedHeadOid !== this.pullRequest.headRefOid) throw new ReviewError("The confirmation is for an outdated pull request revision. Refresh and confirm again.");
+      const existing = this.pullRequest.publication;
+      const confirmedIds = [...expectedCommentIds].sort();
+      if (existing?.outcome === "comment" && existing.status === "published" && JSON.stringify(existing.commentIds) === JSON.stringify(confirmedIds)) {
+        await this.persist(); // Also recovers a previously failed local receipt save.
+        return this.snapshot();
+      }
+      if (existing && !(existing.outcome === "comment" && existing.status === "published") &&
+        (existing.outcome !== "comment" || JSON.stringify(existing.commentIds) !== JSON.stringify(confirmedIds))) throw new ReviewError("A different GitHub review publication is already pending. Retry the original selection before changing it.");
+      const selected = this.comments.filter(comment => comment.suggestion && comment.publishToGitHub && !comment.githubPublication);
+      const commentIds = selected.map(comment => comment.id).sort();
+      if (!selected.length) throw new ReviewError("Select at least one queued suggestion to submit.");
+      if (JSON.stringify(commentIds) !== JSON.stringify(confirmedIds)) throw new ReviewError("The selected suggestions changed. Open the GitHub confirmation again.");
+      if (selected.some(comment => comment.status !== "active")) throw new ReviewError("Outdated suggestions cannot be published to GitHub.");
+      await this.validateQueuedGitHubSuggestions(selected);
+      const publication = existing?.outcome === "comment" && existing.status === "pending" ? existing
+        : { intentId: crypto.randomUUID(), outcome: "comment" as const, commentIds, status: "pending" as const };
+      this.pullRequest.publication = publication;
+      this.revision += 1;
+      await this.persist();
+      const result = await publishGitHubReview(this.pullRequest, selected, "comment", publication.intentId, this.defaults.githubRunner);
+      this.pullRequest.publication = { ...publication, status: "published", reviewId: result.id, url: result.url };
+      for (const comment of selected) {
+        comment.githubPublication = { reviewId: result.id, ...(result.url ? { url: result.url } : {}) };
+        comment.publishToGitHub = false;
+      }
+      this.revision += 1;
+      await this.persist();
+      return this.snapshot();
+    });
+  }
+
   async publishPullRequest(outcome: Extract<ReviewOutcome, "accepted" | "feedback">, expectedHeadOid: string, decision: ReviewDecisionIntent = outcome === "accepted" ? "approve" : "request-changes", note?: string, expectedCommentIds?: string[]) {
     return this.serializeMutation(async () => {
       this.ensureOpen();
       if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
       if (expectedHeadOid !== this.pullRequest.headRefOid) throw new ReviewError("The confirmation is for an outdated pull request revision. Refresh and confirm again.");
       this.assertCloseAllowed(outcome, decision);
-      const selected = this.comments.filter((comment) => comment.publishToGitHub);
+      const selected = this.comments.filter((comment) => comment.publishToGitHub && !comment.githubPublication);
       if (expectedCommentIds && JSON.stringify([...expectedCommentIds].sort()) !== JSON.stringify(selected.map(comment => comment.id).sort())) throw new ReviewError("The selected review comments changed. Open the GitHub confirmation again.");
       if (selected.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
-      for (const comment of selected.filter(comment => comment.suggestion)) {
-        const activity = this.activities.find(activity => activity.id === comment.suggestion!.activityId);
-        const edit = activity?.inlineEdit;
-        if (!edit || activity?.changeStatus !== "queued" || comment.path !== edit.path || comment.side !== "new" || comment.line !== edit.line || comment.endLine !== edit.endLine ||
-          comment.context !== edit.expectedContent || comment.suggestion!.headOid !== edit.headOid || comment.suggestion!.sourceTree !== edit.sourceTree ||
-          comment.suggestion!.replacement !== edit.replacement || comment.body !== githubSuggestionBody(edit.replacement)) throw new ReviewError("The queued suggestion no longer matches its saved replacement. Return it to local and try again.");
-        await this.validateGitHubSuggestion(edit);
-      }
+      await this.validateQueuedGitHubSuggestions(selected);
       if (selected.some(comment => !this.githubCommentInDiff(comment.path, comment.side, comment.line))) throw new ReviewError("Comments outside the GitHub diff must remain local. Unselect them before publishing.");
       const commentIds = selected.map((comment) => comment.id).sort();
-      const existing = this.pullRequest.publication;
+      const existing = this.pullRequest.publication?.outcome === "comment" && this.pullRequest.publication.status === "published" ? undefined : this.pullRequest.publication;
       const existingDecision = existing?.decision ?? (existing?.outcome === "accepted" ? "approve" : "request-changes");
       if (existing && (existing.outcome !== outcome || existingDecision !== decision || existing.note !== note || JSON.stringify(existing.commentIds) !== JSON.stringify(commentIds))) {
         throw new ReviewError("A different GitHub review publication is already pending. Retry the original selection before changing it.");
@@ -2609,7 +2652,7 @@ export class ReviewSession {
     if (this.pullRequest && outcome !== "cancelled" && !options.githubPublished && !options.localOnly) {
       throw new ReviewError("Publish the pull request review to GitHub, or cancel the local review.");
     }
-    if (this.pullRequest?.publication && outcome === "cancelled") {
+    if (this.pullRequest?.publication && outcome === "cancelled" && !(this.pullRequest.publication.outcome === "comment" && this.pullRequest.publication.status === "published")) {
       throw new ReviewError("A GitHub review publication has already started. Retry it to determine the final remote result.");
     }
     this.assertCloseAllowed(outcome, options.decision, options.localOnly);

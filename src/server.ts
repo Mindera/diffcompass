@@ -695,6 +695,14 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         exactKeys(input, ["body"]);
         return json(await session.saveReviewerTask(requiredString(input.body, "body", 100_000)));
       }
+      if (request.method === "POST" && url.pathname === "/api/github/suggestions") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["headOid", "confirm", "commentIds"]);
+        if (input.confirm !== true) throw new HttpError(422, "Publishing GitHub suggestions requires explicit confirmation.");
+        if (!Array.isArray(input.commentIds) || !input.commentIds.length || input.commentIds.length > 10_000 ||
+          input.commentIds.some(id => typeof id !== "string" || !id || id.length > 128) || new Set(input.commentIds).size !== input.commentIds.length) throw new HttpError(422, "commentIds must contain unique suggestion identifiers.");
+        return json(await session.publishGitHubSuggestions(requiredString(input.headOid, "headOid", 64), input.commentIds as string[]));
+      }
       if (request.method === "POST" && url.pathname === "/api/github/review") {
         const input = await readJsonObject(request);
         exactKeys(input, ["outcome", "headOid", "confirm", "decision", "note", "commentIds"]);

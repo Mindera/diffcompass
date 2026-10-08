@@ -19,6 +19,11 @@ test("Activity distinguishes queueing from local Apply and preserves a return pa
   expect(elements["activity-list"]!.innerHTML).toContain('data-activity-action="return-local">Return to local');
   expect(elements["activity-list"]!.innerHTML).not.toContain('data-activity-action="apply"');
   expect(elements["activity-list"]!.innerHTML).not.toContain('data-activity-action="reject"');
+  expect(elements["activity-list"]!.innerHTML).toContain('data-activity-action="submit-suggestions">Submit suggestions');
+  Object.assign(activity, { githubSuggestionPublished: true });
+  render();
+  expect(elements["activity-list"]!.innerHTML).not.toContain('data-activity-action="submit-suggestions"');
+  expect(elements["activity-list"]!.innerHTML).not.toContain('data-activity-action="return-local"');
 });
 
 test("queue and return buttons only update the local draft API, never publish or apply", async () => {
@@ -99,4 +104,49 @@ test("queued replacements render as escaped code with deletion wording", () => {
   expect(render({ suggestion: { replacement: '<script>alert("x")</script>' } })).toContain("&lt;script>");
   expect(render({ suggestion: { replacement: "" } })).toContain("Delete the selected lines");
   expect(render({ suggestion: { replacement: "new" }, githubPublished: true })).toContain("Published in the GitHub review");
+});
+
+test("neutral confirmation names COMMENT behavior, includes only suggestions and hides local approval", () => {
+  const source = app.slice(app.indexOf("let pendingGitHubReview = null;"), app.indexOf("async function close("));
+  const elements = new Proxy({} as any, { get(target, id) { return target[id] ??= { textContent: "", classList: { toggle() {} }, showModal() {}, focus() {} }; } });
+  const state = { session: { pullRequest: { repository: "test/repo", number: 7, headRefOid: "head" }, comments: [
+    { id: "native", suggestion: {}, publishToGitHub: true }, { id: "plain", publishToGitHub: true }, { id: "published", suggestion: {}, githubPublished: true, publishToGitHub: false },
+  ] } };
+  const ui = new Function("state", "elements", `${source}; return { open: openGitHubReviewConfirmation, pending: () => pendingGitHubReview };`)(state, elements);
+  ui.open("comment", "comment");
+  expect(elements["github-review-confirmation-title"].textContent).toBe("Submit suggestions?");
+  expect(elements["github-review-confirmation-description"].textContent).toContain("does not approve or request changes");
+  expect(elements["github-review-confirmation-description"].textContent).toContain("tour stays open");
+  expect(elements["submit-github-review-confirmation"].textContent).toBe("Publish suggestions");
+  expect(elements["github-review-confirmation-local-only-option"].hidden).toBe(true);
+  expect(ui.pending()).toMatchObject({ headOid: "head", commentIds: ["native"] });
+});
+
+test("confirmed neutral submission sends the captured selection and keeps the tour open", async () => {
+  const source = app.slice(app.indexOf("async function submitGitHubSuggestions("), app.indexOf("async function close("));
+  const state = { busy: false, session: { status: "open", pullRequest: { headRefOid: "changed-head" } } };
+  const requests: any[] = [], notices: string[] = [];
+  const submit = new Function("state", "reviewIsOpen", "setBusy", "api", "renderSessionUpdate", "toast", `${source}; return submitGitHubSuggestions;`)(
+    state, () => true, () => {}, async (path: string, init: any) => { requests.push({ path, body: JSON.parse(init.body) }); return state.session; }, () => {}, (notice: string) => notices.push(notice),
+  );
+  await submit({ headOid: "captured-head", commentIds: ["native"] });
+  expect(requests).toEqual([{ path: "/api/github/suggestions", body: { headOid: "captured-head", commentIds: ["native"], confirm: true } }]);
+  expect(state.session.status).toBe("open");
+  expect(notices[0]).toContain("no approval or change request");
+});
+
+test("the final confirmation dispatches neutral publishing without closing the review", () => {
+  const source = app.slice(app.indexOf('elements["cancel-github-review-confirmation"].addEventListener'), app.indexOf('elements["symbol-peek-open"]?.addEventListener'));
+  let handler!: (event: { preventDefault(): void }) => void;
+  let submitted: unknown, closed = false;
+  new Function("elements", "close", "updateGitHubReviewConfirmation", "submitGitHubSuggestions", `let pendingGitHubReview = { outcome: "comment", decision: "comment", headOid: "head", commentIds: ["native"] }; ${source}`)({
+    "cancel-github-review-confirmation": { addEventListener() {} },
+    "github-review-confirmation-dialog": { addEventListener() {}, close() { closed = true; } },
+    "github-review-confirmation-local-only": { checked: false, addEventListener() {} },
+    "github-review-confirmation-form": { addEventListener: (_: string, callback: typeof handler) => { handler = callback; } },
+  }, () => { throw new Error("Neutral submission must not close the review."); }, () => {}, (confirmation: unknown) => { submitted = confirmation; });
+  expect(submitted).toBeUndefined();
+  handler({ preventDefault() {} });
+  expect(closed).toBe(true);
+  expect(submitted).toMatchObject({ decision: "comment", headOid: "head", commentIds: ["native"] });
 });

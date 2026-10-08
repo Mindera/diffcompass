@@ -390,6 +390,8 @@ function validComment(value: unknown): boolean {
       nonEmptyString(value.suggestion.activityId, 128) && /^[0-9a-f]{40,64}$/.test(String(value.suggestion.headOid)) &&
       /^[0-9a-f]{40,64}$/.test(String(value.suggestion.sourceTree)) && boundedString(value.suggestion.replacement, 8_000) &&
       typeof value.context === "string" && value.body === githubSuggestionBody(value.suggestion.replacement))) &&
+    (value.githubPublication === undefined || (record(value.githubPublication) && value.suggestion !== undefined && value.publishToGitHub === false &&
+      nonEmptyString(value.githubPublication.reviewId, 500) && (value.githubPublication.url === undefined || nonEmptyString(value.githubPublication.url, 4_096)))) &&
     nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
 }
 
@@ -471,7 +473,9 @@ function validPullRequest(value: unknown): boolean {
     (value.providerScope === undefined || (record(value.providerScope) && ["same-repository-closing-issue", "none", "inaccessible", "unavailable"].includes(String(value.providerScope.linkedIssue)) && value.providerScope.relatedResources === "not-requested")) &&
     nonEmptyString(value.updatedAt, 64) &&
     (publication === undefined || (record(publication) && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(publication.intentId)) &&
-      ["accepted", "feedback"].includes(String(publication.outcome)) && Array.isArray(publication.commentIds) && publication.commentIds.length <= 10_000 &&
+      ["accepted", "feedback", "comment"].includes(String(publication.outcome)) && Array.isArray(publication.commentIds) && publication.commentIds.length <= 10_000 &&
+      (publication.outcome !== "comment" || (publication.commentIds.length > 0 && publication.decision === undefined &&
+        (publication.status !== "published" || nonEmptyString(publication.reviewId, 500)))) &&
       (publication.decision === undefined || ["approve", "approve-with-comments", "request-changes", "cancel"].includes(String(publication.decision))) &&
       (publication.note === undefined || nonEmptyString(publication.note, 8_000)) &&
       publication.commentIds.every((id) => nonEmptyString(id, 128)) && new Set(publication.commentIds).size === publication.commentIds.length &&
@@ -773,7 +777,9 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.pullRequest !== undefined && (
       session.repositoryRoot !== session.pullRequest.workspaceRoot || session.base !== session.pullRequest.baseRefOid ||
       (session.pullRequest.publication !== undefined && session.pullRequest.publication.commentIds.some((id) =>
-        !session.comments!.some((comment) => comment.id === id && comment.publishToGitHub === true))) ||
+        !session.comments!.some((comment) => comment.id === id && (comment.publishToGitHub === true ||
+          (session.pullRequest!.publication!.outcome === "comment" && session.pullRequest!.publication!.status === "published" && comment.githubPublication?.reviewId === session.pullRequest!.publication!.reviewId))))) ||
+      (session.pullRequest.publication?.outcome === "comment" && session.pullRequest.publication.commentIds.some(id => !session.comments!.some(comment => comment.id === id && comment.suggestion))) ||
       (["accepted", "feedback"].includes(session.status ?? "") &&
         (session.pullRequest.publication?.status !== "published" || session.pullRequest.publication.outcome !== session.status))
     )) ||

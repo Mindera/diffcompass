@@ -221,3 +221,81 @@ test("failed draft persistence rolls queue and return mutations back together", 
   expect(session.comments).toHaveLength(1);
   internals.persist = persist;
 });
+
+test("neutral submission confirms a COMMENT review, keeps other drafts and the tour open, and never applies code", async () => {
+  const { session, head, repository, content, stateFile, remote } = await fixture();
+  const draft = await session.proposeInlineEdit("file.txt", "new", 5, "changed 5", "new");
+  await session.setSuggestionPublication(draft.activityId, true, head);
+  await session.addComment({ path: "file.txt", side: "new", line: 6, body: "Keep this in the separate review." });
+  await session.proposeInlineEdit("file.txt", "new", 25, "changed 25", "local-only edit");
+  const ids = [session.comments.find(comment => comment.suggestion)!.id];
+  const fetch = createRequestHandler(session, join(repository, "unused"));
+  const request = (body: unknown) => fetch(new Request("http://127.0.0.1/api/github/suggestions", { method: "POST", headers: {
+    "content-type": "application/json", origin: "http://127.0.0.1", "x-diffcompass-token": session.browserToken,
+  }, body: JSON.stringify(body) }));
+  expect((await request({ confirm: false, headOid: head, commentIds: ids })).status).toBe(422);
+  expect((await request({ confirm: true, headOid: head, commentIds: [] })).status).toBe(422);
+  expect((await request({ confirm: true, headOid: head, commentIds: [...ids, ...ids] })).status).toBe(422);
+  expect((await request({ confirm: true, headOid: "a".repeat(40), commentIds: ids })).status).toBe(409);
+  expect((await request({ confirm: true, headOid: head, commentIds: session.comments.map(comment => comment.id) })).status).toBe(409);
+  expect(remote.posts).toHaveLength(0);
+  expect((await request({ confirm: true, headOid: head, commentIds: ids })).status).toBe(200);
+  expect(remote.posts).toHaveLength(1);
+  expect(remote.posts[0]).toMatchObject({ event: "COMMENT", commit_id: head, comments: [{ body: githubSuggestionBody("new"), path: "file.txt", line: 5, side: "RIGHT" }] });
+  expect(remote.posts[0].comments).toHaveLength(1);
+  expect(session.status).toBe("open");
+  expect(session.comments.find(comment => !comment.suggestion)?.publishToGitHub).toBe(true);
+  expect(session.comments.find(comment => comment.suggestion)).toMatchObject({ publishToGitHub: false, githubPublication: { reviewId: "77" } });
+  expect(session.snapshot().activities.find(activity => activity.id === draft.activityId)?.githubSuggestionPublished).toBe(true);
+  expect(await readFile(join(repository, "file.txt"), "utf8")).toBe(content);
+  expect((await loadPersistedSession(stateFile)).status).toBe("open");
+  expect((await request({ confirm: true, headOid: head, commentIds: ids })).status).toBe(200);
+  expect(remote.posts).toHaveLength(1);
+  await expect(session.setSuggestionPublication(draft.activityId, false)).rejects.toThrow("published on GitHub");
+  await expect(session.setCommentPublication(ids[0]!, true)).rejects.toThrow("already been published");
+});
+
+test("neutral publication survives a lost response and reload, then supports another batch and a later verdict", async () => {
+  const { session, head, repository, defaults, stateFile, remote } = await fixture();
+  const { activityId } = await session.proposeInlineEdit("file.txt", "new", 5, "changed 5", "first");
+  await session.setSuggestionPublication(activityId, true, head);
+  const ids = session.comments.map(comment => comment.id);
+  remote.loseResponse = true;
+  await expect(session.publishGitHubSuggestions(head, ids)).rejects.toThrow("Response lost");
+  expect((await loadPersistedSession(stateFile)).pullRequest?.publication).toMatchObject({ outcome: "comment", status: "pending" });
+  await expect(session.setSuggestionPublication(activityId, false)).rejects.toThrow("publication has started");
+  await expect(session.publishPullRequest("feedback", head)).rejects.toThrow("different GitHub review publication");
+  const resumed = await ReviewSession.create(repository, session.comparison.base, { ...defaults, resume: true }); sessions.push(resumed);
+  await resumed.publishGitHubSuggestions(head, ids);
+  expect(remote.posts).toHaveLength(1);
+  expect(resumed.status).toBe("open");
+  await resumed.publishGitHubSuggestions(head, ids);
+  expect(remote.posts).toHaveLength(1);
+  remote.loseResponse = false;
+  const second = await resumed.proposeInlineEdit("file.txt", "new", 6, "changed 6", "second");
+  await resumed.setSuggestionPublication(second.activityId, true, head);
+  await resumed.publishGitHubSuggestions(head, resumed.comments.filter(comment => comment.publishToGitHub).map(comment => comment.id));
+  expect(remote.posts).toHaveLength(2);
+  expect(remote.posts[1]).toMatchObject({ event: "COMMENT", comments: [{ line: 6, body: githubSuggestionBody("second") }] });
+  expect(remote.posts[1].comments).toHaveLength(1);
+  await resumed.publishPullRequest("accepted", head, "approve-with-comments");
+  expect(remote.posts).toHaveLength(3);
+  expect(remote.posts[2]).toMatchObject({ event: "APPROVE", comments: [] });
+  expect((await loadPersistedSession(stateFile)).status).toBe("accepted");
+});
+
+test("neutral submission checks remote head at final publication and permits local closure after success", async () => {
+  const { session, head, remote, stateFile } = await fixture();
+  await expect(session.publishGitHubSuggestions(head, [])).rejects.toThrow("at least one");
+  const { activityId } = await session.proposeInlineEdit("file.txt", "new", 5, "changed 5", "new");
+  await session.setSuggestionPublication(activityId, true, head);
+  const ids = session.comments.map(comment => comment.id);
+  remote.head = "b".repeat(40);
+  await expect(session.publishGitHubSuggestions(head, ids)).rejects.toThrow("changed on GitHub");
+  expect(remote.posts).toHaveLength(0);
+  remote.head = head;
+  await session.publishGitHubSuggestions(head, ids);
+  await session.close("cancelled", { decision: "cancel" });
+  expect((await loadPersistedSession(stateFile)).status).toBe("cancelled");
+  expect(remote.posts).toHaveLength(1);
+});

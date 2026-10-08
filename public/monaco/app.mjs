@@ -905,8 +905,11 @@ function drawAnnotations() {
       if (entry.suggestion) {
         const note = document.createElement("p"); note.textContent = entry.githubPublished ? "Published in the GitHub review." : entry.githubUnavailableReason || "Queued locally. Publishes only when you confirm the GitHub review.";
         content.append(note);
-        const restore = button("Return to local", () => host.suggestionAction(entry.suggestion.activityId, "return-local"));
-        restore.disabled = session.status !== "open"; actions.append(restore);
+        if (!entry.githubPublished) {
+          const restore = button("Return to local", () => host.suggestionAction(entry.suggestion.activityId, "return-local"));
+          const submit = button("Submit suggestions", () => host.suggestionAction(entry.suggestion.activityId, "submit-suggestions"));
+          restore.disabled = submit.disabled = session.status !== "open"; actions.append(restore, submit);
+        }
       } else actions.append(button("Edit", () => openComposer("comment", entry)), button("Delete", async () => {
         if (!confirm(production ? "Delete this comment?" : "Delete this fixture comment?")) return;
         session = await api(`/api/comments/${entry.id}`, {}, "DELETE"); await refresh();

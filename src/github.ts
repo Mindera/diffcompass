@@ -379,7 +379,7 @@ export async function updatePullRequestWorkspace(
 export async function publishPullRequestReview(
   context: PullRequestContext,
   comments: ReviewComment[],
-  outcome: Extract<ReviewOutcome, "accepted" | "feedback">,
+  outcome: Extract<ReviewOutcome, "accepted" | "feedback"> | "comment",
   intentId: string,
   runner: Runner = runProcess,
   note?: string,
@@ -402,7 +402,7 @@ export async function publishPullRequestReview(
   }
   const body = {
     commit_id: context.headRefOid,
-    event: outcome === "accepted" ? "APPROVE" : "REQUEST_CHANGES",
+    event: outcome === "comment" ? "COMMENT" : outcome === "accepted" ? "APPROVE" : "REQUEST_CHANGES",
     body: `${note?.trim() ? `${note.trim()}\n\n` : ""}Submitted from DiffCompass.\n\n${marker}`,
     comments: comments.map((comment) => ({ path: comment.path, line: comment.suggestion ? comment.endLine ?? comment.line : comment.line,
       side: comment.side === "old" ? "LEFT" : "RIGHT", body: comment.body,
