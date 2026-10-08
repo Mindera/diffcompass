@@ -21,7 +21,7 @@ async function api(path, body, method = "POST") {
 const embedded = new URLSearchParams(location.search).get("embedded") === "1";
 const production = new URLSearchParams(location.search).get("production") === "1";
 const filePath = production ? new URLSearchParams(location.search).get("file") : null;
-const host = embedded && window.parent !== window && window.parent.location.origin === location.origin ? (production ? window.parent.diffCompassProductionHost.forFile(filePath) : window.parent.diffCompassMonacoHost) : null;
+const host = embedded && window.parent !== window && window.parent.location.origin === location.origin ? (production ? window.parent.diffCompassProductionHost.forFile(filePath, window) : window.parent.diffCompassMonacoHost) : null;
 if (embedded && !host) throw new Error("The integration host is unavailable.");
 if (host) document.documentElement.dataset.embedded = "true";
 if (host?.singleFile) document.documentElement.dataset.singleFile = "true";

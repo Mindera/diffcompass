@@ -17,6 +17,43 @@ and complete a local or GitHub review without leaving the browser.
 [GitHub PRs](#github-pull-requests) · [Configuration](#repository-defaults) ·
 [Development](#development)
 
+## Availability
+
+Latest published release: **[v2.1.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.0)**,
+published **2026-10-08** at `d889a0b`. Authenticated release/tag metadata confirms
+it contains the previously inspected main `607e18b`; the two intervening commits
+change only `package.json`. These additions are **released in v2.1.0**:
+
+- [PR #3](https://github.com/rcosteira79/diffcompass/pull/3) and
+  [PR #4](https://github.com/rcosteira79/diffcompass/pull/4): sequence Code steps,
+  native Call-flow consolidation, map preferences/motion, impact recovery,
+  final-commentary filtering, lifecycle layout and source return.
+- [PR #5](https://github.com/rcosteira79/diffcompass/pull/5): an opt-in Monaco
+  renderer in the normal review UI, retaining Shiki as default; inline
+  suggested edits, comments/PR threads and diagram-navigation refinements.
+- [PR #7](https://github.com/rcosteira79/diffcompass/pull/7): GitHub-native
+  suggestion reviews, separate from applying a replacement locally.
+- [PR #6](https://github.com/rcosteira79/diffcompass/pull/6) and
+  [PR #9](https://github.com/rcosteira79/diffcompass/pull/9): **What changed**
+  explanations and parser evidence in both Shiki and Monaco, complete-file
+  explanation coverage for new tours, captured-source exports and draft recovery.
+  [PR #8](https://github.com/rcosteira79/diffcompass/pull/8) adds phase-anchoring
+  regression coverage without production changes.
+
+Current entry points use **Diagrams**; v2.0.0 uses **Maps**. Impact analysis,
+dry runs and bundled Archify maps were already released. Decision log was
+scrapped; its implementation history is retained only in RESEARCH. The language-provider
+probe is research only; a project-aware Kotlin provider is not bundled.
+Installed version was last observed as 2.0.0 on 2026-10-04, not freshly queried.
+
+Download the [interactive feature guide](docs/feature-showcase.html) and open
+it in a browser for 17 illustrated capabilities, delivery filters and labelled
+archival screenshots. [Review branches](REVIEW_BRANCHES.md) gives review scope,
+[ROADMAP](ROADMAP.md) gives delivery state, and
+[RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
+attributed verification and historical assumptions. This branch adds only docs
+and the standalone guide to merged main.
+
 ## Install
 
 Releases contain self-contained binaries for macOS, Linux, and Windows on Intel
@@ -45,7 +82,7 @@ your token. Users without repository access cannot install private releases.
 | Need | Command or option |
 | --- | --- |
 | Binary only; do not install skills | Append `--minimal` or `--binary-only` (`-Minimal` on Windows) |
-| Pin a release | `DIFFCOMPASS_VERSION=v1.2.0` before `bash` |
+| Pin a release | `DIFFCOMPASS_VERSION=v2.1.0` before `bash` |
 | Update | `diffcompass update [--version vX.Y.Z]` |
 | Roll back | `diffcompass rollback [--to X.Y.Z]` |
 | Preview uninstall | `diffcompass uninstall --dry-run` |
@@ -109,7 +146,7 @@ local preview tooling.
 | --- | --- |
 | Comparison | Merge-base comparison covering committed, staged, unstaged, and untracked changes; explicit parent support for stacked branches. |
 | Guided route | Agent-organized `Tour → Phases → Stops`, precise old/new anchors, inline stop cards, plain-language explanations, Previous/Next navigation, and configurable preparation of 0–5 upcoming stops. |
-| Briefing | Configurable and reorderable pre-tour summary with review cues, effort estimate, component diagrams, call flows, and sequence diagrams; expandable previews and `View briefing` after starting. |
+| Briefing | Configurable and reorderable pre-tour summary with review cues, effort estimate, component previews, links into relevant analysis, and `View briefing` after starting. Call-flow and sequence browsing lives in Diagrams on current main; dedicated briefing sections for those diagrams are currently hidden. |
 | Free navigation | Browse the repository and diff at any time; `Current step` returns to an off-screen stop. Finishing the tour leaves the review and questions open. |
 | Review state | Per-file reviewed status, test-only and status filters, `All files in this tour`, automatic stale-annotation detection, atomic persistence, and restart/resume. |
 | Checkpoints | Named snapshots, revision history, `Full change` / `Since last review`, reopened files that changed again, and preserved state for unchanged files. |
@@ -136,6 +173,39 @@ returns to the active stop.
 Application appearance (`System`, `Light`, `Dark`) is independent of syntax
 themes (`GitHub`, `Vitesse`, `DiffCompass`, and Catppuccin Frappé, Macchiato,
 or Mocha).
+
+**What changed (released in v2.1.0):** outside the guided tour, open
+**Diff → a changed file's header → What changed** in either Shiki or Monaco.
+The existing tour agent's explanation leads with the before/after mechanism and
+why it matters. **All code details** reveals bounded parser-backed declaration
+additions/removals, signature and body/initializer changes for TypeScript/TSX
+(`.ts`, `.mts`, `.cts`, `.tsx`) and Kotlin (`.kt`, `.kts`). Source links retain
+captured Before/After identities. **Ask agent about this file** prepares a
+question in the existing composer; it does not silently send it.
+
+New tours require a usable explanation for every changed file, including
+supporting files without a stop. Missing coverage gets at most two repair
+attempts, then fails explicitly. Existing incomplete tours are not backfilled;
+missing, stale or unversioned explanations stay labelled. Explanations can cover
+any language; parser details remain TS/TSX/Kotlin-only. Neither prose coverage
+nor syntax changes prove correctness, author intent or runtime behavior.
+
+Tour preparation reuses bounded parser evidence from immutable captured source.
+Unsupported syntax, ambiguity, parse errors, missing snapshots and limits retain
+explicit fallback. Existing tour explanations persist with comparison identity;
+parser summaries/ASTs do not. Exports disclose saved-explanation coverage
+separately from requested parser results still in the 32-file cache. Parser
+bounds include four concurrent requests, 256,000 bytes and 10,000 lines per
+version, 1,000 declarations and 200 displayed changes.
+
+**Optional Monaco renderer (released in v2.1.0):** choose **Monaco** in
+**Diff → Diff renderer**; Shiki remains the default. Captured read-only source,
+lazy editors, local workers/assets and review actions share the existing session.
+Paged refresh and late renderer failures retain unsaved drafts with their
+original models; changed-source saves remain blocked. Images, unsupported/large
+files, workspace views, full proposal previews and sequence snippets keep their
+documented fallback or separate surfaces. See [Monaco preview](#monaco-preview)
+for detailed behavior and limits.
 
 ### Questions, comments, and edits
 
@@ -166,9 +236,10 @@ proposal is pending. The reviewed working tree stays untouched until `Apply`.
 
 ### Architecture and analysis
 
-The **Maps** tab has two modes: **Understand the change** for component, call,
-sequence, and data/lifecycle diagrams; **Explore impact** for the selected
-symbol's blast radius, source links, and related tests. Release packages include
+In v2.1.0, **Diagrams** groups **Architecture & design**, **Blast radius**,
+**Call flows**, **Sequence diagrams** and **Data & lifecycle**. Categories that
+need saved artifacts appear when that data exists. The released v2.0.0 labels
+are **Maps → Understand the change / Explore impact**. Release packages include
 a pinned Archify renderer, run with the executable's embedded runtime—no Node
 installation or separate checkout is required. Supported diagrams gain interactive
 node inspection and Fit/zoom/pan controls. Other diagrams remain available through
@@ -188,6 +259,78 @@ an incomplete Before view does not imply that missing connections never existed.
 | Call flows | Concrete changed entrypoints, Before/After/Changes call trees, added/removed edge counts, exact diff evidence, affected files, honest labels for dynamic dispatch, and single/all regeneration. |
 | Sequence diagrams | Goal-critical runtime interactions rendered locally from a validated Mermaid subset, with affected files, provenance, editable source, single/all regeneration, and source fallback. |
 | Adaptive diagrams | Evidence-gated state machines and data-model/ER views, repository observations, changed-file support, notation legends, and honest empty results when no extra diagram is justified. |
+| Blast radius (Explore impact in v2.0.0) | Per-symbol static caller/reference graphs, involved files, related tests, source navigation and return, with provider/confidence/completeness labels and bounded displayed counts. These are evidence of structural relationships, not runtime execution. |
+
+**Call-flow consolidation (released in v2.1.0):** open **Diagrams → Call
+flows**. Every saved call flow uses the existing native viewer, including Changes,
+Before and After, branching, recursion markers, source links, regeneration and
+linked dry-run scenarios. v2.1.0 uses category buttons; the standalone
+Call flows tab is hidden. With no saved flows there is
+no Call flows option. Old Archify workflow duplicates remain in saved data but
+are hidden from Diagrams and exports, and new duplicates are no longer generated.
+In released v2.0.0, converted simple flows instead appear as Workflow maps and
+only unconverted flows remain in the native view.
+
+**Sequence source navigation (released in v2.1.0):** select an
+arrow/caption in a supported sequence map, then use **View code** in Code steps.
+With the pane collapsed, the semantics card offers **Show code step**; the
+existing source-card actions remain available when a code pane cannot be mounted.
+Validated anchors retain their old/new side, and **Back to diagram** restores the
+map, path, selection and camera. Definition matches are candidates, not verified
+historical call targets.
+
+**Sequence/code walkthrough (released in v2.1.0):** open
+**Diagrams → Sequence diagrams → an existing map → Code steps**. The existing canvas
+shares the frame with a resizable, collapsible code pane, stacked below it when
+the actual map width is below 1040px. Pane dimensions use the existing map
+preferences. The readable initial 133.333% scale makes bundled 9px captions 12px;
+it may clip participants from the viewport. Pan/zoom or explicit Fit provides
+access to the rest, without deleting diagram content.
+
+Clicking an arrow reveals its step. Clicking a code step selects its exact
+message or position in the existing path; an unavailable off-path selection
+shows a notice. **Scrolling preserves selection.** Step headings support
+Home/End/Up/Down; pane scrolling keys retain their normal behavior. Sizing,
+Present and source return preserve the existing camera and path.
+
+All bounded saved excerpts render at mount, including offscreen and offline
+steps. Compatible adjacent anchors are grouped without inventing missing lines
+or merging different sides/candidates. Excerpts reuse syntax highlighting,
+validated change markers and source-side/provenance labels. In a live review,
+missing call-shaped steps also trigger sequential definition lookup through the
+existing source bridge, at most one attempt per eligible step until revalidation;
+manual retry remains available. These results stay explicitly labelled name
+matches. Offline exports do not perform lookup or include transient candidates.
+
+The walkthrough supports up to 40 valid authored message IDs, 8 anchors per
+step and 20 lines/8,000 characters per excerpt. Unsupported or ambiguous diagrams
+retain their existing fallback. Selection/scroll/camera remain live-frame state;
+HTML includes saved evidence and the offline pane, while Markdown is unchanged.
+No second diff viewer, sequence renderer or resolver was introduced.
+
+The merged PRs report later walkthrough, source-return, layout and Chrome pointer
+checks. Earlier pointer-matrix failures and the setup `outline` error/timeout
+remain in the historical ledger. Later startup guards and Chrome test-viewport
+sizing are recorded separately; a later pass does not relabel an earlier failure.
+Safari/Firefox, physical touch, screen readers and actual OS background visibility
+remain unverified. See [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08)
+for attribution and limits.
+
+**Lifecycle layouts and source return (released in v2.1.0):** branching
+lifecycle maps retain initial/terminal states and route labelled transitions
+around obstacles, with collision validation and Mermaid fallback on genuine
+rendering failures. Interactive and native adaptive-diagram source links offer
+**Back to diagram** with prior inspection, camera and scroll context. Visible
+lifecycle sections are numbered consecutively; the [fixture instructions](#lifecycle-layout-fixture)
+cover the captured receipt-job example.
+
+**Other fixes released in v2.1.0:** interactive maps share theme, preset and motion settings
+through browser storage for the same origin; motion respects reduced-motion
+preferences. Impact analysis retains valid entries during bounded repair and
+shows remaining warnings or an omission reason. Those diagnostics persist in
+sessions but are not yet rendered in Markdown/HTML exports. Codex explanations
+use the final output file rather than mixing streamed progress into the answer.
+These fixes are included in v2.1.0.
 
 Native Mermaid component diagrams automatically adjust arrow captions after every
 render, including regeneration, briefing previews, and HTML exports. Caption
@@ -214,6 +357,18 @@ If repair fails, the tour keeps valid content and reports omitted diagrams or
 links in its planning notes. Dry-run scenarios retain their independent source
 validation. Unchanged calls may anchor unchanged source lines; added and removed
 calls still require matching changed diff rows.
+
+### Dry runs
+
+Open the **Dry runs** tab, or **Simulate** on a diagram with a linked scenario.
+Choose or edit inputs, mocks and assumptions, then prepare a walkthrough on
+demand. Previous/Next steps, source excerpts, value changes, branch choices and
+outputs are independent of tour navigation. Preparation can be cancelled;
+changed inputs or source make an existing trace stale. Plans and prepared traces
+survive session resume, and prepared traces can be included in Markdown/HTML
+exports. Generation starts enabled and can be disabled in setup. Empty or
+unprepared scenarios do not imply successful execution: dry runs are
+agent-produced simulations, **not execution of the reviewed application**.
 
 ### Markdown, images, and supplied media
 
@@ -263,8 +418,19 @@ isolated worktree and compared using GitHub's exact base and head commits.
 | Retry safety | A durable marker reuses a remote review instead of duplicating it after an interrupted response. |
 | Local-only exit | `Approve tour without approving the pull request` closes the local tour without publishing a GitHub review. |
 
-Suggestions modify only the isolated PR worktree and are never pushed to the PR
-branch. Remote refreshes require a clean isolated worktree and mark stale local
+**GitHub-native suggestions (released in v2.1.0):** save a reviewer edit, then
+choose **Add to GitHub review** or **Return to local**. **Submit suggestions**
+confirms the selected set and PR head, then publishes a neutral `COMMENT` review
+while ordinary comments stay drafted and the tour stays open. Queueing or
+publishing does not apply, commit or push the replacement. **Apply locally**
+is a separate action that writes only to the isolated PR worktree.
+
+Suggestions require exact captured After lines in one PR hunk (at most 100
+contiguous lines), an unchanged PR head and supported regular text. Durable
+publication receipts protect retries; published suggestions cannot be returned
+or republished. Older/unsupported proposals stay local. See
+[the detailed suggestion flow](#monaco-preview) for limits and the offline
+fixture. Remote refreshes require a clean isolated worktree and mark stale local
 annotations for reassessment. Issue assessment retains bounded metadata and
 criteria, not unrelated issues, old PRs, or unstructured checklist prose.
 
@@ -563,8 +729,10 @@ bun run build:release
 Pushing a matching `v*` tag runs the full suite, builds all six platform
 archives, publishes checksums, and creates a GitHub Release.
 
-See [ROADMAP.md](ROADMAP.md) for shipped scope, upcoming work, and remaining
-review-workflow gaps.
+See [ROADMAP.md](ROADMAP.md) for released scope, cancelled work,
+prototypes and remaining gaps. Automated unit/integration and
+source/DOM-contract tests do not establish browser usability; browser checks and
+their limits are recorded separately in [RESEARCH.md](RESEARCH.md).
 
 ### Monaco PR-comment fixture
 

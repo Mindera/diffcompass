@@ -11,6 +11,7 @@ const browser = await chromium.launch({ headless: true, channel: process.env.CI 
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
 page.setDefaultTimeout(20000);
 const errors = [], requests = [];
+let releasePoll;
 page.on("pageerror", error => errors.push(error.message));
 page.on("request", request => { if (request.url().includes("/api/diff/semantic?")) requests.push(request.url()); });
 const pass = (value, message) => { assert(value, message); console.log(`PASS ${message}`); };
@@ -35,7 +36,13 @@ async function anchor(path, side) {
   await page.waitForFunction(({ path, side, line }) => {
     const frame = [...document.querySelectorAll(".monaco-review-frame")].find(frame => frame.dataset.monacoPath === path);
     const view = frame?.contentWindow?.diffLab?.views.get(path);
-    return view?.editors[side].getSelection().startLineNumber === line && view.editors[side].hasTextFocus();
+    const geometry = frame?.contentWindow?.diffCompassMonaco?.geometry(path, side, line);
+    const viewport = document.getElementById("diff-panel").getBoundingClientRect();
+    const top = geometry && frame.getBoundingClientRect().top + geometry.top;
+    // Selection is set before the outer reveal finishes. Do not interrupt it
+    // with the next click while the selected source is still offscreen.
+    return view?.editors[side].getSelection().startLineNumber === line && view.editors[side].hasTextFocus()
+      && top > document.querySelector(".diff-toolbar").getBoundingClientRect().bottom && top < viewport.bottom;
   }, { path, side, line });
   return text;
 }
@@ -57,12 +64,28 @@ try {
     await panel("src/cart.ts").waitFor();
     pass(await panel("src/cart.ts").count() === 1 && requests.length === initial, `${renderer} reuses the open summary without another request`);
   }
+  // A slow background poll must not block an already usable editor. Keep one
+  // pending across both layouts to exercise readiness without network silence.
+  const pollGate = new Promise(resolve => { releasePoll = resolve; });
+  const pendingPoll = page.waitForRequest(request => new URL(request.url()).pathname === "/api/session" && request.frame() === page.mainFrame());
+  await page.route("**/api/session", async route => {
+    if (route.request().frame() === page.mainFrame()) await pollGate;
+    await route.continue();
+  });
+  await pendingPoll;
   for (const layout of ["split", "unified"]) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
-    await page.waitForLoadState("networkidle");
     for (const side of ["old", "new"]) await anchor("src/cart.ts", side);
-    pass(true, `${layout} Before/After links focus the matching captured Monaco side`);
+    // Opening the anchor mounts its editor if a layout change evicted it.
+    await page.waitForFunction(layout => {
+      const frame = [...document.querySelectorAll(".monaco-review-frame")].find(frame => frame.dataset.monacoPath === "src/cart.ts");
+      return frame?.contentDocument?.getElementById("layout")?.value === layout
+        && frame.contentWindow?.diffLab?.views.has("src/cart.ts");
+    }, layout);
+    pass(true, `${layout} Before/After links focus the matching captured Monaco side while a background poll is pending`);
   }
+  releasePoll();
+  await page.unroute("**/api/session");
   await card("src/cart.ts").getByRole("button", { name: "Collapse src/cart.ts", exact: true }).click();
   pass(!await panel("src/cart.ts").isVisible(), "collapsing a Monaco file also hides its summary");
   await card("src/cart.ts").getByRole("button", { name: "Expand src/cart.ts", exact: true }).click();
@@ -142,4 +165,4 @@ try {
   console.error(await page.evaluate(() => ({ notice: document.querySelector(".monaco-review-notice")?.textContent, renderer: document.querySelector("#diff-renderer")?.value, toasts: [...document.querySelectorAll(".toast")].map(node => node.textContent) })));
   await page.screenshot({ path: "/tmp/dc-monaco-what-changed-failure.png" });
   throw error;
-} finally { await browser.close(); }
+} finally { releasePoll?.(); await browser.close(); }

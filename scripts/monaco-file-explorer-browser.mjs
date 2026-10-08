@@ -26,12 +26,14 @@ async function click(path,keyboard=false) {
   await atFile(path);
 }
 async function smoothClick(path) {
-  await page.evaluate(()=>{
+  await page.evaluate(path=>{
+    cancelAnimationFrame(window.fileMotionFrame);
     window.fileMotion=[]; window.recordFileMotion=true;
-    const sample=()=>{if(!window.recordFileMotion)return;const panel=document.getElementById('diff-panel');window.fileMotion.push({top:panel.scrollTop,time:performance.now(),height:panel.scrollHeight});requestAnimationFrame(sample);};sample();
-  });
+    const destination=document.querySelector(`#diff > [data-path="${path}"]`);
+    const sample=()=>{if(!window.recordFileMotion)return;const panel=document.getElementById('diff-panel');window.fileMotion.push({top:panel.scrollTop,time:performance.now(),destination:destination.getBoundingClientRect().top+panel.scrollTop});window.fileMotionFrame=requestAnimationFrame(sample);};sample();
+  },path);
   await click(path);
-  const motion=await page.evaluate(()=>{window.recordFileMotion=false;return window.fileMotion;});
+  const motion=await page.evaluate(()=>{window.recordFileMotion=false;cancelAnimationFrame(window.fileMotionFrame);return window.fileMotion;});
   const samples=motion.map(sample=>sample.top);
   const start=samples[0],end=samples.at(-1),distance=Math.abs(end-start),direction=Math.sign(end-start);
   assert.ok(distance>200,'Exercise a meaningful file-to-file distance');
@@ -39,7 +41,9 @@ async function smoothClick(path) {
   const deltas=samples.slice(1).map((top,index)=>(top-samples[index])*direction);
   assert.ok(Math.min(...deltas)>=-2,'Smooth file navigation never reverses: '+JSON.stringify(samples));
   const moving=motion.filter(sample=>Math.abs(sample.top-start)>2&&Math.abs(sample.top-end)>2);
-  assert.ok(moving.every(sample=>Math.abs(sample.height-moving[0].height)<=2),'File heights remain stable during smooth movement: '+JSON.stringify(motion));
+  // Lazy files below the destination can resize without moving this journey.
+  // Check the destination's content offset, not the entire page's height.
+  assert.ok(moving.every(sample=>Math.abs(sample.destination-moving[0].destination)<=2),'Destination stays stable during smooth movement: '+JSON.stringify(motion));
   // A loaded CI worker may omit animation frames (and deliver a compositor
   // scroll offset a frame late). A large change is a snap only between timely
   // samples, not across a long task. Geometry/monotonicity are still checked
