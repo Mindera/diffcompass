@@ -45,6 +45,8 @@ try {
   check(await frame.evaluate(() => monaco.editor.getModels().length === 2), "Only the visible Before/After model pair is resident");
   check(await frame.evaluate(() => monaco.editor.getModels().every(model => /inmemory:\/\/review\/[a-f0-9]{64}\//.test(model.uri.toString()))), "Models are revision scoped");
   console.log("PASS production opt-in, immutable model identities, lazy source/model loading, no hidden native DOM");
+  check(await frame.locator('.monaco-diff-editor textarea.inputarea[readonly]').count() === 2, "Both diff inputs are DOM-readonly to suppress tablet keyboards");
+  check(await frame.locator('.monaco-diff-editor .native-edit-context').count() === 0, "Read-only diff does not attach an editable native EditContext");
   for (const layout of ["split", "unified"]) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
     await frame.waitForFunction(layout => document.getElementById("layout").value === layout, layout);

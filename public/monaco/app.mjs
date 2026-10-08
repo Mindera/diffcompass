@@ -1,5 +1,8 @@
-import { sourceAnchor, suggestedEditTarget, suggestedEditLanguage, suggestionMatchesSource } from "./source-anchor.mjs";
+import { sourceAnchor, freeTextRange, suggestedEditTarget, suggestedEditLanguage, suggestionMatchesSource } from "./source-anchor.mjs";
+import { installSyntaxThemes } from "/monaco/themes.mjs";
+import { syntaxThemes } from "/monaco/theme-data.mjs";
 import { installDeletedSelection } from "./deleted-selection.mjs";
+import { installPenScroll, installPeekPenScroll } from "./pen-scroll.mjs";
 import { installDeletedAnnotations, sourceLineHidden, hiddenCommentCounts, hiddenQuestions, badgeDisplayRow } from "./deleted-annotations.mjs";
 import { installTourAnnotations, fileStatusLabel, fileChangeCounts, gutterRowGradient, configureReferenceActions } from "./annotations.mjs";
 import { reviewMarkers, highestPriority, collapsedRegionState, unchangedContextState, expandedRegionState, commentDescription, commentSubmission } from "./annotations.mjs";
@@ -225,7 +228,11 @@ window.require.config({ paths: { vs: "/vendor/vs" } });
 await new Promise((resolve, reject) => window.require(["vs/editor/editor.main"], resolve, reject));
 const monaco = window.monaco;
 configureReferenceActions(monaco);
-monaco.editor.defineTheme("diff-lab", { base: "vs-dark", inherit: true, rules: [], colors: { "editor.background": "#101824", "editorGutter.background": "#101824", "diffEditor.unchangedRegionBackground": "#182435", "diffEditor.unchangedRegionForeground": "#a9b9d1" } });
+const applySyntaxTheme = installSyntaxThemes(monaco, syntaxThemes, document.documentElement);
+const appearance = host ? window.parent.document.documentElement : document.documentElement;
+light = host ? appearance.dataset.theme === "light" : light;
+document.documentElement.toggleAttribute("data-light", light);
+applySyntaxTheme(appearance.dataset.syntaxTheme, light);
 
 function button(text, callback) {
   const node = document.createElement("button"); node.type = "button"; node.textContent = text;
@@ -321,6 +328,8 @@ const $ = id => (fileDetail.dataset.control === id ? fileDetail : fileDetail.que
 let currentAnchor = null, activeSide = "new", currentSelectionIsQuote = false;
 let currentSourceRange = null, deletedSelection = null, selectionError = "";
 let diff, sourceEditor, viewState, sourceModel, editorModels = [], zones = [], composer = null;
+let mobileDraft = false, mobilePointer = null, mobileTextSelection = false;
+const mobileDecorations = {};
 let annotationSignature = null;
 let sourceHadAnchor = false, copyPending = false;
 let markdownPane = null, markdownPreviewButton = null;
@@ -352,11 +361,6 @@ function updateFileTools() {
   $("copy").textContent = "Copy contents";
   $("copy").title = `Copy the full captured ${revision} file contents; use Cmd/Ctrl+C for selected text`;
   $("source").title = `View captured ${revision} source${currentAnchor ? ` at line ${currentAnchor.line}` : ""}`;
-  if (suggestEditButton) {
-    suggestEditButton.hidden = !production || selectedFile.status === "deleted";
-    suggestEditButton.disabled = session.status !== "open" || !currentAnchor || currentAnchor.side !== "new" || Boolean(composer);
-    suggestEditButton.title = "Select After source lines to propose a replacement; the repository stays untouched until Apply";
-  }
 }
 function fileToolStatus(text, temporary = false) {
   if (fileToolsDisposed) return;
@@ -376,16 +380,17 @@ function validateFileToolSelection() {
   return true;
 }
 const commentCards = new Map(), prCards = new Map(), contextDefaults = new Map();
-const suggestEditButton = button("Suggest edit", () => openSuggestedEdit());
-suggestEditButton.dataset.control = "suggest-edit";
-$("source").before(suggestEditButton);
 let markerWidgets = [], contextZones = [], contextSignature = "", contextFrame = null;
 fileDetail.addEventListener("pointerdown", () => activateFile(selectedFile.path), { capture: true });
 fileDetail.addEventListener("focusin", () => activateFile(selectedFile.path));
 const editorSurface = document.createElement("div"); editorSurface.className = "review-editor-surface"; $("editor").append(editorSurface);
 diff = createWithOverflowLayer(overflow => monaco.editor.createDiffEditor(editorSurface, {
   ...overflow,
-  theme: light ? "vs" : "diff-lab", readOnly: true, originalEditable: false, automaticLayout: true,
+  readOnly: true, originalEditable: false, automaticLayout: true,
+  // readOnly alone only rejects edits in Monaco; its hidden input can still
+  // summon a tablet keyboard. Use a genuinely readonly DOM textarea, including
+  // on browsers with EditContext (which does not honor domReadOnly).
+  domReadOnly: true, editContext: false,
   ignoreTrimWhitespace: false,
   renderSideBySide: false, useInlineViewWhenSpaceIsLimited: false,
   minimap: { enabled: false }, fontSize: 12, lineHeight: 20, scrollBeyondLastLine: false,
@@ -443,7 +448,7 @@ diff.onDidDispose(() => { fileListResize.disconnect(); if (detailHeightFrame !==
 const beforeAnnotations = installDeletedAnnotations({ root: $("editor"), diff, monaco, unified: () => activeLayout === "unified" });
 diff.onDidDispose(() => beforeAnnotations.dispose());
 const decorations = Object.fromEntries(Object.entries(editors).map(([side, editor]) => [side, editor.createDecorationsCollection()]));
-const tourAnnotations = installTourAnnotations({ file: selectedFile, editors, monaco, root: $("editor"), unified: () => activeLayout === "unified", onLayout: () => host?.viewportChanged?.() });
+const tourAnnotations = installTourAnnotations({ file: selectedFile, editors, diff, beforeAnnotations, monaco, root: $("editor"), unified: () => activeLayout === "unified", onLayout: () => host?.viewportChanged?.(), restoreViewState: state => restoreReviewViewState({ diff }, state) });
 const tourDisposal = diff.onDidDispose(() => tourAnnotations.dispose());
 
 // Monaco 0.55.1 puts native +/- immediately after the numbers. Mirror only
@@ -678,6 +683,105 @@ function capture(side) {
   } catch (error) { currentAnchor = null; currentSourceRange = null; selectionError = error.message; status(error.message); }
   updateFileTools();
 }
+function mobileSelection(anchor = currentAnchor, range = currentSourceRange, quoted = currentSelectionIsQuote) {
+  if (!host?.mobileSelect || !anchor || !range || composer || fileToolsDisposed) return null;
+  anchor = structuredClone(anchor);
+  range = { startLineNumber: range.startLineNumber, startColumn: range.startColumn, endLineNumber: range.endLineNumber, endColumn: range.endColumn };
+  const side = anchor.side, editor = editors[side], model = editor.getModel(), version = model.getVersionId();
+  const position = { lineNumber: range.startLineNumber, column: range.startColumn };
+  const symbol = model.getWordAtPosition(position)?.word;
+  const definition = editor.getAction("editor.action.revealDefinition"), peekDefinition = editor.getAction("editor.action.peekDefinition");
+  // Monaco 0.55 registers these as Action2 commands rather than IEditorAction
+  // objects. getAction() can be null even when its native context menu offers
+  // them. The bundled TS/JS provider is configured through this public API.
+  const languageDefaults = selectedFile.language === "typescript" ? monaco.languages.typescript.typescriptDefaults
+    : selectedFile.language === "javascript" ? monaco.languages.typescript.javascriptDefaults : null;
+  const bundledDefinitions = Boolean(languageDefaults?.modeConfiguration.definitions);
+  const valid = () => !fileToolsDisposed && editor.getModel() === model && model.getVersionId() === version && host.acceptComparison(session);
+  const restore = () => {
+    if (!valid()) throw Error("The source changed. Select the code again.");
+    deletedSelection.reset();
+    currentAnchor = structuredClone(anchor); currentSourceRange = { ...range }; activeSide = side; currentSelectionIsQuote = quoted;
+    selectionError = ""; updateFileTools(); host.select(anchor);
+  };
+  let suggest = false;
+  try { suggestedEditTarget(selectedFile, anchor); suggest = session.status === "open"; } catch {}
+  return {
+    anchor, valid,
+    capabilities: {
+      comment: session.status === "open", ask: session.status === "open", suggest,
+      definition: Boolean(symbol && (definition?.isSupported() || bundledDefinitions)), peekDefinition: Boolean(symbol && (peekDefinition?.isSupported() || bundledDefinitions)),
+      references: Boolean(symbol), source: true, copy: Boolean(anchor.selectedText), textSelection: true,
+    },
+    setSelectionMode(value) {
+      mobileTextSelection = Boolean(value);
+      editorSurface.classList.toggle("mobile-text-selection", mobileTextSelection);
+    },
+    setDraft(value) { mobileDraft = value; updateCommentControls(); },
+    highlight(value) {
+      if (fileToolsDisposed) return;
+      for (const collection of Object.values(mobileDecorations)) collection.clear();
+      if (value) {
+        const collection = mobileDecorations[side] ||= editor.createDecorationsCollection();
+        collection.set([{ range: quoted ? new monaco.Range(range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn)
+          : new monaco.Range(value.line, 1, value.endLine, model.getLineMaxColumn(value.endLine)),
+          options: { isWholeLine: !quoted, className: quoted ? "mobile-review-selected-text" : "mobile-review-selected-line" } }]);
+      }
+    },
+    async submit(kind, body) {
+      if (!valid() || session.status !== "open") throw Error("This source is no longer available for review.");
+      if (kind === "ask") { await host.askFromMobile(anchor, body); return; }
+      session = await api("/api/comments", commentSubmission(anchor, body, quoted));
+      setCommentsVisible(true); drawAnnotations();
+      // The write already succeeded. A failed follow-up refresh must not
+      // leave an enabled submit button that would create a duplicate comment.
+      await refresh().catch(error => status(`Comment saved. Refresh could not finish: ${error.message}`));
+    },
+    async run(action) {
+      if (!valid()) throw Error("The source changed. Select the code again.");
+      if (action === "references") { await host.peek(symbol, selectedFile.path, anchor.line, side); host.clearMobileSelection(); return; }
+      await host.revealMobile(side, anchor.line, anchor.endLine);
+      restore();
+      if (action === "suggest") { openSuggestedEdit(); host.clearMobileSelection(); return; }
+      if (action === "source") { $("source").click(); host.clearMobileSelection(); return; }
+      editor.setSelection(new monaco.Range(range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn));
+      editor.focus();
+      if (action === "definition") {
+        // Native navigation scrolls inside Monaco, but the review scroll owner
+        // is the parent page. Follow the resulting source cursor there too.
+        let timer;
+        const listener = editor.onDidChangeCursorPosition(event => {
+          listener.dispose(); clearTimeout(timer);
+          if (valid()) void host.revealMobile(side, event.position.lineNumber, event.position.lineNumber);
+        });
+        timer = setTimeout(() => listener.dispose(), 5000);
+      }
+      editor.trigger("mobile-review", action === "definition" ? "editor.action.revealDefinition" : "editor.action.peekDefinition", {});
+      if (action === "definition") host.clearMobileSelection();
+    },
+  };
+}
+function publishMobileSelection(pointerType) {
+  const item = mobileSelection();
+  if (item) host.mobileSelect(item, pointerType);
+}
+// Only completed user gestures publish the bar. Cursor changes produced by
+// tours, reveal(), layout or restoring a lazy iframe must not open it.
+editorSurface.addEventListener("pointerdown", event => {
+  if (event.button !== 0 || !event.isPrimary || event.pointerType === "pen") return;
+  const deleted = activeLayout === "unified" && event.target.closest?.(".line-delete-selectable");
+  const side = deleted ? "old" : Object.keys(editors).find(side => codePenTarget(editors[side], event));
+  mobilePointer = side ? { id: event.pointerId, side, deleted, type: event.pointerType, x: event.screenX, y: event.screenY } : null;
+}, true);
+editorSurface.addEventListener("pointercancel", () => { mobilePointer = null; }, true);
+editorSurface.addEventListener("pointerup", event => {
+  const gesture = mobilePointer; mobilePointer = null;
+  if (!gesture || event.pointerId !== gesture.id || (gesture.type === "touch" && Math.hypot(event.screenX - gesture.x, event.screenY - gesture.y) > 6)) return;
+  // Monaco and the unified Before selector finish their own selection first.
+  // A microtask may run between DOM listeners, before the document-level
+  // Before selector handles pointerup. Wait until the complete event ends.
+  setTimeout(() => { if (fileToolsDisposed) return; if (!gesture.deleted) capture(gesture.side); publishMobileSelection(gesture.type); }, 0);
+}, true);
 for (const [side, editor] of Object.entries(editors)) {
   editor.onDidChangeCursorSelection(() => capture(side));
   editor.onDidFocusEditorText(() => { deletedSelection?.editorFocused(); capture(side); });
@@ -1143,7 +1247,13 @@ $("source").onclick = () => {
   // a line. This read-only inspector needs folding/navigation, not background
   // occurrence searches. Disable only those here, without suppressing errors
   // or changing the persistent diff editors' highlighting/reference actions.
-  sourceEditor = createWithOverflowLayer(overflow => monaco.editor.create($("source-editor"), { ...overflow, model: sourceModel, readOnly: true, automaticLayout: true, occurrencesHighlight: "off", ariaLabel: `${sourceSide === "old" ? "Before" : "After"} full source`, minimap: { enabled: false }, fontSize: 12, lineHeight: 20, folding: true, showFoldingControls: "always", scrollBeyondLastLine: false, scrollbar: { alwaysConsumeMouseWheel: false } }));
+  sourceEditor = createWithOverflowLayer(overflow => monaco.editor.create($("source-editor"), { ...overflow, model: sourceModel, readOnly: true, domReadOnly: true, editContext: false, automaticLayout: true, occurrencesHighlight: "off", ariaLabel: `${sourceSide === "old" ? "Before" : "After"} full source`, minimap: { enabled: false }, fontSize: 12, lineHeight: 20, folding: true, showFoldingControls: "always", scrollBeyondLastLine: false, scrollbar: { alwaysConsumeMouseWheel: false } }));
+  const viewer = sourceEditor;
+  viewer.onDidDispose(installPenScroll({
+    root: $("source-editor"), hitTest: event => codePenTarget(viewer, event),
+    onPan: (_hit, dx, dy) => viewer.setScrollPosition({ scrollLeft: viewer.getScrollLeft() + dx, scrollTop: viewer.getScrollTop() + dy }),
+    onTap: hit => { if (hit.position) viewer.setPosition(hit.position); },
+  }));
   if (currentAnchor) sourceEditor.setSelection(new monaco.Range(firstLine, 1, lastLine, sourceModel.getLineMaxColumn(lastLine)));
   addOwnedAction(sourceEditor, {
     id: "diff-lab.source.references", label: "Find references", keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.F12], contextMenuGroupId: "review", contextMenuOrder: 1,
@@ -1207,6 +1317,64 @@ deletedSelection = installDeletedSelection({
 });
 diff.onDidDispose(() => deletedSelection.dispose());
 
+function codePenTarget(editor, event, captured = false) {
+  // Exclude nested suggestion/peek editors and all non-code controls.
+  const target = captured ? document.elementFromPoint(event.clientX, event.clientY) : event.target;
+  if (target?.closest?.(".monaco-editor") !== editor.getDomNode()) return null;
+  const hit = editor.getTargetAtClientPoint(event.clientX, event.clientY);
+  return hit && [monaco.editor.MouseTargetType.CONTENT_TEXT, monaco.editor.MouseTargetType.CONTENT_EMPTY].includes(hit.type) ? hit : null;
+}
+diff.onDidDispose(installPeekPenScroll({
+  root: fileDetail, monaco,
+  onStart() { activateFile(selectedFile.path); return host?.holdPenScroll?.(); },
+}));
+diff.onDidDispose(installPenScroll({
+  root: editorSurface,
+  selectionEnabled: () => mobileTextSelection,
+  hitTest(event, captured = false) {
+    const target = captured ? document.elementFromPoint(event.clientX, event.clientY) : event.target;
+    if (activeLayout === "unified" && target?.closest?.(".line-delete-selectable")) {
+      const hit = deletedSelection.hitTest(event);
+      return hit ? { ...hit, side: "old", editor: editors.new, deleted: true } : null;
+    }
+    for (const [side, editor] of Object.entries(editors)) {
+      const hit = codePenTarget(editor, event, captured);
+      if (hit) return { side, editor, position: hit.position };
+    }
+    return null;
+  },
+  onStart() { activateFile(selectedFile.path); return host?.holdPenScroll?.(); },
+  onSelect(first, last, options) {
+    // Never cross source sides or a unified Before block's mapping boundary.
+    // While outside the code, retain the last unambiguous selection.
+    if (!last || first.side !== last.side || first.zone !== last.zone || !first.position || !last.position) return;
+    try {
+      const editor = editors[first.side], model = editor.getModel();
+      const range = freeTextRange(model, first.position, last.position, options);
+      if (first.deleted) {
+        if (!deletedSelection.selectRange(first, range)) return;
+      } else {
+        deletedSelection.reset(); document.getSelection()?.removeAllRanges();
+        editor.setSelection(range); capture(first.side);
+      }
+      publishMobileSelection(options.pointerType);
+    } catch (error) { status(error.message); }
+  },
+  onPan({ editor }, dx, dy) {
+    editor.setScrollLeft(editor.getScrollLeft() + dx);
+    if (host?.panBy) host.panBy(dy);
+    else editor.setScrollTop(editor.getScrollTop() + dy);
+  },
+  onTap(hit, event) {
+    if (hit.deleted) { deletedSelection.tap(event); publishMobileSelection("pen"); return; }
+    if (!hit.position) return;
+    deletedSelection.reset(); document.getSelection()?.removeAllRanges();
+    hit.editor.setPosition(hit.position); capture(hit.side);
+    if (currentAnchor) host?.select(currentAnchor);
+    publishMobileSelection("pen");
+  },
+}));
+
 editorModels = ["old", "new"].map(side => monaco.editor.createModel(selectedFile[side], selectedFile.language, monaco.Uri.parse(`inmemory://review/${sourceComparisonId || "fixture"}/${side}/${encodeURIComponent(selectedFile.path)}`)));
 // Own the public diff view model so pending worker calculations are cancelled
 // synchronously before their source models are released during lazy eviction.
@@ -1244,10 +1412,11 @@ return {
     for (const model of editorModels) model.dispose();
   },
   editComment(comment) { reveal(comment.side, comment.line, comment.endLine || comment.line); openComposer("comment", comment); },
-  get anchor() { return currentAnchor; }, get hasDraft() { return Boolean(composer); },
+  get anchor() { return currentAnchor; }, get hasDraft() { return Boolean(composer) || mobileDraft; },
   setTour(step, steps = []) { tourAnnotations.update(steps, step?.id); },
   focusTour(id) { closeMarkdownPreview(); if (!$("source-pane").hidden) $("return").click(); return tourAnnotations.focus(id); },
   layout() {
+    host?.clearMobileSelection?.();
     $("editor").classList.toggle("review-split", activeLayout === "split");
     deletedSelection.reset(); currentAnchor = null; currentSourceRange = null;
     selectionError = ""; updateFileTools();
@@ -1361,7 +1530,7 @@ $("wrap").addEventListener("change", () => guard(async () => {
   for (const view of fileViews.values()) view.wrap(value);
   await frameReady; await current().options(activeLayout, $("wrap").checked);
 }));
-$("theme").onclick = () => { light = !light; document.documentElement.toggleAttribute("data-light", light); monaco.editor.setTheme(light ? "vs" : "diff-lab"); current().theme(light); $("theme").textContent = light ? "Dark theme" : "Light theme"; };
+$("theme").onclick = () => { light = !light; document.documentElement.toggleAttribute("data-light", light); applySyntaxTheme(document.documentElement.dataset.syntaxTheme, light); current().theme(light); $("theme").textContent = light ? "Dark theme" : "Light theme"; };
 $("finding").onclick = () => guard(async () => {
   $("file").value = "checkout.ts"; if (selectedFile.path !== "checkout.ts" && !(await loadFile())) return;
   activeView.reveal("new", info.receiptLine + 1);
@@ -1471,7 +1640,7 @@ if (host) {
       }
       light = snapshot.light;
       document.documentElement.toggleAttribute("data-light", light);
-      monaco.editor.setTheme(light ? "vs" : "diff-lab");
+      applySyntaxTheme(snapshot.syntaxTheme, light);
       for (const view of fileViews.values()) view.setTour(snapshot.step, snapshot.steps);
       scheduleEmbeddedHeight();
     },
@@ -1500,7 +1669,7 @@ if (host) {
       if (!view) return false;
       activateFile(step.anchor.path);
       if (collapsedFiles.has(step.anchor.path)) setFileCollapsed(step.anchor.path, false, false);
-      const focused = view.focusTour(step.id);
+      const focused = await view.focusTour(step.id);
       // Revealing a phase lays out editors which previously had no width.
       // Their measured heights can change the target's position. Wait for two
       // stable animation frames before starting the one outer smooth scroll;
@@ -1524,6 +1693,11 @@ if (host) {
       }
       return focused;
     },
+    tourTarget(step) {
+      const view = fileViews.get(step.anchor.path);
+      const banner = view?.root.querySelector(`.review-tour-stop[data-tour-stop="${CSS.escape(step.id)}"]:not([hidden])`);
+      return banner?.getClientRects().length ? { top: banner.getBoundingClientRect().top } : null;
+    },
     tourGeometry(step) {
       const { path, side } = step.anchor, entry = fileEntries.get(path), view = fileViews.get(path);
       if (!view || entry.section.hidden || collapsedFiles.has(path)) return [];
@@ -1533,7 +1707,7 @@ if (host) {
       const root = view.root.getBoundingClientRect();
       // Use rendered source rows, not one bounding range spanning comments or
       // hidden context. The stop is visible if its banner OR some code is visible.
-      const rows = view.editors[side].getDomNode().querySelectorAll(".review-tour-highlight");
+      const rows = view.root.querySelectorAll(".review-tour-highlight, .review-tour-deleted-highlight");
       return [banner, ...rows].filter(node => node.getClientRects().length).map(node => {
         const rect = node.getBoundingClientRect();
         return { top: Math.max(0, root.top, rect.top), bottom: Math.min(innerHeight, root.bottom, rect.bottom), width: rect.width };

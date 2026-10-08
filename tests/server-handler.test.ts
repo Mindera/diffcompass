@@ -400,6 +400,7 @@ test("preview redirect sends a bare origin to the tokenized shell", async () => 
   const shell = await fetch(new Request("http://127.0.0.1/t"));
   expect(shell.status).toBe(200);
   expect(shell.headers.get("content-type")).toBe("text/html; charset=utf-8");
+  expect(await shell.text()).toContain('<html data-preview-host="true" lang="en">');
 });
 
 test("about reports the running version and review context", async () => {
@@ -424,7 +425,9 @@ test("preview redirect stays off by default", async () => {
 
   const root = await fetch(new Request("http://127.0.0.1/"));
   expect(root.status).toBe(200);
-  expect(await root.text()).not.toContain(session.browserToken);
+  const html = await root.text();
+  expect(html).not.toContain(session.browserToken);
+  expect(html).not.toContain('data-preview-host="true"');
 
   const shell = await fetch(new Request("http://127.0.0.1/t"));
   expect(shell.status).toBe(404);

@@ -10,8 +10,9 @@ const layoutMarker = 'L.push({afterLineNumber:se.modifiedRange.startLineNumber-1
 const paddingMarker = 'heightInPx:se.modifiedHeightInPx,marginDomNode:de,';
 const hoverMarker = 'k_e((_,b)=>i.createInstance(ob,_,{instantHover:b},{}))';
 const markdownMarker = 'g.setDefaultCodeBlockRenderer(i.createInstance(bB))';
+const tokensMarker = '()=>w.model.original.tokenization.backgroundTokenizationState===2';
 export function withDeletedSourceBridge(source) {
-  if (createHash("sha256").update(source).digest("hex") !== deletedSourceHash || [marker, layoutMarker, paddingMarker, hoverMarker, markdownMarker].some(marker => source.split(marker).length !== 2)) {
+  if (createHash("sha256").update(source).digest("hex") !== deletedSourceHash || [marker, layoutMarker, paddingMarker, hoverMarker, markdownMarker, tokensMarker].some(marker => source.split(marker).length !== 2)) {
     throw new Error("Deleted-source adapter requires the exact pinned Monaco 0.55.1 asset; revalidate before upgrading.");
   }
   const patched = source.replace(layoutMarker, 'const reviewHeight=Pe.diffCompassLayoutDeleted?.({node:ye,margin:bt,counts:Ot.viewLineCounts,start:se.originalRange.startLineNumber,lineHeight:B})||0;L.push({afterLineNumber:se.modifiedRange.startLineNumber-1,domNode:ye,heightInPx:Ot.heightInLines*B+reviewHeight,')
@@ -21,7 +22,14 @@ export function withDeletedSourceBridge(source) {
     // that file is evicted. Bind global helpers to the initialized standalone
     // service instead (the same root used by create/createDiffEditor).
     .replace(hoverMarker, 'k_e((_,b)=>Ee.initialize({}).createInstance(ob,_,{instantHover:b},{}))')
-    .replace(markdownMarker, 'g.setDefaultCodeBlockRenderer(Ee.initialize({}).createInstance(bB))');
+    .replace(markdownMarker, 'g.setDefaultCodeBlockRenderer(Ee.initialize({}).createInstance(bB))')
+    // Unified deleted rows cache rendered token class IDs. The native boolean
+    // completion observable suppresses later completed->completed events (theme
+    // changes and lazy tokenizer registration), leaving stale colors/plain text.
+    // Token events may also precede the final completion-state notification.
+    // Repaint on each token event through Monaco's existing zone lifecycle,
+    // rather than relying on that separate completion state to change in time.
+    .replace(tokensMarker, '()=>({})');
   return patched.replace(marker, marker + `
     const reviewMapping = {
       model: n, startLineNumber: i.original.startLineNumber,

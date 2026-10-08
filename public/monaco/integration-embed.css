@@ -41,3 +41,5 @@
 .review-tour-unified .review-tour-margin{border-left:0}
 .review-card-edge-host::after{background-image:var(--review-tour-edge-fill,none),var(--review-card-edge-fill,none);background-size:2px 100%,100% 100%;background-position:right top;background-repeat:no-repeat}
 .review-tour-start{border-top:2px solid var(--accent)}.review-tour-end{border-bottom:2px solid var(--accent)}
+.review-tour-deleted-highlight{border-right:2px solid var(--accent)}
+.review-before-card.review-before-tour-space{pointer-events:none;max-height:none}

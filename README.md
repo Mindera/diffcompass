@@ -433,6 +433,12 @@ cards share one ordered page-level list, without a nested scrolling file group.
 Source refreshes cannot
 silently save a draft against a different comparison.
 
+Monaco tour stops retain their Before/After source identities in Split and
+Unified views. Original ranges can span removed and unchanged code; inserted
+After lines are not included in a Before highlight. Navigation reveals folded
+context without selecting text and scrolls to the stop's banner, not merely the
+file header. Before-side tours no longer switch the file to Shiki.
+
 Select a line or range on the After side and choose **Suggest edit** from the
 toolbar or context menu. Its separate editable Monaco draft replaces full lines;
 **Propose edit** saves a syntax-highlighted inline card beside the code, like a
@@ -480,9 +486,14 @@ removed-line source positions and binds Monaco's global hover/Markdown helpers
 to its root service instead of an evictable editor. Revalidate this adapter and
 the browser suite before upgrading Monaco; do not patch `node_modules`.
 
-This is not yet default-renderer parity: all syntax themes, Unified Before-side
-tour anchors, real-PR end-to-end confirmation and mobile validation remain
-rollout gates. Images, unsupported/large
+All six syntax palettes (GitHub, Vitesse, DiffCompass and the three Catppuccin
+variants) apply to Monaco diffs, source/peek views and suggestion editors. Theme
+changes recolor open editors without replacing their models or drafts. Monaco
+keeps its native tokenization, so individual syntax scopes can differ from Shiki.
+Catppuccin retains its dark code surface even with light application chrome.
+Unified Before-side tour anchors are supported natively; real-PR end-to-end,
+actual-device validation and green browser CI remain rollout gates.
+Images, unsupported/large
 files (over 256 KB per side), workspace views and proposal previews retain the
 Shiki renderer. Sequence-diagram code snippets are a separate surface.
 
@@ -523,6 +534,13 @@ shared Git worktree or remotes). Their confirmation explicitly identifies this
 disposable scope. External GitHub operations, generation and refresh stay blocked.
 Resume that same fixture with `DIFF_VIEWER_STATE=/absolute/path/to/session.json`;
 keep `DIFF_VIEWER_PR_EXAMPLE=1` set. The printed session path contains its review state.
+
+For a **fresh** fixture with Before-side tour examples, also set
+`DIFF_VIEWER_BEFORE_TOUR=1` (omit `DIFF_VIEWER_STATE`). Its first five stops cover
+removed, mixed removed/unchanged, unchanged, and folded original source, followed
+by the usual After stops. Choose Monaco and Unified, then test Next/Previous,
+Split, Wrap, comments, and returning to Current step. This flag never replaces
+the tour in a resumed session.
 
 ### Lifecycle layout fixture
 

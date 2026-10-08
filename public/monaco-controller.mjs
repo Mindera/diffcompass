@@ -1,6 +1,8 @@
 // One ordered, page-level file list. Each visible text file owns an isolated
 // editor; image/fallback cards stay in their original positions in that list.
 import { fileChangeCounts, fileStatusLabel } from "./monaco/annotations.mjs";
+import { createMobileActions } from "./monaco/mobile-actions.mjs";
+import { panReviewScroll } from "./monaco/pen-scroll.mjs";
 
 export function createMonacoRenderer({ container, controls, token, snapshot, render, actions }) {
   const preferenceKey = "diffcompass-diff-renderer";
@@ -20,10 +22,11 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   try { commentsVisible = localStorage.getItem(commentPreference) !== "hidden"; } catch {}
   const entries = new Map(), fallbacks = new Set(), viewStates = new Map();
   const keyOf = session => JSON.stringify([session.comparison.mergeBase, session.comparison.sourceTree, session.comparison.files.map(file => [file.path, file.oldPath, file.newPath, file.status])]);
-  const hasDraft = () => [...entries.values()].some(entry => entry.child?.hasDraft());
+  const hasDraft = () => mobileActions.hasDraft || [...entries.values()].some(entry => entry.child?.hasDraft());
   const heightLimit = () => Math.max(240, innerHeight - 230);
   const reservedHeight = entry => (entry.height || Math.min(heightLimit(), 400)) + entry.header.offsetHeight + 2;
   const scrollRoot = container.closest("#diff-panel");
+  const mobileActions = createMobileActions({ panel: scrollRoot, enabled: () => active && snapshot().activeTab === "diff", notify: actions.notify, onClear: actions.clearSelection });
   let phasePreparation = null, phaseFocusId = null;
   let phaseAnchor = null, phaseAnchorScrollTop = null, tourFocusGeneration = 0;
   let cancelFileScroll = null;
@@ -55,6 +58,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     if (viewStates.size > 3) viewStates.delete(viewStates.keys().next().value);
   }
   function closeEntry(entry) {
+    mobileActions.clearPath(entry.path);
     entry.generation++; clearTimeout(entry.timer); entry.settle?.(null); entry.settle = null;
     entry.paintSettle?.(false); entry.paintSettle = null;
     // Reserve flow space BEFORE removing the iframe. Measuring the header
@@ -128,8 +132,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   }
   function supports(file, current) {
     return file && !fallbacks.has(file.path) && !/\.png$/i.test(file.path)
-      && !file.metadata?.some(line => /^(Binary files |GIT binary patch)/.test(line))
-      && !(current.layout === "unified" && current.steps.some(step => step.anchor.path === file.path && step.anchor.side === "old"));
+      && !file.metadata?.some(line => /^(Binary files |GIT binary patch)/.test(line));
   }
   function owns(path) {
     return active && Boolean(supports(latestFiles.find(file => file.path === path), snapshot()));
@@ -150,6 +153,19 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     frame.title = "Monaco review: " + entry.path; frame.className = "monaco-review-frame"; frame.dataset.monacoPath = entry.path;
     frame.style.height = (entry.height || Math.min(heightLimit(), 400)) + "px";
     const valid = () => entry.generation === ticket && entry.frame === frame;
+    const mobileItem = item => ({
+      ...item,
+      valid: () => valid() && isCurrent(entry) && owns(entry.path) && item.valid(),
+      retain() {
+        const hold = {}; (entry.navigationHolds ||= new Set()).add(hold);
+        return () => {
+          entry.navigationHolds.delete(hold);
+          queueMicrotask(() => {
+            if (valid() && !entry.visible && !entry.preparing && !entry.targeted && !entry.navigationHolds.size && !entry.child?.hasDraft()) closeEntry(entry);
+          });
+        };
+      },
+    });
     const fail = message => {
       if (!valid()) return;
       failed = true; closeAll(); notice.textContent = message + " The Shiki renderer is available."; render();
@@ -159,7 +175,26 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
       singleFile: true,
       retainViewport() { actions.reserveScroll(scrollRoot.scrollTop); },
       userInteraction: onUserInteraction,
+      holdPenScroll() {
+        if (!valid()) return;
+        onUserInteraction();
+        const hold = {}; (entry.navigationHolds ||= new Set()).add(hold);
+        return () => {
+          entry.navigationHolds.delete(hold);
+          // Release after pointerup/tap dispatch has finished. Never evict the
+          // iframe holding pointer capture in the middle of a drag.
+          queueMicrotask(() => {
+            if (valid() && !entry.preparing && !entry.visible && !entry.targeted && !entry.navigationHolds.size && !entry.child?.hasDraft()) closeEntry(entry);
+          });
+        };
+      },
+      panBy(deltaY) {
+        if (valid()) panReviewScroll(scrollRoot, deltaY, matchMedia("(max-width: 900px)").matches ? document.scrollingElement : null);
+      },
       select(anchor) { if (valid() && isCurrent(entry)) actions.select(anchor); },
+      mobileSelect(item, pointerType) { if (valid() && isCurrent(entry)) mobileActions.select(mobileItem(item), pointerType); },
+      clearMobileSelection() { mobileActions.clearPath(entry.path); },
+      revealMobile(side, line, endLine) { return controller.reveal(entry.path, side, line, endLine); },
       ask(anchor) {
         if (!valid() || !isCurrent(entry)) return actions.notify("The source changed. Finish or cancel the retained draft before selecting new code.");
         actions.ask(anchor);
@@ -225,6 +260,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     }
   }, { root: container.closest("#diff-panel"), rootMargin: "200px" });
   function sync() {
+    mobileActions.update();
     if (!active || disposed) return;
     if (phasePreparation) return;
     const key = keyOf(snapshot().session);
@@ -265,14 +301,17 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     render();
   };
   const theme = new MutationObserver(sync);
-  theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-syntax-theme"] });
   const stageWidth = () => {
     const style = getComputedStyle(container);
     return container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   };
   function revealPreparedEntry(entry) {
     const toolbarHeight = parseFloat(getComputedStyle(scrollRoot).getPropertyValue("--diff-toolbar-height")) || 0;
-    const top = Math.max(0, scrollRoot.scrollTop + entry.slot.getBoundingClientRect().top - scrollRoot.getBoundingClientRect().top - toolbarHeight - 12);
+    const step = snapshot().step;
+    const target = step?.anchor.path === entry.path && entry.child?.tourTarget(step);
+    const destination = target ? entry.frame.getBoundingClientRect().top + target.top - entry.header.offsetHeight : entry.slot.getBoundingClientRect().top;
+    const top = Math.max(0, scrollRoot.scrollTop + destination - scrollRoot.getBoundingClientRect().top - toolbarHeight - 12);
     // A short final file also needs room below it, otherwise the browser
     // clamps this reveal and briefly exposes unprepared files above it.
     if (Math.abs(top - scrollRoot.scrollTop) > 1) {
@@ -352,6 +391,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   }
   const controller = {
     owns, sync, hasDraft, setCommentsVisible,
+    updateMobileActions: mobileActions.update,
     cancelPhase,
     async preparePhase(session) {
       cancelPhase();
@@ -386,6 +426,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
         if (!next.collapsed.includes(file.path)) {
           const child = await mount(entry);
           if (!child || !await entry.paint) { if (phasePreparation === pending) cancelPhase(); return false; }
+          if (file.path === step.anchor.path) await child.focusTour(step);
         }
         height += entry.slot.getBoundingClientRect().height;
         if (height >= scrollRoot.clientHeight + 200) break;
@@ -525,13 +566,20 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
         if (!child || !owns(path) || hasDraft()) return false;
         const focused = await child.focusTour(step);
         if (focused && focusGeneration === tourFocusGeneration && snapshot().step?.id === step.id && !hasDraft()) {
-          if (phaseFocusId === step.id) revealPreparedEntry(entry);
+          const target = child.tourTarget(step);
+          if (phaseFocusId === step.id && !target) revealPreparedEntry(entry);
           else {
             let finish;
             const settled = new Promise(resolve => { finish = resolve; });
             scrollRoot.addEventListener("scrollend", finish, { once: true });
             const timer = setTimeout(finish, 1200);
-            entry.slot.scrollIntoView({ block: "start", behavior: direct ? "instant" : "smooth" });
+            if (target) {
+              const toolbar = parseFloat(getComputedStyle(scrollRoot).getPropertyValue("--diff-toolbar-height")) || 0;
+              const top = Math.max(0, scrollRoot.scrollTop + entry.frame.getBoundingClientRect().top + target.top - scrollRoot.getBoundingClientRect().top - toolbar - entry.header.offsetHeight - 12);
+              actions.reserveScroll(top);
+              scrollRoot.scrollTo({ top, behavior: direct ? "instant" : "smooth" });
+              if (phaseAnchor) phaseAnchorScrollTop = scrollRoot.scrollTop;
+            } else entry.slot.scrollIntoView({ block: "start", behavior: direct ? "instant" : "smooth" });
             if (!direct) await settled;
             clearTimeout(timer); scrollRoot.removeEventListener("scrollend", finish);
           }
@@ -555,6 +603,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     },
     dispose() {
       if (disposed) return; disposed = true; cancelFileScroll?.(); releasePhaseAnchor(); cancelPhase(); closeAll(); visibility.disconnect(); theme.disconnect(); window.removeEventListener("resize", resize);
+      mobileActions.dispose();
       for (const type of ["wheel", "pointerdown", "keydown"]) window.removeEventListener(type, onUserInteraction, true);
       scrollRoot.removeEventListener("scroll", phasePositionUnchanged);
       region.remove(); label.remove(); comments.remove();

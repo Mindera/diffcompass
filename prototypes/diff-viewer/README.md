@@ -541,9 +541,70 @@ immediately before their source, with an objective, explicit side/range and
 bounded highlight. Tour navigation scrolls without creating a code quotation;
 real selections and comment drafts survive tour updates. Cards use independent
 view zones, resize with wrapping, and clear on phase change/exit. In Unified,
-a phase containing Before-side anchors deliberately uses the existing renderer;
-Split supports these anchors in Monaco. This avoids projecting a Before stop
-onto After code while the deleted-fragment tour layout remains unverified.
+Before-side anchors originally used the existing renderer. This historical
+restriction is removed by the 2026-10-08 implementation; native Unified
+Before layout now uses original deleted-row mappings and mapped unchanged rows.
+
+2026-10-08 implementation/validation status:
+
+- Before banners reserve space in the existing deleted-row layout alongside
+  comments; wrapped rows and overlapping stops retain original source identity.
+- Mixed Before ranges project unchanged segments without highlighting inserted
+  After source. Folded tour context opens without creating a code selection.
+- Production and legacy integration routing no longer fall back for Before tours.
+  The page scroll target uses the banner; phase staging prepares it before swap.
+- `DIFF_VIEWER_BEFORE_TOUR=1` adds five Before stops to a fresh production fixture.
+  `scripts/monaco-before-tour-browser.mjs` is included in `bun run test:monaco`.
+- `bun run verify`: **834 pass, 8 skip, 0 fail**. Same-origin fixture API checks
+  passed all five Before stops, After transitions, and return to the first stop.
+- Manual verification in reconnected Chrome passed all five Before stops,
+  removed/shared mixed ranges, folded context, Split/Unified switching,
+  comment visibility, keyboard navigation and the After-phase round trip.
+  At 820px and 390px widths, wrapping and scrolling retained source placement.
+  No console errors were reported. The check caught and fixed a misplaced
+  native Before line number: affected numbers now follow the actual deleted
+  source row, including wrapped fragments, without changing source anchors.
+- The full `scripts/monaco-before-tour-browser.mjs` regression has not been
+  executed locally; the checks above used the connected Chrome UI. Fully deleted
+  files have projection unit coverage, not visual coverage in this fixture.
+  CI and an actual tablet/pen check of the new Before stops remain separate gates.
+
+2026-10-08 mobile scroll / tour discoverability follow-up:
+
+- The stacked mobile layout leaves a 76px tour-header peek below the diff. The
+  code-action dock stays above that boundary without adding another Mosh lane.
+  Open tour reveals the status pane; Diff returns to the existing code offset.
+- The outer mobile scroll owner is now the document, not a second body scrollbox.
+  Captured pen drags hand remaining motion from the diff to that document and
+  reverse back to the code pane before scrolling source. Desktop stays unchanged.
+- Previous/Next reveals the mobile code pane as well as the targeted source.
+- Chrome checks passed at 820×1000 and 390×844, including the peek, Open tour,
+  Diff return and Previous/Next round trip. No console errors. The full validation
+  suite passed (846 tests, 8 skipped); an additional dock/peek geometry regression
+  passed afterward with the focused mobile tests. Actual pen hardware remains a
+  user check; this fixes a confirmed handoff edge case, not a claim to reproduce
+  every intermittent scroll symptom reported on the tablet.
+
+2026-10-08 syntax-theme support:
+
+- Monaco now derives all six palettes and their light/dark variants from the
+  same bundled Shiki registrations. No CDN or runtime dependency was added.
+  Native Monaco tokenization remains in use; scope-level highlighting need not
+  match Shiki exactly. Catppuccin keeps its dark code surface in light UI mode.
+- The host synchronizes syntax preferences with mounted editors. Source, peek
+  and suggestion editors inherit the selected palette without recreating models.
+- The pinned deleted-source adapter also invalidates each original token event:
+  Unified removed rows now repaint on late tokenizer registration and live theme
+  changes instead of retaining stale token-color IDs.
+- Six focused unit tests cover conversion, styles, assets, synchronization,
+  idempotence and the pinned adapter. Connected Chrome checks covered all six
+  palettes, light/dark variants, removed-row recoloring (including cold reload),
+  source-view inheritance, draft preservation during palette changes and
+  persistence across Shiki/Monaco switches and reload. No console errors.
+- Final `bun run verify`: **840 pass, 8 skip, 0 fail**, including typecheck.
+- `scripts/monaco-themes-browser.mjs` adds the same regression to
+  `bun run test:monaco`; it has not been executed locally. The live checks used
+  the connected Chrome UI.
 
 Tests first reproduced missing inline cards. `tour-browser.mjs` then passed
 exact card/source placement, Current/Next state, Split/Unified transitions,
@@ -862,7 +923,7 @@ Earlier unrelated browser limitations remain as documented above.
   `/tmp/dc-tour-right-scrollbar.log`. Both runs report zero page errors; final
   Split/Unified screenshots `/tmp/dc-comment-width-{split,unified}.png` were
   visually inspected. These browser cases use After-side stops; the existing
-  native fallback for Before-side stops in Unified is unchanged.
+  native fallback for Before-side stops in Unified was unchanged at that time.
 - Intermediate checks caught a start offset including the banner spacer (fixed)
   and test assumptions about repeated wrapped-line decorations and an offscreen
   test zone (corrected to measure rendered geometry). Logs retained under
@@ -1259,3 +1320,18 @@ node prototypes/diff-viewer/state-machine-browser.mjs /absolute/path/to/playwrig
 # Diagnostic negative control: expected to exit nonzero on the affected setup.
 DIAGRAM_RAW_VIEWPORT=1 node prototypes/diff-viewer/state-machine-pointer-browser.mjs /absolute/path/to/playwright/index.mjs 'http://127.0.0.1:PORT/#token=TOKEN'
 ```
+
+### Split tour banner/source collisions (2026-10-08)
+
+- Full-width banners reserved space in only their owning Monaco editor. With
+  Before-side stops, that painted over opposite-side source and could completely
+  cover another stop's banner. Split banners now follow their own editor's actual
+  bounds (including unequal sash widths); Unified banners stay full-width.
+  The existing content observer reserves the wrapped banner's complete height.
+- Chrome verification covered the first two overlapping Before stops, matching
+  source highlights, Next/Previous, Split/Unified and wrapped tablet-width
+  layouts. No banner/banner or banner/source intersections were observed.
+  The browser regression script now asserts those collisions and selected-banner
+  identity explicitly. Unit geometry checks cover Split and Unified bounds.
+- `bun run verify`: 849 passed, 8 skipped, no failures. Screenshot:
+  `/private/tmp/diffcompass-split-tour-banners.jpg`.

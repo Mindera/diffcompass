@@ -18,22 +18,20 @@ async function file() {
   frame = page.frames().find(frame => new URL(frame.url(), url).searchParams.get('file') === path);
 }
 const draftValue = () => frame.evaluate(() => monaco.editor.getModels().find(model => model.uri.scheme === 'inmemory' && model.uri.authority === 'review-suggestion')?.getValue());
-async function open(line = 17, endLine = line, menu = false) {
+async function open(line = 17, endLine = line) {
   await frame.evaluate(({line,endLine}) => {
     const editor = diffLab.views.get('src/cart.ts').editors.new;
     editor.setSelection(new monaco.Range(line, 4, endLine, editor.getModel().getLineMaxColumn(endLine)));
     editor.focus();
   }, {line,endLine});
-  if (menu) {
-    // Put the selected source in the outer viewport too (a per-file iframe
-    // can be taller than the page, especially with existing suggestion cards).
-    await frame.locator('.editor.modified .view-line').filter({hasText:'return amount'}).first().evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));
-    await page.keyboard.press('Shift+F10');
-    // Monaco ignores menu mouse-up during its first 100ms, including menus
-    // opened from the keyboard. Match the existing pointer-menu regression.
-    await page.waitForTimeout(150);
-    await frame.getByRole('menuitem', { name: 'Suggest edit', exact: true }).click();
-  } else await frame.getByRole('button', { name: 'Suggest edit', exact: true }).click();
+  // Put the selected source in the outer viewport too (a per-file iframe
+  // can be taller than the page, especially with existing suggestion cards).
+  await frame.locator('.editor.modified .view-line').filter({hasText:'return amount'}).first().evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));
+  await page.keyboard.press('Shift+F10');
+  // Monaco ignores menu mouse-up during its first 100ms, including menus
+  // opened from the keyboard. Match the existing pointer-menu regression.
+  await page.waitForTimeout(150);
+  await frame.getByRole('menuitem', { name: 'Suggest edit', exact: true }).click();
   await frame.locator('form.review-suggestion').waitFor();
 }
 async function typeReplacement(value) {
@@ -57,7 +55,7 @@ try {
     // Menu positioning uses the iframe viewport: let the requested layout
     // and the outer card finish resizing before opening a native menu.
     await page.waitForTimeout(250);
-    await open(16,17,true);
+    await open(16,17);
     await page.waitForTimeout(400);
     await page.screenshot({path:`/tmp/dc-edits-composer-${layout}.png`});
     const submitBounds=await frame.getByRole('button',{name:'Propose edit',exact:true}).boundingBox();
@@ -81,7 +79,8 @@ try {
   await frame.evaluate(()=>{
     const editor=diffLab.views.get('src/cart.ts').editors.old;editor.setPosition({lineNumber:6,column:1});editor.focus();
   });
-  assert.equal(await frame.getByRole('button',{name:'Suggest edit',exact:true}).isDisabled(),true,'Before source is not editable');
+  assert.equal(await frame.evaluate(()=>diffLab.views.get('src/cart.ts').editors.old.getAction('diff-lab.new.suggest-edit')),null,'Before source has no Suggest edit action');
+  assert.equal(await frame.getByRole('button',{name:'Suggest edit',exact:true}).count(),0,'Suggest edit is not duplicated in the file toolbar');
   await open();
   const replacement='  return amount - amount * (discount.percentage / 100);';
   await typeReplacement(replacement);

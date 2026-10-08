@@ -1072,6 +1072,42 @@ test("pull request file links retain their reading position and provide a return
   expect(styles).toContain(".diff-return {");
 });
 
+test("GitHub reply links use the direct Changes permalink for the root comment", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("function githubThreadReplyUrl(thread)"), app.indexOf("function githubThreadLocation(thread)"));
+  const replyUrl = new Function(`${source}; return githubThreadReplyUrl;`)() as (thread: { comments?: { url: string }[] }) => string;
+  const thread = (...urls: string[]) => ({ comments: urls.map(url => ({ url })) });
+  const pr = "https://github.com/acme/widgets/pull/7";
+
+  expect(replyUrl(thread(`${pr}#discussion_r123`, `${pr}#discussion_r456`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/files#r123`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/changes#r123`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/changes#discussion_r123`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/files/${"a".repeat(40)}#r123`))).toBe(`${pr}/changes/${"a".repeat(40)}#r123`);
+  expect(replyUrl(thread(`${pr}/changes/${"a".repeat(40)}#r123`))).toBe(`${pr}/changes/${"a".repeat(40)}#r123`);
+  expect(replyUrl(thread(`${pr}?diff=unified#discussion_r123`))).toBe(`${pr}/changes?diff=unified#r123`);
+  expect(replyUrl(thread(`${pr}/files/?diff=split#discussion_r123`))).toBe(`${pr}/changes?diff=split#r123`);
+  expect(replyUrl(thread("https://github.com/rcosteira79/diffcompass/pull/5#discussion_r4209858327")))
+    .toBe("https://github.com/rcosteira79/diffcompass/pull/5/changes#r4209858327");
+  expect(replyUrl(thread(`${pr}#future-provider-anchor`))).toBe(`${pr}#future-provider-anchor`);
+  for (const url of ["javascript:alert(1)", "http://github.com/acme/widgets/pull/7#discussion_r123", "https://github.com.evil.test/acme/widgets/pull/7#discussion_r123", "not a URL"]) {
+    expect(replyUrl(thread(url))).toBe("");
+  }
+  expect(replyUrl({})).toBe("");
+  expect(replyUrl(thread())).toBe("");
+});
+
+test("GitHub review thread cards label status as information, not an open action", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("function githubReviewThreadCard(thread)"), app.indexOf("function renderPullRequest()"));
+  const card = new Function("escapeHtml", "githubThreadLocation", "renderInlineMarkdown", "githubThreadReplyLink", `${source}; return githubReviewThreadCard;`)(
+    (text: string) => text, () => "file.ts:71 · new", (text: string) => text, () => "",
+  ) as (thread: { id: string; path: string; resolved: boolean; comments: [] }) => string;
+  const thread = { id: "thread", path: "file.ts", comments: [] as [] };
+  expect(card({ ...thread, resolved: false })).toContain("<span>Status: Open</span>");
+  expect(card({ ...thread, resolved: true })).toContain("<span>Status: Resolved</span>");
+});
+
 test("GitHub review threads open their file and remain visible beside the diff", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public", "app.js"), "utf8"),

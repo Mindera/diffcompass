@@ -1,3 +1,5 @@
+import { tourDisplaySegments } from "./source-anchor.mjs";
+
 // Prototype-only presentation over the existing resolver, panel and history.
 // Keep the old API/DOM identities so existing callers and Before anchors survive.
 export function referencePresentation(result, context = {}) {
@@ -212,10 +214,19 @@ export function tourStopsForFile(file, steps, currentId) {
   });
 }
 
-export function installTourAnnotations({ file, editors, monaco, unified, root, onLayout }) {
+// A view zone only reserves space in its owning editor. Split banners must
+// stay within that editor too; stretching over its sibling covers source and
+// other banners whose independently aligned zones share the same vertical row.
+export function tourBannerInsets(bounds, sourceBounds, unified, gap = 6) {
+  const left = unified ? bounds.left : Math.max(bounds.left, sourceBounds.left);
+  const right = unified ? bounds.right : Math.min(bounds.right, sourceBounds.right);
+  return { left: left - bounds.left + gap, right: bounds.right - right + gap };
+}
+
+export function installTourAnnotations({ file, editors, diff, beforeAnnotations, monaco, unified, root, onLayout, restoreViewState }) {
   const decorations = Object.fromEntries(Object.entries(editors).map(([side, editor]) => [side, editor.createDecorationsCollection()]));
-  // Reserve space in Monaco, but draw the banner across the entire diff rather
-  // than clipping it to one revision's code viewport. Source ranges stay sided.
+  // Reserve space in Monaco and draw above that source column in Split, or
+  // across the sole visible column in Unified. Source ranges always stay sided.
   const layer = document.createElement("div"); layer.className = "review-tour-layer"; root.append(layer);
   // Unified's original number column and external +/- lane sit outside the
   // modified editor. Extend only its rendered margin rows into that prefix;
@@ -226,18 +237,24 @@ export function installTourAnnotations({ file, editors, monaco, unified, root, o
   const edgeHosts = new Set();
   let frame = null;
   let signature = "", structureSignature = "", gutterSignature = "", records = [];
+  let lastSteps = [], lastCurrentId, disposed = false;
   function layout() {
     frame = null;
+    if (disposed) return;
     const bounds = root.getBoundingClientRect();
-    for (const { node, spacer } of records) {
+    const isUnified = unified();
+    for (const { node, spacer, editor } of records) {
       const rect = spacer.getBoundingClientRect();
       node.hidden = !spacer.getClientRects().length || !rect.height;
+      const insets = tourBannerInsets(bounds, editor.getDomNode().getBoundingClientRect(), isUnified, bannerGap);
+      node.style.left = `${insets.left}px`;
+      node.style.right = `${insets.right}px`;
       node.style.top = `${rect.top - bounds.top + bannerGap}px`;
     }
-    const isUnified = unified();
     root.classList.toggle("review-tour-unified", isUnified);
     const fragment = document.createDocumentFragment();
-    if (isUnified && records.some(record => record.stop.state === "current" && record.stop.anchor.side === "new")) {
+    const current = records.find(record => record.stop.state === "current");
+    if (isUnified && current) {
       const dom = editors.new.getDomNode();
       const native = selector => [...(dom?.querySelectorAll(selector) || [])].filter(node => node.closest(".monaco-editor") === dom).map(node => node.getBoundingClientRect()).filter(rect => rect.width && rect.height);
       const starts = native(".review-tour-margin-start"), ends = native(".review-tour-margin-end");
@@ -250,33 +267,55 @@ export function installTourAnnotations({ file, editors, monaco, unified, root, o
         row.style.cssText = `top:${rect.top - bounds.top}px;height:${rect.height}px;width:${width}px`;
         fragment.append(row);
       }
+      // Unified deletions aren't lines in the modified editor's model. Paint
+      // the original renderer's exact wrapped rows, never an After range with
+      // coincident line numbers. Cards and inserted lines keep their own space.
+      if (current.stop.anchor.side === "old") {
+        const { startLine, endLine } = current.stop.anchor;
+        for (const zone of root.querySelectorAll(".line-delete-selectable")) {
+          if (zone.diffCompassDeletedSource?.model !== editors.old.getModel() || !zone.getClientRects().length) continue;
+          const sourceRows = [...zone.querySelectorAll(":scope > [data-review-old-line]")];
+          for (const source of sourceRows) {
+            const line = Number(source.dataset.reviewOldLine), rect = source.getBoundingClientRect();
+            if (line < startLine || line > endLine || !rect.height) continue;
+            const row = document.createElement("div"); row.className = "review-tour-gutter-row review-tour-deleted-highlight";
+            row.dataset.tourSourceLine = String(line);
+            if (line === startLine && sourceRows.find(node => node.dataset.reviewOldLine === String(line)) === source) row.classList.add("review-tour-gutter-start");
+            if (line === endLine && sourceRows.findLast(node => node.dataset.reviewOldLine === String(line)) === source) row.classList.add("review-tour-gutter-end");
+            row.style.cssText = `top:${rect.top - bounds.top}px;height:${rect.height}px;width:${bounds.width}px`;
+            fragment.append(row);
+          }
+        }
+      }
     }
-    const nextGutter = [...fragment.children].map(node => `${node.className}:${node.style.cssText}`).join(";");
+    const nextGutter = [...fragment.children].map(node => `${node.className}:${node.dataset.tourSourceLine || ""}:${node.style.cssText}`).join(";");
     if (nextGutter !== gutterSignature) { gutterSignature = nextGutter; gutter.replaceChildren(fragment); }
-    const current = records.find(record => record.stop.state === "current");
     for (const editor of Object.values(editors)) {
       const dom = editor.getDomNode(), viewport = dom?.querySelector(":scope > .overflow-guard > .monaco-scrollable-element");
       if (!viewport) continue;
       let fill = "none";
       const lines = viewport.querySelector(":scope > .lines-content"), rect = viewport.getBoundingClientRect();
-      if (current?.editor === editor && lines && rect.height) {
+      if (current && lines && rect.height) {
         // Use Monaco's source offsets, including wrapped lines and intervening
         // view zones, but excluding zones AFTER the final source line. Subtract
         // its rendered scroll translation so the edge stays aligned mid-scroll
         // and continues even when only a tall comment is visible.
         const scroll = rect.top - lines.getBoundingClientRect().top;
         const origin = dom.getBoundingClientRect().top - scroll;
-        const top = origin + editor.getTopForLineNumber(current.stop.anchor.startLine);
-        const bottom = origin + editor.getBottomForLineNumber(current.stop.anchor.endLine);
-        fill = gutterRowGradient([{ top, bottom, color: "var(--accent)" }], rect.top, rect.height);
+        const ranges = current.segments.filter(segment => !segment.deleted && editors[segment.side] === editor).map(segment => ({
+          top: origin + editor.getTopForLineNumber(segment.startLine),
+          bottom: origin + editor.getBottomForLineNumber(segment.endLine), color: "var(--accent)",
+        }));
+        fill = gutterRowGradient(ranges, rect.top, rect.height);
       }
       if (viewport.style.getPropertyValue("--review-tour-edge-fill") !== fill) viewport.style.setProperty("--review-tour-edge-fill", fill);
       edgeHosts.add(viewport);
     }
     onLayout?.();
   }
-  function schedule() { if (frame === null) frame = requestAnimationFrame(layout); }
+  function schedule() { if (!disposed && frame === null) frame = requestAnimationFrame(layout); }
   const subscriptions = Object.values(editors).flatMap(editor => [editor.onDidScrollChange(schedule), editor.onDidLayoutChange(schedule)]);
+  subscriptions.push(diff.onDidUpdateDiff(() => { if (!disposed) api.update(lastSteps, lastCurrentId); }));
   const resize = new ResizeObserver(schedule); resize.observe(root);
   // Monaco renders decorations after its model/layout notifications. Observe
   // only native editor DOM; our overlays stay outside it to avoid feedback.
@@ -289,7 +328,8 @@ export function installTourAnnotations({ file, editors, monaco, unified, root, o
     gutterSignature = ""; gutter.replaceChildren();
     for (const record of records) {
       record.observer.disconnect();
-      record.editor.changeViewZones(accessor => accessor.removeZone(record.id));
+      if (record.beforeSpace) record.beforeSpace();
+      else record.editor.changeViewZones(accessor => accessor.removeZone(record.id));
       record.node.remove();
     }
     records = [];
@@ -308,30 +348,35 @@ export function installTourAnnotations({ file, editors, monaco, unified, root, o
     for (const decoration of Object.values(decorations)) decoration.clear();
     const record = records.find(record => record.stop.state === "current");
     if (!record) return;
-    const { side, startLine, endLine } = record.stop.anchor;
-    decorations[side].set([
-      { range: new monaco.Range(startLine, 1, endLine, record.editor.getModel().getLineMaxColumn(endLine)), options: { isWholeLine: true, className: "review-tour-highlight", marginClassName: "review-tour-margin" } },
-      { range: new monaco.Range(startLine, 1, startLine, 1), options: { isWholeLine: true, className: "review-tour-start", marginClassName: "review-tour-margin-start" } },
-      { range: new monaco.Range(endLine, 1, endLine, 1), options: { isWholeLine: true, className: "review-tour-end", marginClassName: "review-tour-margin-end" } },
-    ]);
+    const bySide = { old: [], new: [] };
+    for (const segment of record.segments) {
+      if (segment.deleted) continue;
+      const { side, startLine, endLine, sourceStartLine, sourceEndLine } = segment;
+      bySide[side].push({ range: new monaco.Range(startLine, 1, endLine, editors[side].getModel().getLineMaxColumn(endLine)), options: { isWholeLine: true, className: "review-tour-highlight", marginClassName: "review-tour-margin" } });
+      if (sourceStartLine === record.stop.anchor.startLine) bySide[side].push({ range: new monaco.Range(startLine, 1, startLine, 1), options: { isWholeLine: true, className: "review-tour-start", marginClassName: "review-tour-margin-start" } });
+      if (sourceEndLine === record.stop.anchor.endLine) bySide[side].push({ range: new monaco.Range(endLine, 1, endLine, 1), options: { isWholeLine: true, className: "review-tour-end", marginClassName: "review-tour-margin-end" } });
+    }
+    for (const side of ["old", "new"]) decorations[side].set(bySide[side]);
   }
-  return {
+  const api = {
     update(steps = [], currentId) {
+      lastSteps = steps; lastCurrentId = currentId;
       const stops = tourStopsForFile(file, steps, currentId);
-      const key = JSON.stringify([unified(), stops]);
+      const changes = unified() && stops.some(stop => stop.anchor.side === "old") ? diff.getLineChanges() : undefined;
+      const key = JSON.stringify([unified(), stops, changes]);
       if (key === signature) return;
       signature = key;
-      const structure = JSON.stringify([unified(), stops.map(({ id, title, objective, anchor }) => ({ id, title, objective, anchor }))]);
+      const structure = JSON.stringify([unified(), stops.map(({ id, title, objective, anchor }) => ({ id, title, objective, anchor })), changes]);
       if (structure === structureSignature) {
         for (const record of records) updateStop(record, stops.find(stop => stop.id === record.stop.id));
         updateHighlight(); schedule(); return;
       }
       structureSignature = structure; clear();
       for (const stop of stops) {
-        // The integration host falls back to native for a phase containing
-        // Before-side stops in Unified; never place them on an After row.
-        if (unified() && stop.anchor.side === "old") continue;
-        const { side, startLine, endLine } = stop.anchor, editor = editors[side];
+        const segments = tourDisplaySegments(stop.anchor, unified(), changes);
+        if (!segments.length) continue; // Wait for Monaco's first diff mapping.
+        const first = segments[0];
+        const { side, startLine, endLine } = stop.anchor, editor = editors[first.side];
         const node = document.createElement("aside"); node.className = "review-tour-stop";
         node.dataset.tourStop = stop.id; node.dataset.tourState = stop.state;
         node.dataset.side = side; node.dataset.line = String(startLine);
@@ -342,10 +387,11 @@ export function installTourAnnotations({ file, editors, monaco, unified, root, o
         title.textContent = stop.title; objective.textContent = stop.objective;
         content.append(label, title, objective); node.append(content);
         const spacer = document.createElement("div"); spacer.setAttribute("aria-hidden", "true");
-        const descriptor = { afterLineNumber: startLine - 1, heightInPx: 50, domNode: spacer, suppressMouseDown: false, showInHiddenAreas: true, ordinal: 100010 + records.length, onDomNodeTop: schedule };
-        const record = { stop, node, spacer, editor, descriptor, id: null, observer: null };
+        const descriptor = { afterLineNumber: first.startLine - 1, heightInPx: 50, domNode: spacer, suppressMouseDown: false, showInHiddenAreas: true, ordinal: 100010 + records.length, onDomNodeTop: schedule };
+        const record = { stop, segments, node, spacer, editor, descriptor, id: null, observer: null, beforeSpace: null };
         layer.append(node);
-        editor.changeViewZones(accessor => { record.id = accessor.addZone(descriptor); });
+        if (first.deleted) record.beforeSpace = beforeAnnotations.addBeforeSpace(startLine, spacer, descriptor.heightInPx, 100000 + records.length / (stops.length + 1));
+        else editor.changeViewZones(accessor => { record.id = accessor.addZone(descriptor); });
         record.observer = new ResizeObserver(() => {
           if (!content.isConnected || !content.getBoundingClientRect().width) return;
           const style = getComputedStyle(node);
@@ -355,27 +401,48 @@ export function installTourAnnotations({ file, editors, monaco, unified, root, o
           const height = Math.ceil(content.getBoundingClientRect().height + inset) + bannerGap * 2;
           if (height === descriptor.heightInPx) return;
           descriptor.heightInPx = height;
-          editor.changeViewZones(accessor => accessor.layoutZone(record.id));
+          if (record.beforeSpace) record.beforeSpace.resize(height);
+          else editor.changeViewZones(accessor => accessor.layoutZone(record.id));
         });
         record.observer.observe(content); records.push(record); schedule();
       }
       updateHighlight();
     },
-    focus(id) {
+    async focus(id) {
       const record = records.find(record => record.stop.id === id);
       if (!record) return false;
-      const { editor, stop, descriptor, node } = record;
+      const { editor, stop, descriptor, node, segments } = record;
+      const expanded = tourContextState(diff.saveViewState(), stop.anchor, diff.getLineChanges());
+      if (expanded) {
+        (restoreViewState || (state => diff.restoreViewState(state)))(expanded);
+        // Revealing a hidden line does not itself expand Monaco's unchanged
+        // regions. Open only intersecting gaps, without moving the selection.
+        for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
+        if (disposed || !records.includes(record) || lastCurrentId !== id) return false;
+      }
       const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
       editor.updateOptions({ smoothScrolling: smooth });
       const scrollType = smooth ? monaco.editor.ScrollType.Smooth : monaco.editor.ScrollType.Immediate;
-      editor.revealLinesInCenter(stop.anchor.startLine, stop.anchor.endLine, scrollType);
-      // Include the inline heading, even for a stop hidden inside a folded gap.
-      editor.setScrollTop(Math.max(0, editor.getTopForLineNumber(stop.anchor.startLine, true) - descriptor.heightInPx - 12), scrollType);
+      // Reveal through the original model first so unchanged Before context
+      // opens at its correct mapped location. This does not select code.
+      editors[stop.anchor.side].revealLinesInCenter(stop.anchor.startLine, stop.anchor.endLine, monaco.editor.ScrollType.Immediate);
+      const first = segments[0];
+      if (first.deleted) {
+        for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
+        if (disposed || !records.includes(record) || lastCurrentId !== id) return false;
+        layout();
+        if (!node.hidden) editors.new.setScrollTop(Math.max(0, editors.new.getScrollTop() + node.getBoundingClientRect().top - root.getBoundingClientRect().top - 12), scrollType);
+      } else {
+        editor.revealLinesInCenter(first.startLine, first.endLine, scrollType);
+        // Include the inline heading, even for a stop inside a folded gap.
+        editor.setScrollTop(Math.max(0, editor.getTopForLineNumber(first.startLine, true) - descriptor.heightInPx - 12), scrollType);
+      }
       node.focus({ preventScroll: true });
       return true;
     },
-    dispose() { clear(); resize.disconnect(); nativeChanges.disconnect(); for (const subscription of subscriptions) subscription.dispose(); if (frame !== null) cancelAnimationFrame(frame); layer.remove(); gutter.remove(); for (const viewport of edgeHosts) viewport.style.removeProperty("--review-tour-edge-fill"); root.classList.remove("review-tour-unified"); },
+    dispose() { disposed = true; clear(); resize.disconnect(); nativeChanges.disconnect(); for (const subscription of subscriptions) subscription.dispose(); if (frame !== null) cancelAnimationFrame(frame); layer.remove(); gutter.remove(); for (const viewport of edgeHosts) viewport.style.removeProperty("--review-tour-edge-fill"); root.classList.remove("review-tour-unified"); },
   };
+  return api;
 }
 
 // Pinned Monaco 0.55.1 serialized view state; reject unfamiliar shapes instead
@@ -403,4 +470,20 @@ export function expandedRegionState(state, index) {
       !regions.every(region => Array.isArray(region?.range) && region.range.length === 2 && region.range.every(Number.isSafeInteger) && region.range[0] >= 1 && region.range[1] >= region.range[0])) return null;
   const end = regions[index].range[1], range = [end, end];
   return { ...state, modelState: { ...state.modelState, collapsedRegions: regions.map((region, i) => i === index ? { ...region, range } : region) } };
+}
+
+export function tourContextState(state, anchor, changes) {
+  const segments = tourDisplaySegments(anchor, true, changes).filter(segment => !segment.deleted);
+  const regions = state?.modelState?.collapsedRegions;
+  if (!Array.isArray(regions)) return null;
+  let next = state;
+  for (let index = 0; index < regions.length; index++) {
+    const range = regions[index]?.range;
+    if (!Array.isArray(range)) return null;
+    if (range[1] > range[0] && segments.some(segment => segment.startLine < range[1] && segment.endLine >= range[0])) {
+      next = expandedRegionState(next, index);
+      if (!next) return null;
+    }
+  }
+  return next === state ? null : next;
 }

@@ -1193,6 +1193,12 @@ function narrowFilePanelLayout() {
   return window.matchMedia("(max-width: 900px)").matches;
 }
 
+function revealMobilePanel(id) {
+  if (!narrowFilePanelLayout()) return;
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+  elements[id].scrollIntoView({ block: "start", behavior });
+}
+
 function setFilePanelOpen(open, { restoreFocus = false } = {}) {
   state.filePanelOpen = narrowFilePanelLayout() && Boolean(open);
   document.body.classList.toggle("file-panel-open", state.filePanelOpen);
@@ -2485,10 +2491,19 @@ function commentRowSelector(comment, line = comment.line) {
 }
 
 function githubThreadReplyUrl(thread) {
-  const candidate = thread.comments?.at(-1)?.url;
+  const candidate = thread.comments?.[0]?.url;
   try {
     const url = new URL(candidate);
-    return url.protocol === "https:" && url.hostname === "github.com" ? url.toString() : "";
+    if (url.protocol !== "https:" || url.hostname !== "github.com") return "";
+    // Match GitHub's Copy link permalink directly, without the legacy /files
+    // redirect. Keep the root comment as the target after replies arrive.
+    const comment = /^#(?:discussion_r|r)(\d+)$/.exec(url.hash);
+    const pullRequest = /^(\/[^/]+\/[^/]+\/pull\/\d+)(?:\/(?:files|changes)((?:\/[^/]+)?))?\/?$/.exec(url.pathname);
+    if (comment && pullRequest) {
+      url.pathname = `${pullRequest[1]}/changes${pullRequest[2] ?? ""}`;
+      url.hash = `r${comment[1]}`;
+    }
+    return url.toString();
   } catch {
     return "";
   }
@@ -2658,7 +2673,7 @@ function githubChecksSummary(pullRequest) {
 
 function githubReviewThreadCard(thread) {
   const location = `<button class="comment-jump" type="button" data-github-thread-jump="${escapeHtml(thread.id)}" title="Open ${escapeHtml(thread.path)} in the review">${escapeHtml(githubThreadLocation(thread))}</button>`;
-  return `<article class="comment-item github-thread-card"><div class="comment-meta">${location}<span>${thread.resolved ? "resolved" : "open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}${githubThreadReplyLink(thread)}</article>`;
+  return `<article class="comment-item github-thread-card"><div class="comment-meta">${location}<span>Status: ${thread.resolved ? "Resolved" : "Open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}${githubThreadReplyLink(thread)}</article>`;
 }
 
 function renderPullRequest() {
@@ -4799,6 +4814,7 @@ function renderActiveTab() {
   }
   updatePullRequestReturnVisibility();
   renderMapsNavigation();
+  state.monacoRenderer?.updateMobileActions();
   scheduleCurrentStepReturnUpdate();
 }
 
@@ -4993,6 +5009,7 @@ async function focusCurrentStep() {
   state.activeTab = "diff";
   renderActiveTab();
   renderTourAnnotation();
+  revealMobilePanel("diff-panel");
   if (state.monacoRenderer?.owns(step.anchor.path) && await state.monacoRenderer.focusTour(step)) return;
   if (state.monacoRenderer?.hasDraft()) return;
   const target = document.querySelector(".tour-code-note.active")
@@ -6780,6 +6797,15 @@ elements["question-files-form"].addEventListener("submit", (event) => {
   renderMessages();
 });
 elements["show-tour-pane"].addEventListener("click", () => { state.mobileAgentPane = "tour"; renderQuestionLayout(); });
+document.getElementById("mobile-tour-jump").addEventListener("click", () => {
+  if (!state.session) return;
+  // A wide Pull request view hides the agent pane; restore its normal layout.
+  activateReviewTab("diff");
+  if (state.filePanelOpen) setFilePanelOpen(false);
+  state.mobileAgentPane = "tour";
+  renderQuestionLayout();
+  revealMobilePanel("agent-panel");
+});
 elements["show-questions-pane"].addEventListener("click", () => { state.mobileAgentPane = "questions"; state.questionsOpen = true; renderQuestionLayout(); });
 function resizeQuestions(percent, persist = false) {
   state.questionPanePercent = Math.max(25, Math.min(70, percent));
@@ -7398,6 +7424,7 @@ new ResizeObserver(([entry]) => {
   }
 }).observe(document.querySelector('.diff-toolbar'));
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
+elements["diff-tab"].addEventListener("click", () => revealMobilePanel("diff-panel"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
 elements["structural-blast-radius-tab"].addEventListener("click", () => activateReviewTab("structural-blast-radius", renderStructuralBlastRadii));
 elements["archify-tab"].addEventListener("click", () => openMaps());
@@ -8108,8 +8135,9 @@ renderFocusMode();
 state.monacoRenderer = createMonacoRenderer({
   container: elements.diff, controls: document.querySelector(".diff-view-controls"), token: state.apiToken,
   snapshot: () => ({
+    activeTab: state.activeTab,
     session: state.session, collapsed: [...state.collapsedFiles], layout: state.diffLayout, wrap: state.diffWrap === "wrap",
-    markers: state.showDiffMarkers, light: document.documentElement.dataset.theme === "light",
+    markers: state.showDiffMarkers, light: document.documentElement.dataset.theme === "light", syntaxTheme: state.syntaxTheme,
     step: state.tourMode ? currentStep() : null, steps: state.tourMode ? currentPhase()?.steps ?? [] : [],
   }),
   render() { if (state.session) { renderDiff(state.renderedDiffFiles, currentDiffRenderOptions()); renderComments(); renderFindings(); renderTourAnnotation(); } },
@@ -8148,6 +8176,16 @@ state.monacoRenderer = createMonacoRenderer({
     select(anchor) {
       state.selectedLine = { ...anchor }; renderQuestionScope();
       elements["selection-pill"].textContent = reviewAnchorLabel(anchor); elements["selection-pill"].classList.remove("hidden");
+    },
+    clearSelection: clearSelectedLine,
+    async askFromMobile(anchor, body) {
+      if (state.busy || !reviewIsOpen()) throw Error("Wait for the current request to finish before sending a question.");
+      openConversation(null);
+      const previousDraft = state.questionDrafts.get(null);
+      this.select(anchor); elements["chat-input"].value = body;
+      state.questionContextPaths = new Set(); state.dryRunQuestionContext = null;
+      await askAgent({ preventDefault() {} });
+      if (previousDraft?.body?.trim()) state.questionDrafts.set(null, previousDraft);
     },
     ask(anchor) { openConversation(null); this.select(anchor); elements["chat-input"].focus(); },
     renderMarkdownPreview(path, side, content) {

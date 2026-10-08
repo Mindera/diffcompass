@@ -46,11 +46,15 @@ export function installDeletedSelection({ root, diff, enabled, file, onSelect, o
   const closeMenu = () => { menu?.remove(); menu = null; };
   const invalid = (reason = message) => { owned = true; saved = null; failureReason = reason; onInvalid(reason); return false; };
   const select = (zone, start, end) => {
+    const mapping = zone.diffCompassDeletedSource;
+    return selectPositions(zone, mapping?.position(start.node, start.offset), mapping?.position(end.node, end.offset));
+  };
+  const selectPositions = (zone, start, end) => {
     try {
       const model = diff.getOriginalEditor().getModel();
       const mapping = zone.diffCompassDeletedSource;
       if (!zone.isConnected || !root.contains(zone) || !mapping) return invalid("Removed-source mapping is unavailable; select the code again.");
-      const result = deletedSourceSelection(file(), model, mapping, mapping.position(start.node, start.offset), mapping.position(end.node, end.offset));
+      const result = deletedSourceSelection(file(), model, mapping, start, end);
       owned = true; failureReason = ""; saved = { zone, mapping, model, version: model.getVersionId(), result };
       onSelect(result); return true;
     } catch (error) { return invalid(error.message); }
@@ -73,6 +77,24 @@ export function installDeletedSelection({ root, diff, enabled, file, onSelect, o
     if (p) return { node: p.offsetNode, offset: p.offset };
     const r = doc.caretRangeFromPoint?.(event.clientX, event.clientY);
     return r ? { node: r.startContainer, offset: r.startOffset } : null;
+  };
+  // Reverse the same pinned source mapping for a native DOM highlight. Do
+  // not locate a quotation by text: identical expressions may occur twice.
+  const domPoint = (zone, position) => {
+    const mapping = zone.diffCompassDeletedSource, walker = doc.createTreeWalker(zone, 4 /* SHOW_TEXT */);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      let lo = 0, hi = node.textContent.length;
+      const a = mapping.position(node, lo), b = mapping.position(node, hi);
+      if (!a || !b || compare(position, a) < 0 || compare(position, b) > 0) continue;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2), candidate = mapping.position(node, mid);
+        if (!candidate) break;
+        if (compare(candidate, position) < 0) lo = mid + 1; else hi = mid;
+      }
+      const candidate = mapping.position(node, lo);
+      if (candidate && compare(candidate, position) === 0) return { node, offset: lo };
+    }
+    return null;
   };
   const selectAt = event => {
     const point = pointAt(event), zone = zoneOf(event.target);
@@ -151,6 +173,24 @@ export function installDeletedSelection({ root, diff, enabled, file, onSelect, o
   }, true);
   const observer = new MutationObserver(decorate); observer.observe(root, { childList: true, subtree: true });
   return { get ownsSelection() { return owned; }, reset, validate,
+    hitTest(event) {
+      if (!enabled()) return null;
+      const point = pointAt(event), zone = point && zoneOf(point.node);
+      if (!zone || !root.contains(zone)) return null;
+      const position = zone.diffCompassDeletedSource?.position(point.node, point.offset);
+      return position ? { zone, position } : null;
+    },
+    selectRange(hit, range) {
+      if (!enabled() || !hit.zone.isConnected) return false;
+      const start = { lineNumber: range.startLineNumber, column: range.startColumn }, end = { lineNumber: range.endLineNumber, column: range.endColumn };
+      const a = domPoint(hit.zone, start), b = domPoint(hit.zone, end);
+      if (!a || !b) return invalid("Cannot map the selected Before text safely. Select it again.");
+      if (!selectPositions(hit.zone, start, end)) return false;
+      const native = doc.createRange(); native.setStart(a.node, a.offset); native.setEnd(b.node, b.offset);
+      const selection = doc.getSelection(); selection.removeAllRanges(); selection.addRange(native);
+      return true;
+    },
+    tap(event) { if (enabled()) return selectAt(event); return false; },
     editorFocused() {
       // Tabbing from a removed block into the After editor transfers ownership.
       // Do not clear a native Before drag just because Monaco handles its mouse

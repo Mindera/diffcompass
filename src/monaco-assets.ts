@@ -1,5 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { monacoThemes } from "./monaco-themes";
 // @ts-expect-error The compatibility adapter is shared with browser regression tests.
 import { deletedSourceAsset, withDeletedSourceBridge } from "../public/monaco/deleted-source-bridge.mjs";
 // @ts-expect-error Bun embeds this browser asset as text.
@@ -20,9 +21,18 @@ import asset7 from "../public/monaco/index.html" with { type: "text" };
 // @ts-expect-error Bun embeds this browser asset as text.
 import bootstrap from "../public/monaco/bootstrap.mjs" with { type: "text" };
 // @ts-expect-error Bun embeds this browser asset as text.
+import penScroll from "../public/monaco/pen-scroll.mjs" with { type: "text" };
+// @ts-expect-error Bun embeds this browser asset as text.
+import mobileActions from "../public/monaco/mobile-actions.mjs" with { type: "text" };
+// @ts-expect-error Bun embeds this browser asset as text.
 import controller from "../public/monaco-controller.mjs" with { type: "text" };
+// @ts-expect-error Bun embeds this browser asset as text.
+import themes from "../public/monaco/themes.mjs" with { type: "text" };
 const files: Record<string, { body: string; type: string }> = {
+  "/monaco/themes.mjs": { body: String(themes), type: "text/javascript; charset=utf-8" },
   "/monaco/bootstrap.mjs": { body: String(bootstrap), type: "text/javascript; charset=utf-8" },
+  "/monaco/pen-scroll.mjs": { body: String(penScroll), type: "text/javascript; charset=utf-8" },
+  "/monaco/mobile-actions.mjs": { body: String(mobileActions), type: "text/javascript; charset=utf-8" },
   "/monaco-controller.mjs": { body: String(controller), type: "text/javascript; charset=utf-8" },
   "/monaco/app.mjs": { body: String(asset0), type: "text/javascript; charset=utf-8" },
   "/monaco/annotations.mjs": { body: String(asset1), type: "text/javascript; charset=utf-8" },
@@ -49,8 +59,13 @@ async function root() {
 }
 export const monacoVendorDirectory = root;
 let bridge: Promise<string> | undefined;
+let themeData: Promise<string> | undefined;
 
 export async function monacoAsset(path: string): Promise<{ body: BodyInit; type: string; frame?: boolean } | null> {
+  if (path === "/monaco/theme-data.mjs") {
+    themeData ??= monacoThemes().then(themes => `export const syntaxThemes = ${JSON.stringify(themes)};`);
+    return { body: await themeData, type: "text/javascript; charset=utf-8" };
+  }
   const embedded = files[path];
   if (embedded) return { ...embedded, frame: path === "/monaco/index.html" };
   if (!path.startsWith("/vendor/vs/")) return null;

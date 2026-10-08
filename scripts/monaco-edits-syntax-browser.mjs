@@ -10,14 +10,16 @@ page.setDefaultTimeout(20000);
 const errors = []; page.on('pageerror', error => errors.push(error.message));
 page.on('dialog', dialog => { errors.push(`Unexpected native dialog: ${dialog.message()}`); void dialog.dismiss(); });
 async function open(path, line, endLine = line) {
-  await page.evaluate(path => diffCompassProductionHost.reveal(path, 'new', 1), path);
+  await page.evaluate(({path,line}) => diffCompassProductionHost.reveal(path, 'new', line), {path,line});
   await page.waitForFunction(path => [...document.querySelectorAll('.monaco-review-frame')].some(frame => frame.dataset.monacoPath === path && frame.contentWindow?.diffLab?.views.get(path)?.diff.getLineChanges()), path);
   const frame = page.frames().find(frame => new URL(frame.url(), url).searchParams.get('file') === path);
   await frame.evaluate(({path,line,endLine}) => {
     const editor = diffLab.views.get(path).editors.new;
     editor.setSelection(new monaco.Range(line, 1, endLine, editor.getModel().getLineMaxColumn(endLine))); editor.focus();
   }, {path,line,endLine});
-  await frame.getByRole('button', {name: 'Suggest edit', exact: true}).click();
+  await page.keyboard.press('Shift+F10');
+  await page.waitForTimeout(150); // Monaco's context-menu mouse-up guard.
+  await frame.getByRole('menuitem', {name: 'Suggest edit', exact: true}).click();
   await frame.locator('form.review-suggestion').waitFor();
   return frame;
 }

@@ -79,6 +79,56 @@
   color: var(--text);
 }
 
+/* One viewport-docked selection bar shared by all Monaco file frames. */
+:root[data-preview-host="true"] {
+  /* Mosh's native bottom controls overlay (rather than resize) the viewport.
+     Leave a 72 CSS-pixel host lane; ordinary browser launches keep no inset. */
+  --review-host-bottom-clearance: 72px;
+}
+.monaco-mobile-actions {
+  position: fixed; z-index: 65; box-sizing: border-box; container-type: inline-size;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--accent-border); border-radius: 14px;
+  background: var(--panel-raised); color: var(--text); box-shadow: 0 -8px 32px var(--shadow);
+}
+.monaco-mobile-actions[hidden] { display: none; }
+.mobile-action-heading, .mobile-action-sheet header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mobile-action-heading { gap: 8px; margin-bottom: 8px; }
+.mobile-action-location { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
+.mobile-action-heading .mobile-action-location { flex: 1; }
+.mobile-action-selection[hidden] { display: none; }
+.mobile-action-buttons { display: flex; gap: 8px; }
+.mobile-action-buttons > button { flex: 1; }
+.mobile-action-primary { display: grid; grid-template-columns: repeat(var(--action-count, 4), minmax(0, 1fr)); }
+.mobile-action-primary > button[hidden] { display: none; }
+@container (max-width: 540px) {
+  .mobile-action-primary[data-action-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.monaco-mobile-actions button, .mobile-action-sheet button { min-height: 44px; min-width: 44px; touch-action: manipulation; }
+.mobile-action-heading > button { flex-shrink: 0; padding: 0 10px; }
+.mobile-action-heading > .mobile-action-clear { font-size: 22px; }
+.mobile-action-heading > .mobile-action-selection { font-size: 13px; }
+.mobile-action-selection[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.mobile-action-sheet {
+  position: fixed; top: auto; right: auto; margin: 0; max-width: none; box-sizing: border-box;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border-hover); border-radius: 16px; overflow: auto; overscroll-behavior: contain;
+  color: var(--text); background: var(--panel-raised); box-shadow: 0 -12px 40px var(--shadow);
+}
+.mobile-action-sheet::backdrop { background: var(--backdrop); }
+.mobile-action-sheet h2 { font-size: 17px; margin: 0; }
+.mobile-action-scope { color: var(--muted); overflow-wrap: anywhere; font-size: 13px; }
+.mobile-action-menu { display: grid; gap: 6px; }
+.mobile-action-menu button { text-align: left; padding: 12px; }
+.mobile-action-sheet form { display: grid; gap: 10px; }
+.mobile-action-sheet textarea { width: 100%; min-height: 110px; box-sizing: border-box; font-size: 16px; resize: vertical; }
+.mobile-action-quote { max-height: 140px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-code); padding: 12px; border-left: 3px solid var(--accent); font-size: 12px; }
+.mobile-action-error { color: var(--danger); }
+.mobile-action-error:empty { display: none; }
+#diff-panel:has(.monaco-file-slot) { scroll-padding-bottom: max(180px, var(--mobile-actions-height, 0px)); }
+#diff-panel:has(.monaco-file-slot) #diff { padding-bottom: max(180px, 24vh, var(--mobile-actions-scroll-space, 0px)); }
+#diff-panel #current-step-return { bottom: calc(16px + max(var(--mobile-actions-height, 0px), var(--review-host-bottom-clearance, 0px))); }
+
 :root[data-theme="light"] {
   color-scheme: light;
   --background: #f6f8fb;
@@ -1300,7 +1350,7 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 @media (max-width: 460px) { .github-review-confirmation-summary { grid-template-columns: 1fr; } }
 #flow-dialog { width: min(760px, calc(100vw - 30px)); }
 .settings-menu { position: relative; }
-.settings-menu > summary { list-style: none; user-select: none; }
+.settings-menu > summary { display: flex; align-items: center; justify-content: center; gap: 4px; list-style: none; user-select: none; }
 .settings-menu > summary::-webkit-details-marker { display: none; }
 .settings-popover { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 76px); overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px; background: var(--panel-raised); box-shadow: 0 12px 32px var(--backdrop); }
 .settings-section { display: grid; gap: 8px; padding: 11px 2px; border-bottom: 1px solid var(--border-soft); }
@@ -1442,6 +1492,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .questions-resizer::after { content: ""; position: absolute; inset: 2px 42%; border-radius: 999px; background: var(--muted); }
 .questions-resizer:hover, .questions-resizer:focus-visible { background: var(--accent); }
 .agent-pane-switch { display: none; }
+.mobile-tour-jump { display: none; }
 #conversations-view { box-sizing: border-box; padding: 24px; }
 #conversations-view > h2 { margin: 4px 0 8px; }
 #conversations-view > .muted { margin: 0 0 24px; }
@@ -1459,7 +1510,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   .agent-panel .questions-resizer { display: none; }
   .agent-panel[data-mobile-pane="tour"] .questions-pane, .agent-panel[data-mobile-pane="questions"] #tour-active { display: none; }
   .agent-panel[data-mobile-pane="questions"] .questions-pane, .agent-panel[data-mobile-pane="tour"] #tour-active { flex: 1 1 0; }
-  .agent-panel:has(.questions-pane) { height: 75dvh; min-height: 520px; }
+  .agent-panel:has(.questions-pane) { height: max(520px, calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px))); min-height: 520px; }
   .questions-heading button { min-height: 44px; }
 }
 
@@ -1492,8 +1543,14 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 }
 
 @media (max-width: 900px) {
-  html, body { min-height: 100%; overflow: auto; }
+  /* Keep the outer page on the document scroller, not a second 100%-height
+     body scrollbox. Window scroll listeners and pen handoff share this owner. */
+  html { height: auto; min-height: 100%; overflow: auto; }
+  body { height: auto; min-height: 100dvh; overflow: visible; }
+  html:has(body.file-panel-open) { overflow: hidden; }
   html, body { scroll-padding-top: var(--mobile-topbar-height, 100px); }
+  .mobile-tour-jump { display: inline-flex; align-items: center; }
+  .workspace { --mobile-tour-peek: 76px; }
   .topbar { position: sticky; top: 0; z-index: 20; grid-template-columns: minmax(0, 1fr) auto; height: auto; min-height: 58px; gap: 4px; padding: 4px 8px; }
   .closed-banner { top: calc(var(--mobile-topbar-height, 100px) + 8px); z-index: 30; width: calc(100% - 24px); max-width: 680px; max-height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px) - 24px); overflow: auto; overflow-wrap: anywhere; }
   .tabs { grid-column: 1 / -1; grid-row: 2; min-width: 0; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
@@ -1540,7 +1597,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   .line-number { padding-right: 4px; }
   .line-code { padding-inline: 4px; }
   .file-panel-toggle { display: inline-flex; align-items: center; gap: 6px; }
-  .workspace { height: auto; min-height: calc(100vh - 100px); grid-template-columns: minmax(0, 1fr); grid-template-rows: max(160px, calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px))) minmax(520px, auto); }
+  .workspace { height: auto; min-height: calc(100vh - 100px); grid-template-columns: minmax(0, 1fr); grid-template-rows: max(160px, calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px) - var(--mobile-tour-peek))) minmax(520px, auto); }
   .file-panel { position: fixed; z-index: 52; inset: 0 auto 0 0; width: min(340px, 88vw); height: 100dvh; border-right: 1px solid var(--border); box-shadow: 16px 0 36px var(--shadow); transform: translateX(-105%); transition: transform 180ms ease; }
   .file-panel-open .file-panel { transform: translateX(0); }
   .file-panel-open { overflow: hidden; }
@@ -1572,7 +1629,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
   .button { padding: 7px 9px; }
   .workspace { display: block; }
   .file-panel { width: min(340px, 92vw); height: 100dvh; border-right: 1px solid var(--border); border-bottom: 0; }
-  .diff-panel { height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px)); min-height: 160px; }
+  .diff-panel { height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px) - var(--mobile-tour-peek)); min-height: 160px; }
   .agent-panel { min-height: 640px; }
   .sequence-event { grid-template-columns: 1fr 20px 1fr; }
   .sequence-event em { grid-column: 1 / -1; padding-left: 8px; }

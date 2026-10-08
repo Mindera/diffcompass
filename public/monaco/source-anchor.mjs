@@ -1,3 +1,54 @@
+// Layout only: unchanged Before/After anchors can occupy one visual row.
+// Never rewrite the source identity using this display coordinate.
+export function badgeDisplayRow(anchor, unified, changes) {
+  const original = `${anchor.side}:${anchor.line}`;
+  if (!unified || anchor.side !== "old" || !changes) return original;
+  let delta = 0;
+  for (const change of changes) {
+    const start = change.originalStartLineNumber, end = change.originalEndLineNumber;
+    if (end === 0 ? anchor.line <= start : anchor.line < start) break;
+    if (end && anchor.line <= end) return original;
+    delta = (change.modifiedEndLineNumber || change.modifiedStartLineNumber) - (end || start);
+  }
+  return `new:${anchor.line + delta}`;
+}
+
+// A Before range can cross deleted blocks and unchanged rows, separated by
+// inserted After code. Project each contiguous piece, never highlight those
+// insertions or substitute After coordinates in the saved tour anchor.
+export function tourDisplaySegments(anchor, unified, changes) {
+  if (unified && anchor.side === "old" && changes === null) return [];
+  const segments = [];
+  for (let line = anchor.startLine; line <= anchor.endLine; line++) {
+    const [side, value] = badgeDisplayRow({ side: anchor.side, line }, unified, changes).split(":");
+    const displayLine = Number(value), deleted = unified && side === "old";
+    const previous = segments.at(-1);
+    if (previous?.side === side && previous.deleted === deleted && previous.endLine + 1 === displayLine) {
+      previous.endLine = displayLine; previous.sourceEndLine = line;
+    } else segments.push({ side, deleted, startLine: displayLine, endLine: displayLine, sourceStartLine: line, sourceEndLine: line });
+  }
+  return segments;
+}
+
+// Pointer coordinates come from Monaco's source mapping, not pixel/character
+// arithmetic: tabs, Unicode and wrapped lines must keep their real columns.
+export function freeTextRange(model, first, last, { tap = false } = {}) {
+  const compare = (a, b) => a.lineNumber - b.lineNumber || a.column - b.column;
+  for (const point of [first, last]) {
+    if (!point || !Number.isSafeInteger(point.lineNumber) || !Number.isSafeInteger(point.column)
+      || point.lineNumber < 1 || point.lineNumber > model.getLineCount()
+      || point.column < 1 || point.column > model.getLineMaxColumn(point.lineNumber)) throw Error("Select text within the same source pane.");
+  }
+  if (tap) {
+    const word = model.getWordAtPosition(first);
+    last = { ...first, column: word?.endColumn ?? first.column };
+    first = { ...first, column: word?.startColumn ?? first.column };
+  }
+  const [start, end] = [first, last].sort(compare);
+  if (end.lineNumber - start.lineNumber - (end.column === 1 ? 1 : 0) >= 100) throw Error("Select up to 100 source lines.");
+  return { startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column };
+}
+
 // The source identity is independent of DOM rows, folding, and editor layout.
 export function sourceAnchor(file, side, selection, { preserveEol = false } = {}) {
   if (!["old", "new"].includes(side)) throw new Error("Invalid source side");

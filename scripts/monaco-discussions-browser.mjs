@@ -212,7 +212,7 @@ try {
     assert.equal(await thread('live-before').getAttribute('data-anchor-state'),'current');
     assert.equal(await thread('live-after').locator('.review-pr-message strong').last().textContent(),'fractional percentages');
     const reply = thread('live-after').getByRole('link',{name:'Reply in GitHub'});
-    assert.match(await reply.getAttribute('href'),/^https:\/\/github.com\//);
+    assert.equal(await reply.getAttribute('href'),'https://github.com/example/checkout/pull/42/changes#r1');
     assert.equal(await reply.getAttribute('rel'),'noopener noreferrer');
     for (const id of ['live-outdated','live-file','live-invalid']) {
       assert.equal(await thread(id).getAttribute('data-anchor-state'),'file');
@@ -238,6 +238,7 @@ try {
   assert.ok(Math.abs(await page.locator('#diff-panel').evaluate(node=>node.scrollTop)-scroll)<3,'Metadata refresh keeps scroll and the live editor');
   await frame.getByRole('button',{name:'Cancel',exact:true}).click();
   await thread('live-after').getByText('Reply received after refresh 1.',{exact:true}).waitFor();
+  assert.equal(await thread('live-after').getByRole('link',{name:'Reply in GitHub'}).getAttribute('href'),'https://github.com/example/checkout/pull/42/changes#r1');
   assert.match(await thread('live-after').textContent(),/Resolved/);
   assert.equal(await frame.evaluate(() => window.retainedEditor === diffLab.views.get('src/cart.ts').diff),true);
   await thread('live-after').scrollIntoViewIfNeeded();

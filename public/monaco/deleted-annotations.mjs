@@ -1,35 +1,25 @@
 import { gutterRowGradient, reviewMarkers } from "./annotations.mjs";
+import { badgeDisplayRow } from "./source-anchor.mjs";
+export { badgeDisplayRow } from "./source-anchor.mjs";
 
 // Source rows, wrapped fragments and review cards share one vertical layout.
 // Only the pinned renderer hook applies it; no source/anchor is inferred from y.
 export function deletedRowLayout(start, counts, lineHeight, cards) {
   const rowTops = [], cardTops = new Map();
   let top = 0, extra = 0;
+  const place = card => {
+    if (!Number.isFinite(card.height) || card.height < 0) throw new Error("Invalid review-card height");
+    cardTops.set(card, top); top += card.height; extra += card.height;
+  };
   for (const [index, count] of counts.entries()) {
     if (!Number.isSafeInteger(count) || count < 1) throw new Error("Invalid deleted-line wrapping");
+    const attached = cards.filter(card => card.line === start + index);
+    attached.filter(card => card.placement === "before").forEach(place);
     for (let fragment = 0; fragment < count; fragment++) rowTops.push(top + fragment * lineHeight);
     top += count * lineHeight;
-    for (const card of cards.filter(card => card.line === start + index)) {
-      if (!Number.isFinite(card.height) || card.height < 0) throw new Error("Invalid review-card height");
-      cardTops.set(card, top); top += card.height; extra += card.height;
-    }
+    attached.filter(card => card.placement !== "before").forEach(place);
   }
   return { rowTops, cardTops, extra };
-}
-
-// Layout only: unchanged Before/After anchors can occupy one visual row.
-// Give their distinct buttons separate slots; never rewrite or merge anchors.
-export function badgeDisplayRow(badge, unified, changes) {
-  const original = `${badge.side}:${badge.line}`;
-  if (!unified || badge.side !== "old" || !changes) return original;
-  let delta = 0;
-  for (const change of changes) {
-    const start = change.originalStartLineNumber, end = change.originalEndLineNumber;
-    if (end === 0 ? badge.line <= start : badge.line < start) break;
-    if (end && badge.line <= end) return original;
-    delta = (change.modifiedEndLineNumber || change.modifiedStartLineNumber) - (end || start);
-  }
-  return `new:${badge.line + delta}`;
 }
 
 // Monaco serializes collapsed intervals in After coordinates, with an
@@ -68,6 +58,9 @@ export function installDeletedAnnotations({ root, diff, monaco, unified }) {
   const old = diff.getOriginalEditor(), current = diff.getModifiedEditor();
   const cards = new Set(), sourceCards = new Set(), badges = new Set(), edgeHosts = new Set(), subscriptions = [];
   const layer = document.createElement("div"); layer.className = "review-unified-overlay"; root.append(layer);
+  const numberLayer = document.createElement("div"); numberLayer.setAttribute("aria-hidden", "true"); layer.append(numberLayer);
+  const replacedNumbers = new Set();
+  let numberSignature = "";
   let frame = null, model = null;
   const schedule = () => { if (frame === null) frame = requestAnimationFrame(layout); };
   function layout() {
@@ -109,7 +102,39 @@ export function installDeletedAnnotations({ root, diff, monaco, unified }) {
         else rendered.get(line).last = rect;
       }
     }
-    const preceding = new Map();
+    const preceding = new Map(), beforeHeights = new Map();
+    for (const card of cards) if (card.placement === "before" && card.model === model) beforeHeights.set(card.line, (beforeHeights.get(card.line) || 0) + card.height);
+    // The original editor reserves these slots AFTER its model line so native
+    // alignment doesn't also insert them before the entire deletion block.
+    // Consequently its number stays above a Before tour banner. Mirror only
+    // affected numbers at the renderer's actual source row (including wrap),
+    // just as review markers already use that source mapping. Never move a
+    // model line or change a click/quotation anchor to fix presentation.
+    const originalDom = old.getDomNode(), numberNodes = [...(originalDom?.querySelectorAll(".line-numbers") || [])]
+      .filter(node => node.closest(".monaco-editor") === originalDom);
+    for (const node of numberNodes) {
+      const replace = unified() && beforeHeights.has(Number(node.textContent));
+      if (node.classList.contains("review-number-relocated") !== replace) node.classList.toggle("review-number-relocated", replace);
+      if (replace) replacedNumbers.add(node); else replacedNumbers.delete(node);
+    }
+    for (const node of replacedNumbers) if (!node.isConnected) replacedNumbers.delete(node);
+    const numbers = document.createDocumentFragment();
+    if (unified() && originalDom) {
+      const info = old.getLayoutInfo(), font = old.getOption(monaco.editor.EditorOption.fontInfo);
+      const left = originalDom.getBoundingClientRect().left - bounds.left + info.lineNumbersLeft;
+      for (const line of beforeHeights.keys()) {
+        const row = rendered.get(line)?.first;
+        if (!row) continue;
+        const node = document.createElement("div"); node.className = "review-unified-source-number";
+        node.dataset.sourceLine = String(line); node.textContent = String(line);
+        const native = numberNodes.find(node => Number(node.textContent) === line) || numberNodes[0];
+        node.style.cssText = `top:${row.top - bounds.top}px;left:${left}px;width:${info.lineNumbersWidth}px;height:${row.height}px;line-height:${row.height}px;font-size:${font.fontSize}px;font-weight:${font.fontWeight};color:${native ? getComputedStyle(native).color : "var(--muted)"}`;
+        node.style.fontFamily = font.fontFamily;
+        numbers.append(node);
+      }
+    }
+    const nextNumbers = [...numbers.children].map(node => `${node.textContent}:${node.style.cssText}`).join(";");
+    if (nextNumbers !== numberSignature) { numberSignature = nextNumbers; numberLayer.replaceChildren(numbers); }
     const scroll = current.getScrollTop();
     for (const card of cards) {
       const row = rendered.get(card.line);
@@ -117,9 +142,11 @@ export function installDeletedAnnotations({ root, diff, monaco, unified }) {
       // Hiding our form during that render drops keyboard focus/typed input.
       // Retain its last measured geometry, adjusted for scrolling, until the
       // replacement row is ready. This never changes the saved source anchor.
-      const top = row ? row.last.bottom - bounds.top - (scroll - row.scroll) + (preceding.get(card.line) || 0) : card.top - (scroll - card.scroll);
+      const key = `${card.line}:${card.placement || "after"}`;
+      const sourceTop = row && (card.placement === "before" ? row.first.top - beforeHeights.get(card.line) : row.last.bottom);
+      const top = row ? sourceTop - bounds.top - (scroll - row.scroll) + (preceding.get(key) || 0) : card.top - (scroll - card.scroll);
       card.top = top; card.scroll = scroll;
-      preceding.set(card.line, (preceding.get(card.line) || 0) + card.height);
+      preceding.set(key, (preceding.get(key) || 0) + card.height);
       const visible = unified() && card.model === model && top + card.height > 0 && top < bounds.height;
       card.node.hidden = !visible;
       card.node.style.left = "0px"; card.node.style.top = `${top}px`;
@@ -241,12 +268,20 @@ export function installDeletedAnnotations({ root, diff, monaco, unified }) {
       node.classList.add("review-unified-badge"); node.hidden = true; layer.append(node); schedule();
       return () => { badges.delete(badge); node.remove(); };
     },
-    addCard(line, node, height, content) {
-      const card = { model: old.getModel(), node, line, height, top: -100000, scroll: current.getScrollTop(), wrapLines: 1 };
+    addBeforeSpace(line, node, height, ordinal) {
+      node.classList.add("review-before-tour-space");
+      node.style.height = `${height}px`;
+      return this.addCard(line, node, height, null, { placement: "before", ordinal });
+    },
+    addCard(line, node, height, content, options = {}) {
+      const card = { model: old.getModel(), node, line, height, placement: options.placement, top: -100000, scroll: current.getScrollTop(), wrapLines: 1 };
       cards.add(card); node.classList.add("review-before-card"); node.dataset.sourceLine = String(line);
       node.hidden = true; layer.append(node);
       const placeholder = document.createElement("div"); placeholder.setAttribute("aria-hidden", "true");
-      const descriptor = { afterLineNumber: line, heightInPx: height, ordinal: 100001, domNode: placeholder,
+      // Keep the reservation inside the deletion's original range. The pinned
+      // row renderer places Before tour space above the row; native alignment
+      // only needs the matching total height (also for the block's first line).
+      const descriptor = { afterLineNumber: line, heightInPx: height, ordinal: options.ordinal || 100001, domNode: placeholder,
         onDomNodeTop() { schedule(); } };
       let id; old.changeViewZones(accessor => { id = accessor.addZone(descriptor); });
       const size = new ResizeObserver(() => {
@@ -264,6 +299,11 @@ export function installDeletedAnnotations({ root, diff, monaco, unified }) {
         size.disconnect(); unscroll(); cards.delete(card); node.remove();
         old.changeViewZones(accessor => accessor.removeZone(id)); schedule();
       };
+      remove.resize = height => {
+        if (removed || height === card.height) return;
+        card.height = height; descriptor.heightInPx = height; node.style.height = `${height}px`;
+        old.changeViewZones(accessor => accessor.layoutZone(id)); schedule();
+      };
       remove.reveal = () => {
         const before = [...cards].slice(0, [...cards].indexOf(card)).filter(c => c.line === line).reduce((sum, c) => sum + c.height, 0);
         current.setScrollTop(Math.max(0, old.getTopForLineNumber(line, true) + card.wrapLines * old.getOption(monaco.editor.EditorOption.lineHeight) + before - 60));
@@ -275,6 +315,7 @@ export function installDeletedAnnotations({ root, diff, monaco, unified }) {
       if (frame !== null) cancelAnimationFrame(frame);
       observer.disconnect(); resize.disconnect(); subscriptions.forEach(subscription => subscription.dispose());
       if (model?.diffCompassLayoutDeleted === hook) delete model.diffCompassLayoutDeleted;
+      for (const node of replacedNumbers) node.classList.remove("review-number-relocated");
       for (const viewport of edgeHosts) {
         viewport.classList.remove("review-card-edge-host");
         viewport.style.removeProperty("--review-card-edge-fill"); viewport.style.removeProperty("--review-card-edge-width");

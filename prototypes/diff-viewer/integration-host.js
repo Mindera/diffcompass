@@ -46,8 +46,7 @@
     updateCurrentStepReturnVisibility, openCommentEditor,
   };
   const available = path => child?.paths.has(path);
-  const beforeTourFallback = () => state.tourMode && state.diffLayout === "unified" && currentPhase()?.steps.some(step => step.anchor.side === "old");
-  const usingMonaco = () => preferred === "monaco" && child && !nativeReason && !state.proposalPreview && !beforeTourFallback();
+  const usingMonaco = () => preferred === "monaco" && child && !nativeReason && !state.proposalPreview;
   function sync() {
     pendingFrame = null;
     if (!state.session) return;
@@ -61,12 +60,12 @@
       node.toggleAttribute("data-monaco-text",Boolean(available(node.dataset.path)));
     }
     fallback.textContent = preferred === "current" ? "Current renderer selected. Monaco state and drafts are retained."
-      : beforeTourFallback() ? "This phase contains Before-side stops: Unified uses the current renderer. Split also supports these stops in Monaco."
       : nativeReason || (child ? "Monaco text diffs, including Markdown · Images use their media preview. Use Current renderer for legacy-only actions." : "Loading Monaco… The current renderer remains available.");
     child?.sync({
       session:state.session, paths, collapsed:[...state.collapsedFiles],
       layout:state.diffLayout, wrap:state.diffWrap==="wrap",
       light:document.documentElement.dataset.theme==="light",
+      syntaxTheme:state.syntaxTheme,
       step:state.tourMode?currentStep():null,
       steps:state.tourMode?(currentPhase()?.steps??[]):[],
     });
@@ -164,7 +163,7 @@
   };
   focusCurrentStep = async function() {
     const step=currentStep();
-    if(preferred==="monaco" && child && state.tourMode && step && available(step.anchor.path) && !beforeTourFallback()){
+    if(preferred==="monaco" && child && state.tourMode && step && available(step.anchor.path)){
       state.focusedStepId=step.id;
       if(state.session.comparison.diffMode==="file")await ensureTourPhaseDiffs();
       state.activeTab="diff";nativeReason=null;state.collapsedFiles.delete(step.anchor.path);
@@ -202,7 +201,7 @@
     sync();
     if(state.tourMode)void focusCurrentStep();
   });
-  new MutationObserver(schedule).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+  new MutationObserver(schedule).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme","data-syntax-theme"]});
   window.addEventListener("resize", () => child?.resize());
   frame.addEventListener("load",()=>frame.contentWindow.addEventListener("scroll",scheduleCurrentStepReturnUpdate,true));
   frame.src="/prototype/index.html?embedded=1#token="+encodeURIComponent(state.apiToken);

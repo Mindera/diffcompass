@@ -731,7 +731,12 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       const relative = shell ? "index.html" : url.pathname.replace(/^\//, "");
       const publicFile = PUBLIC_FILES[relative];
       if (publicFile) {
-        const response = new Response(publicFile.body, { headers: { "content-type": publicFile.contentType } });
+        // Preview hosts can draw native controls over the web viewport without
+        // reporting an inset. Mark this explicit launch mode, not a guessed UA.
+        const body = shell && previewRedirect
+          ? String(publicFile.body).replace("<html ", '<html data-preview-host="true" ')
+          : publicFile.body;
+        const response = new Response(body, { headers: { "content-type": publicFile.contentType } });
         for (const [name, headerValue] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, headerValue);
         return response;
       }

@@ -11,7 +11,9 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/update', route => route.fulfill({ json: { updateAvailable: false } }));
   await page.goto(url);
-  await page.locator('#diff-renderer').waitFor();
+  // The renderer select is static HTML; wait for session-backed content before
+  // invoking navigation (cold CI can mount controls before /api/session).
+  await page.locator('#step-count').filter({ hasText: 'Step ' }).waitFor();
   await page.evaluate(() => diffCompassProductionHost.reveal('screens/receipt.png', 'new', 1));
   await page.locator('#review-filter').selectOption('');
   const card = page.locator('#diff > .diff-file[data-path="screens/receipt.png"]');
