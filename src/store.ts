@@ -1,4 +1,5 @@
 import { validDomainModels, validDomainDetails } from "./domain-context.ts";
+import { githubSuggestionBody } from "./github-suggestions.ts";
 import { validateMapNodeRoles } from "./map-node-roles.ts";
 
 function validNodeRoles(value: unknown): boolean { try { validateMapNodeRoles(value); return true; } catch { return false; } }
@@ -385,6 +386,10 @@ function validComment(value: unknown): boolean {
     (scope !== "stop" || nonEmptyString(value.stepId, 128)) &&
     nonEmptyString(value.body, 8_000) && boundedString(value.lineContent) && ["active", "outdated"].includes(String(value.status)) &&
     (value.publishToGitHub === undefined || typeof value.publishToGitHub === "boolean") &&
+    (value.suggestion === undefined || (record(value.suggestion) && value.side === "new" && effectiveScope !== "stop" &&
+      nonEmptyString(value.suggestion.activityId, 128) && /^[0-9a-f]{40,64}$/.test(String(value.suggestion.headOid)) &&
+      /^[0-9a-f]{40,64}$/.test(String(value.suggestion.sourceTree)) && boundedString(value.suggestion.replacement, 8_000) &&
+      typeof value.context === "string" && value.body === githubSuggestionBody(value.suggestion.replacement))) &&
     nonEmptyString(value.createdAt, 64) && nonEmptyString(value.updatedAt, 64);
 }
 
@@ -513,7 +518,15 @@ function validActivity(value: unknown): boolean {
     )) &&
     (value.verification === undefined || nonEmptyString(value.verification, 16_000)) &&
     ["observed", "verified"].includes(String(value.status)) &&
-    (value.changeStatus === undefined || ["pending", "applied", "rejected", "undone"].includes(String(value.changeStatus))) &&
+    (value.changeStatus === undefined || ["pending", "applied", "rejected", "undone", "queued"].includes(String(value.changeStatus))) &&
+    (value.inlineEdit === undefined || (record(value.inlineEdit) && value.source === "reviewer" && value.modelId === "inline-edit" &&
+      nonEmptyString(value.inlineEdit.path, 4_096) && Number.isSafeInteger(value.inlineEdit.line) && Number(value.inlineEdit.line) > 0 &&
+      Number.isSafeInteger(value.inlineEdit.endLine) && Number(value.inlineEdit.endLine) >= Number(value.inlineEdit.line) &&
+      boundedString(value.inlineEdit.expectedContent, 100_000) && boundedString(value.inlineEdit.replacement, 100_000) &&
+      /^[0-9a-f]{40,64}$/.test(String(value.inlineEdit.sourceTree)) &&
+      (value.inlineEdit.headOid === undefined || /^[0-9a-f]{40,64}$/.test(String(value.inlineEdit.headOid))) &&
+      (value.inlineEdit.githubUnavailableReason === undefined || nonEmptyString(value.inlineEdit.githubUnavailableReason, 8_000)))) &&
+    (value.changeStatus !== "queued" || (value.inlineEdit !== undefined && value.proposal !== undefined)) &&
     (value.proposal === undefined || (
       record(value.proposal) && boundedString(value.proposal.patch, 12 * 1024 * 1024) &&
       /^[0-9a-f]{40,64}$/.test(String(value.proposal.baselineTree)) &&
@@ -751,6 +764,12 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
       new Set(session.bridgeLeases.map((lease) => lease.eventId)).size !== session.bridgeLeases.length ||
       session.bridgeLeases.some((lease) => !bridgeEventIds.has(lease.eventId)))) ||
     (continuation !== undefined && (selection === undefined || continuation.adapterId !== selection.adapterId)) ||
+    session.comments!.some(comment => comment.suggestion && (!session.pullRequest ||
+      !session.activities?.some(activity => activity.id === comment.suggestion!.activityId && activity.changeStatus === "queued" &&
+        activity.inlineEdit?.path === comment.path && activity.inlineEdit.line === comment.line && activity.inlineEdit.endLine === comment.endLine &&
+        activity.inlineEdit.headOid === comment.suggestion!.headOid && activity.inlineEdit.sourceTree === comment.suggestion!.sourceTree &&
+        activity.inlineEdit.expectedContent === comment.context && activity.inlineEdit.replacement === comment.suggestion!.replacement))) ||
+    session.activities?.some(activity => activity.changeStatus === "queued" && session.comments!.filter(comment => comment.suggestion?.activityId === activity.id).length !== 1) ||
     (session.pullRequest !== undefined && (
       session.repositoryRoot !== session.pullRequest.workspaceRoot || session.base !== session.pullRequest.baseRefOid ||
       (session.pullRequest.publication !== undefined && session.pullRequest.publication.commentIds.some((id) =>

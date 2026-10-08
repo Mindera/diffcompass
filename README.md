@@ -452,6 +452,34 @@ rather than attached to unrelated source lines.
 Drafts retain syntax highlighting, including the fence's language when editing
 code inside a Markdown fenced block.
 
+For GitHub PR reviews, **Add to GitHub review** converts an eligible saved edit
+into a native suggestion in the local review draft. **Return to local** restores
+the pending proposal and preserves its replacement. **Apply locally** writes only
+to the isolated PR workspace. Queueing, returning, and publishing a suggestion
+do not apply the replacement, commit it, or push it.
+
+The final GitHub review confirmation names the number of selected suggestions
+and the PR head. Publishing uses the existing approval/request-changes review;
+there is no separate comment-only publication action. Selected suggestions become
+GitHub suggestion blocks that the PR author can apply on GitHub. The saved source,
+replacement, selected comment IDs, and PR head are checked before publication;
+retries reuse the durable review intent to avoid duplicating a submitted review.
+
+Native suggestions require a captured regular text file from the unmodified PR
+head and at most 100 contiguous After lines within one PR diff hunk (three lines
+of context). Expanded context outside those hunks, ranges spanning hunks, old
+saved proposals without exact selection metadata, binary files, symlinks, and
+local-only changes cannot be queued. The generated comment must fit the existing
+8,000-character review-comment limit; selected source context is capped at 32,000
+characters. Multiline replacements, empty replacements (deletions), and literal
+backticks are supported; longer Markdown fences preserve embedded fences.
+GitHub remains the final authority on diff anchors and suggestion applicability.
+
+Implementation references: [GitHub review API](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request),
+[ranged review comments](https://docs.github.com/en/rest/pulls/comments#create-a-review-comment-for-a-pull-request),
+[suggesting changes](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/commenting-on-a-pull-request),
+and [nested code fences](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-and-highlighting-code-blocks).
+
 Comments and questions can also target expanded unchanged context. Anchors are
 validated against captured Before/After source, including multiline selections,
 and rechecked after refresh. Line comments outside the original GitHub diff stay

@@ -2,6 +2,7 @@ import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
 import { diffSourceIdentity, loadDiffSource } from "./diff-sources.ts";
 import { reviewerSuggestions } from "./reviewer-suggestions.ts";
+import { githubSuggestionBody, githubSuggestionRangeMatches, type SavedInlineEdit } from "./github-suggestions.ts";
 import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./agent.ts";
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
@@ -396,11 +397,78 @@ export class ReviewSession {
 
   private githubCommentUnavailableReason(comment: ReviewComment): string | undefined {
     if (!this.pullRequest) return undefined;
+    if (comment.suggestion) {
+      if (comment.status !== "active" || comment.suggestion.headOid !== this.pullRequest.headRefOid || comment.suggestion.sourceTree !== this.fullComparison.sourceTree) return "Local only · this suggestion belongs to an outdated PR source. Return it to local and create a new suggestion.";
+      return undefined;
+    }
     if (/\.png$/i.test(comment.path)) return "Local only · image comments are not included in GitHub reviews.";
     if (comment.scope === "range") return "Local only · quote and range comments are not included in GitHub reviews.";
     if (comment.scope === "stop") return "Local only · tour-stop comments are not included in GitHub reviews.";
     if (!this.githubCommentInDiff(comment.path, comment.side, comment.line)) return "Local only · this line is outside the GitHub diff.";
     return undefined;
+  }
+
+  private githubSuggestionUnavailableReason(activity: AgentChangeActivity): string | undefined {
+    if (!this.pullRequest) return "GitHub suggestions require a pull request review.";
+    if (!activity.inlineEdit || activity.source !== "reviewer" || activity.modelId !== "inline-edit") return "Create a new suggestion to capture its exact source selection.";
+    const edit = activity.inlineEdit;
+    if (edit.githubUnavailableReason) return edit.githubUnavailableReason;
+    if (edit.headOid !== this.pullRequest.headRefOid || edit.sourceTree !== this.fullComparison.sourceTree) return "This suggestion belongs to an outdated PR source. Create a new suggestion.";
+    if (activity.changeStatus !== "pending") return "Only pending local suggestions can be added to the GitHub review.";
+    return undefined;
+  }
+
+  private async validateGitHubSuggestion(edit: SavedInlineEdit): Promise<void> {
+    if (!this.pullRequest) throw new ReviewError("GitHub suggestions require a pull request review.");
+    if (edit.headOid !== this.pullRequest.headRefOid || edit.sourceTree !== this.fullComparison.sourceTree) throw new ReviewError("This suggestion belongs to an outdated PR source. Create a new suggestion.");
+    if (githubSuggestionBody(edit.replacement).length > 8_000 || edit.expectedContent.length > 32_000) throw new ReviewError("This suggestion exceeds the GitHub review draft limit (8,000 characters and 100 source lines).");
+    const source = await loadDiffSource(this.fullComparison, diffSourceIdentity(this.fullComparison), edit.path);
+    if (!source.available) throw new ReviewError("Only captured regular text files can be suggested on GitHub.");
+    const tree = (await runProcess(["git", "rev-parse", `${this.pullRequest.headRefOid}^{tree}`], this.fullComparison.repositoryRoot)).stdout.trim();
+    if (tree !== edit.sourceTree) throw new ReviewError("Local source changes are not part of the GitHub PR head. Refresh a clean PR workspace before adding suggestions.");
+    // Expanded review context is not necessarily commentable on GitHub. Use
+    // the immutable PR diff with GitHub's ordinary three lines of context.
+    const patch = await runProcess(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--find-renames", "--unified=3", "--inter-hunk-context=0", this.fullComparison.mergeBase, this.pullRequest.headRefOid, "--"], this.fullComparison.repositoryRoot);
+    if (!githubSuggestionRangeMatches(parseUnifiedDiff(patch.stdout), edit)) throw new ReviewError("GitHub suggestions must select at most 100 After lines inside one PR diff hunk; expanded context stays local.");
+    const normalized = source.new.replaceAll("\r\n", "\n");
+    const lines = normalized.split("\n");
+    if (normalized.endsWith("\n")) lines.pop();
+    if (edit.endLine > lines.length || lines.slice(edit.line - 1, edit.endLine).join("\n") !== edit.expectedContent) throw new ReviewError("This suggestion no longer matches the captured PR source.");
+  }
+
+  async setSuggestionPublication(id: string, queue: boolean, expectedHeadOid?: string) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      this.ensurePublicationMutable();
+      const activity = this.activities.find(candidate => candidate.id === id);
+      if (!activity?.inlineEdit || !activity.proposal || activity.source !== "reviewer" || activity.modelId !== "inline-edit") throw new ReviewError("This activity has no saved reviewer suggestion.");
+      const existing = this.comments.find(comment => comment.suggestion?.activityId === id);
+      if (queue && activity.changeStatus === "queued" && existing) return this.snapshot();
+      if (queue) {
+        if (expectedHeadOid !== this.pullRequest?.headRefOid) throw new ReviewError("The suggestion draft is for an outdated pull request revision.");
+        const reason = this.githubSuggestionUnavailableReason(activity);
+        if (reason) throw new ReviewError(reason);
+        await this.validateGitHubSuggestion(activity.inlineEdit);
+      } else if (activity.changeStatus !== "queued" || !existing) throw new ReviewError("This suggestion is not queued in the GitHub review.");
+      const previousComments = [...this.comments], previousStatus = activity.changeStatus, previousUpdatedAt = activity.updatedAt, previousRevision = this.revision;
+      const edit = activity.inlineEdit;
+      const now = new Date().toISOString();
+      if (queue) {
+        if (this.comments.length >= 10_000) throw new ReviewError("This review has reached its comment limit.");
+        this.comments.push({ id: crypto.randomUUID(), path: edit.path, side: "new", line: edit.line, endLine: edit.endLine,
+          scope: edit.line === edit.endLine ? "line" : "range", context: edit.expectedContent, lineContent: edit.expectedContent.split("\n")[0]!,
+          body: githubSuggestionBody(edit.replacement), status: "active", publishToGitHub: true,
+          suggestion: { activityId: id, headOid: edit.headOid!, sourceTree: edit.sourceTree, replacement: edit.replacement }, createdAt: now, updatedAt: now });
+      } else this.comments.splice(this.comments.indexOf(existing!), 1);
+      activity.changeStatus = queue ? "queued" : "pending";
+      activity.updatedAt = now;
+      this.revision += 1;
+      try { await this.persist(); return this.snapshot(); } catch (error) {
+        this.comments.splice(0, this.comments.length, ...previousComments);
+        activity.changeStatus = previousStatus; activity.updatedAt = previousUpdatedAt; this.revision = previousRevision;
+        throw error;
+      }
+    });
   }
 
   private refreshFindingLifecycles(): void {
@@ -967,12 +1035,16 @@ export class ReviewSession {
       currentStepIndex: this.currentStepIndex,
       comments: this.comments.map(comment => {
         const githubUnavailableReason = this.githubCommentUnavailableReason(comment);
-        return githubUnavailableReason ? { ...comment, githubUnavailableReason } : comment;
+        const githubPublished = this.pullRequest?.publication?.status === "published" && this.pullRequest.publication.commentIds.includes(comment.id);
+        return { ...comment, ...(githubUnavailableReason ? { githubUnavailableReason } : {}), ...(comment.suggestion ? { githubPublished } : {}) };
       }),
       messages: this.messages,
       activities: this.activities.map(({ proposal, ...activity }) => {
         const inlineSuggestions = reviewerSuggestions({ ...activity, proposal });
-        return { ...activity, hasProposal: Boolean(proposal), ...(inlineSuggestions.length ? { inlineSuggestions } : {}) };
+        const githubSuggestionUnavailableReason = this.githubSuggestionUnavailableReason(activity);
+        const githubSuggestionPublished = this.comments.some(comment => comment.suggestion?.activityId === activity.id && this.pullRequest?.publication?.status === "published" && this.pullRequest.publication.commentIds.includes(comment.id));
+        return { ...activity, hasProposal: Boolean(proposal), ...(inlineSuggestions.length ? { inlineSuggestions } : {}),
+          ...(this.pullRequest && activity.source === "reviewer" ? { githubSuggestionUnavailableReason, canQueueGitHubSuggestion: !githubSuggestionUnavailableReason, githubSuggestionPublished } : {}) };
       }),
       reviewedFiles: [...this.reviewedFiles].sort(),
       checkpoints: structuredClone(this.checkpoints),
@@ -1179,6 +1251,7 @@ export class ReviewSession {
       if (expectedComparisonId !== undefined && expectedComparisonId !== diffSourceIdentity(this.comparison)) throw new ReviewError("This draft belongs to a previous comparison. Copy or cancel it before reviewing the new source.");
       this.ensureOpen();
       if (side !== "new") throw new ReviewError("Only lines on the new side of a changed file can be edited.");
+      this.ensurePublicationMutable();
       const changedFile = this.comparison.files.find((candidate) => candidate.path === path && candidate.status !== "deleted");
       if (!changedFile) throw new ReviewError("Only lines on the new side of a changed file can be edited.");
       if (replacement.includes("\0")) throw new ReviewError("Inline edits cannot contain binary data.");
@@ -1194,7 +1267,7 @@ export class ReviewSession {
         const lines = normalized.split("\n");
         if (terminalNewline) lines.pop();
         const endLine = requestedEndLine ?? line;
-        if (endLine < line || endLine > lines.length || lines.slice(line - 1, endLine).join("\n") !== expectedContent) {
+        if (!Number.isSafeInteger(line) || !Number.isSafeInteger(endLine) || line < 1 || endLine < line || endLine > lines.length || lines.slice(line - 1, endLine).join("\n") !== expectedContent) {
           throw new ReviewError("This file changed before the edit was submitted. Refresh it and try again.");
         }
         const replacementLines = replacement === "" ? [] : replacement.replaceAll("\r\n", "\n").split("\n");
@@ -1213,6 +1286,12 @@ export class ReviewSession {
           throw new ReviewError("The inline edit affected an unexpected file and was discarded.");
         }
 
+        const inlineEdit: SavedInlineEdit = { path, line, endLine, expectedContent, replacement: replacement.replaceAll("\r\n", "\n"), sourceTree: workspace.tree,
+          ...(this.pullRequest ? { headOid: this.pullRequest.headRefOid } : {}) };
+        if (this.pullRequest) {
+          try { await this.validateGitHubSuggestion(inlineEdit); }
+          catch (error) { inlineEdit.githubUnavailableReason = error instanceof Error ? error.message : "This suggestion cannot be added to GitHub."; }
+        }
         const now = new Date().toISOString();
         const activity: AgentChangeActivity = {
           id: crypto.randomUUID(),
@@ -1224,6 +1303,7 @@ export class ReviewSession {
           files,
           status: "observed",
           changeStatus: "pending",
+          inlineEdit,
           proposal: { patch, baselineTree: workspace.tree, resultTree: result.tree },
           createdAt: now,
           updatedAt: now,
@@ -1248,6 +1328,7 @@ export class ReviewSession {
   async updateActivity(id: string, action: "apply" | "reject" | "undo") {
     return this.serializeMutation(async () => {
       this.ensureOpen();
+      this.ensurePublicationMutable();
       const activity = this.activities.find((candidate) => candidate.id === id);
       if (!activity?.proposal || !activity.changeStatus) throw new ReviewError("This activity has no actionable change bundle.");
       const proposal = activity.proposal;
@@ -2075,6 +2156,7 @@ export class ReviewSession {
     this.ensurePublicationMutable();
     const comment = this.comments.find((candidate) => candidate.id === id);
     if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
+    if (comment.suggestion) throw new ReviewError("Return this suggestion to local and create a new edit to change its replacement.");
     const nextBody = body.trim();
     if (!nextBody) throw new ReviewError("Comment cannot be empty.");
     comment.body = nextBody;
@@ -2098,7 +2180,8 @@ export class ReviewSession {
       const comment = this.comments.find((candidate) => candidate.id === id);
       if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
       if (publish && /\.png$/i.test(comment.path)) throw new ReviewError("Image comments remain local because GitHub cannot publish them as inline diff comments.");
-      if (publish && comment.scope && comment.scope !== "line") throw new ReviewError("Range and stop comments remain local; they are not included in GitHub reviews.");
+      if (publish && comment.scope && comment.scope !== "line" && !comment.suggestion) throw new ReviewError("Range and stop comments remain local; they are not included in GitHub reviews.");
+      if (publish && comment.suggestion && this.githubCommentUnavailableReason(comment)) throw new ReviewError(this.githubCommentUnavailableReason(comment)!);
       if (publish && !this.githubCommentInDiff(comment.path, comment.side, comment.line)) throw new ReviewError("Comments on expanded context remain local because that line is outside the GitHub diff.");
       const previous = comment.publishToGitHub;
       const previousRevision = this.revision;
@@ -2122,6 +2205,7 @@ export class ReviewSession {
     this.ensurePublicationMutable();
     const index = this.comments.findIndex((candidate) => candidate.id === id);
     if (index < 0) throw new ReviewError(`Review comment does not exist: ${id}`);
+    if (this.comments[index]!.suggestion) throw new ReviewError("Use Return to local on this suggestion to remove it from the GitHub review without losing the edit.");
     this.comments.splice(index, 1);
     for (const finding of this.outline?.findings ?? []) {
       if (finding.commentId === id) {
@@ -2461,7 +2545,7 @@ export class ReviewSession {
 
   private assertCloseAllowed(outcome: ReviewOutcome, decision?: ReviewDecisionIntent, localOnly = false): void {
     if (outcome !== "cancelled" && this.activities.some((activity) => activity.changeStatus === "pending")) {
-      throw new ReviewError("Apply or reject every pending agent change before closing the review.");
+      throw new ReviewError("Resolve every pending change before closing: apply locally, reject, or add an eligible suggestion to the GitHub review.");
     }
     if (outcome !== "cancelled" && this.preferences.requireAllFilesReviewed &&
       this.fullComparison.files.some((file) => !this.reviewedFiles.has(file.path))) {
@@ -2472,14 +2556,23 @@ export class ReviewSession {
     }
   }
 
-  async publishPullRequest(outcome: Extract<ReviewOutcome, "accepted" | "feedback">, expectedHeadOid: string, decision: ReviewDecisionIntent = outcome === "accepted" ? "approve" : "request-changes", note?: string) {
+  async publishPullRequest(outcome: Extract<ReviewOutcome, "accepted" | "feedback">, expectedHeadOid: string, decision: ReviewDecisionIntent = outcome === "accepted" ? "approve" : "request-changes", note?: string, expectedCommentIds?: string[]) {
     return this.serializeMutation(async () => {
       this.ensureOpen();
       if (!this.pullRequest) throw new ReviewError("This is not a GitHub pull request review.");
       if (expectedHeadOid !== this.pullRequest.headRefOid) throw new ReviewError("The confirmation is for an outdated pull request revision. Refresh and confirm again.");
       this.assertCloseAllowed(outcome, decision);
       const selected = this.comments.filter((comment) => comment.publishToGitHub);
+      if (expectedCommentIds && JSON.stringify([...expectedCommentIds].sort()) !== JSON.stringify(selected.map(comment => comment.id).sort())) throw new ReviewError("The selected review comments changed. Open the GitHub confirmation again.");
       if (selected.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
+      for (const comment of selected.filter(comment => comment.suggestion)) {
+        const activity = this.activities.find(activity => activity.id === comment.suggestion!.activityId);
+        const edit = activity?.inlineEdit;
+        if (!edit || activity?.changeStatus !== "queued" || comment.path !== edit.path || comment.side !== "new" || comment.line !== edit.line || comment.endLine !== edit.endLine ||
+          comment.context !== edit.expectedContent || comment.suggestion!.headOid !== edit.headOid || comment.suggestion!.sourceTree !== edit.sourceTree ||
+          comment.suggestion!.replacement !== edit.replacement || comment.body !== githubSuggestionBody(edit.replacement)) throw new ReviewError("The queued suggestion no longer matches its saved replacement. Return it to local and try again.");
+        await this.validateGitHubSuggestion(edit);
+      }
       if (selected.some(comment => !this.githubCommentInDiff(comment.path, comment.side, comment.line))) throw new ReviewError("Comments outside the GitHub diff must remain local. Unselect them before publishing.");
       const commentIds = selected.map((comment) => comment.id).sort();
       const existing = this.pullRequest.publication;
