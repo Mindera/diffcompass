@@ -19,6 +19,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   controls.append(comments); container.before(region); region.append(notice);
   let latestFiles = [], active = false, failed = false, mountKey = null, commentsVisible = true, disposed = false;
   let deferredRender = false;
+  let pendingFailure = null;
   const commentPreference = "diffcompass-monaco-inline-comments";
   try { commentsVisible = localStorage.getItem(commentPreference) !== "hidden"; } catch {}
   const entries = new Map(), fallbacks = new Set(), viewStates = new Map();
@@ -72,6 +73,16 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     actions.viewportChanged();
   }
   function closeAll() { for (const entry of entries.values()) closeEntry(entry); }
+  function failRenderer(message) {
+    if (hasDraft()) {
+      pendingFailure = message;
+      notice.textContent = message + " Your draft is retained. Save or cancel it before switching to Shiki.";
+      return;
+    }
+    pendingFailure = null; failed = true; closeAll();
+    notice.textContent = message + " The Shiki renderer is available.";
+    render();
+  }
   function commentControls() {
     container.classList.toggle("comments-hidden", !commentsVisible);
     comments.textContent = commentsVisible ? "Hide comments" : "Show comments";
@@ -151,7 +162,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     entry.child.sync({ ...(entry.preparing || snapshot()), paths: [entry.path] });
   }
   async function mount(entry) {
-    if (disposed || (!owns(entry.path) && !entry.preparing) || !entry.slot.isConnected) return null;
+    if (disposed || pendingFailure || (!owns(entry.path) && !entry.preparing) || !entry.slot.isConnected) return null;
     if (entry.child) return entry.child;
     if (entry.frame) return entry.ready;
     const ticket = ++entry.generation;
@@ -177,7 +188,10 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     });
     const fail = message => {
       if (!valid()) return;
-      failed = true; closeAll(); notice.textContent = message + " The Shiki renderer is available."; render();
+      clearTimeout(entry.timer);
+      entry.settle?.(null); entry.settle = null;
+      entry.paintSettle?.(false); entry.paintSettle = null;
+      failRenderer(message);
     };
     entry.host = {
       ...actions,
@@ -275,6 +289,10 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   function sync() {
     mobileActions.update();
     if (!active || disposed) return;
+    if (pendingFailure) {
+      if (!hasDraft()) failRenderer(pendingFailure);
+      return;
+    }
     if (phasePreparation) return;
     if (deferredRender && !hasDraft()) {
       deferredRender = false; render(); return;
@@ -311,7 +329,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   select.onchange = () => {
     if (hasDraft()) { select.value = preferred; actions.notify("Save or cancel the Monaco draft before changing renderer."); return; }
     cancelPhase();
-    preferred = select.value; failed = false;
+    preferred = select.value; failed = false; pendingFailure = null;
     try { localStorage.setItem(preferenceKey, preferred); } catch {}
     if (preferred === "current") closeAll();
     render();

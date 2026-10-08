@@ -18,6 +18,9 @@ async function refresh() {
   const response = page.waitForResponse(response => response.url().endsWith("/api/refresh"));
   await page.locator("#refresh-button").click();
   assert((await response).ok());
+  // Session polling and editor requests can continue after the refreshed
+  // comparison is applied. Wait for the actual UI transition, not networkidle.
+  await page.waitForFunction(() => !document.getElementById("refresh-button").disabled);
 }
 async function frameForCart() {
   await page.locator('[data-file="src/cart.ts"]').click();
@@ -79,7 +82,7 @@ try {
   }
   const frame = await frameForCart(), body = "Unchanged source can still save after refresh";
   const input = await draft(frame, body);
-  await refresh(); await page.waitForLoadState("networkidle");
+  await refresh();
   await retained(frame, input, body);
   await frame.getByRole("button", { name: "Add comment", exact: true }).click();
   await input.waitFor({ state: "detached" });
@@ -87,14 +90,21 @@ try {
   const removedFrame = await frameForCart(), removedBody = "Draft on a file removed from the comparison";
   const removedInput = await draft(removedFrame, removedBody);
   await writeFile(source, execFileSync("git", ["show", "origin/main:src/cart.ts"], { cwd: repository, encoding: "utf8" }));
-  await refresh(); await page.waitForLoadState("networkidle");
+  await refresh();
+  await page.locator('[data-file="src/cart.ts"]').waitFor({ state: "detached" });
   await retained(removedFrame, removedInput, removedBody);
-  await removedFrame.getByRole("button", { name: "Cancel", exact: true }).click();
+  // A late editor failure must not make the renderer fallback discard a draft.
+  await page.evaluate(() => diffCompassProductionHost.failed("Fixture renderer failure", "src/cart.ts"));
+  await retained(removedFrame, removedInput, removedBody);
+  await removedFrame.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.press("Enter");
   await page.locator('#diff > [data-path="src/cart.ts"]').waitFor({ state: "detached" });
-  pass("a file absent from the refreshed comparison retains its draft until cancellation, then disappears");
+  assert(await page.locator(".monaco-review-notice").innerText().then(text => text.includes("The Shiki renderer is available")));
+  pass("a removed file and late renderer failure retain the draft until keyboard cancellation, then finish fallback");
   assert.deepEqual(errors, []);
   pass("clean browser console");
 } catch (error) {
+  console.error(await page.locator(".monaco-review-notice").innerText());
   await page.screenshot({ path: "/tmp/dc-monaco-paged-draft-failure.png" });
   throw error;
 } finally { await browser.close(); }
