@@ -175,12 +175,20 @@ try {
   for (const id of ids) await frame.locator(`[data-comment-id="${id}"]`).waitFor({state:'attached'});
   for (const layout of ['unified','split']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
+    // Layout and viewport changes may replace an iframe. Force that lifecycle
+    // here so this reload check cannot accidentally depend on a cached Frame.
+    const previousFrame = frame;
+    const header = page.locator(`.monaco-file-slot[data-path="${contextPath}"] > header`);
+    await header.getByRole('button',{name:`Collapse ${contextPath}`,exact:true}).click();
+    await header.getByRole('button',{name:`Expand ${contextPath}`,exact:true}).click();
+    assert(previousFrame.isDetached(), 'Exercise a fresh editor after reload/layout');
+    frame = await file(contextPath,'new',50);
     await page.getByRole('button',{name:'Hide comments',exact:true}).click();
     assert.equal(await frame.locator('[data-comment-id]').count(),0);
     await page.getByRole('button',{name:'Show comments',exact:true}).click();
     for (const id of ids) await frame.locator(`[data-comment-id="${id}"]`).waitFor({state:'attached'});
   }
-  console.log('PASS expanded discussions survive reload, layout changes and hide/show');
+  console.log('PASS expanded discussions survive reload, layout changes, forced iframe remount and hide/show');
   await page.close(); await newPage();
   let version = 0;
   const message = (id, body, link = `https://github.com/example/checkout/pull/42#discussion_r${id}`) => ({id,author:'Reviewer',body,url:link});
@@ -265,6 +273,7 @@ try {
   console.log('PASS explicit PR refresh retains the existing editor and reading position');
   assert.deepEqual(errors,[]);
 } catch(error) {
-  await page?.screenshot({path:'/tmp/dc-discussions-failure.png'});
   console.error(error.stack); console.error('PAGE_ERRORS',errors); process.exitCode=1;
+  try { await page?.screenshot({path:'/tmp/dc-discussions-failure.png',timeout:5000}); }
+  catch(diagnosticError) { console.error('Failure screenshot unavailable:',diagnosticError.message); }
 } finally { await browser.close(); }
