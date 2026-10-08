@@ -1,4 +1,5 @@
 import { refreshSequenceEvidence, sequenceEvidenceRevision, sequenceSourceSelection } from "/sequence-walkthrough-host.js";
+import { createMonacoRenderer } from "/monaco-controller.mjs";
 
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 const fragmentToken = fragment.get("token");
@@ -44,9 +45,9 @@ const state = {
   highlightRequestId: 0,
   inlineEditHighlightRequestId: 0,
   flowRenderGeneration: 0,
-  archifyArtifactId: null,
+  retryingSequences: false,
+  mapArtifactSelections: new Map(),
   archifyArtifactViews: new Map(),
-  mapsLastUnderstand: "archify",
   mapsLastView: "archify",
   architectureDiagramViews: new Map(),
   architectureDiagramDrag: null,
@@ -958,7 +959,7 @@ function setBusy(busy, label = "Working…") {
   elements["approve-comments-button"].disabled = busy;
   elements["feedback-button"].disabled = busy;
   elements["export-menu"].querySelectorAll("button").forEach((button) => { button.disabled = busy; });
-  elements["regenerate-flows"].disabled = busy || !reviewIsOpen() || !state.session?.outline;
+  syncSequenceRetryButton();
   elements["chat-form"].querySelector("button").disabled = busy || !reviewIsOpen();
   syncBriefingPreferenceControls();
   if (busy && !elements["tour-active"].classList.contains("hidden")) {
@@ -1140,6 +1141,16 @@ function modalDialogIsOpen() {
   return Boolean(document.querySelector("dialog[open]"));
 }
 
+// Shared by the document shortcuts and the isolated read-only diff renderer.
+// Keyboard events do not bubble out of an iframe.
+function handleTourShortcut(key) {
+  if (modalDialogIsOpen() || !state.tourMode || !reviewIsOpen() || state.activeTab !== "diff") return false;
+  if (key === "j") void handleNextStep();
+  else if (key === "k") void navigate("previous");
+  else return false;
+  return true;
+}
+
 function renderFocusMode() {
   document.body.classList.toggle("focus-mode", state.focusMode);
   const button = elements["focus-mode-toggle"];
@@ -1180,6 +1191,12 @@ async function handleNextStep() {
 
 function narrowFilePanelLayout() {
   return window.matchMedia("(max-width: 900px)").matches;
+}
+
+function revealMobilePanel(id) {
+  if (!narrowFilePanelLayout()) return;
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+  elements[id].scrollIntoView({ block: "start", behavior });
 }
 
 function setFilePanelOpen(open, { restoreFocus = false } = {}) {
@@ -1592,24 +1609,28 @@ function renderSplitSide(file, row, side, findings, whitespaceOnly = false, rang
 }
 
 function renderDiffFileHeader(file, collapsed, fullContent = false) {
+  const reviewed = state.session.reviewedFiles?.includes(file.path) ?? false;
+  const reviewLabel = `${reviewed ? "Mark as not reviewed" : "Mark as reviewed"}: ${file.path}`;
+  const reviewButton = state.proposalPreview ? "" : `<button class="review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}" aria-pressed="${reviewed}" aria-label="${escapeHtml(reviewLabel)}" title="${escapeHtml(reviewIsOpen() ? reviewLabel : "This review is closed")}"${reviewIsOpen() ? "" : " disabled"}>${reviewed ? "✓ Reviewed" : "Mark as reviewed"}</button>`;
   const markdownPreview = isMarkdownFile(file) && state.markdownPreviewPaths.has(file.path);
   const markdownControl = isMarkdownFile(file) && !state.proposalPreview
     ? `<button class="text-button" type="button" data-markdown-preview="${escapeHtml(file.path)}">${markdownPreview ? "Changes" : "Preview"}</button> · `
     : "";
   const reviewControls = state.proposalPreview
-    ? `<span class="proposal-label">pending suggestion</span>${state.proposalActivityId ? ` · <button class="text-button" type="button" data-preview-activity-action="apply" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Apply</button> · <button class="text-button danger" type="button" data-preview-activity-action="reject" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Reject</button> · ` : " · "}`
-    : `${markdownControl}${fullContent || isPngDiff(file) || markdownPreview ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}<button class="text-button review-file-button" type="button" data-reviewed-file="${escapeHtml(file.path)}"${reviewIsOpen() ? "" : " disabled"}>${state.session.reviewedFiles?.includes(file.path) ? "✓ Reviewed" : "Mark reviewed"}</button> · `;
+    ? `<span class="proposal-label">pending suggestion</span>${state.proposalActivityId ? ` · <button class="text-button" type="button" data-preview-activity-action="apply" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}"${state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions ? ' disabled title="Applying changes is disabled in this synthetic PR fixture"' : ""}>Apply</button> · <button class="text-button danger" type="button" data-preview-activity-action="reject" data-preview-activity-id="${escapeHtml(state.proposalActivityId)}">Reject</button> · ` : " · "}`
+    : `${markdownControl}${fullContent || isPngDiff(file) || markdownPreview ? "" : `<button class="text-button" type="button" data-file-expansion="${file._full ? "compact" : "full"}" data-expand-file="${escapeHtml(file.path)}">${file._full ? "Collapse file" : "Expand file"}</button> · `}`;
   const paging = !fullContent && file._page && file._page.totalRows > file._page.limit
     ? `<button class="text-button" type="button" data-diff-page="${Math.max(0, file._page.offset - file._page.limit)}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset === 0 ? " disabled" : ""}>Previous chunk</button> <span>${file._page.offset + 1}–${Math.min(file._page.totalRows, file._page.offset + file._page.limit)} of ${file._page.totalRows}</span> <button class="text-button" type="button" data-diff-page="${file._page.offset + file._page.limit}" data-page-file="${escapeHtml(file.path)}" data-context="${fileContext(file)}" data-page-full="${Boolean(file._full)}"${file._page.offset + file._page.limit >= file._page.totalRows ? " disabled" : ""}>Next chunk</button> · `
     : "";
   return `<header class="diff-file-header">
     <span class="status mobile-file-status">${escapeHtml(file.status)}</span>
-    <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">⌄</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
-    <span class="file-stats">${globalThis.DiffCompassSemantic?.control(file) ?? ""}${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}</span>
+    <button class="diff-file-toggle" type="button" data-collapse-file="${escapeHtml(file.path)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(`${collapsed ? "Expand" : "Collapse"} ${file.path}`)}"><span class="collapse-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span><span class="diff-file-title"><span class="status">${escapeHtml(file.status)}</span>${escapeHtml(file.path)}</span></button>
+    <span class="file-stats">${globalThis.DiffCompassSemantic?.control(file) ?? ""}${reviewControls}${paging}${isPngDiff(file) ? "PNG image" : `<span class="plus">+${file.additions}</span> <span class="minus">-${file.deletions}</span>`}${reviewButton}</span>
   </header>`;
 }
 
-function revealCodeLocation(path, side, line, { smooth = true } = {}) {
+async function revealCodeLocation(path, side, line, { smooth = true } = {}) {
+  if (state.monacoRenderer?.owns(path)) return state.monacoRenderer.reveal(path, side, line);
   const row = elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"][data-line="${line}"]`);
   if (row) {
     row.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "center" });
@@ -1620,13 +1641,15 @@ function revealCodeLocation(path, side, line, { smooth = true } = {}) {
 }
 
 function renderDiff(files, { proposalActivityId = null } = {}) {
+  if (reviewedScrollFloor && JSON.stringify(files.map(file => file.path)) !== reviewedScrollFloor.paths) clearReviewedScrollSpace();
   if (state.codeSelection) hideCodeSelectionToolbar(true);
   state.proposalPreview = Boolean(proposalActivityId);
   state.proposalActivityId = proposalActivityId;
   state.renderedDiffFiles = files;
+  files = state.monacoRenderer?.render(files, { proposalActivityId }) ?? files;
   syncDiffViewControls();
   const findings = state.proposalPreview ? [] : state.session.outline?.findings ?? [];
-  elements.diff.innerHTML = files
+  const html = files
     .map((file) => {
       const collapsed = !state.proposalPreview && state.collapsedFiles.has(file.path);
       const layout = file.status === "added" ? "unified" : state.diffLayout;
@@ -1647,10 +1670,11 @@ function renderDiff(files, { proposalActivityId = null } = {}) {
     </section>`;
     })
     .join("");
+  if (!state.monacoRenderer?.commit(html)) elements.diff.innerHTML = html;
   const actions = [...elements.diff.querySelectorAll(".line-action:not(:disabled)")];
   const selected = actions.find((action) => action.closest(".diff-row")?.classList.contains("selected")) ?? actions[0];
   if (selected) selected.tabIndex = 0;
-  elements["empty-diff"].classList.toggle("hidden", files.length > 0);
+  elements["empty-diff"].classList.toggle("hidden", state.renderedDiffFiles.length > 0);
   void highlightRenderedCode();
   void hydrateDiffImages(files);
   if (files.some((file) => /\.md$/i.test(file.path) && state.markdownPreviewPaths?.has(file.path))) void hydrateMarkdownPreviews(files);
@@ -1664,6 +1688,7 @@ function currentDiffRenderOptions() {
 }
 
 function syncDiffViewControls() {
+  state.monacoRenderer?.sync();
   elements.diff.classList.toggle("wrap-code", state.diffWrap === "wrap");
   elements.diff.classList.toggle("show-diff-markers", state.showDiffMarkers);
   document.getElementById("show-diff-markers").checked = state.showDiffMarkers;
@@ -1694,7 +1719,10 @@ function diffViewRow(path, side, line) {
 }
 
 function changeDiffView(layout, wrap, persist = true) {
+  if (state.monacoRenderer?.hasDraft() && layout !== state.diffLayout) return toast("Save or cancel the Monaco draft before switching layout.");
   if (!["unified", "split"].includes(layout) || !["scroll", "wrap"].includes(wrap)) return;
+  const step = state.tourMode && state.monacoRenderer?.active ? currentStep() : null;
+  const keepTourVisible = Boolean(step && state.tourMode && state.monacoRenderer?.isStepVisible(step));
   const panel = elements["diff-panel"];
   const panelTop = panel.getBoundingClientRect().top;
   const toolbarHeight = document.querySelector('.diff-toolbar').getBoundingClientRect().height;
@@ -1744,6 +1772,10 @@ function changeDiffView(layout, wrap, persist = true) {
   const target = anchor && diffViewRow(anchor.path, anchor.side, anchor.line);
   if (target) panel.scrollTop += target.getBoundingClientRect().top - anchor.top;
   scheduleCurrentStepReturnUpdate();
+  // Split and Unified reserve different spaces for Before-side banners.
+  // Preserve a visible current stop by source identity, not its old pixels.
+  // Do not pull a reviewer back to a stop they had already scrolled away from.
+  if (keepTourVisible) void focusCurrentStep();
 }
 
 function isPngDiff(file) {
@@ -2085,8 +2117,11 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
   renderDiff(files);
   renderComments();
   renderFindings();
-  if (!viewportAnchor) document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  if (line && side) revealCodeLocation(path, side, line);
+  // Monaco must settle its lazy editor before aligning a file-only jump.
+  // Do not invent a line-1 anchor: that would unfold unchanged context.
+  if (!viewportAnchor && !line && state.monacoRenderer?.active) await state.monacoRenderer.reveal(path);
+  else if (!viewportAnchor) elements.diff.querySelector(`:scope > [data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (line && side) await revealCodeLocation(path, side, line);
   renderTourAnnotation();
   if (viewportAnchor) restoreFileViewport(viewportAnchor);
   return true;
@@ -2127,6 +2162,7 @@ function sourceCodeLines(lines, selectedLine) {
 }
 
 function renderRepositoryFile(path, content) {
+  state.monacoRenderer?.deactivate();
   const markdown = /\.md$/i.test(path);
   const preview = markdown && state.repositoryFileView === "preview";
   elements.diff.innerHTML = `<section class="source-file" data-path="${escapeHtml(path)}"><header class="diff-file-header"><span class="diff-file-title">${escapeHtml(path)}</span><span class="file-stats">${markdown ? `<button class="text-button" type="button" data-source-view="${preview ? "source" : "preview"}">${preview ? "Source" : "Preview"}</button> · ` : ""}<span class="muted">${escapeHtml(state.repositoryFileSourceLabel ?? "unchanged")}</span></span></header>${preview ? `<article class="markdown-preview rendered-markdown">${renderMarkdown(content, 0) || '<p class="muted">This Markdown file is empty.</p>'}</article>` : `<pre class="source-code">${escapeHtml(content)}</pre>`}</section>`;
@@ -2303,6 +2339,7 @@ function closeSymbolPeek() {
 }
 
 async function showActivityFile(activityId, path) {
+  if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before opening a proposal.");
   const requestId = ++state.fileRequestId;
   state.reviewDiffLoadGeneration += 1;
   state.activeTab = "diff";
@@ -2461,17 +2498,26 @@ function commentRowSelector(comment, line = comment.line) {
 }
 
 function githubThreadReplyUrl(thread) {
-  const candidate = thread.comments?.at(-1)?.url;
+  const candidate = thread.comments?.[0]?.url;
   try {
     const url = new URL(candidate);
-    return url.protocol === "https:" && url.hostname === "github.com" ? url.toString() : "";
+    if (url.protocol !== "https:" || url.hostname !== "github.com") return "";
+    // Match GitHub's Copy link permalink directly, without the legacy /files
+    // redirect. Keep the root comment as the target after replies arrive.
+    const comment = /^#(?:discussion_r|r)(\d+)$/.exec(url.hash);
+    const pullRequest = /^(\/[^/]+\/[^/]+\/pull\/\d+)(?:\/(?:files|changes)((?:\/[^/]+)?))?\/?$/.exec(url.pathname);
+    if (comment && pullRequest) {
+      url.pathname = `${pullRequest[1]}/changes${pullRequest[2] ?? ""}`;
+      url.hash = `r${comment[1]}`;
+    }
+    return url.toString();
   } catch {
     return "";
   }
 }
 
 function githubThreadLocation(thread) {
-  return `${thread.path}${thread.line ? `:${thread.line}` : ""}${thread.side ? ` · ${thread.side}` : ""}`;
+  return `${thread.path}${thread.line ? `:${thread.line}` : ""}${thread.side ? ` · ${thread.side}` : ""}${thread.outdated ? " · outdated location" : ""}`;
 }
 
 function githubThreadReplyLink(thread, label = "Reply in GitHub") {
@@ -2488,7 +2534,7 @@ function renderGitHubReviewThreads() {
   document.querySelectorAll(".diff-row.has-github-thread").forEach((row) => row.classList.remove("has-github-thread"));
   const threads = state.session?.pullRequest?.threads ?? [];
   for (const thread of threads) {
-    if (!thread.line) continue;
+    if (!thread.line || thread.outdated) continue;
     const side = thread.side ?? "new";
     const row = diffViewRow(thread.path, side, thread.line);
     if (!row) continue;
@@ -2568,7 +2614,7 @@ function renderComments() {
       ${selectedQuotation(comment)}
       ${comment.scope === "stop" ? `<div class="comment-anchor-context">Scoped to stop <strong>${escapeHtml(commentScope(comment).replace("Tour stop comment · ", ""))}</strong></div>` : ""}
       <p>${renderInlineMarkdown(comment.body)}</p>
-      ${state.session.pullRequest && (comment.scope ?? "line") === "line" && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
+      ${comment.githubUnavailableReason ? `<small class="muted">${escapeHtml(comment.githubUnavailableReason)}</small>` : state.session.pullRequest && (comment.scope ?? "line") === "line" && !/\.png$/i.test(comment.path) ? `<label class="toggle-control"><input data-action="github" type="checkbox"${comment.publishToGitHub ? " checked" : ""}${disabled} /> Include in GitHub review</label>` : ""}
       <div class="comment-actions">
         ${state.deletingCommentId === comment.id
           ? `<span class="delete-confirmation">Delete this comment?</span><button class="text-button" data-action="cancel-delete" type="button">Cancel</button><button class="text-button danger" data-action="confirm-delete" type="button">Delete</button>`
@@ -2634,7 +2680,7 @@ function githubChecksSummary(pullRequest) {
 
 function githubReviewThreadCard(thread) {
   const location = `<button class="comment-jump" type="button" data-github-thread-jump="${escapeHtml(thread.id)}" title="Open ${escapeHtml(thread.path)} in the review">${escapeHtml(githubThreadLocation(thread))}</button>`;
-  return `<article class="comment-item github-thread-card"><div class="comment-meta">${location}<span>${thread.resolved ? "resolved" : "open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}${githubThreadReplyLink(thread)}</article>`;
+  return `<article class="comment-item github-thread-card"><div class="comment-meta">${location}<span>Status: ${thread.resolved ? "Resolved" : "Open"}</span></div>${thread.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong>: ${renderInlineMarkdown(comment.body)}</p>`).join("")}${githubThreadReplyLink(thread)}</article>`;
 }
 
 function renderPullRequest() {
@@ -2702,8 +2748,9 @@ function handleGitHubReviewThreadClick(event) {
   if (!button) return;
   const thread = state.session?.pullRequest?.threads.find((candidate) => candidate.id === button.dataset.githubThreadJump);
   if (!thread?.path) return;
+  state.monacoRenderer?.setCommentsVisible(true);
   rememberPullRequestReturn();
-  void showAnalysisFile(thread.path, thread.line, thread.side ?? "new");
+  void showAnalysisFile(thread.path, thread.outdated ? undefined : thread.line, thread.side ?? "new");
 }
 
 function renderReviewOverview() {
@@ -3025,6 +3072,22 @@ function hasArchifyArtifact(id) {
   return archifyArtifacts().some((artifact) => artifact.id === id);
 }
 
+// Group by the subject, not by which renderer happened to succeed. Each
+// destination owns its picker and iframe so switching views preserves cameras.
+function mapViewForArtifact(artifact) {
+  if (artifact.type === "sequence") return "sequence";
+  if (["dataflow", "lifecycle"].includes(artifact.type)) return "adaptive";
+  return "archify";
+}
+
+function mapArtifacts(view) {
+  return archifyArtifacts().filter(artifact => mapViewForArtifact(artifact) === view);
+}
+
+function mapFailures(view) {
+  return (state.session.outline?.archifyFailures ?? []).filter(failure => !failure.id.startsWith("structural-") && failure.type !== "workflow" && mapViewForArtifact(failure) === view);
+}
+
 function savedCallFlows() {
   return state.session.outline?.callFlows ?? [];
 }
@@ -3044,10 +3107,10 @@ function archifyArtifactTypeLabel(type, purpose) {
   return ({ architecture: "Architecture", workflow: "Workflow", sequence: "Sequence", dataflow: "Data flow", lifecycle: "Lifecycle" })[type] ?? type;
 }
 
-function selectedArchifyArtifact(artifacts) {
-  const selected = artifacts.find((artifact) => artifact.id === state.archifyArtifactId);
+function selectedArchifyArtifact(artifacts, view) {
+  const selected = artifacts.find((artifact) => artifact.id === state.mapArtifactSelections.get(view));
   if (selected) return selected;
-  state.archifyArtifactId = artifacts[0]?.id ?? null;
+  state.mapArtifactSelections.set(view, artifacts[0]?.id ?? null);
   return artifacts[0];
 }
 
@@ -3100,22 +3163,22 @@ window.addEventListener("message", (event) => {
   if (pane) pane.scrollBy({ top: Math.max(-2000, Math.min(2000, event.data.deltaY)), behavior: "instant" });
 });
 
-function archifyFailureCards() {
-  const failures = (state.session.outline?.archifyFailures ?? []).filter((failure) => failure.type !== "workflow");
+function archifyFailureCards(view) {
+  const failures = mapFailures(view);
   return failures.map((failure) => `<article class="flow-card archify-failure"><strong>Archify ${escapeHtml(failure.type)} unavailable</strong><p>${escapeHtml(failure.message)}</p><small>${failure.preservedLastValid ? "The last validated diagram remains on display." : "The Mermaid fallback remains available."}</small></article>`).join("");
 }
 
 async function openSequenceSource(event) {
   if (event.data?.type !== "diffcompass-sequence-source" || typeof event.data.edgeId !== "string" || !Number.isInteger(event.data.anchorIndex) || event.data.anchorIndex < 0 || event.data.anchorIndex > 7) return;
   const frame = [...document.querySelectorAll("iframe.archify-frame")].find((frame) => frame.contentWindow === event.source);
-  if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
+  if (!frame || !frame.getClientRects().length || state.activeTab !== "sequence") return;
   const id = frame.dataset.archifyArtifactId;
   const evidenceRevision = frame._sequenceEvidenceRevision;
   try {
     // The iframe supplies only an identity. Resolve paths from current,
     // server-validated evidence, never from a postMessage path or line.
     const sources = await api(`/api/sequence-sources/${encodeURIComponent(id)}?edge=${encodeURIComponent(event.data.edgeId)}`);
-    if (!frame.isConnected || state.activeTab !== "archify" || frame._sequenceEvidenceRevision !== evidenceRevision) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); return; }
+    if (!frame.isConnected || state.activeTab !== "sequence" || frame._sequenceEvidenceRevision !== evidenceRevision) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); return; }
     const selection = sequenceSourceSelection(sources[event.data.edgeId], event.data.anchorIndex, event.data.anchorIndices);
     if (!selection) { frame.contentWindow?.postMessage({ type: "diffcompass-sequence-return" }, "*"); toast("This source link is no longer available. Regenerate the map to refresh its evidence."); return; }
     const { anchor } = selection;
@@ -3144,9 +3207,9 @@ async function openSequenceSource(event) {
 function returnToSequenceDiagram() {
   const target = state.sequenceSourceReturn;
   if (!target) return;
-  if (target.diagram) { returnToAdaptiveDiagram(target); return; }
-  state.archifyArtifactId = target.artifactId;
-  openMaps("archify");
+  if (target.view === "adaptive") { returnToAdaptiveDiagram(target); return; }
+  state.mapArtifactSelections.set("sequence", target.artifactId);
+  openMaps("sequence");
   elements["diff-panel"].scrollTop = target.scrollTop;
   if (target.frame.isConnected) {
     if (target.present) window.diffcompassMapPresentation?.resume(target.frame);
@@ -3167,35 +3230,35 @@ function updateSequenceSourceReturnVisibility() {
   button.style.right = `${Math.max(12, window.innerWidth - bounds.right + 14)}px`;
   button.style.bottom = `${Math.max(58, window.innerHeight - Math.min(window.innerHeight, bounds.bottom) + 58)}px`;
 }
+// Adaptive evidence links share the existing Back to diagram control with
+// sequence source links. Keep the mounted map so its camera and inspection
+// state survive the trip to code.
 function rememberAdaptiveDiagramReturn(source) {
-  const view = state.activeTab;
-  if (!["archify", "adaptive"].includes(view) || !source.closest(`#${view}-view`)) return;
-  const card = source.closest(view === "archify" ? ".archify-artifact" : ".adaptive-card");
-  const frame = card?.querySelector("iframe.archify-frame");
-  const artifactId = frame?.dataset.archifyArtifactId;
-  const nativeKey = card?.querySelector("[data-adaptive-diagram]")?.dataset.adaptiveDiagram;
-  if (view === "archify" ? !artifactId : !nativeKey) return;
+  if (state.activeTab !== "adaptive" || !source.closest("#adaptive-view")) return;
+  const artifactId = state.mapArtifactSelections.get("adaptive");
+  if (!artifactId) return;
   state.structuralGraphReturn = null;
-  state.sequenceSourceReturn = { diagram: true, view, artifactId, nativeKey, source, frame, scrollTop: elements["diff-panel"].scrollTop };
+  state.sequenceSourceReturn = {
+    view: "adaptive", artifactId, source,
+    frame: source.closest(".archify-artifact")?.querySelector("iframe.archify-frame"),
+    scrollTop: elements["diff-panel"].scrollTop,
+  };
 }
 
 function returnToAdaptiveDiagram(target) {
-  const available = target.view === "archify"
-    ? archifyArtifacts().some(diagram => diagram.id === target.artifactId)
-    : adaptiveEntries().some(diagram => diagram.key === target.nativeKey);
-  const mounted = target.source.isConnected && (target.view !== "archify" || state.archifyArtifactId === target.artifactId);
+  const available = mapDiagramChoices("adaptive").some(diagram => diagram.id === target.artifactId);
+  const mounted = state.mapArtifactSelections.get("adaptive") === target.artifactId && target.source.isConnected;
   state.sequenceSourceReturn = null;
   if (available) {
-    if (target.view === "archify") state.archifyArtifactId = target.artifactId;
-    state.tabScrollPositions.set(target.view, target.scrollTop);
+    state.mapArtifactSelections.set("adaptive", target.artifactId);
+    state.tabScrollPositions.set("adaptive", target.scrollTop);
   }
-  if (available && mounted) activateReviewTab(target.view);
-  else openMaps(target.view);
+  if (available && mounted) activateReviewTab("adaptive");
+  else openMaps("adaptive");
   if (available) {
     elements["diff-panel"].scrollTop = target.scrollTop;
-    const selector = target.view === "archify" ? "iframe.archify-frame" : `[data-adaptive-diagram="${target.nativeKey}"]`;
     const focus = target.frame?.isConnected ? target.frame : target.source.isConnected ? target.source
-      : elements[`${target.view}-view`].querySelector(selector);
+      : elements["adaptive-view"].querySelector("iframe.archify-frame, [data-adaptive-diagram]");
     focus?.focus({ preventScroll: true });
   } else toast("This diagram is no longer available; showing the available maps.");
   updateSequenceSourceReturnVisibility();
@@ -3205,7 +3268,7 @@ window.addEventListener("message", (event) => { void openSequenceSource(event); 
 window.addEventListener("message", async (event) => {
   if (event.data?.type !== "diffcompass-sequence-lookup" || typeof event.data.edgeId !== "string") return;
   const frame = [...document.querySelectorAll("iframe.archify-frame")].find((candidate) => candidate.contentWindow === event.source);
-  if (!frame || !frame.getClientRects().length || state.activeTab !== "archify") return;
+  if (!frame || !frame.getClientRects().length || state.activeTab !== "sequence") return;
   const edgeId = event.data.edgeId;
   const requestId = event.data.requestId;
   const evidenceRevision = frame._sequenceEvidenceRevision;
@@ -3219,27 +3282,52 @@ window.addEventListener("message", async (event) => {
 document.getElementById("sequence-source-return").addEventListener("click", returnToSequenceDiagram);
 
 function renderArchify() {
-  const artifacts = archifyArtifacts();
-  const failures = archifyFailureCards();
-  const hasArtifacts = artifacts.length > 0;
-  const hasContent = hasArtifacts || Boolean(failures) || componentArchitectureEntries().length > 0;
-  const selected = selectedArchifyArtifact(artifacts);
+  const interactive = renderInteractiveMaps("archify");
   elements["archify-tab"].classList.remove("hidden");
-  elements["archify-empty"].classList.toggle("hidden", hasContent);
-  elements["archify-select"].disabled = !hasArtifacts;
-  elements["archify-select"].innerHTML = hasArtifacts ? artifacts.map((artifact) => `<option value="${escapeHtml(artifact.id)}">${escapeHtml(`${archifyArtifactTypeLabel(artifact.type, artifact.purpose)} · ${artifact.title}`)}</option>`).join("") : '<option value="">No interactive maps available</option>';
-  elements["archify-select"].value = selected?.id ?? "";
-  elements["archify-picker-count"].textContent = selected ? `Showing ${artifacts.indexOf(selected) + 1} of ${artifacts.length} validated map${artifacts.length === 1 ? "" : "s"}.` : failures ? "Maps could not be drawn. See the reasons and source diagrams below." : "No interactive maps have been generated for this review.";
-  const markup = `${selected ? archifyArtifactCard(selected) : ""}${failures}`;
+  elements["archify-empty"].classList.toggle("hidden", interactive || componentArchitectureEntries().length > 0);
+}
+
+function interactiveMapPrefix(view) {
+  return view === "archify" ? "archify" : `${view}-map`;
+}
+
+function mapDiagramChoices(view) {
+  const artifacts = mapArtifacts(view);
+  if (view !== "adaptive") return artifacts;
+  return [...artifacts, ...adaptiveEntries().map(entry => ({
+    id: `native-${entry.key}`, nativeKey: entry.key, title: entry.value.title,
+    label: `${entry.label} (fallback)`,
+  }))];
+}
+
+function renderInteractiveMaps(view) {
+  const artifacts = mapDiagramChoices(view);
+  const failures = archifyFailureCards(view);
+  const hasArtifacts = artifacts.length > 0;
+  const selected = selectedArchifyArtifact(artifacts, view);
+  const prefix = interactiveMapPrefix(view);
+  const picker = document.getElementById(`${prefix}-select`);
+  const count = document.getElementById(`${prefix}-picker-count`);
+  const container = document.getElementById(`${prefix}-artifacts`);
+  picker.parentElement.classList.toggle("hidden", !hasArtifacts);
+  picker.disabled = !hasArtifacts;
+  picker.innerHTML = hasArtifacts ? artifacts.map((artifact) => `<option value="${escapeHtml(artifact.id)}">${escapeHtml(`${artifact.label ?? archifyArtifactTypeLabel(artifact.type, artifact.purpose)} · ${artifact.title}`)}</option>`).join("") : '<option value="">No diagrams available</option>';
+  picker.value = selected?.id ?? "";
+  count.textContent = selected ? `Showing ${artifacts.indexOf(selected) + 1} of ${artifacts.length} ${view === "adaptive" ? "diagram" : "validated map"}${artifacts.length === 1 ? "" : "s"}.` : "";
+  // Create a category's interactive iframe on first visit. Once visited,
+  // refresh it even while hidden so stale source-return targets are retired.
+  if (state.activeTab !== view && container._mapMarkup === undefined) return hasArtifacts || Boolean(failures);
+  const markup = `${selected && !selected.nativeKey ? archifyArtifactCard(selected) : ""}${failures}`;
   // Preserve the iframe and its camera/inspection state on unrelated updates.
-  if (elements["archify-artifacts"]._mapMarkup !== markup) {
-    elements["archify-artifacts"].innerHTML = markup;
-    elements["archify-artifacts"]._mapMarkup = markup;
+  if (container._mapMarkup !== markup) {
+    container.innerHTML = markup;
+    container._mapMarkup = markup;
   }
   if (selected?.type === "sequence") {
-    const frame = elements["archify-artifacts"].querySelector('iframe.archify-frame');
+    const frame = container.querySelector('iframe.archify-frame');
     if (frame) refreshSequenceEvidence(frame, sequenceEvidenceRevision(state.session, selected), () => api(`/api/sequence-sources/${encodeURIComponent(selected.id)}`));
   }
+  return hasArtifacts || Boolean(failures);
 }
 
 function architectureLegend() {
@@ -3506,10 +3594,10 @@ function renderArchitecture() {
 }
 
 function renderAdaptiveDiagrams() {
-  const diagrams = adaptiveEntries();
-  if (state.activeTab === "adaptive" && diagrams.length === 0) state.activeTab = "diff";
+  const interactive = renderInteractiveMaps("adaptive");
+  const diagrams = adaptiveEntries().filter(entry => state.mapArtifactSelections.get("adaptive") === `native-${entry.key}`);
   elements["adaptive-tab"].classList.add("hidden");
-  elements["adaptive-empty"].classList.toggle("hidden", diagrams.length > 0);
+  elements["adaptive-empty"].classList.toggle("hidden", interactive || diagrams.length > 0);
   elements["adaptive-diagrams"].innerHTML = diagrams.map(({ label, value, key }) => adaptiveLegend(value.kind) + adaptiveCard(value, label, key)).join("");
   const generation = state.flowRenderGeneration;
   void renderFlowDiagrams([], [], generation, diagrams);
@@ -4035,18 +4123,38 @@ function changeStructuralGraphView(radiusId, action) {
 }
 
 function syncSequenceTab() {
-  const savedFlows = state.session.outline?.flows ?? [];
-  const allReplaced = savedFlows.length > 0 && legacySequenceFlows().length === 0;
-  if (state.activeTab === "sequence" && allReplaced) state.activeTab = "diff";
   elements["sequence-tab"].classList.add("hidden");
+}
+
+function sequenceDiagramsFailed() {
+  return Boolean(state.session?.outline?.archifyFailures?.some(failure => failure.type === "sequence"))
+    || Boolean(state.session?.outline && elements.flows.querySelectorAll("[data-flow-error]:not(.hidden)").length);
+}
+
+function syncSequenceRetryButton() {
+  const button = elements["regenerate-flows"];
+  button.hidden = !sequenceDiagramsFailed();
+  button.disabled = state.busy || !reviewIsOpen() || !state.session?.outline;
+  button.textContent = state.retryingSequences ? "Retrying…" : "Retry";
+  button.title = "Retry rendering failed sequence diagrams from saved source; does not run the agent.";
+}
+
+function showSequenceRenderFailure(card, generation) {
+  if (generation !== state.flowRenderGeneration || !card?.isConnected) return;
+  const target = card.querySelector("[data-flow-index]");
+  if (target) target.innerHTML = '<span class="muted">Diagram unavailable</span>';
+  card.querySelector("[data-flow-error]")?.classList.remove("hidden");
+  const source = card.querySelector(".mermaid-source");
+  if (source) source.open = true;
+  syncSequenceRetryButton();
 }
 
 function renderSequenceDiagrams() {
   const flows = legacySequenceFlows();
+  const interactive = renderInteractiveMaps("sequence");
   syncSequenceTab();
   const generation = ++state.flowRenderGeneration;
-  elements["regenerate-flows"].disabled = state.busy || !reviewIsOpen() || !state.session.outline;
-  elements["flows-empty"].classList.toggle("hidden", flows.length > 0);
+  elements["flows-empty"].classList.toggle("hidden", interactive || flows.length > 0);
   elements["flows-empty"].textContent = state.session.outline
     ? "No goal-critical, high-blast runtime flow was identified for this change."
     : "Start the tour to generate grounded sequence diagrams.";
@@ -4056,9 +4164,9 @@ function renderSequenceDiagrams() {
     const affectedCount = affectedFiles.length || flow.blastRadiusSize;
     const affectedDetails = affectedFiles.length > 0
       ? affectedFiles.map((path) => `<button class="flow-affected-file" type="button" data-flow-file="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")
-      : '<p class="muted">Exact files were not captured for this saved tour. Regenerate this diagram to add them.</p>';
+      : '<p class="muted">Exact files were not captured for this saved tour.</p>';
     return `<article class="flow-card" data-flow-id="${escapeHtml(flow.id)}">
-      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details>${dryRunEntryButton("sequence", flow.id)}${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}<button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button><button class="text-button" data-flow-action="regenerate" type="button"${!reviewIsOpen() ? " disabled" : ""}>Regenerate</button></div></header>
+      <header><div><span class="provenance ${flow.provenance}" title="${escapeHtml(provenance.detail)}" aria-label="${escapeHtml(`${provenance.label}: ${provenance.detail}`)}">${escapeHtml(provenance.label)}</span><h2>${escapeHtml(flow.title)}</h2></div><div class="flow-actions"><details class="flow-impact"><summary class="blast">affects ${affectedCount}</summary><div class="flow-impact-list"><strong>Affected changed files</strong>${affectedDetails}</div></details>${dryRunEntryButton("sequence", flow.id)}${briefingDiagramExpandButton("sequence diagram", "sequence", flow.id)}<button class="text-button" data-flow-action="edit" type="button"${!reviewIsOpen() ? " disabled" : ""}>Edit</button></div></header>
       <p>${escapeHtml(flow.summary)}</p>
       <div class="architecture-diagram-shell" data-architecture-key="sequence-${escapeHtml(flow.id)}">
         ${architectureDiagramControls("Sequence")}
@@ -4070,11 +4178,18 @@ function renderSequenceDiagrams() {
     </article>`;
   }).join("");
   elements.flows.innerHTML = flows.length > 0 ? `${flowProvenanceLegend()}${cards}` : "";
-  void renderFlowDiagrams(architectureEntries(), flows, generation);
+  syncSequenceRetryButton();
+  return renderFlowDiagrams(architectureEntries(), flows, generation).catch(() => {
+    for (const card of elements.flows.querySelectorAll("[data-flow-id]")) showSequenceRenderFailure(card, generation);
+  }).finally(syncSequenceRetryButton);
 }
 
 async function renderFlowDiagrams(architectures, flows, generation, adaptive = []) {
-  if (!window.mermaid || (architectures.length === 0 && flows.length === 0 && adaptive.length === 0)) return;
+  if (!window.mermaid) {
+    for (const card of elements.flows.querySelectorAll("[data-flow-id]")) showSequenceRenderFailure(card, generation);
+    return;
+  }
+  if (architectures.length === 0 && flows.length === 0 && adaptive.length === 0) return;
   const theme = document.documentElement.dataset.theme === "light" ? "default" : "dark";
   // Mermaid measures in a temporary container outside the diagram skin. Apply
   // the same node typography there, before it sizes labels and routes edges.
@@ -4142,10 +4257,7 @@ async function renderFlowDiagrams(architectures, flows, generation, adaptive = [
         window.ReviewDiagramLabels.mount(target, result.svg);
         applyArchitectureDiagramView(`sequence-${flows[index].id}`);
       } catch {
-        target.innerHTML = '<span class="muted">Diagram unavailable</span>';
-        card.querySelector("[data-flow-error]")?.classList.remove("hidden");
-        const source = card.querySelector(".mermaid-source");
-        if (source) source.open = true;
+        showSequenceRenderFailure(card, generation);
       }
     }
     if (introTarget) {
@@ -4180,8 +4292,8 @@ function renderActivities() {
     </button>`).join("")}</div>
     <section class="activity-verification"><div class="eyebrow">Verification</div>${activity.verification ? renderMarkdown(activity.verification) : `<p class="muted">${reviewerAuthored ? "No automated verification was run for this reviewer-authored suggestion." : activity.status === "verified" ? "No verification summary was supplied." : "Waiting for the agent's explicit refresh."}</p>`}</section>
     ${activity.changeStatus ? `<div class="activity-actions">
-      ${activity.changeStatus === "pending" ? '<button type="button" class="button primary" data-activity-action="apply">Apply</button><button type="button" class="button secondary" data-activity-action="reject">Reject</button>' : ""}
-      ${activity.changeStatus === "applied" ? '<button type="button" class="button secondary" data-activity-action="undo">Undo</button>' : ""}
+      ${activity.changeStatus === "pending" ? `<button type="button" class="button primary" data-activity-action="apply"${state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions ? ' disabled title="Applying changes is disabled in this synthetic PR fixture"' : ""}>Apply</button><button type="button" class="button secondary" data-activity-action="reject">Reject</button>` : ""}
+      ${activity.changeStatus === "applied" ? `<button type="button" class="button secondary" data-activity-action="undo"${state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions ? ' disabled title="Source changes are disabled in this synthetic PR fixture"' : ""}>Undo</button>` : ""}
       ${["rejected", "undone"].includes(activity.changeStatus) ? `<span class="muted">${activity.changeStatus === "rejected" ? "Proposal discarded" : "Applied change undone"}</span>` : ""}
     </div>` : ""}
   </article>`;
@@ -4659,47 +4771,44 @@ function availableTabs() {
 
 const MAP_VIEWS = ["archify", "call-flows", "sequence", "adaptive", "structural-blast-radius"];
 
-function understandMapViews() {
-  const views = [
-    ...(archifyArtifacts().length || componentArchitectureEntries().length ? [{ id: "archify", label: "Component and behaviour maps" }] : []),
+function availableMapViews() {
+  return [
+    { id: "archify", label: "Architecture & design" },
+    { id: "structural-blast-radius", label: "Blast radius" },
     ...(savedCallFlows().length ? [{ id: "call-flows", label: "Call flows" }] : []),
-    ...(legacySequenceFlows().length ? [{ id: "sequence", label: "Sequence diagrams" }] : []),
-    ...(adaptiveEntries().length ? [{ id: "adaptive", label: "Data and lifecycle diagrams" }] : []),
+    ...(mapArtifacts("sequence").length || legacySequenceFlows().length || mapFailures("sequence").length ? [{ id: "sequence", label: "Sequence diagrams" }] : []),
+    ...(mapArtifacts("adaptive").length || adaptiveEntries().length || mapFailures("adaptive").length ? [{ id: "adaptive", label: "Data & lifecycle" }] : []),
   ];
-  return views.length ? views : [{ id: "archify", label: "Overview" }];
 }
 
 function openMaps(view = state.mapsLastView) {
   if (!state.session) return;
-  if (view !== "structural-blast-radius" && !understandMapViews().some((entry) => entry.id === view)) view = understandMapViews()[0].id;
+  if (!availableMapViews().some((entry) => entry.id === view)) view = "archify";
   const render = { archify: renderArchify, "call-flows": renderCallFlows, sequence: renderSequenceDiagrams, adaptive: renderAdaptiveDiagrams, "structural-blast-radius": renderStructuralBlastRadii }[view];
   activateReviewTab(view, render);
 }
 
 function renderMapsNavigation() {
   const inMaps = MAP_VIEWS.includes(state.activeTab);
-  const impact = state.activeTab === "structural-blast-radius";
+  const views = state.session ? availableMapViews() : [];
+  if (inMaps && state.session && !views.some(view => view.id === state.activeTab)) { openMaps("archify"); return; }
   if (inMaps) state.mapsLastView = state.activeTab;
-  if (inMaps && !impact) state.mapsLastUnderstand = state.activeTab;
   const navigation = document.getElementById("maps-navigation");
   navigation.classList.toggle("hidden", !inMaps);
   for (const view of MAP_VIEWS) elements[`${view}-tab`].classList.toggle("hidden", view !== "archify");
-  for (const view of MAP_VIEWS) elements[`${view}-view`].setAttribute("aria-labelledby", "archify-tab");
+  for (const view of MAP_VIEWS) elements[`${view}-view`].setAttribute("aria-labelledby", `maps-view-${view}`);
   const tab = elements["archify-tab"];
   tab.disabled = !state.session;
   tab.classList.toggle("active", inMaps);
   tab.setAttribute("aria-selected", String(inMaps));
   tab.setAttribute("aria-controls", inMaps ? `${state.activeTab}-view` : "archify-view");
   tab.tabIndex = inMaps ? 0 : -1;
-  for (const button of navigation.querySelectorAll("[data-maps-mode]")) {
-    const active = (button.dataset.mapsMode === "impact") === impact;
+  for (const button of navigation.querySelectorAll("[data-map-view]")) {
+    const active = button.dataset.mapView === state.activeTab;
+    button.hidden = !views.some(view => view.id === button.dataset.mapView);
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   }
-  const picker = document.getElementById("maps-understand-select");
-  picker.parentElement.classList.toggle("hidden", impact || understandMapViews().length < 2);
-  picker.innerHTML = understandMapViews().map((view) => `<option value="${view.id}">${escapeHtml(view.label)}</option>`).join("");
-  picker.value = state.mapsLastUnderstand;
 }
 
 function renderActiveTab() {
@@ -4712,6 +4821,7 @@ function renderActiveTab() {
   }
   updatePullRequestReturnVisibility();
   renderMapsNavigation();
+  state.monacoRenderer?.updateMobileActions();
   scheduleCurrentStepReturnUpdate();
 }
 
@@ -4744,12 +4854,12 @@ async function renderScreenshots() {
         state.screenshotUrls.set(shot.id, url);
       }
       const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
-      if (card) card.querySelector(".screenshot-loading").outerHTML = shot.mimeType === "video/mp4"
+      if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").outerHTML = shot.mimeType === "video/mp4"
         ? `<video src="${escapeHtml(url)}" controls preload="metadata" aria-label="${escapeHtml(shot.name)}"></video>`
         : `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(shot.name)}" /></a>`;
     } catch (error) {
       const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
-      if (card) card.querySelector(".screenshot-loading").textContent = error.message;
+      if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").textContent = error.message;
     }
   }), ...changedImages.map(async (image) => {
     try {
@@ -4759,10 +4869,10 @@ async function renderScreenshots() {
         state.screenshotUrls.set(image.id, url);
       }
       const card = elements.screenshots.querySelector(`[data-changed-image-id="${CSS.escape(image.id)}"]`);
-      if (card) card.querySelector(".screenshot-loading").outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(image.name)}" /></a>`;
+      if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(image.name)}" /></a>`;
     } catch (error) {
       const card = elements.screenshots.querySelector(`[data-changed-image-id="${CSS.escape(image.id)}"]`);
-      if (card) card.querySelector(".screenshot-loading").textContent = error.message;
+      if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").textContent = error.message;
     }
   })]);
 }
@@ -4835,6 +4945,10 @@ function updateCurrentStepReturnVisibility() {
   button.style.right = `${Math.max(12, window.innerWidth - panelBounds.right + 14)}px`;
   button.style.bottom = `${Math.max(12, window.innerHeight - Math.min(window.innerHeight, panelBounds.bottom) + 14)}px`;
   button.setAttribute("aria-label", `Return to current tour step ${state.session.currentStepIndex + 1}`);
+  if (state.monacoRenderer?.owns(currentStep().anchor.path)) {
+    button.classList.toggle("hidden", state.monacoRenderer.isStepVisible(currentStep()));
+    return;
+  }
   if (!target) {
     button.classList.remove("hidden");
     return;
@@ -4856,6 +4970,7 @@ function scheduleCurrentStepReturnUpdate() {
 }
 
 function renderTourAnnotation() {
+  state.monacoRenderer?.sync();
   document.querySelectorAll(".tour-anchor, .tour-anchor-start, .tour-anchor-end").forEach((row) => row.classList.remove("tour-anchor", "tour-anchor-start", "tour-anchor-end"));
   document.querySelectorAll(".tour-code-note").forEach((note) => note.remove());
   scheduleCurrentStepReturnUpdate();
@@ -4891,12 +5006,19 @@ function renderTourAnnotation() {
 
 async function focusCurrentStep() {
   const step = currentStep();
-  if (!step || !state.tourMode) return;
+  if (!step || !state.tourMode || state.monacoRenderer?.hasDraft()) return;
   state.focusedStepId = step.id;
+  // Explicit proposal inspection is a different diff. Restore the tour list
+  // before asking either renderer to locate a stop in it.
+  if (state.proposalPreview) { state.fileRequestId += 1; renderSession(); }
   if (state.session.comparison.diffMode === "file") await ensureTourPhaseDiffs();
+  if (state.monacoRenderer?.hasDraft()) return;
   state.activeTab = "diff";
   renderActiveTab();
   renderTourAnnotation();
+  revealMobilePanel("diff-panel");
+  if (state.monacoRenderer?.owns(step.anchor.path) && await state.monacoRenderer.focusTour(step)) return;
+  if (state.monacoRenderer?.hasDraft()) return;
   const target = document.querySelector(".tour-code-note.active")
     ?? document.querySelector(`.diff-row[data-path="${CSS.escape(step.anchor.path)}"][data-side="${step.anchor.side}"][data-line="${step.anchor.startLine}"]`)
     ?? document.querySelector(`.markdown-source-block[data-markdown-path="${CSS.escape(step.anchor.path)}"][data-markdown-side="${step.anchor.side}"][data-source-start="${step.anchor.startLine}"]`)
@@ -4991,8 +5113,12 @@ function conversationScopeMarkup(thread = null) {
   const scope = conversationScope(thread);
   const heading = scope.step ? `${scope.original ? "Original" : "Current"} tour stop` : "Review-wide question";
   const stop = scope.step ? escapeHtml(discussionStopLabel(scope)) : "No tour stop is attached.";
+  const anchorLabel = scope.anchor ? reviewAnchorLabel(scope.anchor) : "";
+  const code = scope.anchor && scope.anchor.scope !== "stop"
+    ? `<button type="button" class="question-code-link" data-question-code="" aria-label="${escapeHtml(`Show selected code: ${anchorLabel}`)}">${escapeHtml(scope.anchor.path)}</button>${escapeHtml(anchorLabel.slice(scope.anchor.path.length))}`
+    : escapeHtml(anchorLabel);
   const selection = scope.anchor
-    ? `Selected code: ${escapeHtml(reviewAnchorLabel(scope.anchor))}. Exact quotation and diff context are retained.`
+    ? `Selected code: ${code}. Exact quotation and diff context are retained.`
     : scope.step ? "No code selection. This question is scoped to this stop." : "No code selection.";
   return `<span class="conversation-scope"><strong>${escapeHtml(heading)}</strong><span>${stop}</span></span><span class="conversation-scope-detail">${selection}</span>`;
 }
@@ -5045,7 +5171,14 @@ function renderStepDiscussion() {
 }
 
 function renderQuestionScope(thread = conversationThreads().find((item) => item.id === state.activeThreadId)) {
-  elements["question-scope"].innerHTML = conversationScopeMarkup(thread);
+  const markup = conversationScopeMarkup(thread);
+  if (elements["question-scope"].innerHTML !== markup) elements["question-scope"].innerHTML = markup;
+}
+
+async function showQuestionCode(anchor) {
+  if (!anchor || anchor.scope === "stop") return;
+  if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before opening question context.");
+  await showAnalysisFile(anchor.path, anchor.line, anchor.side);
 }
 
 function renderMessages() {
@@ -5184,6 +5317,51 @@ async function refreshDiffSearch() {
   }
 }
 
+let reviewedScrollFloor = null;
+
+function clearReviewedScrollSpace() {
+  reviewedScrollFloor = null;
+  elements.diff.style.minHeight = "";
+}
+
+function sizeReviewedScrollSpace(targetScrollTop = elements["diff-panel"].scrollTop) {
+  const panel = elements["diff-panel"];
+  // Reserve only the height needed to keep the current viewport within the
+  // page. Set this BEFORE removing the final diff: otherwise the browser
+  // clamps scrollTop during layout, pulling the preceding content down.
+  const height = panel.clientHeight + panel.clientTop + panel.getBoundingClientRect().top - elements.diff.getBoundingClientRect().top + targetScrollTop - panel.scrollTop;
+  elements.diff.style.minHeight = `${Math.max(0, Math.ceil(height))}px`;
+}
+
+function reserveDiffScrollPosition(scrollTop) {
+  reviewedScrollFloor = { scrollTop, paths: JSON.stringify(state.renderedDiffFiles.map(file => file.path)) };
+  sizeReviewedScrollSpace(scrollTop);
+}
+
+function retainReviewedScrollSpace(path) {
+  if (state.activeTab !== "diff" || state.renderedDiffFiles.at(-1)?.path !== path) return;
+  const panel = elements["diff-panel"];
+  const file = elements.diff.querySelector(`:scope > [data-path="${CSS.escape(path)}"]`);
+  const header = file?.querySelector(":scope > header");
+  if (!header || panel.scrollTop <= 0) return;
+  // When reviewing from a sticky header, its natural position is already
+  // above the viewport. Let that collapse bring the remaining header back;
+  // retaining that scroll offset would leave an entirely blank viewport.
+  if (file.getBoundingClientRect().top < header.getBoundingClientRect().top - 1) return;
+  reserveDiffScrollPosition(panel.scrollTop);
+}
+
+function releaseReviewedScrollSpace() {
+  if (!reviewedScrollFloor || state.activeTab !== "diff") return;
+  const scrollTop = elements["diff-panel"].scrollTop;
+  if (scrollTop <= 0) return clearReviewedScrollSpace();
+  if (scrollTop >= reviewedScrollFloor.scrollTop) return;
+  reviewedScrollFloor.scrollTop = scrollTop;
+  // Shrink the temporary tail as the reader scrolls upward. Never write a
+  // saved scrollTop back: wheel input and later navigation remain in charge.
+  sizeReviewedScrollSpace();
+}
+
 function nextRenderedPath(path) {
   const index = state.renderedDiffFiles.findIndex((file) => file.path === path);
   if (index < 0) return null;
@@ -5239,6 +5417,7 @@ async function setReviewed(path, reviewed) {
     // Sticky headers conceal whether a collapse moved the next file's actual
     // beginning above the viewport, so recovery tracks the file section.
     const nextFileAnchor = captureNextFileAnchor(nextPath);
+    if (reviewed) retainReviewedScrollSpace(path);
     if (reviewed) state.collapsedFiles.add(path);
     else state.collapsedFiles.delete(path);
     renderSession();
@@ -5254,8 +5433,12 @@ function isInPlaceSessionUpdate(previous, latest) {
   // Explanations and comments can be updated without replacing the diff.
   // Only skip the full render when everything else is unchanged, including
   // the route, selected stop, diff, and review lifecycle.
-  const structuralSnapshot = ({ revision, agentActivity, comments, messages, outline, ...session }) => ({
+  // Layout/wrap are applied immediately by changeDiffView. A later polling
+  // acknowledgement of their saved preferences must not rebuild the diff,
+  // replace comment DOM or steal the reader's position.
+  const structuralSnapshot = ({ revision, agentActivity, activities, comments, messages, outline, pullRequest, diffPreferences, ...session }) => ({
     ...session,
+    pullRequest: pullRequest ? (({ threads, threadsTruncated, updatedAt, ...metadata }) => metadata)(pullRequest) : pullRequest,
     outline: outline ? {
       ...outline,
       phases: outline.phases.map((phase) => ({
@@ -5267,7 +5450,7 @@ function isInPlaceSessionUpdate(previous, latest) {
   return JSON.stringify(structuralSnapshot(previous)) === JSON.stringify(structuralSnapshot(latest));
 }
 
-function isSamePhaseNavigationUpdate(previous, latest) {
+function isSamePhaseNavigationUpdate(previous, latest, { acrossPhases = false } = {}) {
   if (!previous?.outline || !latest?.outline || previous.currentStepIndex === latest.currentStepIndex) return false;
   const previousSteps = previous.outline.phases.flatMap((phase) => phase.steps);
   const latestSteps = latest.outline.phases.flatMap((phase) => phase.steps);
@@ -5275,8 +5458,8 @@ function isSamePhaseNavigationUpdate(previous, latest) {
   const latestStep = latestSteps[latest.currentStepIndex];
   const previousPhase = previous.outline.phases.find((phase) => phase.steps.some((step) => step.id === previousStep?.id));
   const latestPhase = latest.outline.phases.find((phase) => phase.steps.some((step) => step.id === latestStep?.id));
-  if (!previousPhase || previousPhase.id !== latestPhase?.id) return false;
-  const navigationSnapshot = ({ revision, agentActivity, currentStepIndex, outline, ...session }) => ({
+  if (!previousPhase || !latestPhase || (!acrossPhases && previousPhase.id !== latestPhase.id)) return false;
+  const navigationSnapshot = ({ revision, agentActivity, currentStepIndex, outline, diffPreferences, ...session }) => ({
     ...session,
     outline: outline ? {
       ...outline,
@@ -5297,6 +5480,8 @@ function renderInPlaceSessionUpdate(previous, { closeCommentEditor = false } = {
   const scrollTop = scroll.scrollTop;
   const diffScrollTop = panel.scrollTop;
   const commentsChanged = JSON.stringify(previous.comments) !== JSON.stringify(state.session.comments);
+  const threadsChanged = JSON.stringify(previous.pullRequest?.threads) !== JSON.stringify(state.session.pullRequest?.threads)
+    || previous.pullRequest?.threadsTruncated !== state.session.pullRequest?.threadsTruncated;
   // Retain a visible code line when comments above it change height. Capture
   // now, after the request, so scrolling while a save is pending is respected.
   const panelTop = panel.getBoundingClientRect().top;
@@ -5309,7 +5494,9 @@ function renderInPlaceSessionUpdate(previous, { closeCommentEditor = false } = {
   if (step?.explanation !== oldStep?.explanation) {
     elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
   }
-  if (commentsChanged) renderComments();
+  if (commentsChanged || threadsChanged) renderComments();
+  if (threadsChanged) renderPullRequest();
+  if (JSON.stringify(previous.activities) !== JSON.stringify(state.session.activities)) renderActivities();
   if (JSON.stringify(previous.messages) !== JSON.stringify(state.session.messages)) renderMessages();
   if (closeCommentEditor) closeInlineCommentEditor();
   elements["feedback-button"].classList.remove("hidden");
@@ -5323,6 +5510,7 @@ function renderInPlaceSessionUpdate(previous, { closeCommentEditor = false } = {
 }
 
 function renderSessionUpdate(previous, options) {
+  state.monacoRenderer?.sync();
   if (isInPlaceSessionUpdate(previous, state.session)) {
     renderInPlaceSessionUpdate(previous, options);
     return false;
@@ -5333,8 +5521,10 @@ function renderSessionUpdate(previous, options) {
     renderTour();
     return true;
   }
+  const phaseNavigation = isSamePhaseNavigationUpdate(previous, state.session, { acrossPhases: true });
+  if (phaseNavigation && state.diffCacheRevision === previous.revision) state.diffCacheRevision = state.session.revision;
   renderSession();
-  return false;
+  return phaseNavigation;
 }
 
 function renderSession() {
@@ -5410,6 +5600,7 @@ function renderSession() {
   renderArchify();
   renderCallFlows();
   syncSequenceTab();
+  renderInteractiveMaps("sequence");
   renderAdaptiveDiagrams();
   renderStructuralBlastRadii();
   if (state.activeTab === "structural-blast-radius") renderStructuralBlastRadii();
@@ -5519,35 +5710,59 @@ async function startTour() {
   }
 }
 
+async function preparePhaseNavigation(session) {
+  if (!state.monacoRenderer?.active || !isSamePhaseNavigationUpdate(state.session, session, { acrossPhases: true }) || isSamePhaseNavigationUpdate(state.session, session)) return [];
+  const step = session.outline.phases.flatMap(phase => phase.steps)[session.currentStepIndex];
+  const phase = session.outline.phases.find(phase => phase.steps.some(candidate => candidate.id === step.id));
+  const missing = session.comparison.diffMode === "file" ? phase.fileChanges.filter(file => !state.diffCache.has(file.path)) : [];
+  // Keep the current phase mounted while fetching paged diff metadata too.
+  // Otherwise ensureTourPhaseDiffs replaces the prepared frames with Loading.
+  const [, files] = await Promise.all([
+    state.monacoRenderer.preparePhase(session),
+    Promise.all(missing.map(async ({ path }) => {
+      const result = await api(`/api/diff?${new URLSearchParams({ path })}`);
+      return [path, { ...result.file, _context: result.context, _full: result.full, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } }];
+    })),
+  ]);
+  return files;
+}
+
 async function navigate(direction) {
   if (!reviewIsOpen() || !state.tourMode) return;
+  if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before changing tour stops.");
   if (state.busy && !(direction === "previous" && state.navigationDirection === "next")) return;
   const generation = ++state.navigationGeneration;
+  state.monacoRenderer?.cancelPhase();
   state.navigationDirection = direction;
   setBusy(true, direction === "next" ? "Preparing the next stop…" : "Returning to the previous stop…");
-  let shouldFocus = false;
   try {
     const session = await api("/api/tour/navigate", { method: "POST", body: JSON.stringify({ direction }) });
     if (generation !== state.navigationGeneration) return;
+    const preparedFiles = await preparePhaseNavigation(session);
+    if (generation !== state.navigationGeneration) return;
+    for (const [path, file] of preparedFiles) state.diffCache.set(path, file);
     const previous = state.session;
     state.session = session;
     renderSessionUpdate(previous);
     await ensureTourPhaseDiffs();
     if (generation !== state.navigationGeneration) return;
-    shouldFocus = true;
+    // Navigation includes mounting and revealing the destination, not only
+    // receiving its session. Keep controls/polling in the navigation state
+    // until that work finishes; user scrolling can still cancel the reveal.
+    await focusCurrentStep();
   } catch (error) {
-    if (generation === state.navigationGeneration) toast(error.message);
+    if (generation === state.navigationGeneration) { state.monacoRenderer?.cancelPhase(); toast(error.message); }
   } finally {
     if (generation !== state.navigationGeneration) return;
     state.navigationDirection = null;
     setBusy(false);
     renderTour();
   }
-  if (shouldFocus && generation === state.navigationGeneration) await focusCurrentStep();
 }
 
 async function toggleTourMode() {
   if (!state.session.outline || state.busy) return;
+  if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before leaving the tour.");
   state.tourMode = !state.tourMode;
   state.fileRequestId += 1;
   state.phaseDiffLoadKey = null;
@@ -5626,18 +5841,24 @@ async function saveFlow(event) {
   }
 }
 
-async function regenerateFlows(id) {
-  if (!reviewIsOpen() || state.busy || !state.session.outline) return;
-  setBusy(true, id ? "Regenerating flow…" : "Regenerating flows…");
+async function retrySequenceDiagrams() {
+  if (!reviewIsOpen() || state.busy || !state.session?.outline || !sequenceDiagramsFailed()) return;
+  const focused = document.activeElement === elements["regenerate-flows"];
+  state.retryingSequences = true;
+  setBusy(true, "Retrying sequence diagrams…");
   try {
-    state.session = await api("/api/flows/regenerate", { method: "POST", body: JSON.stringify(id ? { id } : {}) });
-    renderSession();
-    toast(id ? "Flow regenerated" : "Flows regenerated");
+    if (state.session.outline.archifyFailures?.some(failure => failure.type === "sequence")) {
+      state.session = await api("/api/diagrams/retry", { method: "POST", body: JSON.stringify({ type: "sequence" }) });
+    }
+    await renderSequenceDiagrams();
+    renderMapsNavigation();
   } catch (error) {
     toast(error.message);
   } finally {
+    state.retryingSequences = false;
     setBusy(false);
-    renderSession();
+    syncSequenceRetryButton();
+    if (focused && elements["regenerate-flows"].hidden && state.activeTab === "sequence") document.getElementById("maps-view-sequence").focus({ preventScroll: true });
   }
 }
 
@@ -5831,28 +6052,65 @@ async function highlightInlineEdit(form) {
   }
 }
 
+function confirmActivityAction(activity, action) {
+  const dialog = document.getElementById("activity-confirmation-dialog");
+  if (dialog.open) return Promise.resolve(false);
+  const verb = action === "apply" ? "Apply" : action === "reject" ? "Reject" : "Undo";
+  document.getElementById("activity-confirmation-title").textContent = `${verb} this ${action === "undo" ? "applied change" : "suggested change"}?`;
+  document.getElementById("activity-confirmation-description").textContent = action === "apply"
+    ? "This writes the proposed code to the local files below. You can undo it from Activity unless later edits overlap."
+    : action === "reject"
+      ? "The suggestion will be removed from the diff. It stays in Activity for reference; your files will not change."
+      : "This restores the code from before the change. Undo stops if later edits overlap.";
+  document.getElementById("activity-confirmation-files").innerHTML = (activity.files || []).map(file => `<li>${escapeHtml(file.path)}</li>`).join("");
+  document.getElementById("activity-confirmation-scope").textContent = state.session.fixtureCanApplySuggestions
+    ? "Fixture only: Apply and Undo change the disposable test repository. No real project or GitHub pull request is modified."
+    : "Local only. Nothing is committed, pushed or published to GitHub.";
+  const confirm = document.getElementById("confirm-activity-action");
+  confirm.textContent = `${verb} change`;
+  confirm.classList.toggle("danger", action !== "apply");
+  confirm.classList.toggle("primary", action === "apply");
+  dialog.returnValue = "";
+  return new Promise(resolve => {
+    const keepFocusInside = event => {
+      if (event.key !== "Tab") return;
+      const buttons = [...dialog.querySelectorAll("button:not(:disabled)")];
+      const first = buttons[0], last = buttons.at(-1);
+      if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      }
+    };
+    dialog.addEventListener("keydown", keepFocusInside);
+    dialog.addEventListener("close", () => {
+      dialog.removeEventListener("keydown", keepFocusInside);
+      resolve(dialog.returnValue === "confirm");
+    }, { once: true });
+    dialog.showModal();
+  });
+}
+
 async function performActivityAction(activityId, action) {
   if (state.busy || !reviewIsOpen()) return;
-  if ((action === "reject" || action === "undo") && !window.confirm(action === "reject"
-    ? "Reject this proposed change? The proposal will remain in the audit trail."
-    : "Undo this applied change? This stops if overlapping edits were made afterwards.")) return;
+  if (state.session.pullRequestFixture && !state.session.fixtureCanApplySuggestions && action !== "reject") return toast("Source changes are disabled in this synthetic PR fixture.");
   const activity = state.session.activities?.find((candidate) => candidate.id === activityId);
+  if (!activity || !["apply", "reject", "undo"].includes(action) || !await confirmActivityAction(activity, action)) return;
+  if (state.busy || !reviewIsOpen()) return;
   const label = activity?.source === "reviewer" ? "Reviewer suggestion" : "Agent change";
   setBusy(true, `${action === "apply" ? "Applying" : action === "reject" ? "Rejecting" : "Undoing"} ${label.toLowerCase()}…`);
   try {
+    const previous = state.session;
     state.session = await api(`/api/activities/${encodeURIComponent(activityId)}`, {
       method: "POST",
       body: JSON.stringify({ action }),
     });
-    state.proposalPreview = false;
-    state.proposalActivityId = null;
-    renderSession();
+    if (state.proposalPreview) renderSession();
+    else renderSessionUpdate(previous);
     toast(`${label} ${action === "apply" ? "applied" : action === "reject" ? "rejected" : "undone"}`);
   } catch (error) {
     toast(error.message);
   } finally {
     setBusy(false);
-    renderSession();
   }
 }
 
@@ -5878,6 +6136,7 @@ function updateInlineComposerMode(form, mode) {
 
 function openInlineCommentEditor(row, target, comment, { mode = "comment", initialBody = "", endLine = target.line, selection = null } = {}) {
   if (!reviewIsOpen()) return;
+  state.monacoRenderer?.setCommentsVisible(true);
   closeInlineCommentEditor();
   selectLine(row);
   const form = document.createElement("form");
@@ -5929,6 +6188,10 @@ function openInlineCommentEditor(row, target, comment, { mode = "comment", initi
 
 async function openCommentEditor(comment) {
   if (comment.scope === "stop") return openStepCommentEditor(comment);
+  if (state.monacoRenderer?.active && !/\.png$/i.test(comment.path)) {
+    await showChangedFile(comment.path, comment.line, comment.side);
+    if (await state.monacoRenderer.editComment(comment)) return;
+  }
   const selector = /\.png$/i.test(comment.path)
     ? `.image-diff-side[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"]`
     : `.diff-row[data-path="${CSS.escape(comment.path)}"][data-side="${comment.side}"][data-line="${comment.line}"]`;
@@ -6475,6 +6738,11 @@ elements["conversation-select"].addEventListener("change", (event) => {
     renderMessages();
   }
 });
+elements["question-scope"].addEventListener("click", (event) => {
+  if (!event.target.closest("[data-question-code]")) return;
+  const thread = conversationThreads().find((item) => item.id === state.activeThreadId);
+  void showQuestionCode(conversationScope(thread).anchor).catch(error => toast(error.message));
+});
 elements["comment-stop"].addEventListener("click", () => openStepCommentEditor());
 elements["cancel-step-comment"].addEventListener("click", () => {
   elements["step-comment-form"].classList.add("hidden");
@@ -6540,6 +6808,15 @@ elements["question-files-form"].addEventListener("submit", (event) => {
   renderMessages();
 });
 elements["show-tour-pane"].addEventListener("click", () => { state.mobileAgentPane = "tour"; renderQuestionLayout(); });
+document.getElementById("mobile-tour-jump").addEventListener("click", () => {
+  if (!state.session) return;
+  // A wide Pull request view hides the agent pane; restore its normal layout.
+  activateReviewTab("diff");
+  if (state.filePanelOpen) setFilePanelOpen(false);
+  state.mobileAgentPane = "tour";
+  renderQuestionLayout();
+  revealMobilePanel("agent-panel");
+});
 elements["show-questions-pane"].addEventListener("click", () => { state.mobileAgentPane = "questions"; state.questionsOpen = true; renderQuestionLayout(); });
 function resizeQuestions(percent, persist = false) {
   state.questionPanePercent = Math.max(25, Math.min(70, percent));
@@ -6682,7 +6959,7 @@ document.addEventListener("keydown", (event) => {
 });
 document.addEventListener("keydown", submitTextareaOnModifiedEnter);
 document.addEventListener("keydown", (event) => {
-  if (event.defaultPrevented || event.repeat || shortcutTargetIsEditable(event.target) || modalDialogIsOpen()) return;
+  if (event.defaultPrevented || event.repeat || event.isComposing || shortcutTargetIsEditable(event.target) || modalDialogIsOpen()) return;
   const systemModifier = event.ctrlKey || event.metaKey || event.altKey;
   if (event.key === "?" && event.shiftKey && !systemModifier) {
     event.preventDefault();
@@ -6691,12 +6968,8 @@ document.addEventListener("keydown", (event) => {
   }
   if (systemModifier || event.shiftKey) return;
   const key = event.key.toLowerCase();
-  if (key === "j" && state.tourMode && reviewIsOpen()) {
+  if (handleTourShortcut(key)) {
     event.preventDefault();
-    void handleNextStep();
-  } else if (key === "k" && state.tourMode && reviewIsOpen()) {
-    event.preventDefault();
-    void navigate("previous");
   } else if (key === "z") {
     event.preventDefault();
     void toggleFocusMode();
@@ -6792,7 +7065,7 @@ elements["reviewer-task-dialog"].addEventListener("close", () => {
   state.reviewerTaskReturnTarget = null;
   if (target?.isConnected) target.focus({ preventScroll: true });
 });
-elements["regenerate-flows"].addEventListener("click", () => regenerateFlows());
+elements["regenerate-flows"].addEventListener("click", () => retrySequenceDiagrams());
 elements["regenerate-call-flows"].addEventListener("click", () => regenerateCallFlows());
 elements["flow-form"].addEventListener("submit", saveFlow);
 elements["cancel-flow"].addEventListener("click", () => elements["flow-dialog"].close());
@@ -7013,6 +7286,7 @@ new ResizeObserver(([entry]) => {
 }).observe(document.querySelector(".topbar"));
 window.addEventListener("scroll", scheduleCurrentStepReturnUpdate, { passive: true });
 elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate, { passive: true });
+elements["diff-panel"].addEventListener("scroll", releaseReviewedScrollSpace, { passive: true });
 let splitResizeStart = null;
 elements.diff.addEventListener("pointerdown", (event) => {
   const resizer = event.target.closest?.("[data-split-resizer]");
@@ -7157,30 +7431,35 @@ document.querySelectorAll("[data-diff-wrap]").forEach(button => button.addEventL
 new ResizeObserver(([entry]) => {
   if (entry.target.getBoundingClientRect().height > 0) {
     elements["diff-panel"].style.setProperty("--diff-toolbar-height", `${entry.target.getBoundingClientRect().height}px`);
+    scheduleCurrentStepReturnUpdate();
   }
 }).observe(document.querySelector('.diff-toolbar'));
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
+elements["diff-tab"].addEventListener("click", () => revealMobilePanel("diff-panel"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
 elements["structural-blast-radius-tab"].addEventListener("click", () => activateReviewTab("structural-blast-radius", renderStructuralBlastRadii));
 elements["archify-tab"].addEventListener("click", () => openMaps());
 document.getElementById("maps-navigation").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-maps-mode]");
-  if (button) openMaps(button.dataset.mapsMode === "impact" ? "structural-blast-radius" : state.mapsLastUnderstand);
+  const button = event.target.closest("[data-map-view]");
+  if (button) openMaps(button.dataset.mapView);
 });
-document.getElementById("maps-understand-select").addEventListener("change", (event) => openMaps(event.target.value));
-elements["archify-select"].addEventListener("change", () => {
-  state.archifyArtifactId = elements["archify-select"].value || null;
-  renderArchify();
-});
-elements["archify-artifacts"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-archify-comparison-view]");
-  if (!button) return;
-  const artifactId = button.dataset.archifyComparisonArtifact;
-  const view = button.dataset.archifyComparisonView;
-  if (!artifactId || !view) return;
-  state.archifyArtifactViews.set(artifactId, view);
-  renderArchify();
-});
+for (const view of ["archify", "sequence", "adaptive"]) {
+  const prefix = interactiveMapPrefix(view);
+  document.getElementById(`${prefix}-select`).addEventListener("change", (event) => {
+    state.mapArtifactSelections.set(view, event.target.value || null);
+    if (view === "adaptive") renderAdaptiveDiagrams();
+    else renderInteractiveMaps(view);
+  });
+  document.getElementById(`${prefix}-artifacts`).addEventListener("click", (event) => {
+    const button = event.target.closest("[data-archify-comparison-view]");
+    if (!button) return;
+    const artifactId = button.dataset.archifyComparisonArtifact;
+    const comparisonView = button.dataset.archifyComparisonView;
+    if (!artifactId || !comparisonView) return;
+    state.archifyArtifactViews.set(artifactId, comparisonView);
+    renderInteractiveMaps(view);
+  });
+}
 elements["sequence-tab"].addEventListener("click", () => activateReviewTab("sequence", renderSequenceDiagrams));
 elements["dry-runs-tab"].addEventListener("click", () => activateReviewTab("dry-runs", renderDryRuns));
 elements["dry-runs"].addEventListener("change", (event) => {
@@ -7250,7 +7529,7 @@ elements["conversation-list"].addEventListener("click", (event) => {
   if (!button) return;
   if (button.dataset.conversation) { openConversation(button.dataset.conversation); return; }
   const anchor = conversationThreads().find((thread) => thread.id === button.dataset.conversationCode)?.root.anchor;
-  if (anchor) void showAnalysisFile(anchor.path, anchor.line, anchor.side);
+  if (anchor) void showQuestionCode(anchor).catch(error => toast(error.message));
 });
 elements["screenshots-tab"].addEventListener("click", () => activateReviewTab("screenshots", renderScreenshots));
 elements["pull-request-tab"].addEventListener("click", () => activateReviewTab("pull-request", renderPullRequest));
@@ -7276,7 +7555,6 @@ elements.flows.addEventListener("click", (event) => {
   const flow = state.session.outline?.flows.find((candidate) => candidate.id === card.dataset.flowId);
   if (!flow) return;
   if (button.dataset.flowAction === "edit") openFlowEditor(flow);
-  if (button.dataset.flowAction === "regenerate") void regenerateFlows(flow.id);
 });
 elements["call-flows"].addEventListener("click", (event) => {
   const dryRun = event.target.closest("[data-open-dry-run-flow]");
@@ -7831,6 +8109,7 @@ elements["comment-list"].addEventListener("click", async (event) => {
   const comment = state.session.comments.find((candidate) => candidate.id === item.dataset.commentId);
   if (!comment) return;
   if (action === "jump") {
+    state.monacoRenderer?.setCommentsVisible(true);
     return showChangedFile(comment.path, comment.line, comment.side);
   }
   if (!reviewIsOpen()) return;
@@ -7864,6 +8143,70 @@ elements["pull-request-return"].addEventListener("click", returnToPullRequest);
 setFilePanelOpen(false);
 renderFocusMode();
 
+state.monacoRenderer = createMonacoRenderer({
+  container: elements.diff, controls: document.querySelector(".diff-view-controls"), token: state.apiToken,
+  snapshot: () => ({
+    activeTab: state.activeTab,
+    session: state.session, collapsed: [...state.collapsedFiles], layout: state.diffLayout, wrap: state.diffWrap === "wrap",
+    markers: state.showDiffMarkers, light: document.documentElement.dataset.theme === "light", syntaxTheme: state.syntaxTheme,
+    step: state.tourMode ? currentStep() : null, steps: state.tourMode ? currentPhase()?.steps ?? [] : [],
+  }),
+  render() { if (state.session) { renderDiff(state.renderedDiffFiles, currentDiffRenderOptions()); renderComments(); renderFindings(); renderTourAnnotation(); } },
+  actions: {
+    notify: toast, tourShortcut: handleTourShortcut, viewportChanged: scheduleCurrentStepReturnUpdate,
+    reserveScroll: reserveDiffScrollPosition,
+    review: setReviewed,
+    async suggestionCreated(result, path) {
+      const previous = state.session;
+      if (result.session.revision >= state.session.revision) state.session = result.session;
+      renderSessionUpdate(previous);
+      toast("Suggested edit saved beside the code. Apply or reject it there.");
+    },
+    suggestionAction: performActivityAction,
+    showSuggestionActivity(id) {
+      state.activeTab = "activity"; renderActivities(); renderActiveTab();
+      elements["activity-list"].querySelector(`[data-activity-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
+    },
+    expand(path) { state.collapsedFiles.delete(path); },
+    async refresh() {
+      const previous = state.session, next = await api("/api/session");
+      if (next.revision >= state.session.revision) state.session = next;
+      renderSessionUpdate(previous);
+    },
+    show: showAnalysisFile,
+    reveal(path, side, line) { return showAnalysisFile(path, line, side); },
+    setCollapsed(path, collapsed) {
+      if (collapsed) state.collapsedFiles.add(path); else state.collapsedFiles.delete(path);
+      renderDiff(state.renderedDiffFiles, currentDiffRenderOptions()); renderTourAnnotation();
+    },
+    options(layout, wrap) { changeDiffView(layout, wrap ? "wrap" : "scroll"); },
+    peek(symbol, path, line, side) { return resolvePeekSymbol(symbol, { path, line, side }); },
+    theme() { state.monacoRenderer.sync(); },
+    conversation: openConversation, finding: openFindingFromCode,
+    githubThreadReplyUrl, renderReviewMarkdown: renderMarkdown,
+    select(anchor) {
+      state.selectedLine = { ...anchor }; renderQuestionScope();
+      elements["selection-pill"].textContent = reviewAnchorLabel(anchor); elements["selection-pill"].classList.remove("hidden");
+    },
+    clearSelection: clearSelectedLine,
+    async askFromMobile(anchor, body) {
+      if (state.busy || !reviewIsOpen()) throw Error("Wait for the current request to finish before sending a question.");
+      openConversation(null);
+      const previousDraft = state.questionDrafts.get(null);
+      this.select(anchor); elements["chat-input"].value = body;
+      state.questionContextPaths = new Set(); state.dryRunQuestionContext = null;
+      await askAgent({ preventDefault() {} });
+      if (previousDraft?.body?.trim()) state.questionDrafts.set(null, previousDraft);
+    },
+    ask(anchor) { openConversation(null); this.select(anchor); elements["chat-input"].focus(); },
+    renderMarkdownPreview(path, side, content) {
+      const file = state.session.comparison.files.find(file => file.path === path);
+      if (!file || !["old", "new"].includes(side)) throw Error("Captured Markdown source is unavailable.");
+      return renderMarkdown(content, 0, { path, side, changedLines: markdownChangedLines(file, side), changedRanges: markdownChangedRanges(file, side) });
+    },
+  },
+});
+
 try {
   state.session = await api("/api/session");
   renderSession();
@@ -7874,12 +8217,12 @@ try {
 }
 
 window.setInterval(async () => {
-  if (state.pollInFlight || (state.session && !reviewIsOpen())) return;
+  if (state.pollInFlight || state.navigationDirection || (state.session && !reviewIsOpen())) return;
   state.pollInFlight = true;
   const generation = ++state.pollGeneration;
   try {
     const latest = await api("/api/session");
-    if (generation !== state.pollGeneration) return;
+    if (generation !== state.pollGeneration || state.navigationDirection) return;
     elements["connection-banner"].classList.add("hidden");
     const expectedActivity = state.expectedAgentActivity;
     const receivedExpectedActivity = Boolean(
@@ -7891,6 +8234,11 @@ window.setInterval(async () => {
       renderAgentActivity();
     }
     if (!state.session || latest.revision > state.session.revision || latest.tourState !== state.session.tourState || (state.session.status === "open" && latest.status !== "open")) {
+      if (state.monacoRenderer?.active) {
+        const preparedFiles = await preparePhaseNavigation(latest);
+        if (generation !== state.pollGeneration || state.navigationDirection) return;
+        for (const [path, file] of preparedFiles) state.diffCache.set(path, file);
+      }
       const pendingLocalActivity = expectedActivity && !receivedExpectedActivity ? state.session?.agentActivity : undefined;
       const previousSession = state.session;
       const previousStatus = previousSession?.status;
@@ -7901,6 +8249,7 @@ window.setInterval(async () => {
       if (navigatedWithinPhase) void focusCurrentStep();
     }
   } catch {
+    if (!state.navigationDirection) state.monacoRenderer?.cancelPhase();
     if (!state.session || reviewIsOpen()) elements["connection-banner"].classList.remove("hidden");
   } finally {
     if (generation === state.pollGeneration) state.pollInFlight = false;

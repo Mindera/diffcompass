@@ -112,3 +112,54 @@ test("review collapse uses the file's natural top even when its header is sticky
 
   expect(h.panel.scrollTop).toBe(920);
 });
+
+function lastFileHarness() {
+  const source = app.slice(app.indexOf("let reviewedScrollFloor = null;"), app.indexOf("function nextRenderedPath("));
+  const panel = { scrollTop: 1_000, clientTop: 0, clientHeight: 500, getBoundingClientRect: () => ({ top: 100 }) };
+  let fileTop = 400;
+  const header = { getBoundingClientRect: () => ({ top: Math.max(140, fileTop) }) };
+  const file = { getBoundingClientRect: () => ({ top: fileTop }), querySelector: () => header };
+  const diff = { style: { minHeight: "" }, getBoundingClientRect: () => ({ top: 300 - panel.scrollTop }), querySelector: () => file };
+  const state = { activeTab: "diff", renderedDiffFiles: [{ path: "first.ts" }, { path: "last.ts" }] };
+  const actions = new Function("state", "elements", "CSS", `${source}; return { retainReviewedScrollSpace, releaseReviewedScrollSpace, clearReviewedScrollSpace };`)(
+    state, { diff, "diff-panel": panel }, { escape: (value: string) => value },
+  ) as { retainReviewedScrollSpace: (path: string) => void; releaseReviewedScrollSpace: () => void; clearReviewedScrollSpace: () => void };
+  return { ...actions, panel, diff, state, setFileTop(top: number) { fileTop = top; } };
+}
+
+test("last-file collapse reserves only the height needed for the current viewport", () => {
+  const h = lastFileHarness();
+  h.retainReviewedScrollSpace("last.ts");
+  expect(h.diff.style.minHeight).toBe("1300px");
+  expect(h.panel.scrollTop).toBe(1_000);
+  h.retainReviewedScrollSpace("last.ts");
+  expect(h.diff.style.minHeight).toBe("1300px");
+});
+
+test("review scroll space shrinks on upward scrolling without restoring a saved offset", () => {
+  const h = lastFileHarness();
+  h.retainReviewedScrollSpace("last.ts");
+  h.panel.scrollTop = 800;
+  h.releaseReviewedScrollSpace();
+  expect(h.diff.style.minHeight).toBe("1100px");
+  expect(h.panel.scrollTop).toBe(800);
+  h.panel.scrollTop = 900;
+  h.releaseReviewedScrollSpace();
+  expect(h.diff.style.minHeight).toBe("1100px");
+  h.panel.scrollTop = 0;
+  h.releaseReviewedScrollSpace();
+  expect(h.diff.style.minHeight).toBe("");
+});
+
+test("review scroll space does not retain offscreen headers or affect other files/tabs", () => {
+  const h = lastFileHarness();
+  h.retainReviewedScrollSpace("first.ts");
+  expect(h.diff.style.minHeight).toBe("");
+  h.state.activeTab = "activity";
+  h.retainReviewedScrollSpace("last.ts");
+  expect(h.diff.style.minHeight).toBe("");
+  h.state.activeTab = "diff";
+  h.setFileTop(60);
+  h.retainReviewedScrollSpace("last.ts");
+  expect(h.diff.style.minHeight).toBe("");
+});

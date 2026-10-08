@@ -13,8 +13,8 @@ function navigation(outline: object) {
     state: { session: { outline } },
     componentArchitectureEntries: () => [], legacySequenceFlows: () => [], adaptiveEntries: () => [],
   };
-  return runInNewContext(`${["savedCallFlows", "archifyArtifacts", "understandMapViews"].map(declaration).join("\n")}
-    ({ flows: savedCallFlows(), artifacts: archifyArtifacts(), views: understandMapViews() })`, context);
+  return runInNewContext(`${["savedCallFlows", "archifyArtifacts", "mapViewForArtifact", "mapArtifacts", "mapFailures", "availableMapViews"].map(declaration).join("\n")}
+    ({ flows: savedCallFlows(), artifacts: archifyArtifacts(), views: availableMapViews() })`, context);
 }
 
 test("all-converted and mixed saved reviews retain every native call flow", () => {
@@ -24,21 +24,21 @@ test("all-converted and mixed saved reviews retain every native call flow", () =
       archifyArtifacts: [{ id: "workflow-linear", type: "workflow" }],
     });
     expect(result.flows.map((flow: { id: string }) => flow.id)).toEqual(ids);
-    expect(result.views).toEqual([{ id: "call-flows", label: "Call flows" }]);
+    expect(result.views.map((view: { id: string }) => view.id)).toEqual(["archify", "structural-blast-radius", "call-flows"]);
     expect(result.artifacts).toEqual([]);
   }
 });
 
 test("saved workflow artifacts cannot create an empty call-flow option", () => {
   const result = navigation({ callFlows: [], archifyArtifacts: [{ id: "workflow-old", type: "workflow" }] });
-  expect(result.views).toEqual([{ id: "archify", label: "Overview" }]);
+  expect(result.views.map((view: { id: string }) => view.id)).toEqual(["archify", "structural-blast-radius"]);
 });
 
 test("architecture and sequence maps remain beside complete call flows", () => {
   const artifacts = [{ id: "architecture-main", type: "architecture" }, { id: "sequence-main", type: "sequence" }];
   const result = navigation({ callFlows: [{ id: "stale", outdated: true }], archifyArtifacts: [...artifacts, { id: "workflow-stale", type: "workflow" }] });
   expect(result.artifacts).toEqual(artifacts);
-  expect(result.views.map((view: { id: string }) => view.id)).toEqual(["archify", "call-flows"]);
+  expect(result.views.map((view: { id: string }) => view.id)).toEqual(["archify", "structural-blast-radius", "call-flows", "sequence"]);
   expect(result.flows).toHaveLength(1);
 });
 

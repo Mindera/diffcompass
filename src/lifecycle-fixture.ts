@@ -77,6 +77,6 @@ export async function installStateMachineExample(outline: TourOutline, renderer:
   }
   const phase = outline.phases.find(phase=>phase.id==="presentation")!;
   if (!phase.fileChanges.some(file=>file.path===stateMachineFile.path)) {
-    phase.fileChanges.push({path:stateMachineFile.path,summary:"Adds failure, retry, cancellation and terminal-state handling to a synthetic receipt-job controller. Inspect its state machine in the interactive map picker under Maps."});
+    phase.fileChanges.push({path:stateMachineFile.path,summary:"Adds failure, retry, cancellation and terminal-state handling to a synthetic receipt-job controller. Inspect its state machine under Diagrams → Data & lifecycle."});
   }
 }

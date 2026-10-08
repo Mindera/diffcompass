@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
 const helpers = app.slice(app.indexOf("function isPngDiff("), app.indexOf("function syntaxTokenHtml("));
-const header = app.slice(app.indexOf("function renderDiffFileHeader("), app.indexOf("function revealCodeLocation("));
+const header = app.slice(app.indexOf("function renderDiffFileHeader("), app.indexOf("async function revealCodeLocation("));
 const file = { path: "screens/home.png", oldPath: "screens/home.png", newPath: "screens/home.png", status: "modified" };
 
 function harness(figures: object[] = [], apiBlob = async (_path: string) => new Blob()) {
@@ -32,7 +32,7 @@ test("PNG diff markup labels both sides, supports missing sides, and omits text 
   expect(added).toContain('data-content="[PNG image · new]"');
   const html = h.renderDiffFileHeader(file, false);
   expect(html).toContain("PNG image");
-  expect(html).toContain("Mark reviewed");
+  expect(html).toContain("Mark as reviewed");
   expect(html).not.toContain("Expand file");
   expect(html).not.toContain('class="plus"');
   h.state.proposalPreview = true;

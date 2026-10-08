@@ -29,6 +29,7 @@ DIFFCOMPASS_COPILOT_SKILL_ROOT="$test_root/copilot/skills" \
 "$test_root/bin/diffcompass" --version
 "$test_root/bin/diffcompass" bridge >/dev/null
 BUN_BE_BUN=1 "$test_root/bin/diffcompass" scripts/smoke-archify.ts
+BUN_BE_BUN=1 "$test_root/bin/diffcompass" scripts/smoke-monaco.ts
 [[ -L "$test_root/codex/skills/diffcompass" ]]
 [[ -L "$test_root/claude/skills/diffcompass" ]]
 [[ -L "$test_root/gemini/skills/diffcompass" ]]

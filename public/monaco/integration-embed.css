@@ -1,0 +1,45 @@
+:root[data-embedded] .masthead,:root[data-embedded] .controls,:root[data-embedded] .notice,:root[data-embedded] .current,:root[data-embedded] .pane-heading{display:none}
+:root[data-embedded] .comparison{display:flex;padding:0;gap:0}
+:root[data-embedded] .prototype{flex:1;border:0;border-radius:0}
+:root[data-embedded] #file-summary{display:none}
+/* Keep status announcements accessible without a visible footer when only
+   collapsed headers remain. Its zero layout height lets the iframe shrink. */
+:root[data-embedded][data-files-collapsed] #status{position:absolute;width:1px;height:1px;margin:0;padding:0;border:0;clip-path:inset(50%);overflow:hidden}
+:root[data-embedded] .tools [data-control=comment],:root[data-embedded] .tools [data-control=ask],:root[data-embedded] .tools [data-control=peek]{display:none}
+:root[data-embedded] .prototype-file[hidden]{display:none!important}
+:root[data-embedded] .prototype-file-heading{position:sticky;top:0;z-index:5;border-bottom:1px solid var(--border)}
+:root[data-embedded] .tools{padding:5px 8px}
+/* Production cards take their natural height. The host page, not a nested
+   list inside the frame, owns scrolling between text and native image files. */
+:root[data-single-file] body{height:auto;display:block;overflow:hidden}
+:root[data-single-file] .comparison{display:block;flex:none}
+:root[data-single-file] .prototype{display:block;overflow:visible}
+:root[data-single-file] #file-list{display:block;overflow:visible;flex:none;padding:0;scrollbar-gutter:auto}
+:root[data-single-file] .prototype-file{border:0}
+/* The production host owns one sticky header in the page's scroll container. */
+:root[data-single-file] .prototype-file-heading{display:none}
+:root[data-single-file] #status{position:absolute;width:1px;height:1px;margin:0;padding:0;border:0;clip-path:inset(50%);overflow:hidden}
+.review-tour-layer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:40}
+.review-tour-stop{position:absolute;left:6px;right:6px;pointer-events:auto;box-sizing:border-box;padding:9px 12px;border:1px dashed var(--accent);border-left:4px solid var(--accent);border-radius:7px;background:var(--panel);color:var(--text);font:12px/1.45 -apple-system,sans-serif;overflow:hidden}
+.review-tour-stop[hidden]{display:none}
+.review-tour-stop>div{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 9px}
+.review-tour-stop span{font-size:10px;letter-spacing:.025em;text-transform:uppercase;color:var(--muted)}
+.review-tour-stop strong{font-size:13px}.review-tour-stop p{margin:0;color:var(--muted);flex:1 1 180px}
+.review-tour-stop[data-tour-state=current]{border:2px solid var(--accent);border-left-width:5px;background:color-mix(in srgb,var(--accent) 12%,var(--panel))}
+.review-tour-stop[data-tour-state=current] span{color:var(--accent);font-weight:700}
+.review-tour-stop[data-tour-state=next]{border-color:#9a793c;border-left-color:#e4b456}.review-tour-stop[data-tour-state=next] span{color:#d9a741}
+.review-tour-stop:focus-visible{outline:2px solid var(--accent);outline-offset:-4px}
+/* Changing current/next state must not change the reserved banner height. */
+.review-tour-stop{border-width:2px;border-left-width:5px}
+.review-tour-highlight{background:#9987ff26;box-shadow:inset -2px 0 var(--accent)}
+.review-tour-margin{background:#9987ff26;border-left:3px solid var(--accent);pointer-events:none}
+.review-tour-margin-start{border-top:2px solid var(--accent);pointer-events:none}
+.review-tour-margin-end{border-bottom:2px solid var(--accent);pointer-events:none}
+.review-tour-gutter-layer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:4}
+.review-tour-gutter-row{position:absolute;left:0;box-sizing:border-box;background:#9987ff26;border-left:3px solid var(--accent);pointer-events:none}
+.review-tour-gutter-start{border-top:2px solid var(--accent)}.review-tour-gutter-end{border-bottom:2px solid var(--accent)}
+.review-tour-unified .review-tour-margin{border-left:0}
+.review-card-edge-host::after{background-image:var(--review-tour-edge-fill,none),var(--review-card-edge-fill,none);background-size:2px 100%,100% 100%;background-position:right top;background-repeat:no-repeat}
+.review-tour-start{border-top:2px solid var(--accent)}.review-tour-end{border-bottom:2px solid var(--accent)}
+.review-tour-deleted-highlight{border-right:2px solid var(--accent)}
+.review-before-card.review-before-tour-space{pointer-events:none;max-height:none}

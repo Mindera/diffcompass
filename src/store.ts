@@ -452,6 +452,7 @@ function validPullRequest(value: unknown): boolean {
     Array.isArray(value.threads) && value.threads.length <= 100 && value.threads.every((thread) => record(thread) && nonEmptyString(thread.id, 500) &&
       nonEmptyString(thread.path, 4_096) && (thread.line === undefined || (Number.isInteger(thread.line) && Number(thread.line) > 0)) &&
       (thread.side === undefined || ["old", "new"].includes(String(thread.side))) && typeof thread.resolved === "boolean" &&
+      (thread.outdated === undefined || typeof thread.outdated === "boolean") &&
       Array.isArray(thread.comments) && thread.comments.length <= 50 && thread.comments.every((comment) => record(comment) && nonEmptyString(comment.id, 500) &&
         nonEmptyString(comment.author, 500) && boundedString(comment.body, 100_000) && nonEmptyString(comment.url, 4_096))) &&
     typeof value.threadsTruncated === "boolean" &&

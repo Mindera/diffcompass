@@ -28,7 +28,7 @@
         <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
         <button id="call-flows-tab" class="tab" data-tab="call-flows" role="tab" aria-selected="false" aria-controls="call-flows-view" tabindex="-1">Call flows</button>
         <button id="structural-blast-radius-tab" class="tab" data-tab="structural-blast-radius" role="tab" aria-selected="false" aria-controls="structural-blast-radius-view" tabindex="-1">Blast radius</button>
-        <button id="archify-tab" class="tab" data-tab="archify" role="tab" aria-selected="false" aria-controls="archify-view" tabindex="-1" disabled>Maps</button>
+        <button id="archify-tab" class="tab" data-tab="archify" role="tab" aria-selected="false" aria-controls="archify-view" tabindex="-1" disabled>Diagrams</button>
         <button id="sequence-tab" class="tab" data-tab="sequence" role="tab" aria-selected="false" aria-controls="sequence-view" tabindex="-1">Sequence diagrams</button>
         <button id="dry-runs-tab" class="tab" data-tab="dry-runs" role="tab" aria-selected="false" aria-controls="dry-runs-view" tabindex="-1">Dry runs</button>
         <button id="adaptive-tab" class="tab" data-tab="adaptive" role="tab" aria-selected="false" aria-controls="adaptive-view" tabindex="-1">Adaptive diagrams</button>
@@ -218,12 +218,14 @@
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
           <div id="diff"></div>
         </div>
-        <nav id="maps-navigation" class="maps-navigation hidden" aria-label="Maps">
-          <div class="diff-view-toggle" role="group" aria-label="Map purpose">
-            <button type="button" data-maps-mode="understand" aria-pressed="true">Understand the change</button>
-            <button type="button" data-maps-mode="impact" aria-pressed="false">Explore impact</button>
+        <nav id="maps-navigation" class="maps-navigation hidden" aria-label="Diagrams">
+          <div class="diff-view-toggle" role="group" aria-label="Map views">
+            <button id="maps-view-archify" type="button" data-map-view="archify" data-maps-mode="understand" aria-controls="archify-view" aria-pressed="true">Architecture &amp; design</button>
+            <button id="maps-view-structural-blast-radius" type="button" data-map-view="structural-blast-radius" data-maps-mode="impact" aria-controls="structural-blast-radius-view" aria-pressed="false">Blast radius</button>
+            <button id="maps-view-call-flows" type="button" data-map-view="call-flows" aria-controls="call-flows-view" aria-pressed="false" hidden>Call flows</button>
+            <button id="maps-view-sequence" type="button" data-map-view="sequence" aria-controls="sequence-view" aria-pressed="false" hidden>Sequence diagrams</button>
+            <button id="maps-view-adaptive" type="button" data-map-view="adaptive" aria-controls="adaptive-view" aria-pressed="false" hidden>Data &amp; lifecycle</button>
           </div>
-          <label><span class="sr-only">Map category</span><select id="maps-understand-select" aria-label="Map category"></select></label>
         </nav>
         <div id="call-flows-view" class="review-view hidden" role="tabpanel" aria-labelledby="archify-tab">
           <div class="flows-toolbar"><div><strong>Call changes</strong><span class="muted">See how changed entrypoints call through the code before and after this change.</span></div><button id="regenerate-call-flows" class="button secondary" type="button">Regenerate call flows</button></div>
@@ -237,7 +239,7 @@
           <div id="structural-blast-radius" class="structural-blast-radii"></div>
         </div>
         <div id="archify-view" class="review-view hidden" role="tabpanel" aria-labelledby="archify-tab">
-          <div class="flows-toolbar archify-toolbar"><div><strong>Understand the change</strong><span class="muted">Follow the components, calls, data, and events involved in this change.</span></div><label class="archify-picker"><span>Map</span><select id="archify-select" aria-label="Interactive map"></select><small id="archify-picker-count" aria-live="polite"></small></label></div>
+          <div class="flows-toolbar archify-toolbar"><div><strong>Architecture &amp; design</strong><span class="muted">Follow the components, calls, data, and events involved in this change.</span></div><label class="archify-picker"><span>Map</span><select id="archify-select" aria-label="Interactive map"></select><small id="archify-picker-count" aria-live="polite"></small></label></div>
           <div id="archify-empty" class="empty">No validated interactive maps were saved for this tour.</div>
           <div id="archify-artifacts" class="archify-artifacts"></div>
           <details id="maps-architecture" class="architecture hidden" open>
@@ -246,7 +248,8 @@
           </details>
         </div>
         <div id="sequence-view" class="review-view hidden" role="tabpanel" aria-labelledby="sequence-tab">
-          <div class="flows-toolbar"><div><strong>Sequence diagrams</strong><span class="muted">Runtime interactions across components, in execution order.</span></div><button id="regenerate-flows" class="button secondary" type="button">Regenerate diagrams</button></div>
+          <div class="flows-toolbar archify-toolbar"><div><strong>Sequence diagrams</strong><span class="muted">Code-grounded interactions in execution order, not runtime traces.</span></div><label class="archify-picker"><span>Sequence</span><select id="sequence-map-select" aria-label="Sequence diagram"></select><small id="sequence-map-picker-count" aria-live="polite"></small></label><button id="regenerate-flows" class="button secondary" type="button" hidden disabled>Retry</button></div>
+          <div id="sequence-map-artifacts" class="archify-artifacts"></div>
           <div id="flows-empty" class="empty">Start the tour to generate grounded sequence diagrams.</div>
           <div id="flows" class="flows"></div>
         </div>
@@ -255,7 +258,8 @@
           <div id="dry-runs" class="dry-runs"></div>
         </div>
         <div id="adaptive-view" class="review-view hidden" role="tabpanel" aria-labelledby="adaptive-tab">
-          <div class="flows-toolbar"><div><strong>Adaptive diagrams</strong><span class="muted">Evidence-gated lifecycle and data relationships. Empty is an honest result.</span></div></div>
+          <div class="flows-toolbar archify-toolbar"><div><strong>Data &amp; lifecycle</strong><span class="muted">Evidence-gated lifecycle and data relationships. Empty is an honest result.</span></div><label class="archify-picker"><span>Diagram</span><select id="adaptive-map-select" aria-label="Data or lifecycle diagram"></select><small id="adaptive-map-picker-count" aria-live="polite"></small></label></div>
+          <div id="adaptive-map-artifacts" class="archify-artifacts"></div>
           <div id="adaptive-empty" class="empty">No supported state-machine or data-model view was identified for this change.</div>
           <div id="adaptive-diagrams" class="flows"></div>
         </div>
@@ -294,6 +298,7 @@
           </div>
           <div class="agent-heading-actions">
             <span id="agent-mode" class="mode">read-only</span>
+            <button id="mobile-tour-jump" class="button secondary mobile-tour-jump" type="button" aria-controls="agent-panel" title="Show tour status and questions">Open tour ↑</button>
             <button id="agent-panel-collapse" class="pane-collapse" type="button" aria-label="Collapse agent pane" aria-expanded="true" aria-controls="agent-panel" title="Collapse agent pane">›</button>
           </div>
         </div>
@@ -439,6 +444,17 @@
         <label class="question-file-search"><span class="sr-only">Filter repository files</span><input id="question-files-search" type="search" placeholder="Filter files…" autocomplete="off" /></label>
         <div id="question-files-tree" class="question-files-tree"></div>
         <div class="dialog-actions"><button id="cancel-question-files" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Add selected</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="activity-confirmation-dialog" aria-labelledby="activity-confirmation-title" aria-describedby="activity-confirmation-description activity-confirmation-scope">
+      <form method="dialog">
+        <div class="eyebrow">Suggested change</div>
+        <h2 id="activity-confirmation-title"></h2>
+        <p id="activity-confirmation-description" class="dialog-description"></p>
+        <ul id="activity-confirmation-files" class="activity-confirmation-files"></ul>
+        <p id="activity-confirmation-scope" class="dialog-description"></p>
+        <div class="dialog-actions"><button class="button secondary" value="cancel" autofocus>Cancel</button><button id="confirm-activity-action" class="button primary" value="confirm"></button></div>
       </form>
     </dialog>
 

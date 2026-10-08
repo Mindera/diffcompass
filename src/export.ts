@@ -1000,7 +1000,7 @@ function html(session: ReviewSession, options: HtmlExportOptions): string {
     const withViewerLegend = adaptive
       ? withAdaptiveTab.replace(`<div class="viewer-body">${architectureLegend}`, `<div class="viewer-body">${architectureLegend}${adaptiveLegend}`)
       : withAdaptiveTab;
-    const mapsContent = `${archify}${archifyFailures}${structuralBlastRadii ? `<h3>Explore impact · Blast radius</h3><div class="call-grid">${structuralBlastRadii}</div>` : ""}`;
+    const mapsContent = `${archify}${archifyFailures}${structuralBlastRadii ? `<h3>Blast radius</h3><div class="call-grid">${structuralBlastRadii}</div>` : ""}`;
     const hasMaps = (includeDiagrams && Boolean(outline?.archifyArtifacts?.length || outline?.archifyFailures?.length)) || Boolean(structuralBlastRadii);
     const mapsPanel = hasMaps ? `<section class="view" data-view-panel="maps" hidden><section class="overview-section"><h2>Maps</h2><p>Explore saved diagrams and potential impact. These are code-derived maps, not runtime traces.</p><div class="export-maps">${mapsContent}</div></section></section>` : "";
     const withMapsTab = hasMaps ? withViewerLegend.replace('<nav class="tabs" aria-label="Review views">', '<nav class="tabs" aria-label="Review views"><button type="button" data-view="maps">Maps</button>') : withViewerLegend;

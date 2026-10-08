@@ -15,8 +15,8 @@ const settle = () => page.waitForTimeout(180);
 try {
   await page.goto(url);
   await page.locator('#archify-tab').click();
-  await page.locator('#archify-select').selectOption('sequence-checkout-flow');
-  const frame = await (await page.locator('iframe.archify-frame').elementHandle()).contentFrame();
+  await page.locator('[data-map-view="sequence"]').click(); await page.locator('#sequence-map-select').selectOption('sequence-checkout-flow');
+  const frame = await (await page.locator('#sequence-map-artifacts iframe.archify-frame').elementHandle()).contentFrame();
   await frame.locator('.sequence-step-code').first().waitFor();
   await frame.locator('.sequence-code-step').first().getByText(/After · name match in captured source/).waitFor();
   await frame.waitForFunction(() => window.Archify?.view?.state?.().mode === 'review');
@@ -166,8 +166,8 @@ try {
   await retryPage.route('**/api/sequence-sources/*?edge=*', route => route.abort());
   await retryPage.goto(url);
   await retryPage.locator('#archify-tab').click();
-  await retryPage.locator('#archify-select').selectOption('sequence-checkout-flow');
-  const retryFrame = await (await retryPage.locator('iframe.archify-frame').elementHandle()).contentFrame();
+  await retryPage.locator('[data-map-view="sequence"]').click(); await retryPage.locator('#sequence-map-select').selectOption('sequence-checkout-flow');
+  const retryFrame = await (await retryPage.locator('#sequence-map-artifacts iframe.archify-frame').elementHandle()).contentFrame();
   await retryFrame.locator('.sequence-code-step').first().getByText('Definition lookup failed. You can retry.').waitFor();
   await retryPage.unroute('**/api/sequence-sources/*?edge=*');
   const retryButton = retryFrame.locator('.sequence-code-step').first().getByRole('button', { name: 'Find definition' });

@@ -288,6 +288,14 @@ test("inline edit requests accept only the editable new side", async () => {
   expect(await response.json()).toMatchObject({ error: expect.stringContaining("side") });
 });
 
+test("inline edit drafts are comparison-scoped at the HTTP and serialized mutation boundaries", async () => {
+  const { session, fetch } = fixture();
+  const request = authorizedRequest(session, "/api/edits", { path: "app.ts", side: "new", line: 1, expectedContent: "const changed = 2;", replacement: "const changed = 3;" });
+  request.headers.set("x-diffcompass-comparison", "old-comparison");
+  expect((await fetch(request)).status).toBe(409);
+  await expect(session.proposeInlineEdit("app.ts", "new", 1, "const changed = 2;", "const changed = 3;", 1, "old-comparison")).rejects.toThrow("previous comparison");
+});
+
 test("attached workers can report bounded progress for a leased prompt", async () => {
   const { session, fetch } = fixture();
   const updates: string[] = [];
@@ -413,6 +421,7 @@ test("preview redirect sends a bare origin to the tokenized shell", async () => 
   const shell = await fetch(new Request("http://127.0.0.1/t"));
   expect(shell.status).toBe(200);
   expect(shell.headers.get("content-type")).toBe("text/html; charset=utf-8");
+  expect(await shell.text()).toContain('<html data-preview-host="true" lang="en">');
 });
 
 test("about reports the running version and review context", async () => {
@@ -437,7 +446,9 @@ test("preview redirect stays off by default", async () => {
 
   const root = await fetch(new Request("http://127.0.0.1/"));
   expect(root.status).toBe(200);
-  expect(await root.text()).not.toContain(session.browserToken);
+  const html = await root.text();
+  expect(html).not.toContain(session.browserToken);
+  expect(html).not.toContain('data-preview-host="true"');
 
   const shell = await fetch(new Request("http://127.0.0.1/t"));
   expect(shell.status).toBe(404);

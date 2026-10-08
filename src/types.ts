@@ -687,6 +687,8 @@ export interface PullRequestContext {
     line?: number;
     side?: "old" | "new";
     resolved: boolean;
+    /** The provider supplied only a historical location, not a current line. */
+    outdated?: boolean;
     comments: Array<{ id: string; author: string; body: string; url: string }>;
   }>;
   threadsTruncated: boolean;
