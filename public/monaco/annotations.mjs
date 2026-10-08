@@ -125,7 +125,7 @@ export function commentDescription(comment) {
   const quote = typeof comment.selectedText === "string" && comment.selectedText.trim() ? comment.selectedText : null;
   const end = comment.endLine || comment.line;
   return {
-    kind: quote ? "Quote comment" : end > comment.line ? "Line range comment" : "Line comment",
+    kind: comment.suggestion ? `GitHub suggestion · ${comment.githubPublished ? "published" : "queued locally"}` : quote ? "Quote comment" : end > comment.line ? "Line range comment" : "Line comment",
     location: `${comment.side === "old" ? "Before" : "After"} · L${comment.line}${end > comment.line ? `–${end}` : ""}`,
     quote,
     quoteLines: quote ? quote.replaceAll("\r\n", "\n").split("\n").length : 0,

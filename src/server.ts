@@ -471,6 +471,14 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           requiredString(url.searchParams.get("path"), "path", 4_096),
         ));
       }
+      const suggestionPublicationMatch = /^\/api\/activities\/([^/]+)\/github$/.exec(url.pathname);
+      if (suggestionPublicationMatch && request.method === "POST") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["queue", "headOid"]);
+        if (typeof input.queue !== "boolean") throw new HttpError(422, "queue must be a boolean.");
+        return json(await session.setSuggestionPublication(decodeURIComponent(suggestionPublicationMatch[1]!), input.queue,
+          input.queue ? requiredString(input.headOid, "headOid", 64) : undefined));
+      }
       const activityMatch = /^\/api\/activities\/([^/]+)$/.exec(url.pathname);
       if (activityMatch && request.method === "POST") {
         const input = await readJsonObject(request);
@@ -709,15 +717,25 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         exactKeys(input, ["body"]);
         return json(await session.saveReviewerTask(requiredString(input.body, "body", 100_000)));
       }
+      if (request.method === "POST" && url.pathname === "/api/github/suggestions") {
+        const input = await readJsonObject(request);
+        exactKeys(input, ["headOid", "confirm", "commentIds"]);
+        if (input.confirm !== true) throw new HttpError(422, "Publishing GitHub suggestions requires explicit confirmation.");
+        if (!Array.isArray(input.commentIds) || !input.commentIds.length || input.commentIds.length > 10_000 ||
+          input.commentIds.some(id => typeof id !== "string" || !id || id.length > 128) || new Set(input.commentIds).size !== input.commentIds.length) throw new HttpError(422, "commentIds must contain unique suggestion identifiers.");
+        return json(await session.publishGitHubSuggestions(requiredString(input.headOid, "headOid", 64), input.commentIds as string[]));
+      }
       if (request.method === "POST" && url.pathname === "/api/github/review") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["outcome", "headOid", "confirm", "decision", "note"]);
+        exactKeys(input, ["outcome", "headOid", "confirm", "decision", "note", "commentIds"]);
         if (input.confirm !== true) throw new HttpError(422, "Publishing a GitHub review requires explicit confirmation.");
+        if (input.commentIds !== undefined && (!Array.isArray(input.commentIds) || input.commentIds.length > 10_000 ||
+          input.commentIds.some(id => typeof id !== "string" || !id || id.length > 128) || new Set(input.commentIds).size !== input.commentIds.length)) throw new HttpError(422, "commentIds must contain unique review comment identifiers.");
         const outcome = enumValue(input.outcome, "outcome", ["accepted", "feedback"]);
         const decision = input.decision === undefined
           ? (outcome === "accepted" ? "approve" : "request-changes")
           : enumValue(input.decision, "decision", ["approve", "approve-with-comments", "request-changes"]);
-        return json(await session.publishPullRequest(outcome, requiredString(input.headOid, "headOid", 64), decision, optionalString(input.note, "note", 8_000)));
+        return json(await session.publishPullRequest(outcome, requiredString(input.headOid, "headOid", 64), decision, optionalString(input.note, "note", 8_000), input.commentIds as string[] | undefined));
       }
       if (request.method === "POST" && url.pathname === "/api/close") {
         const input = await readJsonObject(request);

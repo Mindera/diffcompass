@@ -103,7 +103,7 @@ test("approval confirmation can close the tour without publishing a GitHub revie
   submit({ preventDefault() {} });
 
   expect(dialogClosed).toBe(true);
-  expect(closeArgs).toEqual(["accepted", "approve", undefined, true, false]);
+  expect(closeArgs).toEqual(["accepted", "approve", undefined, true, false, { outcome: "accepted", decision: "approve" }]);
 });
 
 test("local-only approval closes a tour that has inline comments", async () => {

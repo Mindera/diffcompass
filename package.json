@@ -15,9 +15,11 @@
     "start": "bun run src/cli.ts",
     "bridge": "bun run src/cli.ts bridge",
     "fixture": "bun run scripts/test-fixture.ts",
+    "fixture:github-suggestions": "bun scripts/github-suggestions-fixture.ts",
     "build:release": "bash scripts/build-release.sh",
     "test": "bun test",
     "test:monaco": "bun scripts/check-monaco.ts",
+    "test:github-suggestions-browser": "bun scripts/check-github-suggestions.ts",
     "typecheck": "bunx tsc --noEmit",
     "verify": "bun run typecheck && bun test && node --check public/theme.js && node --check public/app.js && node --check public/diagram-labels.js"
   },

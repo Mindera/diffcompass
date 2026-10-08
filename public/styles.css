@@ -1277,6 +1277,7 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .change-status { display: inline-block; margin-left: 5px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 6px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .change-status.pending { border-color: var(--warning-border); color: var(--warning); }
 .change-status.applied { border-color: var(--success-border); color: var(--success-text); }
+.change-status.queued { border-color: var(--border); color: var(--text); }
 .change-status.rejected, .change-status.undone { opacity: .8; }
 .activity-files { display: flex; flex-direction: column; gap: 6px; }
 .activity-file { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; border: 1px solid var(--border-soft); border-radius: 7px; padding: 8px 10px; background: var(--surface-code); text-align: left; cursor: pointer; }
@@ -1286,7 +1287,9 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .activity-file small { margin-top: 3px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .activity-verification { margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; color: var(--text-code); font-size: 12px; line-height: 1.5; }
 .activity-verification p { margin: 6px 0 0; }
-.activity-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; font-size: 11px; }
+.activity-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; font-size: 11px; }
+.activity-actions > .muted { flex-basis: 100%; }
+.review-suggestion-code { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: var(--surface-code); font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .proposal-label { color: var(--warning); font-weight: 700; text-transform: uppercase; }
 .closed-banner { position: fixed; z-index: 10; top: 106px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 10px; max-width: min(680px, calc(100vw - 32px)); border: 1px solid var(--banner-border); border-radius: 8px; background: var(--banner-background); color: var(--banner-text); padding: 9px 13px; font-size: 12px; text-align: center; box-shadow: 0 10px 28px var(--shadow); }
 .closed-banner-action { flex: 0 0 auto; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; color: inherit; background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
@@ -1342,6 +1345,7 @@ dialog textarea { width: 100%; padding: 10px; border: 1px solid var(--border); b
 .github-review-confirmation-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text); font-size: 12px; font-weight: 700; }
 .github-review-confirmation-summary code { color: var(--accent-strong); font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .github-review-confirmation-local-only { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; color: var(--text); background: var(--surface-control); cursor: pointer; }
+.github-review-confirmation-local-only[hidden] { display: none; }
 .github-review-confirmation-local-only input { flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--accent); }
 .github-review-confirmation-local-only span { display: grid; gap: 3px; }
 .github-review-confirmation-local-only strong { font-size: 12px; line-height: 1.35; }

@@ -603,6 +603,10 @@ export interface ReviewComment {
   lineContent: string;
   status: "active" | "outdated";
   publishToGitHub?: boolean;
+  /** Native replacement, queued locally until the GitHub review is confirmed. */
+  suggestion?: { activityId: string; headOid: string; sourceTree: string; replacement: string };
+  /** Receipt for a neutral suggestion review; retained while the tour stays open. */
+  githubPublication?: { reviewId: string; url?: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -700,7 +704,7 @@ export interface PullRequestContext {
   };
   publication?: {
     intentId: string;
-    outcome: Extract<ReviewOutcome, "accepted" | "feedback">;
+    outcome: Extract<ReviewOutcome, "accepted" | "feedback"> | "comment";
     decision?: ReviewDecisionIntent;
     note?: string;
     commentIds: string[];
@@ -802,7 +806,18 @@ export interface AgentChangeActivity {
   files: AgentChangeFile[];
   verification?: string;
   status: "observed" | "verified";
-  changeStatus?: "pending" | "applied" | "rejected" | "undone";
+  changeStatus?: "pending" | "applied" | "rejected" | "undone" | "queued";
+  /** Preserve the original selection: a patch may shrink it or split it into hunks. */
+  inlineEdit?: {
+    path: string;
+    line: number;
+    endLine: number;
+    expectedContent: string;
+    replacement: string;
+    sourceTree: string;
+    headOid?: string;
+    githubUnavailableReason?: string;
+  };
   proposal?: {
     patch: string;
     baselineTree: string;
