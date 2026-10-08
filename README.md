@@ -16,6 +16,35 @@ the downloaded catalogue includes its images and works offline.
 
 ## Install
 
+### Install with your agent
+
+Copy this prompt into your coding agent:
+
+```text
+Install the latest released DiffCompass for this machine and agent from the
+private repository https://github.com/Mindera/diffcompass.
+
+1. Detect my OS and shell. Check for Git and GitHub CLI (gh), and install any
+   missing prerequisites using the appropriate package manager.
+2. Check gh authentication and access to Mindera/diffcompass. Guide me through
+   signing in if needed. If access is denied, tell me to request access from a
+   Mindera GitHub administrator before continuing. Never ask me to paste tokens.
+3. Read the repository's current README using authenticated gh access and follow
+   its release-installer instructions for my platform. Install the binary and
+   bundled agent skills, including this agent's skill. Use the full installation,
+   not minimal mode; no source build or Bun installation is needed. Preserve
+   existing custom skills and explain any installation conflicts.
+4. Ensure diffcompass is on PATH in this terminal and future terminals. Make only
+   the necessary shell configuration changes, without duplicating entries.
+5. Run diffcompass --version and diffcompass doctor. Verify the bundled skill is
+   installed and the updater is set up to use Mindera/diffcompass with my gh login.
+   Resolve setup problems and report any remaining limitations.
+6. Tell me the installed version, how to run diffcompass update, and whether I
+   need a new terminal or to restart my agent to load the skill.
+```
+
+### Manual installation
+
 You need Git, [GitHub CLI (`gh`)](https://cli.github.com/), and a GitHub account
 with access to the private **[Mindera/diffcompass](https://github.com/Mindera/diffcompass)**
 repository. For agent-powered reviews, also install and sign in to Codex,
@@ -32,7 +61,7 @@ gh repo view Mindera/diffcompass
 If access is denied, request repository access from a Mindera GitHub administrator
 and authorize your GitHub CLI credentials for the organization if prompted.
 
-### macOS and Linux
+#### macOS and Linux
 
 ```sh
 set -o pipefail
@@ -47,7 +76,7 @@ already on your PATH, add this to your shell startup file (`~/.zshrc` or
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### Windows PowerShell
+#### Windows PowerShell
 
 ```powershell
 $Installer = gh api -H "Accept: application/vnd.github.raw+json" repos/Mindera/diffcompass/contents/scripts/install.ps1
@@ -58,7 +87,7 @@ if ($LASTEXITCODE -ne 0) { throw "Could not download the DiffCompass installer."
 The installer adds its command directory to your user PATH. Open a new terminal
 after installation.
 
-### Check the installation
+#### Check the installation
 
 ```sh
 diffcompass --version
