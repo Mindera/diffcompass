@@ -8,6 +8,16 @@ const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'c
 const page = await browser.newPage({ viewport:{width:1800,height:1000},colorScheme:'dark',reducedMotion:'no-preference' });
 page.setDefaultTimeout(20000);
 const errors=[]; page.on('pageerror',error=>errors.push(error.message));
+await page.addInitScript(() => {
+  const decode = HTMLImageElement.prototype.decode;
+  window.holdImageDecodes = false;
+  window.pendingImageDecodes = [];
+  HTMLImageElement.prototype.decode = function () {
+    const decoded = decode.call(this);
+    if (!window.holdImageDecodes || !this.src.startsWith('blob:')) return decoded;
+    return decoded.then(() => new Promise(resolve => window.pendingImageDecodes.push(resolve)));
+  };
+});
 let heldSource=null, sourceArrived=null;
 await page.route('**/api/diff/sources?*',async route=>{
   if(new URL(route.request().url()).searchParams.get('path')==='src/receipt.ts' && heldSource){
@@ -70,11 +80,38 @@ async function transition(direction,index,path,crossPhase){
     assert.ok(shown.every(sample=>sample.files.some(file=>file.path===path&&file.ready)), 'Destination is ready on the first displayed frame');
     const tops=shown.map(sample=>sample.files.find(file=>file.path===path).top);
     assert.ok(Math.max(...tops)-Math.min(...tops)<=2,'Destination stays anchored while other files settle: '+JSON.stringify(shown));
-    if (path === 'src/receipt.ts') await page.waitForFunction(() => {
-      const img = document.querySelector('[data-diff-image-path="screens/receipt.png"] img');
-      return img?.complete && img.naturalWidth > 0;
-    });
+    if (path === 'src/receipt.ts') {
+      if (await page.evaluate(() => window.holdImageDecodes)) await finishImages();
+      await page.waitForFunction(() => {
+        const img = document.querySelector('[data-diff-image-path="screens/receipt.png"] img');
+        return img?.complete && img.naturalWidth > 0;
+      });
+    }
   }
+}
+async function finishImages() {
+  await page.waitForFunction(() => window.pendingImageDecodes.length === 2);
+  const images = page.locator('.diff-file[data-path="screens/receipt.png"]');
+  assert.equal(await images.locator('img').count(), 0, 'Undecoded images stay outside the file list');
+  const positions = await page.evaluate(async () => {
+    const frame = document.querySelector('.monaco-review-frame[data-monaco-path="src/receipt.ts"]');
+    const card = document.querySelector('.diff-file[data-path="screens/receipt.png"]');
+    const tops = [frame.getBoundingClientRect().top];
+    const height = card.getBoundingClientRect().height;
+    // Observe immediately after each DOM swap, before ResizeObserver could
+    // hide a visible frame with the destination shifted by the taller PNG.
+    const observer = new MutationObserver(() => tops.push(frame.getBoundingClientRect().top));
+    observer.observe(card, { childList: true, subtree: true });
+    window.holdImageDecodes = false;
+    window.pendingImageDecodes.splice(0).forEach(resolve => resolve());
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    observer.disconnect();
+    return { tops, growth: card.getBoundingClientRect().height - height };
+  });
+  assert.equal(await images.locator('img').count(), 2, 'Both decoded sides are displayed');
+  assert.ok(positions.growth >= 60, 'The PNG grows beyond its loading placeholder');
+  assert.ok(positions.tops.length > 1, 'Image replacement was observed');
+  assert.ok(Math.max(...positions.tops) - Math.min(...positions.tops) <= 2, `Delayed PNG insertion preserves the phase destination immediately: ${JSON.stringify(positions)}`);
 }
 try{
   await page.goto(url);
@@ -89,12 +126,13 @@ try{
   for(const layout of ['split','unified']){
     await page.locator(`[data-diff-layout="${layout}"]`).click();
     await transition('next',1,'src/cart.ts',false);
+    await page.evaluate(() => { window.holdImageDecodes = true; });
     await transition('next',2,'src/receipt.ts',true);
     await transition('next',3,'README.md',false);
     await transition('previous',2,'src/receipt.ts',false);
     await transition('previous',1,'src/cart.ts',true);
     await transition('previous',0,'src/cart.ts',false);
-    console.log(`PASS ${layout}: cold phase handoff, stable destination, ready code throughout smooth same-phase travel`);
+    console.log(`PASS ${layout}: cold phase handoff, delayed PNG sizing, stable destination, ready code throughout smooth same-phase travel`);
   }
   await transition('next',1,'src/cart.ts',false);
   let unblock;
