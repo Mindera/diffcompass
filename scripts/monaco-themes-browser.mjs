@@ -18,7 +18,9 @@ const palettes = {
 };
 let frame;
 async function ready() {
-  await page.waitForFunction(() => [...document.querySelectorAll('.monaco-review-frame')].some(frame => frame.dataset.monacoPath === 'src/cart.ts' && frame.contentWindow?.diffLab?.diff.getLineChanges()));
+  await page.waitForFunction(() => [...document.querySelectorAll('.monaco-review-frame')].some(frame =>
+    !frame.closest('.monaco-phase-staging') && frame.dataset.monacoPath === 'src/cart.ts'
+    && frame.contentWindow?.diffLab?.views.get('src/cart.ts')?.diff.getLineChanges()));
   frame = page.frames().find(frame => new URL(frame.url()).searchParams.get('file') === 'src/cart.ts');
 }
 async function settings() { if (await page.locator('#settings-menu').getAttribute('open') === null) await page.locator('#settings-menu summary').click(); }
@@ -53,6 +55,7 @@ try {
   await page.locator('#settings-menu summary').click(); await frame.getByRole('button',{name:'← Back to diff',exact:true}).click();
   await frame.evaluate(() => { diffLab.editors.new.setPosition({lineNumber:7,column:3}); diffLab.editors.new.focus(); });
   await page.keyboard.press('Shift+F10');
+  await page.waitForTimeout(150); // Monaco's context-menu mouse-up guard.
   await frame.getByRole('menuitem',{name:'Suggest edit',exact:true}).click();
   await frame.getByRole('textbox',{name:'Replacement code',exact:true}).press('ControlOrMeta+A');
   await page.keyboard.insertText('  percentage: number; // retained theme draft');
@@ -75,4 +78,7 @@ try {
   await palette('catppuccin-mocha');
   assert.deepEqual(errors, []);
   console.log('PASS six syntax palettes, light/dark variants, live removed-line colors, source/draft inheritance, model preservation and reload');
+} catch (error) {
+  await page.screenshot({path:'/tmp/dc-themes-failure.png'});
+  console.error(error.message, error.stack); console.error('PAGE_ERRORS', errors); process.exitCode = 1;
 } finally { await browser.close(); }
