@@ -395,7 +395,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     }
   }
   const controller = {
-    owns, sync, hasDraft, setCommentsVisible,
+    owns, sync, hasDraft, setCommentsVisible, preservePhasePosition,
     updateMobileActions: mobileActions.update,
     cancelPhase,
     async preparePhase(session) {

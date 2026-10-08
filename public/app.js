@@ -1877,11 +1877,17 @@ async function hydrateDiffImages(files) {
       const loading = figure.querySelector(".image-diff-loading");
       if (loading) loading.outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(`${side === "old" ? "Before" : "After"}: ${path}`)}" /></a>`;
       const img = figure.querySelector("img");
+      // Native image cards also precede Monaco tour destinations. Keep the
+      // phase anchor in this paint, including when cached PNGs decode at once.
+      const preservePosition = () => state.monacoRenderer?.preservePhasePosition();
+      if (img) img.onload = preservePosition;
       if (img) img.onerror = () => {
         const link = img.closest("a");
         link.className = "image-diff-loading";
         link.textContent = "Unable to display this PNG. Open the original image.";
+        preservePosition();
       };
+      preservePosition();
     } catch (error) {
       const loading = figure.querySelector(".image-diff-loading");
       if (loading) loading.textContent = error.message;
