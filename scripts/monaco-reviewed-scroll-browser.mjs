@@ -2,6 +2,7 @@
 // above it just because collapsing it reduces the page's maximum scroll.
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { beginManualScroll } from './browser-scroll-support.mjs';
 const [playwrightPath, url] = process.argv.slice(2);
 const { chromium } = await import(pathToFileURL(playwrightPath).href);
 const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'chrome', headless: true });
@@ -23,14 +24,25 @@ try {
   for (const layout of ['split','unified']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
     const card = page.locator(selector);
+    // Reuse navigation's mount/paint readiness for both files in this phase.
+    // Waiting only for this editor's diff lets a slower preceding file resize
+    // during the collapse measurement, which is unrelated to reviewing it.
+    await page.evaluate(() => diffCompassProductionHost.reveal('src/cart.ts'));
+    await page.evaluate(() => diffCompassProductionHost.reveal('src/context-example.ts'));
     await card.evaluate(node => node.scrollIntoView({block:'center',behavior:'instant'}));
     await page.waitForFunction(() => [...document.querySelectorAll('.monaco-review-frame')].some(frame => frame.dataset.monacoPath === 'src/context-example.ts' && frame.contentWindow?.diffLab?.views.get('src/context-example.ts')?.diff.getLineChanges()?.length));
-    await page.waitForTimeout(200);
+    await beginManualScroll(page);
     await card.evaluate(node => {
       const panel=document.getElementById('diff-panel');
       panel.scrollTop += node.getBoundingClientRect().top-panel.getBoundingClientRect().top-panel.clientHeight*0.3;
     });
-    await page.waitForTimeout(100);
+    // A baseline recorded during the initial automatic tour reveal attributes
+    // that reveal's movement to the subsequent review click. Require the
+    // intended manual position before measuring collapse, not a fixed delay.
+    await page.waitForFunction(selector => {
+      const card = document.querySelector(selector), panel = document.getElementById('diff-panel');
+      return Math.abs(card.getBoundingClientRect().top - panel.getBoundingClientRect().top - panel.clientHeight * 0.3) < 1;
+    }, selector);
     const before = await position();
     assert.ok(before.scroll > 100, 'Exercise a scrolled viewport');
     const samples = page.locator(selector).evaluate(async card => {

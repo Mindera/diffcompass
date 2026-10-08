@@ -1,6 +1,7 @@
 // Run against a disposable PR fixture; never the user's saved review.
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { beginManualScroll } from './browser-scroll-support.mjs';
 const [playwrightPath, url] = process.argv.slice(2);
 const { chromium } = await import(pathToFileURL(playwrightPath).href);
 const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'chrome', headless: true });
@@ -15,15 +16,7 @@ async function file(path) {
   return page.frames().find(frame => new URL(frame.url(), url).searchParams.get('file') === path);
 }
 async function place(path, selector, offset) {
-  // These offsets represent manual scrolling. Deliver real user input first
-  // so a still-finishing layout/tour reveal is canceled, as it is in the UI.
-  await page.evaluate(() => {
-    window.manualWheelSeen = false;
-    window.addEventListener('wheel', () => { window.manualWheelSeen = true; }, { once: true, capture: true });
-  });
-  await page.locator('.diff-toolbar').hover();
-  await page.mouse.wheel(0, 1);
-  await page.waitForFunction(() => window.manualWheelSeen);
+  await beginManualScroll(page);
   await page.evaluate(({path,selector,offset}) => {
     const panel = document.getElementById('diff-panel');
     const card = document.querySelector(`.monaco-file-slot[data-path="${path}"]`);
