@@ -22,7 +22,10 @@ async function checkStop(stop, layout) {
   console.log('CHECK',layout,id);
   await page.waitForFunction(({ id, path }) => {
     const frame = [...document.querySelectorAll('.monaco-review-frame')].find(node => node.dataset.monacoPath === path);
-    return frame?.contentDocument.querySelector(`.review-tour-stop[data-tour-stop="${id}"][data-tour-state="current"]:not([hidden])`) && !document.querySelector('#next-step').disabled;
+    const banner = frame?.contentDocument.querySelector(`.review-tour-stop[data-tour-stop="${id}"][data-tour-state="current"]:not([hidden])`);
+    if (!banner || document.querySelector('#next-step').disabled) return false;
+    const bounds = frame.getBoundingClientRect(), b = banner.getBoundingClientRect();
+    return bounds.top + b.bottom > document.querySelector('.diff-toolbar').getBoundingClientRect().bottom && bounds.top + b.top < innerHeight;
   }, { id, path });
   if (layout === 'unified' && side === 'old' && [6, 43].includes(start)) {
     // Annotation overlays follow Monaco's source layout on an animation frame.
@@ -88,8 +91,9 @@ try {
   await page.locator('#diff-renderer').selectOption('monaco');
   // Renderer opt-in preserves the reading position, not an implicit tour
   // navigation. Explicitly request the current stop before the first check.
-  await page.waitForFunction(() => document.querySelector('.monaco-review-frame')?.contentWindow?.diffCompassMonaco);
-  await page.evaluate(() => focusCurrentStep());
+  await page.getByRole('button',{name:'Next',exact:true}).click();
+  await page.waitForFunction(() => document.getElementById('step-count').textContent.includes('(Step 2)') && !document.getElementById('next-step').disabled);
+  await page.getByRole('button',{name:'Previous',exact:true}).click();
   for (const layout of ['unified', 'split', 'unified']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
     await page.waitForFunction(() => document.getElementById('current-step-return').classList.contains('hidden'));
