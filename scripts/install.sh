@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repository="rcosteira79/diffcompass"
+repository="Mindera/diffcompass"
 version="${DIFFCOMPASS_VERSION:-latest}"
 install_root="${DIFFCOMPASS_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/diffcompass}"
 bin_root="${DIFFCOMPASS_BIN_ROOT:-${XDG_BIN_HOME:-$HOME/.local/bin}}"

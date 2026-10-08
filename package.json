@@ -5,7 +5,7 @@
   "description": "A local, agent-led walkthrough for Git changes.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rcosteira79/diffcompass.git"
+    "url": "git+https://github.com/Mindera/diffcompass.git"
   },
   "type": "module",
   "bin": {
