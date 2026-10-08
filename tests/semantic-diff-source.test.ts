@@ -98,7 +98,14 @@ test("authenticated route, full expansion anchor paging, comparison invalidation
   expect(expanded.offset).toBeGreaterThan(0); expect(expanded.file.hunks.flatMap((hunk: any) => hunk.rows).some((row: any) => row.newLine === 1251)).toBe(true);
   for (const format of ["markdown", "html"] as const) {
     const exported = semanticExport(comparison, format); expect(exported).toContain("1 of 3 changed files"); expect(exported).toContain("not review-wide analysis"); expect(exported).toContain("Before app.ts:1251"); expect(exported).toContain(comparison.sourceTree!);
-    expect(exportReview(session, format).content).toContain("Requested syntax summaries: 1 of 3");
+    expect(exported).toContain(format === "html" ? "<h2>What changed</h2>" : "## What changed");
+    const document = exportReview(session, format).content;
+    expect(document).toContain("Requested change summaries: 1 of 3");
+    if (format === "html") {
+      expect(document).toContain('data-view="changes">What changed</button>');
+      expect(document).toContain('<section class="diff-panel"><section class="view" data-view-panel="changes" hidden>');
+      expect(document.indexOf('class="semantic-export"')).toBeLessThan(document.indexOf('</main>'));
+    }
   }
   comparison.sourceTree = "f".repeat(40);
   expect(cachedSemanticSummaries(comparison)).toEqual([]); expect(semanticExport(comparison, "html")).toBe("");

@@ -1,3 +1,4 @@
+import { createSemanticPresentation } from "../public/semantic-diff-presentation.js";
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { AttachedAgentBridge } from "../src/bridge.ts";
@@ -48,6 +49,10 @@ test("the served app bundle includes caption placement before its consumers", as
   expect(captionStart).toBeGreaterThanOrEqual(0);
   expect(appStart).toBeGreaterThanOrEqual(0);
   expect(captionStart + captions.length).toBeLessThanOrEqual(appStart);
+  const summaryPresentation = `const semanticPresentation = (${createSemanticPresentation.toString()})();`;
+  const summaryUi = readFileSync(new URL("../public/semantic-diff.js", import.meta.url), "utf8");
+  expect(bundle.indexOf(summaryPresentation)).toBeGreaterThanOrEqual(0);
+  expect(bundle.indexOf(summaryPresentation) + summaryPresentation.length).toBeLessThanOrEqual(bundle.indexOf(summaryUi));
 });
 
 test("session API exposes the evidence briefing without a second agent pass", async () => {

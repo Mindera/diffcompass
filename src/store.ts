@@ -132,7 +132,8 @@ function validOutline(value: unknown): boolean {
     phaseIds.add(phase.id);
     const filePaths = new Set<string>();
     if (!phase.fileChanges.every((file) => record(file) && nonEmptyString(file.path, 4_096) && !filePaths.has(file.path) &&
-      Boolean(filePaths.add(file.path)) && nonEmptyString(file.summary, 50_000))) return false;
+      Boolean(filePaths.add(file.path)) && nonEmptyString(file.summary, 50_000) &&
+      (file.summarySource === undefined || (typeof file.summarySource === "string" && /^[0-9a-f]{64}$/.test(file.summarySource))))) return false;
     filePathsByPhase.set(phase.id, filePaths);
     const phaseSteps = new Map<string, Record<string, unknown>>();
     for (const step of phase.steps) {

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import geometry from "./fixtures/dense-caption-geometry.json";
 import briefingGeometry from "./fixtures/briefing-caption-geometry.json";
+import modalGeometry from "./fixtures/modal-caption-geometry.json";
 
 type Point = { x: number; y: number };
 type Box = Point & { width: number; height: number };
@@ -46,7 +47,7 @@ test("dense screenshot topology: all 13 captions clear other arrows, captions an
       expect(path.points.some((point, i) => i > 0 && segmentHits(path.points[i - 1]!, point, p.box))).toBe(false);
     }
     const own = paths.find(path => path.id === p.id)!;
-    expect(own.points.some(point => point.x === p.anchor.x && point.y === p.anchor.y)).toBe(true);
+    expect(own.points.some((point, i) => i > 0 && segmentHits(own.points[i - 1]!, point, { x: p.anchor.x - 1e-6, y: p.anchor.y - 1e-6, width: 2e-6, height: 2e-6 }))).toBe(true);
     expect(Math.abs(p.point.y - p.anchor.y)).toBeLessThanOrEqual(40);
   }
 });
@@ -106,6 +107,40 @@ test("a diagram with successful caption placement keeps all original curves", ()
   const result = window.ReviewDiagramLabels.resolve(geometry.labels,paths,geometry.nodes);
   expect(result.paths).toBe(paths);
   expect(result.positions.every(p => p.collisions === 0)).toBe(true);
+});
+
+test("modal screenshot: distinct parallel relationships keep both arrows and all nine captions clear", () => {
+  const paths = modalGeometry.paths.map(path => ({ ...path, bounds: bounds(path.points) }));
+  const before = JSON.stringify({ paths, labels: modalGeometry.labels, nodes: modalGeometry.nodes });
+  const result = window.ReviewDiagramLabels.resolve(modalGeometry.labels, paths, modalGeometry.nodes);
+  expect(result.positions).toHaveLength(9);
+  expect(result.positions.every(position => position.collisions === 0)).toBe(true);
+  expect(result.paths.map(path => path.id)).toEqual(paths.map(path => path.id));
+  expect(result.paths.filter(path => path.d).map(path => path.id)).toEqual(["L_component4_component3_2"]);
+  for (const position of result.positions) {
+    expect(result.positions.some(other => other !== position && intersects(position.box, other.box))).toBe(false);
+    expect(modalGeometry.nodes.some(node => intersects(position.box, node))).toBe(false);
+    for (const path of result.paths.filter(path => path.id !== position.id)) {
+      expect(path.points.some((point, i) => i > 0 && segmentHits(path.points[i - 1]!, point, position.box))).toBe(false);
+    }
+  }
+  const release = result.paths.find(path => path.id === "L_component4_component3_2")!;
+  const original = paths.find(path => path.id === release.id)!;
+  expect(release.points[0]).toEqual(original.points[0]);
+  expect(release.points.at(-1)).toEqual(original.points.at(-1));
+  for (const node of modalGeometry.nodes) {
+    const interior = { x: node.x + 0.5, y: node.y + 0.5, width: node.width - 1, height: node.height - 1 };
+    expect(release.points.some((point, i) => i > 0 && segmentHits(release.points[i - 1]!, point, interior))).toBe(false);
+  }
+  expect(JSON.stringify({ paths, labels: modalGeometry.labels, nodes: modalGeometry.nodes })).toBe(before);
+});
+
+test("a narrow valid caption position between samples is not missed", () => {
+  const points = Array.from({ length: 64 }, (_, index) => ({ x: index * 4, y: 50 }));
+  const result = layout([{ id: "edge", x: 126, y: 50, width: 202, height: 24 }], [{ id: "edge", points, bounds: bounds(points) }], [{ x: -50, y: 30, width: 50, height: 40 }, { x: 252, y: 30, width: 50, height: 40 }]);
+  expect(result).toHaveLength(1);
+  expect(result[0]!.collisions).toBe(0);
+  expect(result[0]!.point).toEqual({ x: 126, y: 50 });
 });
 
 test("caption placement does not mutate source geometry and is deterministic", () => {

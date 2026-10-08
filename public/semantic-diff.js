@@ -2,7 +2,8 @@
 globalThis.DiffCompassSemantic = (() => {
   const opened = new Map();
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
-  const identity = () => JSON.stringify([state.session?.comparison?.mergeBase, state.session?.comparison?.sourceTree, state.session?.comparison?.patch]);
+  const identity = () => JSON.stringify([state.session?.comparison?.base, state.session?.comparison?.head, state.session?.comparison?.mergeBase, state.session?.comparison?.sourceTree, state.session?.comparison?.patch,
+    state.session?.outline?.phases.map((phase) => [phase.title, phase.fileChanges, phase.steps.map((step) => [step.title, step.anchor, step.outdated])])]);
   let comparisonIdentity;
   function current() {
     const next = identity();
@@ -12,19 +13,10 @@ globalThis.DiffCompassSemantic = (() => {
   const panelId = (path) => `syntax-${encodeURIComponent(path)}`;
   function control(file) {
     current();
-    if (state.proposalPreview || !state.session?.comparison?.files.some((entry) => entry.path === file.path)) return "";
-    return `<button type="button" class="text-button" data-semantic-file="${esc(file.path)}" aria-expanded="${opened.has(file.path)}" aria-controls="${esc(panelId(file.path))}">Syntax changes</button> · `;
+    if (state.tourMode || state.proposalPreview || !state.session?.comparison?.files.some((entry) => entry.path === file.path)) return "";
+    return `<button type="button" class="text-button" data-semantic-file="${esc(file.path)}" aria-expanded="${opened.has(file.path)}" aria-controls="${esc(panelId(file.path))}">What changed</button> · `;
   }
-  function summaryHtml(summary) {
-    const anchor = (value, index) => value ? `<button type="button" class="text-button" data-semantic-anchor="${index}" data-semantic-side="${value.side}">${value.side === "old" ? "Before" : "After"}: ${esc(value.path)}:${value.startLine}</button>` : "";
-    return `<p role="status"><strong>${esc(summary.status === "analysed" ? "Parser-backed syntax summary" : summary.status)}</strong> · ${esc(summary.message)}</p>
-      <p class="muted">${esc(summary.notice)}</p>
-      ${summary.status === "unavailable" ? `<button type="button" data-semantic-retry="${esc(summary.path)}">Retry syntax analysis</button>` : ""}
-      ${summary.renamed ? '<p>File renamed. Symbol renames are shown as removed/added declarations.</p>' : ""}
-      <ol>${summary.changes.map((change, index) => `<li><strong>${esc(change.name)}</strong> — ${change.categories.map((category) => esc(category === "signature" ? "signature changed" : category === "body" ? "body / initializer changed" : category)).join(", ")} <small>(${esc(change.kind)})</small>${change.ambiguous ? '<p>Ambiguous overload match: these declarations were not paired.</p>' : ""}<p>${anchor(change.before, index)} ${anchor(change.after, index)}</p><pre>${esc(change.before?.signature ?? "")}${change.before && change.after ? "\n→ " : ""}${esc(change.after?.signature ?? "")}</pre></li>`).join("")}</ol>
-      <details><summary>Source and parser evidence</summary><p>${esc(summary.engine)} · ${esc(summary.language ?? "unsupported language")} · <a href="/semantic-diff-notices.txt" target="_blank" rel="noopener">Parser licences</a></p><p>Before tree: <code>${esc(summary.beforeTree)}</code><br>After tree: <code>${esc(summary.afterTree ?? "not captured")}</code></p><p>SHA-256 before: <code>${esc(summary.beforeHash ?? "unavailable")}</code><br>SHA-256 after: <code>${esc(summary.afterHash ?? "unavailable")}</code></p></details>
-      <p class="muted">Computed on request; not saved in the review. Exports include requested summaries still in the server cache (up to 32 files), labelled with coverage.</p>`;
-  }
+  const summaryHtml = (summary) => semanticPresentation.summaryHtml(summary);
   function hydrate() {
     current();
     for (const section of elements.diff.querySelectorAll(".diff-file")) {
@@ -32,13 +24,13 @@ globalThis.DiffCompassSemantic = (() => {
       const entry = opened.get(path);
       section.querySelector("[data-semantic-panel]")?.remove();
       section.querySelector("[data-semantic-file]")?.setAttribute("aria-expanded", String(Boolean(entry)));
-      if (!entry || state.proposalPreview) continue;
+      if (!entry || state.tourMode || state.proposalPreview) continue;
       const panel = document.createElement("section");
       panel.id = panelId(path);
       panel.className = "semantic-summary";
       panel.dataset.semanticPanel = path;
-      panel.setAttribute("aria-label", `Syntax changes for ${path}`);
-      panel.innerHTML = entry.summary ? summaryHtml(entry.summary) : entry.error ? `<p role="alert">${esc(entry.error)}</p><button type="button" data-semantic-retry="${esc(path)}">Retry syntax analysis</button>` : '<p role="status">Parsing captured before/after source…</p>';
+      panel.setAttribute("aria-label", `What changed in ${path}`);
+      panel.innerHTML = entry.summary ? summaryHtml(entry.summary) : entry.error ? `<p role="alert">${esc(entry.error)}</p><button type="button" data-semantic-retry="${esc(path)}">Try again</button>` : '<p role="status">Comparing the saved before and after code…</p>';
       section.querySelector(".diff-file-scroll")?.prepend(panel);
     }
   }
@@ -53,11 +45,12 @@ globalThis.DiffCompassSemantic = (() => {
       entry.summary = summary;
     } catch (error) {
       if (stamp !== current() || opened.get(path) !== entry) return;
-      entry.error = `Syntax analysis failed: ${error.message}. The text diff remains available.`;
+      entry.error = `Couldn’t load the change summary: ${error.message}. Your text diff is still available.`;
     }
     hydrate();
   }
   document.getElementById("diff").addEventListener("click", async (event) => {
+    if (state.tourMode || state.proposalPreview) return;
     const toggle = event.target.closest("[data-semantic-file]");
     if (toggle) {
       const path = toggle.dataset.semanticFile;
@@ -68,13 +61,39 @@ globalThis.DiffCompassSemantic = (() => {
     }
     const retry = event.target.closest("[data-semantic-retry]");
     if (retry) { void load(retry.dataset.semanticRetry); return; }
-    const button = event.target.closest("[data-semantic-anchor]");
+    const ask = event.target.closest("[data-semantic-explain]");
+    if (ask) {
+      const path = ask.dataset.semanticExplain;
+      current();
+      if (!opened.get(path)?.summary) return;
+      openConversation(null);
+      if (elements["chat-input"].value.trim()) {
+        toast("Your existing question draft is still here. Send or clear it before asking about this file.");
+        elements["chat-input"].focus(); return;
+      }
+      clearSelectedLine();
+      state.questionContextPaths.clear();
+      state.dryRunQuestionContext = null;
+      const file = state.diffCache.get(path);
+      const rows = file?.hunks.flatMap((hunk) => hunk.rows) ?? [];
+      const row = rows.find((row) => row.kind === "addition") ?? rows.find((row) => row.kind === "deletion") ?? rows.find((row) => row.kind !== "meta");
+      if (row) {
+        const side = row.newLine !== null ? "new" : "old";
+        state.selectedLine = { path, side, line: side === "new" ? row.newLine : row.oldLine, content: row.content };
+      }
+      elements["chat-input"].value = `Explain what changed in ${JSON.stringify(path)} in this captured comparison: the before/after mechanism, why it matters, and one specific thing to review. Use the saved before and after source; distinguish code evidence from assumptions and runtime guarantees.`;
+      renderQuestionScope();
+      elements["chat-input"].focus();
+      return;
+    }
+    const button = event.target.closest("[data-semantic-anchor], [data-semantic-explanation-anchor]");
     if (!button) return;
     const path = button.closest("[data-semantic-panel]").dataset.semanticPanel;
     current();
     const summary = opened.get(path)?.summary;
     const change = summary?.changes[Number(button.dataset.semanticAnchor)];
-    const anchor = button.dataset.semanticSide === "old" ? change?.before : change?.after;
+    const indexes = button.dataset.semanticExplanationAnchor?.split(":").map(Number);
+    const anchor = indexes ? summary?.explanation?.entries[indexes[0]]?.steps[indexes[1]]?.anchor : button.dataset.semanticSide === "old" ? change?.before : change?.after;
     if (!anchor) return;
     // Always use the comparison's canonical diff path, including old-side renames.
     const shown = await showChangedFile(path, anchor.startLine, anchor.side, undefined, 200, true);

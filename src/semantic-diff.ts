@@ -12,12 +12,13 @@ import kotlinWasm from "tree-sitter-wasms/out/tree-sitter-kotlin.wasm" with { ty
 import { capturedComparisonSource, validateCapturedFileDiff } from "./comparison-source.ts";
 import type { DiffFile, GitComparison, TourAnchor } from "./types.ts";
 
-export const SEMANTIC_ENGINE = "tree-sitter 0.25.10 / grammars 0.1.13 / summary 1";
+export const SEMANTIC_ENGINE = "tree-sitter 0.25.10 / grammars 0.1.13 / summary 4";
 export const SEMANTIC_LIMITS = { bytes: 256_000, lines: 10_000, declarations: 1_000, changes: 200, nodes: 100_000, depth: 200, parseMicros: 150_000, cachedFiles: 32, requests: 4 } as const;
 export const SEMANTIC_NOTICE = "Syntax evidence only: changes or unchanged syntax do not prove behaviour, equivalence, or runtime impact. Names are matched within this file; overload ambiguity is retained. Imports, expressions and unsupported declarations may need the text diff. Display labels are shortened; open source for exact text.";
 type SyntaxLanguage = "typescript" | "tsx" | "kotlin";
 export interface SemanticAnchor extends TourAnchor { signature: string }
-export interface SemanticChange { name: string; kind: string; categories: Array<"added" | "removed" | "signature" | "body">; before?: SemanticAnchor; after?: SemanticAnchor; ambiguous?: boolean }
+interface SyntaxInput { name: string; optional: boolean; defaulted?: boolean }
+export interface SemanticChange { name: string; kind: string; scope?: "local" | "member" | "top-level"; categories: Array<"added" | "removed" | "signature" | "body">; before?: SemanticAnchor; after?: SemanticAnchor; ambiguous?: boolean; inputs?: { added: SyntaxInput[]; removed: SyntaxInput[] } }
 export interface SemanticSummary {
   path: string;
   status: "analysed" | "unsupported" | "parse-error" | "unavailable" | "limited" | "generated";
@@ -33,7 +34,7 @@ export interface SemanticSummary {
   totalChanges?: number;
   renamed: boolean;
 }
-interface Declaration { key: string; name: string; kind: string; signature: string; body: string; anchor: SemanticAnchor }
+interface Declaration { key: string; name: string; kind: string; scope?: SemanticChange["scope"]; signature: string; body: string; anchor: SemanticAnchor; inputs?: SyntaxInput[]; parent?: Declaration }
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const assets = { typescript: typescriptWasm, tsx: tsxWasm, kotlin: kotlinWasm };
 let initialized: Promise<void> | undefined;
@@ -81,6 +82,41 @@ function declarationParts(node: Node, language: SyntaxLanguage): { name: Node; b
   return { name, bodies };
 }
 
+/** Facts from parameter nodes only; never reconstruct inputs from display signatures. */
+function declarationInputs(node: Node, language: SyntaxLanguage): SyntaxInput[] | undefined {
+  const callable = node.type === "variable_declarator" || node.type === "public_field_definition" ? node.childForFieldName("value") : node;
+  if (!callable) return;
+  const parameters = language === "kotlin"
+    ? children(callable, true).find((child) => child.type === "function_value_parameters")
+    : callable.childForFieldName("parameters");
+  const single = language !== "kotlin" ? callable.childForFieldName("parameter") : null;
+  if (!parameters) return single?.type === "identifier" && single.text.length < 400 ? [{ name: single.text, optional: false }] : undefined;
+  const inputs: SyntaxInput[] = [];
+  for (const parameter of children(parameters, true).filter((child) => !comment(child))) {
+    if (inputs.length >= 64) return;
+    if (language === "kotlin" && parameter.type !== "parameter") continue; // Default expressions are siblings of the parameter.
+    const name = language === "kotlin" ? children(parameter, true).find((child) => child.type === "simple_identifier") : parameter.childForFieldName("pattern");
+    if (!name || !["identifier", "simple_identifier"].includes(name.type)) return; // Destructuring/rest inputs need the full code.
+    let next = parameter.nextSibling;
+    while (next && comment(next)) next = next.nextSibling;
+    const defaulted = language === "kotlin" ? next?.type === "=" : Boolean(parameter.childForFieldName("value"));
+    inputs.push({ name: name.text.slice(0, 400), optional: language === "kotlin" ? defaulted : parameter.type === "optional_parameter", ...(defaulted ? { defaulted: true } : {}) });
+  }
+  if (inputs.some((input) => input.name.length >= 400) || new Set(inputs.map((input) => input.name)).size !== inputs.length) return;
+  return inputs;
+}
+function inputChanges(before?: SyntaxInput[], after?: SyntaxInput[]): SemanticChange["inputs"] {
+  if (!before || !after) return;
+  const added = after.filter((input) => !before.some((old) => old.name === input.name));
+  const removed = before.filter((input) => !after.some((next) => next.name === input.name));
+  // Renamed/reordered/replaced inputs require inspection, not a guessed correspondence.
+  if (added.length && removed.length) return;
+  const sharedBefore = before.filter((input) => !removed.includes(input)).map((input) => input.name);
+  const sharedAfter = after.filter((input) => !added.includes(input)).map((input) => input.name);
+  if (JSON.stringify(sharedBefore) !== JSON.stringify(sharedAfter) || (!added.length && !removed.length)) return;
+  return { added, removed };
+}
+
 function inspectTree(tree: Tree, language: SyntaxLanguage, path: string, side: "old" | "new"): { declarations: Declaration[]; syntax: string } {
   let visited = 0;
   const fingerprints = new Map<number, string>();
@@ -100,9 +136,10 @@ function inspectTree(tree: Tree, language: SyntaxLanguage, path: string, side: "
     if (!ancestors.has(node.id)) return fingerprints.get(node.id) ?? "";
     return hash(JSON.stringify([node.type, node.childCount ? children(node).map((child) => signatureHash(child, excluded, ancestors)).filter(Boolean) : node.text]));
   };
-  const walk = (node: Node, owners: string[]) => {
+  const walk = (node: Node, owners: string[], parent?: Declaration) => {
     const parts = declarationParts(node, language);
     let nextOwners = owners;
+    let nextParent = parent;
     if (parts) {
       if (declarations.length >= SEMANTIC_LIMITS.declarations) throw new Error("File exceeds the 1,000 declaration analysis limit.");
       const name = [...owners, parts.name.text].join(".");
@@ -120,12 +157,14 @@ function inspectTree(tree: Tree, language: SyntaxLanguage, path: string, side: "
       const body = hash(parts.bodies.map((body) => fingerprints.get(body.id) ?? "").join("|"));
       const end = parts.bodies.length ? Math.min(...parts.bodies.map((body) => body.startIndex)) : node.endIndex;
       const label = sourceText.slice(wrapper.startIndex, end).trim().replace(/\s+/g, " ").slice(0, 400);
-      const displayName = name.replace(/@[a-f0-9]{64}(?=\.)/g, "");
-      declarations.push({ key: `${node.type}:${hash(name)}`, name: displayName.length > 400 ? displayName.slice(0, 399) + "…" : displayName, kind: node.type.replace(/_/g, " "), signature, body, anchor: { path, side, startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1, signature: label } });
-      // Include parent signature identity so overloaded parents cannot merge locals.
-      nextOwners = [...owners, `${parts.name.text}${node.type.includes("function") || node.type.includes("method") ? `@${signature}` : ""}`];
+      nextParent = { key: `${node.type}:${hash(parts.name.text)}`, name: name.length > 400 ? name.slice(0, 399) + "…" : name, kind: node.type.replace(/_/g, " "), signature, body, inputs: declarationInputs(node, language), parent, anchor: { path, side, startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1, signature: label } };
+      if (language === "kotlin" && node.type === "property_declaration") {
+        nextParent.scope = ["class_body", "enum_class_body"].includes(node.parent?.type ?? "") ? "member" : node.parent?.type === "source_file" ? "top-level" : "local";
+      }
+      declarations.push(nextParent);
+      nextOwners = [...owners, parts.name.text];
     }
-    for (const child of children(node, true)) walk(child, nextOwners);
+    for (const child of children(node, true)) walk(child, nextOwners, nextParent);
   };
   walk(tree.rootNode, []);
   return { declarations, syntax };
@@ -133,31 +172,53 @@ function inspectTree(tree: Tree, language: SyntaxLanguage, path: string, side: "
 
 function compareDeclarations(before: Declaration[], after: Declaration[]): SemanticChange[] {
   const changes: SemanticChange[] = [];
-  const keys = new Set([...before, ...after].map((declaration) => declaration.key));
-  for (const key of keys) {
-    let old = before.filter((declaration) => declaration.key === key);
-    let next = after.filter((declaration) => declaration.key === key);
-    const pair = (left: Declaration, right: Declaration) => {
-      const categories: SemanticChange["categories"] = [];
-      if (left.signature !== right.signature) categories.push("signature");
-      if (left.body !== right.body) categories.push("body");
-      if (categories.length) changes.push({ name: right.name, kind: right.kind, categories, before: left.anchor, after: right.anchor });
-      old = old.filter((item) => item !== left); next = next.filter((item) => item !== right);
-    };
-    // First consume exact syntax, then unique signatures. Never pair by ordinal.
-    for (const left of [...old]) {
-      const exact = next.find((right) => right.signature === left.signature && right.body === left.body);
-      if (exact) pair(left, exact);
+  const indexChildren = (declarations: Declaration[]) => {
+    const index = new Map<Declaration | undefined, Declaration[]>();
+    for (const declaration of declarations) {
+      const siblings = index.get(declaration.parent) ?? [];
+      siblings.push(declaration);
+      index.set(declaration.parent, siblings);
     }
-    for (const left of [...old]) {
-      const matches = next.filter((right) => right.signature === left.signature);
-      if (matches.length === 1 && old.filter((entry) => entry.signature === left.signature).length === 1) pair(left, matches[0]!);
+    return index;
+  };
+  const oldChildren = indexChildren(before), newChildren = indexChildren(after);
+  const unmatched = (entry: Declaration, side: "old" | "new", ambiguous: boolean) => {
+    changes.push({ name: entry.name, kind: entry.kind, ...(entry.scope ? { scope: entry.scope } : {}), categories: [side === "old" ? "removed" : "added"], ...(side === "old" ? { before: entry.anchor } : { after: entry.anchor }), ...(ambiguous ? { ambiguous: true } : {}) });
+    // Without a matched parent, its children cannot establish independent identity.
+    for (const child of (side === "old" ? oldChildren : newChildren).get(entry) ?? []) unmatched(child, side, ambiguous);
+  };
+  const compareChildren = (oldParent?: Declaration, newParent?: Declaration) => {
+    const before = oldChildren.get(oldParent) ?? [], after = newChildren.get(newParent) ?? [];
+    const keys = new Set([...before, ...after].map((declaration) => declaration.key));
+    for (const key of keys) {
+      let old = before.filter((declaration) => declaration.key === key);
+      let next = after.filter((declaration) => declaration.key === key);
+      const pair = (left: Declaration, right: Declaration) => {
+        const categories: SemanticChange["categories"] = [];
+        if (left.signature !== right.signature) categories.push("signature");
+        if (left.body !== right.body) categories.push("body");
+        const inputs = inputChanges(left.inputs, right.inputs);
+        if (categories.length) changes.push({ name: right.name, kind: right.kind, ...(right.scope ? { scope: right.scope } : {}), categories, before: left.anchor, after: right.anchor, ...(inputs ? { inputs } : {}) });
+        old = old.filter((item) => item !== left); next = next.filter((item) => item !== right);
+        // Scope matching to this parent pair, even when its signature changed.
+        compareChildren(left, right);
+      };
+      // First consume exact syntax, then unique signatures. Never pair by ordinal.
+      for (const left of [...old]) {
+        const exact = next.find((right) => right.signature === left.signature && right.body === left.body);
+        if (exact) pair(left, exact);
+      }
+      for (const left of [...old]) {
+        const matches = next.filter((right) => right.signature === left.signature);
+        if (matches.length === 1 && old.filter((entry) => entry.signature === left.signature).length === 1) pair(left, matches[0]!);
+      }
+      if (old.length === 1 && next.length === 1) pair(old[0]!, next[0]!);
+      const ambiguous = old.length > 0 && next.length > 0;
+      for (const entry of old) unmatched(entry, "old", ambiguous);
+      for (const entry of next) unmatched(entry, "new", ambiguous);
     }
-    if (old.length === 1 && next.length === 1) pair(old[0]!, next[0]!);
-    const ambiguous = old.length > 0 && next.length > 0;
-    for (const entry of old) changes.push({ name: entry.name, kind: entry.kind, categories: ["removed"], before: entry.anchor, ...(ambiguous ? { ambiguous: true } : {}) });
-    for (const entry of next) changes.push({ name: entry.name, kind: entry.kind, categories: ["added"], after: entry.anchor, ...(ambiguous ? { ambiguous: true } : {}) });
-  }
+  };
+  compareChildren();
   return changes;
 }
 

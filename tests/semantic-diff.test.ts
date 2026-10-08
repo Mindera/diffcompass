@@ -40,6 +40,28 @@ test("arrow signatures, type aliases and exported bindings are classified", asyn
   expect((await analyse("type Id = number;", "type Id = string;")).changes[0]?.categories).toEqual(["signature"]);
   expect((await analyse("const x = 1;", "export const x = 1;")).changes[0]?.categories).toEqual(["signature"]);
 });
+test("added and removed inputs come from parameter nodes, including optional and defaulted forms", async () => {
+  const ts = await analyse("export function total(items: Item[]) { return 1; }", "export function total(items: Item[], discount?: Discount) { return 2; }");
+  expect(ts.changes[0]?.inputs).toEqual({ added: [{ name: "discount", optional: true }], removed: [] });
+  const arrow = await analyse("const f = x => x;", "const f = (x, options = {}) => x;");
+  expect(arrow.changes[0]?.inputs).toEqual({ added: [{ name: "options", optional: false, defaulted: true }], removed: [] });
+  const removed = await analyse("function f(x: number, y: number) {}", "function f(x: number) {}");
+  expect(removed.changes[0]?.inputs).toEqual({ added: [], removed: [{ name: "y", optional: false }] });
+  const kotlin = await analyse("fun total(x: Int): Int = x\n", "fun total(x: Int, discount: Int? = null): Int = x\n", "Total.kt");
+  expect(kotlin.changes[0]?.inputs).toEqual({ added: [{ name: "discount", optional: true, defaulted: true }], removed: [] });
+  const nullable = await analyse("fun total(x: Int): Int = x\n", "fun total(x: Int, discount: Int?): Int = x\n", "Total.kt");
+  expect(nullable.changes[0]?.inputs?.added).toEqual([{ name: "discount", optional: false }]);
+});
+test("input prose does not guess at renamed, reordered, destructured or rest parameters", async () => {
+  for (const [before, after] of [
+    ["function f(x) {}", "function f(y) {}"],
+    ["function f(x, y) {}", "function f(y, x, z) {}"],
+    ["function f({ x }) {}", "function f({ x }, y) {}"],
+    ["function f(x) {}", "function f(x, ...rest) {}"],
+  ]) expect((await analyse(before!, after!)).changes[0]?.inputs).toBeUndefined();
+  const many = Array.from({ length: 65 }, (_, i) => `p${i}`).join(", ");
+  expect((await analyse("function f() {}", `function f(${many}) {}`)).changes[0]?.inputs).toBeUndefined();
+});
 test("overloads match unique signatures without using ordinal; ambiguous signatures stay explicit", async () => {
   const moved = await analyse("function go(x: string): string;\nfunction go(x: number): number;", "function go(x: number): number;\nfunction go(x: string): string;");
   expect(moved.changes).toEqual([]); expect(moved.message).toContain("Other syntax changed");
