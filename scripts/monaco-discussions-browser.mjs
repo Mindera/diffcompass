@@ -15,6 +15,7 @@ async function newPage() {
 }
 async function start() {
   await page.goto(url);
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   if (await page.locator('#tour-mode-toggle').textContent() === 'Exit tour') await page.locator('#tour-mode-toggle').click();
   await page.locator('#diff-renderer').selectOption('monaco');
 }

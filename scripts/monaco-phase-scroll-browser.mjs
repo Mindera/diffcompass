@@ -19,7 +19,9 @@ try {
   await page.evaluate(async token => {
     for (let i = 0; i < 4; i++) await fetch('/api/tour/navigate', { method: 'POST', headers: { 'x-diffcompass-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ direction: 'previous' }) });
   }, token);
-  await page.reload(); await page.locator('#diff-renderer').selectOption('monaco'); await at(0);
+  await page.reload();
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
+  await page.locator('#diff-renderer').selectOption('monaco'); await at(0);
   for (const layout of ['split', 'unified']) {
     await page.setViewportSize({ width: 1800, height: 600 });
     await page.locator(`[data-diff-layout="${layout}"]`).click();

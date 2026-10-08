@@ -17,6 +17,7 @@ const show = () => page.getByRole('button', { name: 'Show comments', exact: true
 const reveal = () => page.evaluate(path => diffCompassProductionHost.reveal(path, 'new', 17), path);
 try {
   await page.goto(url);
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   assert.deepEqual(await page.locator('#diff-renderer option').allTextContents(), ['Shiki', 'Monaco']);
   assert.equal(await page.locator('#diff-renderer').inputValue(), 'current');
   await reveal();
@@ -67,6 +68,7 @@ try {
   await local().first().waitFor(); await thread().first().waitFor();
   await hide().click();
   await page.reload();
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   await reveal();
   await show().waitFor();
   assert.equal(await local().first().isVisible(), false);
@@ -80,4 +82,7 @@ try {
   await frame.locator('.review-pr-thread').waitFor();
   assert.deepEqual(errors, []);
   console.log('PASS shared visibility across Shiki/Monaco, reload, and opening a comment; native draft retained');
+} catch (error) {
+  await page.screenshot({path:'/tmp/dc-renderer-comments-failure.png'});
+  console.error(error.message, error.stack); console.error('PAGE_ERRORS', errors); process.exitCode = 1;
 } finally { await browser.close(); }

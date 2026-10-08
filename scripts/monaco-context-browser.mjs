@@ -20,6 +20,7 @@ const height = () => card().evaluate(node => node.getBoundingClientRect().height
 try {
   await setDiagramViewport(page, {width:1800,height:1000});
   await page.goto(url);
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   await page.locator('#diff-renderer').selectOption('monaco');
   assert.equal(await page.locator('#monaco-integration-frame').count(), 0, 'No legacy multi-file iframe');
   let frame = await file('src/cart.ts', 17);

@@ -11,6 +11,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/update', route => route.fulfill({ json: { updateAvailable: false } }));
   await page.goto(url);
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   await page.locator('#diff-renderer').selectOption('monaco');
   for (const [layout, expanded] of [['split', false], ['unified', false], ['split', true]]) {
     const label = `${layout}${expanded ? ', expanded context' : ''}`;

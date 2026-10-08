@@ -56,7 +56,9 @@ try {
   }, token);
   const samplePr = Boolean(snapshot.pullRequestFixture);
   if (samplePr) assert.equal(snapshot.fixtureCanApplySuggestions, true);
-  await page.reload(); await page.locator('#diff-renderer').selectOption('monaco'); await file();
+  await page.reload();
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
+  await page.locator('#diff-renderer').selectOption('monaco'); await file();
   for(const layout of ['split','unified']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
     await frame.waitForFunction(layout=>document.getElementById('layout').value===layout,layout);

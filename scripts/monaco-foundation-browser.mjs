@@ -34,6 +34,7 @@ async function reset() {
 try {
   await page.route("**/api/update", route => route.fulfill({ json: { updateAvailable: false } }));
   await page.goto(url); await reset(); await page.reload();
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   check(await page.locator("#diff-renderer").inputValue() === "current", "Current renderer remains the default");
   check(!sources.length && await page.locator(".monaco-review-frame").count() === 0, "No Monaco sources/editors are loaded before opt-in");
   await page.locator("#diff-renderer").selectOption("monaco");

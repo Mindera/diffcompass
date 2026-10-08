@@ -18,6 +18,7 @@ const position = () => page.locator(selector).evaluate(card => ({
 }));
 try {
   await page.goto(url);
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   await page.locator('#diff-renderer').selectOption('monaco');
   for (const layout of ['split','unified']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();

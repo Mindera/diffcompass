@@ -38,6 +38,7 @@ async function sticky(path) {
 }
 try {
   await page.goto(url);
+  await page.locator('#step-count').filter({hasText:'Step '}).waitFor({state:'attached'});
   await page.locator('#diff-renderer').selectOption('monaco');
   let frame = await file('src/cart.ts');
   await frame.locator('.review-tour-stop[data-tour-state="current"]').waitFor();
