@@ -215,3 +215,122 @@ test("renders generated IR through an explicitly supplied official Archify check
   expect(architecture?.comparison?.before?.html).toContain("<html");
   expect(architecture?.comparison?.delta?.html).toContain("<html");
 }, 30_000);
+
+const lifecycleCases = [
+  { name: "branching retry and three cancellation exits", body: `[*] --> Pending
+Pending --> Formatting : start
+Pending --> Cancelled : cancel
+Formatting --> Ready : succeed
+Formatting --> Failed : fail
+Formatting --> Cancelled : cancel
+Failed --> Formatting : retry
+Failed --> Cancelled : cancel
+Ready --> [*]
+Cancelled --> [*]` },
+  { name: "more than five states", body: `[*] --> A
+A --> B : first
+B --> C : second
+C --> D : third
+D --> E : fourth
+E --> F : fifth
+F --> G : sixth
+G --> H : seventh
+H --> [*]` },
+  { name: "reconverging branches", body: `[*] --> Open
+Open --> Left : choose left
+Open --> Right : choose right
+Left --> Joined : finish left
+Right --> Joined : finish right
+Joined --> [*]` },
+  { name: "self loops, parallel events and multiple starts", body: `[*] --> Idle
+[*] --> Busy
+Idle --> Idle : wait
+Idle --> Busy : start
+Idle --> Busy : resume
+Busy --> Idle : pause
+Busy --> Done : finish
+Done --> [*]` },
+  { name: "wide names and event labels", body: `[*] --> AwaitingReceiptFormatting
+AwaitingReceiptFormatting --> ProcessingReceiptRequest : start formatting receipt
+ProcessingReceiptRequest --> ReceiptFormattingCompleted : finish receipt formatting
+ReceiptFormattingCompleted --> [*]` },
+  { name: "more terminal states than outcome columns", body: `[*] --> Working
+Working --> A : first
+Working --> B : second
+Working --> C : third
+Working --> D : fourth
+A --> [*]
+B --> [*]
+C --> [*]
+D --> [*]` },
+];
+function lifecycleOutline(body: string): TourOutline {
+  return { ...structuredClone(outline), behaviorArchitecture: undefined, architecture: undefined, domainModels: [], flows: [], dataModel: undefined, stateDiagram: { ...outline.stateDiagram!, mermaid: `stateDiagram-v2\n${body}` } };
+}
+
+// Run the same collision gates used by production when a local renderer is
+// explicitly supplied. No checkout, download or weakened quality profile.
+const lifecycleDirectory = process.env.ARCHIFY_OFFICIAL_DIR ?? process.env.DIFFCOMPASS_ARCHIFY_DIR;
+for (const example of lifecycleCases) test.skipIf(!lifecycleDirectory)(`validates lifecycle geometry: ${example.name}`, async () => {
+  const input = lifecycleOutline(example.body);
+  const original = structuredClone(input);
+  const result = await new ArchifyRenderer(lifecycleDirectory!).render(input, []);
+  expect(result.failures).toEqual([]);
+  expect(result.artifacts).toHaveLength(1);
+  const artifact = result.artifacts[0]!;
+  const states = artifact.ir.states as Array<{id: string; label: string; sublabel?: string; type: string}>;
+  const transitions = artifact.ir.transitions as Array<{from: string; to: string; label?: string}>;
+  const arrows = example.body.split("\n").map(line => /^(\[\*\]|\w+) --> (\[\*\]|\w+)(?: : (.+))?$/.exec(line)!);
+  expect(transitions.map(edge => [edge.from, edge.to, edge.label])).toEqual(arrows.filter(a => a[1] !== "[*]" && a[2] !== "[*]").map(a => [a[1], a[2], a[3]]));
+  expect(states.map(state => state.id).sort()).toEqual([...new Set(arrows.flatMap(a => [a[1]!, a[2]!]).filter(id => id !== "[*]"))].sort());
+  expect(states.filter(state => state.sublabel?.includes("Initial state")).map(state => state.id).sort()).toEqual(arrows.filter(a => a[1] === "[*]").map(a => a[2]).sort());
+  expect(states.filter(state => state.sublabel?.includes("Terminal exit")).map(state => state.id).sort()).toEqual(arrows.filter(a => a[2] === "[*]").map(a => a[1]).sort());
+  expect(states.some(state => state.type === "success")).toBe(false);
+  expect(artifact.html).toContain("data-composition-points");
+  const receipt = JSON.parse(artifact.validationReceipt.split("\n\n")[0]!);
+  expect(receipt.ok).toBe(true);
+  expect(receipt.composition.summary.errors).toBe(0);
+  if (example === lifecycleCases[0]) expect(receipt.composition.summary.warnings).toBe(0);
+  expect(input).toEqual(original);
+}, 30_000);
+
+test("retains lifecycle boundaries regardless of arrow order and keeps richer boundary semantics native", () => {
+  const input = lifecycleOutline("Done --> [*]\nActive --> Done : finish\n[*] --> Active\nActive --> Active : wait");
+  const candidate = archifyCandidates(input).find(item => item.type === "lifecycle")!;
+  expect(candidate.ir.states).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "Active", initial: true, terminal: false }),
+    expect.objectContaining({ id: "Done", initial: false, terminal: true }),
+  ]));
+  for (const body of ["[*] --> A : begin\nA --> B", "[*] --> A\nA --> B\nB --> [*] : finish", "[*] --> A\nA --> B\nB --> [*]\nB --> A : again"]) {
+    const native = lifecycleOutline(body);
+    expect(archifyCandidates(native).some(item => item.type === "lifecycle")).toBe(false);
+    expect(native.stateDiagram!.mermaid).toBe(`stateDiagram-v2\n${body}`);
+  }
+});
+
+test("lifecycle layout failure retains the native graph and the previous validated artifact", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archify-lifecycle-failure-"));
+  try {
+    await mkdir(join(root, "bin"));
+    await writeFile(join(root, "bin", "archify.mjs"), "// fixture\n");
+    let calls = 0;
+    const runner: ArchifyCommandRunner = async command => {
+      calls++;
+      const output = command.find(part => part.endsWith("artifact.html"));
+      if (output) await writeFile(output, "<!doctype html><html>validated</html>");
+      return { stdout: '{"ok":true}', stderr: "" };
+    };
+    const renderer = new ArchifyRenderer(root, {runner});
+    const initial = await renderer.render(lifecycleOutline(lifecycleCases[0]!.body), []);
+    expect(initial.failures).toEqual([]);
+    const wide = "A".repeat(100);
+    const input = lifecycleOutline(`[*] --> ${wide}\n${wide} --> Done : finish\nDone --> [*]`);
+    const original = structuredClone(input.stateDiagram);
+    calls = 0;
+    const failed = await renderer.render(input, initial.artifacts);
+    expect(failed.artifacts).toEqual(initial.artifacts);
+    expect(failed.failures).toEqual([expect.objectContaining({id:"lifecycle-state-machine",preservedLastValid:true})]);
+    expect(calls).toBe(0);
+    expect(input.stateDiagram).toEqual(original);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

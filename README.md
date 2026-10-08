@@ -439,3 +439,35 @@ archives, publishes checksums, and creates a GitHub Release.
 
 See [ROADMAP.md](ROADMAP.md) for shipped scope, upcoming work, and remaining
 review-workflow gaps.
+
+### Lifecycle layout fixture
+
+With dependencies already present and `DIFFCOMPASS_ARCHIFY_DIR` pointing to an
+existing renderer bundle, launch a fresh captured-code example:
+
+```sh
+DIFFCOMPASS_FIXTURE_PORT=47786 bun run scripts/lifecycle-fixture.ts
+```
+
+Open the printed URL, then select **Receipt job: retry or cancel** in the
+interactive map picker under Maps. The five states, retry loop, cancellation
+branches, and terminal exits match the captured `src/receipt-job.ts` code.
+Sources open the captured diff; **Back to diagram** restores the map, selection,
+camera, and scroll position. A rendering failure retains the native Mermaid
+source. The fixture uses a new temporary repository and does not invoke an agent.
+
+For browser verification, pass an existing Playwright module and that fixture URL:
+
+```sh
+node scripts/lifecycle-browser.mjs /absolute/path/to/playwright/index.mjs 'http://127.0.0.1:PORT/#token=TOKEN'
+node scripts/lifecycle-pointer-browser.mjs /absolute/path/to/playwright/index.mjs 'http://127.0.0.1:PORT/#token=TOKEN'
+```
+
+These checks cover headless Chrome at desktop and 390px widths, actual mouse
+input, source return, consecutive visible lane headings, geometry, and native
+fallback. They do not establish Safari, Firefox, or touch-device coverage.
+The Chrome viewport helper synchronizes native content size with emulated size:
+Playwright 1.63 / Chrome 154 otherwise loses iframe clicks near the viewport's
+bottom edge, also reproducible with a plain sandboxed button. Setting
+`DIAGRAM_RAW_VIEWPORT=1` runs that negative control without the sizing correction;
+it exits nonzero when the pointer environment is affected.
