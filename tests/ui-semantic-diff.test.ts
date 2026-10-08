@@ -107,3 +107,25 @@ test("related tour source links use canonical paths, and outline updates invalid
   h.requests[1]!.resolve({ changes: [] }); await Promise.resolve();
   expect(h.control({ path: "old name.ts" })).toContain('aria-expanded="false"');
 });
+
+test("Monaco source links reuse its captured-side navigation with the canonical renamed path", async () => {
+  const h = harness(), revealed: any[] = [];
+  h.state.monacoRenderer = { owns: () => true, reveal: async (...args: any[]) => { revealed.push(args); return true; } };
+  await h.click("[data-semantic-file]", { semanticFile: "old name.ts" });
+  h.requests[0]!.resolve({ changes: [{ before: { path: "prior.ts", side: "old", startLine: 1200 } }], explanation: { entries: [{ steps: [{ anchor: { side: "new", startLine: 12 } }] }] } }); await Promise.resolve();
+  await h.click("[data-semantic-anchor]", { semanticAnchor: "0", semanticSide: "old" });
+  await h.click("[data-semantic-explanation-anchor]", { semanticExplanationAnchor: "0:0" });
+  expect(revealed).toEqual([["old name.ts", "old", 1200], ["old name.ts", "new", 12]]);
+  expect(h.anchors).toEqual([]);
+  expect(h.notices).toEqual([]);
+});
+
+test("unavailable Monaco navigation reports the failure without switching source or renderer", async () => {
+  const h = harness();
+  h.state.monacoRenderer = { owns: () => true, reveal: async () => false };
+  await h.click("[data-semantic-file]", { semanticFile: "old name.ts" });
+  h.requests[0]!.resolve({ changes: [{ after: { side: "new", startLine: 12 } }] }); await Promise.resolve();
+  await h.click("[data-semantic-anchor]", { semanticAnchor: "0", semanticSide: "new" });
+  expect(h.anchors).toEqual([]);
+  expect(h.notices).toEqual(["This captured source line could not be opened. Finish any retained draft and try again."]);
+});

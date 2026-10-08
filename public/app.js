@@ -1975,7 +1975,7 @@ async function ensureTourPhaseDiffs() {
   if (missing.length === 0) return;
   const requestId = ++state.fileRequestId;
   const load = (async () => {
-    elements.diff.innerHTML = '<div class="empty">Loading this phase’s diffs…</div>';
+    if (!state.monacoRenderer?.hasDraft()) elements.diff.innerHTML = '<div class="empty">Loading this phase’s diffs…</div>';
     const results = await Promise.allSettled(missing.map(async (path) => {
       const result = await api(`/api/diff?${new URLSearchParams({ path })}`);
       return [path, { ...result.file, _context: result.context, _full: result.full, _page: { offset: result.offset, limit: result.limit, totalRows: result.totalRows } }];
@@ -2012,7 +2012,7 @@ async function ensureReviewDiffs() {
   const generation = ++state.reviewDiffLoadGeneration;
   const revision = state.session.revision;
   const load = (async () => {
-    if (visibleDiffFiles().length === 0) elements.diff.innerHTML = '<div class="empty">Loading changed files…</div>';
+    if (visibleDiffFiles().length === 0 && !state.monacoRenderer?.hasDraft()) elements.diff.innerHTML = '<div class="empty">Loading changed files…</div>';
     let failures = 0;
     for (let offset = 0; offset < missing.length; offset += 8) {
       const results = await Promise.allSettled(missing.slice(offset, offset + 8).map(async (path) => {
@@ -2098,7 +2098,7 @@ async function showChangedFile(path, line, side, requestedOffset, requestedConte
     let file = state.diffCache.get(path);
     const containsAnchor = !line || !side || file?.hunks.some((hunk) => hunk.rows.some((row) => (side === "old" ? row.oldLine : row.newLine) === line));
     if (!file || requestedOffset !== undefined || requestedContext !== undefined || requestedFull !== undefined || !containsAnchor) {
-      if (!viewportAnchor) {
+      if (!viewportAnchor && !state.monacoRenderer?.hasDraft()) {
         elements.diff.innerHTML = '<div class="empty">Loading file diff…</div>';
         elements["empty-diff"].classList.add("hidden");
       }
@@ -8218,6 +8218,7 @@ state.monacoRenderer = createMonacoRenderer({
     notify: toast, tourShortcut: handleTourShortcut, viewportChanged: scheduleCurrentStepReturnUpdate,
     reserveScroll: reserveDiffScrollPosition,
     review: setReviewed,
+    fileSummaryControl: file => globalThis.DiffCompassSemantic?.control(file, false) ?? "",
     async suggestionCreated(result, path) {
       const previous = state.session;
       if (result.session.revision >= state.session.revision) state.session = result.session;

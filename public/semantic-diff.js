@@ -11,15 +11,15 @@ globalThis.DiffCompassSemantic = (() => {
     return next;
   }
   const panelId = (path) => `syntax-${encodeURIComponent(path)}`;
-  function control(file) {
+  function control(file, separator = true) {
     current();
     if (state.tourMode || state.proposalPreview || !state.session?.comparison?.files.some((entry) => entry.path === file.path)) return "";
-    return `<button type="button" class="text-button" data-semantic-file="${esc(file.path)}" aria-expanded="${opened.has(file.path)}" aria-controls="${esc(panelId(file.path))}">What changed</button> · `;
+    return `<button type="button" class="text-button" data-semantic-file="${esc(file.path)}" aria-expanded="${opened.has(file.path)}" aria-controls="${esc(panelId(file.path))}">What changed</button>${separator ? " · " : ""}`;
   }
   const summaryHtml = (summary) => semanticPresentation.summaryHtml(summary);
   function hydrate() {
     current();
-    for (const section of elements.diff.querySelectorAll(".diff-file")) {
+    for (const section of elements.diff.querySelectorAll(".diff-file, .monaco-file-slot")) {
       const path = section.dataset.path;
       const entry = opened.get(path);
       section.querySelector("[data-semantic-panel]")?.remove();
@@ -28,11 +28,16 @@ globalThis.DiffCompassSemantic = (() => {
       const panel = document.createElement("section");
       panel.id = panelId(path);
       panel.className = "semantic-summary";
+      panel.hidden = state.collapsedFiles.has(path);
       panel.dataset.semanticPanel = path;
       panel.setAttribute("aria-label", `What changed in ${path}`);
       panel.innerHTML = entry.summary ? summaryHtml(entry.summary) : entry.error ? `<p role="alert">${esc(entry.error)}</p><button type="button" data-semantic-retry="${esc(path)}">Try again</button>` : '<p role="status">Comparing the saved before and after code…</p>';
-      section.querySelector(".diff-file-scroll")?.prepend(panel);
+      const monacoHeader = section.querySelector(".monaco-file-header");
+      if (monacoHeader) monacoHeader.after(panel);
+      else section.querySelector(".diff-file-scroll")?.prepend(panel);
     }
+    // Virtualized Monaco slots reserve space for both the summary and editor.
+    state.monacoRenderer?.sync?.();
   }
   async function load(path) {
     const stamp = current();
@@ -55,7 +60,10 @@ globalThis.DiffCompassSemantic = (() => {
     if (toggle) {
       const path = toggle.dataset.semanticFile;
       current();
-      if (state.collapsedFiles.has(path)) toggle.closest(".diff-file").querySelector("[data-collapse-file]")?.click();
+      if (state.collapsedFiles.has(path)) {
+        toggle.closest(".diff-file, .monaco-file-slot").querySelector("[data-collapse-file], .monaco-file-header > button:first-child")?.click();
+        if (state.collapsedFiles.has(path)) return; // An editor draft may block expansion.
+      }
       if (opened.has(path)) { opened.delete(path); hydrate(); } else void load(path);
       return;
     }
@@ -96,6 +104,11 @@ globalThis.DiffCompassSemantic = (() => {
     const anchor = indexes ? summary?.explanation?.entries[indexes[0]]?.steps[indexes[1]]?.anchor : button.dataset.semanticSide === "old" ? change?.before : change?.after;
     if (!anchor) return;
     // Always use the comparison's canonical diff path, including old-side renames.
+    if (state.monacoRenderer?.owns(path)) {
+      const shown = await state.monacoRenderer.reveal(path, anchor.side, anchor.startLine);
+      if (!shown) toast("This captured source line could not be opened. Finish any retained draft and try again.");
+      return;
+    }
     const shown = await showChangedFile(path, anchor.startLine, anchor.side, undefined, 200, true);
     if (shown) {
       const row = diffViewRow(path, anchor.side, anchor.startLine);
