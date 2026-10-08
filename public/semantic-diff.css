@@ -18,3 +18,5 @@
 .semantic-narrative ul { padding-left: 20px; }
 .semantic-narrative li { padding: 3px 0; }
 .semantic-summary :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.monaco-file-header > [data-semantic-file] { flex-shrink: 0; }
+.monaco-file-header > [data-semantic-file]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

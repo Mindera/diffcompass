@@ -18,13 +18,14 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   const comments = document.createElement("button"); comments.type = "button"; comments.className = "text-button"; comments.hidden = true;
   controls.append(comments); container.before(region); region.append(notice);
   let latestFiles = [], active = false, failed = false, mountKey = null, commentsVisible = true, disposed = false;
+  let deferredRender = false;
   const commentPreference = "diffcompass-monaco-inline-comments";
   try { commentsVisible = localStorage.getItem(commentPreference) !== "hidden"; } catch {}
   const entries = new Map(), fallbacks = new Set(), viewStates = new Map();
   const keyOf = session => JSON.stringify([session.comparison.mergeBase, session.comparison.sourceTree, session.comparison.files.map(file => [file.path, file.oldPath, file.newPath, file.status])]);
   const hasDraft = () => mobileActions.hasDraft || [...entries.values()].some(entry => entry.child?.hasDraft());
   const heightLimit = () => Math.max(240, innerHeight - 230);
-  const reservedHeight = entry => (entry.height || Math.min(heightLimit(), 400)) + entry.header.offsetHeight + 2;
+  const reservedHeight = entry => (entry.height || Math.min(heightLimit(), 400)) + entry.header.offsetHeight + (entry.slot.querySelector(".semantic-summary")?.offsetHeight || 0) + 2;
   const scrollRoot = container.closest("#diff-panel");
   const mobileActions = createMobileActions({ panel: scrollRoot, enabled: () => active && snapshot().activeTab === "diff", notify: actions.notify, onClear: actions.clearSelection });
   let phasePreparation = null, phaseFocusId = null;
@@ -106,6 +107,13 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     entry.review.textContent = entry.reviewPending ? "Saving…" : reviewed ? "✓ Reviewed" : "Mark as reviewed";
     entry.review.setAttribute("aria-pressed", String(reviewed));
     entry.review.disabled = entry.reviewPending || current.session.status !== "open";
+    const summaryControl = actions.fileSummaryControl?.(entry.file);
+    if (!summaryControl) { entry.summaryControl?.remove(); entry.summaryControl = null; }
+    else if (!entry.summaryControl) {
+      const template = document.createElement("template"); template.innerHTML = summaryControl;
+      entry.summaryControl = template.content.firstElementChild;
+      entry.header.insertBefore(entry.summaryControl, entry.review);
+    }
     if (collapsed) entry.slot.style.minHeight = "44px";
     else if (!entry.frame) entry.slot.style.minHeight = reservedHeight(entry) + "px";
   }
@@ -268,6 +276,9 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     mobileActions.update();
     if (!active || disposed) return;
     if (phasePreparation) return;
+    if (deferredRender && !hasDraft()) {
+      deferredRender = false; render(); return;
+    }
     const key = keyOf(snapshot().session);
     if (key !== mountKey) {
       if (hasDraft()) {
@@ -451,6 +462,17 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     },
     get active() { return active; },
     render(files, { proposalActivityId = null } = {}) {
+      const nextActive = preferred === "monaco" && !proposalActivityId && !failed;
+      // A paged refresh temporarily supplies an empty/partial file list.
+      // Keep the mounted comparison intact while it owns a draft, including
+      // when the draft's file disappears from the new comparison entirely.
+      if (active && nextActive && hasDraft() && (mountKey !== keyOf(snapshot().session)
+        || files.length !== latestFiles.length || files.some((file, index) => file.path !== latestFiles[index].path))) {
+        deferredRender = true;
+        notice.textContent = "Your draft is retained while the file list reloads. Save or cancel it to update the list.";
+        sync(); return [];
+      }
+      deferredRender = false;
       latestFiles = files; active = preferred === "monaco" && !proposalActivityId && !failed;
       region.hidden = preferred !== "monaco"; comments.hidden = files.length === 0;
       commentControls();
@@ -463,6 +485,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     },
     commit(html) {
       if (!active) return false;
+      if (deferredRender) return true;
       if (phasePreparation && snapshot().step?.id !== phasePreparation.stepId) cancelPhase();
       const template = document.createElement("template"); template.innerHTML = html;
       const native = new Map([...template.content.children].map(node => [node.dataset.path, node]));
@@ -502,6 +525,9 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     deactivate() { releasePhaseAnchor(); cancelPhase(); active = false; closeAll(); region.hidden = true; comments.hidden = true; },
     async reveal(path, side, line, endLine = line) {
       if (line === undefined) return revealFile(path);
+      // A retained draft can keep the previous comparison mounted. Never
+      // interpret a current summary's coordinates against those old models.
+      if (hasDraft() && mountKey !== keyOf(snapshot().session)) return false;
       cancelFileScroll?.();
       releasePhaseAnchor();
       if (!owns(path)) return false;

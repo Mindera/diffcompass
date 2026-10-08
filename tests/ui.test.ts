@@ -1680,7 +1680,7 @@ test("files expand and collapse in place while clicks and selections expose scop
   expect(app).toContain('const row = hunk?.querySelector(".diff-row.addition[data-line], .diff-row.deletion[data-line], .diff-row[data-line]")');
   expect(app).toContain("const viewportAnchor = (viewportOrigin || requestedFull !== undefined) ? captureFileViewport(path, viewportOrigin) : null");
   expect(app).toContain("next, undefined, contextButton");
-  expect(app).toContain("if (!viewportAnchor) {");
+  expect(app).toContain("if (!viewportAnchor && !state.monacoRenderer?.hasDraft()) {");
   expect(app).toContain("if (viewportAnchor) restoreFileViewport(viewportAnchor)");
   expect(html).toContain('data-selection-tool="copy"');
   expect(html).toContain('data-selection-tool="edit"');

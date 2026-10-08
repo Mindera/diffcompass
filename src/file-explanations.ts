@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { comparisonFingerprint } from "./dry-runs.ts";
 import type { GitComparison, TourAnchor, TourOutline } from "./types.ts";
 
-export const FILE_EXPLANATION_PROMPT = `Each fileChanges.summary is the explanation shown under "What changed" for that file, not a declaration inventory. Write 2–3 concise plain-text sentences, at most 120 words: explain the concrete before/after mechanism (or the role introduced/removed for an added/deleted file), why that mechanism matters in this change, and one specific review concern when supported. Explain relationships or sequencing that a list of symbols would miss. Do not merely list added functions, properties or inputs, or say "the code changed". For documentation, describe the changed guidance, not an implemented runtime effect. Ground claims in the selected comparison and inspected evidence; distinguish intended outcomes from demonstrated behaviour. Do not invent author intent, test results, runtime guarantees, or unsupported rationale. For example, "The host retains a popped modal until its exit completes, so navigation can choose the destination before the sheet disappears. Check that cancellation also releases the retained entry." is useful only when the code supports that mechanism. Do not copy the example into unrelated reviews. Do not supply summarySource: the server records source identity.`;
+export const MAX_FILE_EXPLANATION_LENGTH = 4_000;
+export function usableFileExplanation(value: unknown): value is string {
+  return typeof value === "string" && Boolean(value.trim()) && value.length <= MAX_FILE_EXPLANATION_LENGTH;
+}
+
+export const FILE_EXPLANATION_PROMPT = `Every changed file must have a usable fileChanges.summary in at least one phase, including files without a tour stop. Group supporting files under a relevant phase; do not add stops merely to satisfy file coverage. Use the exact changed path (the new path for a rename). Each fileChanges.summary is the explanation shown under "What changed" for that file, not a declaration inventory. Write 2–3 concise plain-text sentences, at most 120 words and ${MAX_FILE_EXPLANATION_LENGTH} characters: explain the concrete before/after mechanism (or the role introduced/removed for an added/deleted file), why that mechanism matters in this change, and one specific review concern when supported. Explain relationships or sequencing that a list of symbols would miss. Do not merely list added functions, properties or inputs, or say "the code changed". For documentation, describe the changed guidance, not an implemented runtime effect. Include generated files, binaries and files in any language: explain only what the captured evidence supports and explicitly state any inspection limitation instead of omitting the file or inventing an explanation. Ground claims in the selected comparison and inspected evidence; distinguish intended outcomes from demonstrated behaviour. Do not invent author intent, test results, runtime guarantees, or unsupported rationale. For example, "The host retains a popped modal until its exit completes, so navigation can choose the destination before the sheet disappears. Check that cancellation also releases the retained entry." is useful only when the code supports that mechanism. Do not copy the example into unrelated reviews. Do not supply summarySource: the server records source identity.`;
 
 export interface FileExplanation {
   status: "available" | "missing" | "stale";
@@ -29,6 +34,7 @@ export function fileExplanationFor(comparison: GitComparison, outline: TourOutli
   const result: FileExplanation = { status: "missing", message: "No explanation for this file yet. Start a tour or ask the agent about this change.", entries: [], omitted: 0 };
   const file = comparison.files.find((entry) => entry.path === path);
   if (!file || !outline) return result;
+  result.message = "This tour has no saved explanation for this file. Ask the agent about this change.";
   const source = fileSummarySource(comparison);
   const lines = { old: new Set<number>(), new: new Set<number>() };
   for (const hunk of file.hunks) for (const row of hunk.rows) if (row.kind !== "meta") {
@@ -41,7 +47,7 @@ export function fileExplanationFor(comparison: GitComparison, outline: TourOutli
     if (!change) continue;
     const steps = phase.steps.filter((step) => step.anchor.path === path);
     if (!source || change.summarySource !== source || steps.some((step) => step.outdated)) { stale = true; continue; }
-    if (typeof change.summary !== "string" || !change.summary.trim() || change.summary.length > 4_000) continue;
+    if (!usableFileExplanation(change.summary)) continue;
     if (result.entries.length >= 6) { result.omitted++; continue; }
     const validSteps = steps.filter(({ anchor }) => {
       if (!Number.isSafeInteger(anchor.startLine) || !Number.isSafeInteger(anchor.endLine) || anchor.startLine < 1 || anchor.endLine < anchor.startLine) return false;
