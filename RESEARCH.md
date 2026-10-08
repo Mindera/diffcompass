@@ -1,13 +1,119 @@
 # DiffCompass feature inventory and research
 
-Inventory started 2026-10-03; current delivery/status refresh: 2026-10-07.
+Inventory started 2026-10-03; current delivery/status refresh: 2026-10-08.
 The historical audits and isolated handoffs are preserved separately from the
 current merged main and published baseline. The
 [roadmap](ROADMAP.md) is the delivery-status index and the
 [README](README.md#capabilities) describes user entry points. A code symbol,
 passing test, local commit and published release are different kinds of evidence.
 
+## Current delivery and verification (2026-10-08)
+
+This checkpoint supersedes the older delivery/prototype descriptions where
+later merged work changed them. All historical handoffs, failures and enumerated
+assumptions below remain dated evidence. Two user-requested rebases completed
+cleanly and preserved the feature showcase; this branch's diff remains docs-only.
+
+### Newly merged source and reachability
+
+Authenticated PR metadata and fetched main identify
+`607e18b807f53149917dad2e3bfbd7108c919056`. Latest release remains v2.0.0,
+published 2026-09-29. No installed-version query or installation was performed.
+
+- **Diagrams** now contains Architecture & design, Blast radius, Call flows,
+  Sequence diagrams and Data & lifecycle; artifact-dependent categories remain
+  conditional. v2.0.0 uses the older Maps labels.
+- **Monaco** is reachable from Diff → Diff renderer, with Shiki default. This
+  is merged app code, no longer merely the original isolated prototype.
+- **What changed**, after PR #9, is reachable from file headers in Shiki and
+  Monaco Diff mode outside tours/proposal previews. Existing tour explanations
+  lead, followed by collapsed parser details and captured source navigation.
+  Asking about the file prepares the existing composer without sending.
+- **Coverage:** new tours require a usable explanation for every changed file,
+  including files without a stop; at most two repair attempts precede an explicit
+  failure. Existing tours are not backfilled. Explanations can cover all file
+  types; parser details remain TS/TSX/Kotlin-only. Coverage does not prove prose
+  accuracy, author intent or runtime behavior.
+- **Persistence/export:** existing tour summaries carry comparison identity and
+  persist with the tour. Projection is bounded to six phase entries/eight related
+  stops per entry. Parser ASTs/results remain derived. Tour evidence uses the same
+  immutable source/cache, bounded to eight changes, 12,000 characters and 1,500ms
+  wait. Exports disclose explanation coverage (up to 200 files) separately from
+  requested parser results still in the 32-file cache.
+- **Draft recovery:** paged refresh and late Monaco failures preserve drafts and
+  old models; changed-source saves remain blocked until the draft is resolved.
+- **GitHub suggestions:** queue/return saved reviewer edits without applying code;
+  confirm the selected set and head to publish a neutral COMMENT review. Ordinary
+  comments stay drafted and the tour stays open. Apply locally is separate.
+  Exact regular-text After source, at most 100 contiguous lines in one PR hunk,
+  8,000-character comment and 32,000-character context bounds apply. Durable
+  receipts protect retries; GitHub remains the final anchor authority.
+- **Decision log** is still absent from main; its former local branch/worktree
+  is no longer listed. The language-provider probe is now in main but remains
+  research without a bundled project-aware Kotlin/Android provider.
+
+Inspected authorities: public/index.html, public/app.js,
+public/monaco-controller.mjs, public/semantic-diff.js and shared presentation;
+src/file-explanations.ts, src/semantic-diff-tour.ts, src/semantic-diff-export.ts,
+src/reviewer-suggestions.ts, src/github-suggestions.ts and existing
+session/store/server/GitHub routes. Relevant tests/scripts were located, not
+executed as application validation. Overall impact diagnostics still lack export
+parity. This docs task adds no viewer, model, resolver or generation workflow.
+
+### Attributed PR evidence, not fresh application tests
+
+| PR | Reported verification | Boundary |
+| --- | --- | --- |
+| [#5](https://github.com/rcosteira79/diffcompass/pull/5) | 779 tests passed, 8 skipped; full local Monaco Chrome suite reported passing. | Body retains draft-era text/manual gates; authenticated merged state establishes delivery, not closure of every historical gate. |
+| [#7](https://github.com/rcosteira79/diffcompass/pull/7) | 879 passed, 8 skipped; suggestion browser flow passed. Broader local 14/17; navigation CI failed a 60px phase assertion on feature and base. | No real GitHub suggestion review was published during validation; provider-shaped fixtures are not actual publication evidence. |
+| [#6](https://github.com/rcosteira79/diffcompass/pull/6) | 951 passed, 0 failed/skipped, 7,515 assertions/119 files; summary/tour/export/caption and compiled TS/TSX/Kotlin smoke reported passing. | Scripted explanation tests establish plumbing, not model prose quality. Later navigation correction is distinct from earlier failures. |
+| [#8](https://github.com/rcosteira79/diffcompass/pull/8) | 943 passed, 8 skipped, 0 failed; delayed-decode phase regression passed. | Test-only change; these counts belong to its snapshot. |
+| [#9](https://github.com/rcosteira79/diffcompass/pull/9) | 962 passed, 0 failed; 42 startup/phase/summary checks, 8 draft/recovery checks, before/after group and 12 corrected-fixture checks reported passing. Native macOS package/isolated install and six outside-checkout checks passed; seven CI checks reported passing. | Local macOS explorer-height assertion also failed with base renderer; retained separately. Package/browser/CI checks are PR-attributed, not rerun here. |
+
+The old app 15/16, plain-iframe 14/16, outline-error/setup timeout, prototype
+badge timeout and socket failures remain below. Later checks do not erase them
+or certify all browsers, real devices, accessibility or general performance.
+
+### Rebase and showcase assumptions (2026-10-08)
+
+Fresh guide verification: `node /tmp/check-diffcompass-showcase.mjs` passed
+12 isolated Chrome groups covering 18 dialogs, four scenes, keyboard/focus,
+filters/search, source-status wording, offline assets, print and 320/390/768px
+layouts, with zero page errors or HTTP requests. Desktop/mobile captures were
+inspected. `python3 /tmp/check-showcase-rebase-docs.py` passed 54 local link/anchor
+checks, preservation of all 168 prior assumptions, upstream fixture preservation,
+exact archival image bytes, rebase ancestry and six-file docs-only scope.
+`node --check` on the extracted guide script and `git diff --check` passed.
+Logs: `/tmp/diffcompass-showcase-rebased-browser.log` and
+`/tmp/diffcompass-showcase-rebased-docs.log`; these are transient local evidence.
+Application test suites and browser flows were not rerun here.
+
+1. The guide follows source main `607e18b`, not the unchanged published binary.
+   Merged work supersedes earlier unmerged-syntax, prototype-only Monaco and
+   Shiki-only panel descriptions. This task changes no application runtime.
+2. Fresh browser checks apply only to the standalone guide. Source inspection
+   establishes code paths; app/browser/CI/package results stay PR-attributed.
+3. All 168 earlier assumptions (160 original/isolated/preload plus eight October 7
+   refresh assumptions) remain verbatim. Historical paths, refs and temporary
+   evidence are not promises of current availability.
+4. The 18-card guide separates ten released capabilities, six merged additions,
+   one historical unmerged implementation and one research prototype. These are
+   editorial groupings, not test coverage or additional runtime models.
+5. Illustrations use invented examples. Embedded screenshots retain exact bytes
+   and legacy branding, explicitly labelled as archival rather than current UI.
+6. Saved agent explanations, derived parser evidence and manual decision records
+   have distinct provenance and persistence. Coverage is not correctness; syntax
+   is not runtime evidence, and stale sources remain distinct.
+7. The guide is one offline HTML file with embedded assets and ephemeral filters,
+   no dependencies, analytics or app-state persistence. Optional external links
+   are the only intended network navigation. Browser checks are not a full
+   assistive-technology, physical-device or performance audit.
+8. Only this branch is rebased/committed. No other checkout edits, agent messaging,
+   push, merge, release, install, runtime changes or fixture mutation are included.
+
 ## Current delivery and verification (2026-10-07)
+
+Historical checkpoint: the October 8 section above supersedes its delivery labels.
 
 This section is the current-status overlay. **Everything under the historical
 2026-10-04 topology and handoffs below remains dated evidence**, including its
@@ -790,7 +896,8 @@ pushes, releases or installation.
 
 ## Quick index
 
-- [Current delivery and verification](#current-delivery-and-verification-2026-10-07)
+- [Current delivery and verification](#current-delivery-and-verification-2026-10-08)
+- [October 7 checkpoint](#current-delivery-and-verification-2026-10-07)
 - [Where call flows appear](#where-call-flows-appear)
 - [Existing features](#existing-features)
 - [Local work and release status](#local-work-and-release-status)

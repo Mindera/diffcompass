@@ -1,59 +1,37 @@
-# Review branches — 2026-10-07
+# Review branches — 2026-10-08
 
-**Remote main is `e19cd7e`; the latest release is still v2.0.0 (`ec3c045`).**
-Sequence/code and its earlier prerequisites merged in
-[PR #3](https://github.com/rcosteira79/diffcompass/pull/3) on 2026-10-05; lifecycle
-layout/source-return fixes merged in [PR #4](https://github.com/rcosteira79/diffcompass/pull/4)
-on 2026-10-06. These changes are merged but unreleased.
+**Fetched main is `607e18b`; latest release remains v2.0.0.** Sequence/code,
+lifecycle improvements, optional Monaco, GitHub-native suggestions and
+What changed in both renderers are merged but unreleased (PRs #3–#9).
+See [ROADMAP](ROADMAP.md) for exact PR links and scope.
 
-For this documentation review, use
-`/Users/ricardo.costeira/.herdr/worktrees/diffcompass/research-docs` and compare
-`origin/main...review/research-docs`. Its own diff contains documentation only;
-it inherits the merged runtime. The separate `main` checkout under the same root
-is still at local `73f9247`, behind fetched remote main; do not mistake that cached
-checkout for the latest remote state.
+Review this branch at
+`/Users/ricardo.costeira/.herdr/worktrees/diffcompass/research-docs` with
+`git diff origin/main...review/research-docs`. It contains six documentation
+paths, including the standalone [feature guide](docs/feature-showcase.html).
+Both requested rebases preserved the showcase and replayed only docs commits.
 
-| Remaining review unit | Branch / worktree suffix | Observed tip / parent |
-| --- | --- | --- |
-| Documentation | `review/research-docs` / `research-docs` | Rebased on `e19cd7e`; current-status refresh plus preserved historical evidence. |
-| Decision log | `review/decision-log` / `decision-log` | `e0157cf` / `e19cd7e`; unmerged. |
-| Syntax diff | `review/syntax-diff` / `syntax-diff` | `cf6b2a6` / `73f9247`; unmerged and based before PR #4. |
-| Viewer/provider prototype | `review/diff-viewer-prototype` / `diff-viewer-prototype` | `72449d6` / `e19cd7e`; unmerged experiment. |
+| Review item | Current observation |
+| --- | --- |
+| Documentation/showcase | `review/research-docs`, rebased on `607e18b`. |
+| Decision log | Absent from main. Last observed `e0157cf`; former branch/worktree no longer listed. Original `d5b8bd3` handoff remains historical evidence. |
+| Syntax diff | Merged and expanded into What changed; original `886e173` extraction is historical. |
+| Viewer prototype | Optional Monaco merged; original `2676dea` extraction is historical. The language probe still does not supply a production provider. |
 
-Worktrees above are under `/Users/ricardo.costeira/.herdr/worktrees/diffcompass/`.
-The original `8262d97` base and `0d22cbe` sequence extraction are now ancestors of
-remote main; the eager-excerpt follow-up is included in merged `cc6f99b`, not
-pending as three uncommitted files. Main also includes the optional-guidedViews
-guard. The historical warning about extracting the old base alone still explains
-that checkpoint, but is not a missing-guard warning about today's main.
+The separate local main checkout was observed at `57bf907`; the original
+Documents checkout remains frozen snapshot `39206b4`. Neither was switched or
+edited by this task. Machine-local paths and temporary logs are not portable
+deliverables. The snapshot and original 69-file extraction audit/668-test run
+do not validate later implementations or form a merge target.
 
-Review limits to retain:
+Current main includes the optional-guidedViews guard; its earlier baseline-only
+warning remains archived. Original pointer matrices, outline-error/setup timeout
+and prototype badge timeout remain historical failures. Later PR-specific
+browser/CI reports are separate, including PR #9's reported passing CI and
+base-reproduced local explorer-height failure. Only the standalone guide gets
+fresh browser validation here, not the application.
 
-- PR #3 reports 636 passing automated tests and separate browser/renderer checks;
-  PR #4 reports 652 and separate lifecycle/Chrome checks. Original isolated and
-  combined counts are preserved, not carried forward as fresh current-tip tests.
-- The earlier app 15/16, plain-iframe 14/16 and setup `outline` error/timeout are
-  historical failures. Later startup guards and Chrome native-content viewport
-  sizing/negative controls are separate evidence, not retroactive passes. Actual
-  OS background visibility, other browsers, touch and screen readers remain
-  unverified by the recorded work.
-- The prototype's last recorded full browser run failed badges keyboard activation;
-  successful retries did not establish its cause or a clean result. No new
-  prototype validation is claimed here, and no production Monaco migration is
-  approved. Scope-fold arrows remain dropped; inline context controls remain.
-- Overall impact repair warnings/omission reasons still lack export parity.
-  Decision-log provenance and syntax grammar/cache/export limits remain as
-  documented. Combining their shared integration edits needs its own review.
-
-The frozen original checkout at `/Users/ricardo.costeira/Documents/diffcompass`
-and safety snapshot `39206b4` remain preservation artifacts, not merge targets.
-The historical 69-file extraction audit and 668-test combined pass do not approve
-integration. No push, merge, release, installation or fixture shutdown is part
-of this documentation refresh. Local `/tmp` logs and fixture URLs are historical,
-transient evidence; this refresh does not assert they still exist or serve the
-current branch.
-
-Use [README](README.md) for behavior and [ROADMAP](ROADMAP.md) for delivery.
-[RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-07) has the latest
-fact checks, the full chronological evidence, all 65 original peer + 17 audit
-assumptions, isolated handoff assumptions and explicitly superseded decisions.
+[RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) retains
+every historical assumption, with later source behavior explicitly superseding
+old delivery/prototype/Shiki-only labels. [README](README.md) explains usage.
+No push, merge, release, installation or fixture mutation is part of this work.

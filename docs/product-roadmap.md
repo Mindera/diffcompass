@@ -1,13 +1,14 @@
 # Product refinement roadmap
 
-The canonical [roadmap](../ROADMAP.md) distinguishes released v2.0.0, changes
-merged on main but not yet released, unmerged review branches, prototypes and
-research-only ideas. [Review branches](../REVIEW_BRANCHES.md) is the current
-reviewer entry point. Sequence/code, the earlier fixes and lifecycle improvements
-are merged; decision log, syntax diff and viewer/provider experiments remain
-separate review work as of 2026-10-07.
+The canonical [roadmap](../ROADMAP.md) distinguishes released v2.0.0, merged but
+unreleased additions, unmerged work and research. As of 2026-10-08, sequence/code,
+lifecycle improvements, opt-in Monaco, GitHub-native suggestions and **What
+changed** in both renderers are merged. Decision log remains unmerged; the
+language-provider probe remains research.
 
-See the [README](../README.md#capabilities) for entry points, the
-[research inventory](../RESEARCH.md) for current evidence and clearly dated
-historical checks/assumptions, and [release history](roadmap-history.md) for
+Use the [feature guide](feature-showcase.html) for an illustrated overview,
+[README](../README.md#capabilities) for entry points,
+[Review branches](../REVIEW_BRANCHES.md) for scope, and
+[RESEARCH](../RESEARCH.md#current-delivery-and-verification-2026-10-08) for
+dated evidence and assumptions. [Release history](roadmap-history.md) retains
 earlier milestones. This page is a pointer, not a separate status list.

@@ -1,67 +1,56 @@
 # Roadmap
 
-This is the canonical delivery roadmap, refreshed on **2026-10-07**. The
-[README](README.md#capabilities) describes entry points, [Review branches](REVIEW_BRANCHES.md)
-identifies current review targets, and [RESEARCH](RESEARCH.md) preserves dated
-implementation evidence, verification and every recorded assumption.
-[Release history](docs/roadmap-history.md) retains earlier milestones.
-
-States distinguish **released**, **merged but unreleased**, **unmerged review
-branch**, **prototype** and **research-only**. A passing test or merge does not
-establish release delivery or coverage beyond the reported checks.
+Canonical delivery state, checked **2026-10-08** against fetched main `607e18b`.
+[README](README.md#capabilities) gives entry points,
+[the feature guide](docs/feature-showcase.html) illustrates them, and
+[RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
+dated checks, failures and assumptions. [Review branches](REVIEW_BRANCHES.md)
+identifies the remaining scope; [release history](docs/roadmap-history.md)
+retains earlier milestones.
 
 ## Released baseline
 
-The latest published release is
-[v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0), published
-2026-09-29 at peeled tag commit `ec3c045`. Authenticated release metadata was
-checked on 2026-10-07. Freshly fetched `origin/main` is `e19cd7e`, ahead of that
-release. The installed command was last observed as 2.0.0 on 2026-10-04; it was
-not queried, updated or installed during this documentation refresh.
-
-| Feature already delivered by v2.0.0 | Reachable scope and boundary |
-| --- | --- |
-| Structural blast radius | Maps → Explore impact: per-symbol callers/references, files, test evidence, source/return navigation, provider/confidence/completeness and bounded counts. Static relationships are not runtime impact. |
-| Dry runs | Dry runs tab and linked Simulate actions: editable scenarios, on-demand preparation/cancellation, independent steps, persisted traces and offline export. These are simulations, not application execution. See the [specification](docs/dry-run-walkthrough-spec.md). |
-| Archify maps | Maps → Understand the change: bundled local validated interactive architecture/sequence and supported data/lifecycle maps, inspection/routes, evidenced Before/Delta/After and last-good artifacts. Mermaid remains the fallback. |
-| Native call flows | Changes/Before/After, branches, recursion and source evidence already exist. v2.0.0 routes converted simple flows to Workflow maps, leaving only unconverted flows in the native category; the merged consolidation below fixes that exposure. |
+Latest release: [v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0),
+2026-09-29, peeled commit `ec3c045`. Installed version was last observed as 2.0.0
+on 2026-10-04, not freshly queried. Tours, text/word diffs, Symbol Peek,
+conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
+radius are already released. Static maps are not execution traces; dry runs
+are simulations.
 
 ## Merged on main, not yet released
 
-| Change | Delivery evidence | Scope and remaining qualification |
+| Change | Delivery | Scope and boundary |
 | --- | --- | --- |
-| Sequence source navigation and Code steps | [PR #3](https://github.com/rcosteira79/diffcompass/pull/3), merged 2026-10-05 as `73f9247`; includes `716edb8`, `0d22cbe` and `cc6f99b`. | Resizable/collapsible pane, eager saved excerpts, grouped anchors, source-side markers, sequential live definition candidates, exact Paths selection and source return. Scrolling now preserves selection. Offline lookup remains unavailable. |
-| Native Call flows and earlier fixes | `8262d97` is included in PR #3. | Native Call-flow consolidation, browser-origin map preferences/tooltips/motion, bounded impact repair and final-commentary filtering are merged. The optional-guidedViews guard is present on main; the old isolated-base guard warning is historical. Overall impact warnings/omission reasons still lack export parity. |
-| Lifecycle layout and map source return | [PR #4](https://github.com/rcosteira79/diffcompass/pull/4), merged 2026-10-06 as `e19cd7e`. | Branching/looping lifecycle layout preserves initial/terminal semantics, validates collisions and retains Mermaid fallback. Source return preserves camera/inspection/scroll; visible sections use consecutive numbering. |
+| Sequence Code steps and earlier fixes | [PR #3](https://github.com/rcosteira79/diffcompass/pull/3), `73f9247` | Resizable/collapsible pane, eager saved excerpts, candidate lookup and source return; native Call-flow consolidation, map preferences, optional-guidedViews guard, impact recovery and final-commentary filtering. Overall impact diagnostics still lack export parity. |
+| Lifecycle layout and source return | [PR #4](https://github.com/rcosteira79/diffcompass/pull/4), `e19cd7e` | Branching/looping state maps, collision checks and source-return context with Mermaid fallback. |
+| Opt-in Monaco and review interactions | [PR #5](https://github.com/rcosteira79/diffcompass/pull/5), `57bf907` | Normal Diff renderer selector, Shiki default. Captured source, lazy editors, inline edit drafts and comments/PR threads reuse the session. This is merged app code, beyond the original isolated prototype. |
+| GitHub-native suggestions | [PR #7](https://github.com/rcosteira79/diffcompass/pull/7), `13951a2` | Queue/return saved edits; confirm selected suggestions and head for neutral COMMENT publication. Apply locally remains separate. Exact ranges and durable receipts bound publication/retries. |
+| What changed and parser evidence | [PR #6](https://github.com/rcosteira79/diffcompass/pull/6), `ffc7bf4` | Tour-agent explanations plus collapsed TS/TSX/Kotlin details, source links, tour evidence and separately disclosed explanation/parser export coverage. |
+| Phase-anchoring regression checks | [PR #8](https://github.com/rcosteira79/diffcompass/pull/8), `af709b1` | Tests for existing same-turn geometry correction during delayed image decoding; no production changes. |
+| Monaco What changed and draft recovery | [PR #9](https://github.com/rcosteira79/diffcompass/pull/9), `607e18b` | Same panel in both renderers. New tours require all-file explanation coverage, with at most two repairs; old tours are not backfilled. Refresh/failure retains drafts and old models; stale saves remain blocked. |
 
-The old three-file eager-excerpt follow-up is included in the later merged
-sequence work; it is no longer an uncommitted feature. PR #3 reports a 636-test
-verify pass plus separate browser/renderer checks. PR #4 reports a 652-test verify
-pass plus captured fixture and Chrome checks. These are **PR-reported results**,
-not fresh runtime/browser runs by this documentation agent; full details and the
-earlier failed runs remain separately attributed in RESEARCH.
+Current navigation is **Diagrams → Architecture & design / Blast radius /
+Call flows / Sequence diagrams / Data & lifecycle**. v2.0.0 uses Maps.
+The per-file **What changed** panel appears in Diff mode outside the guided tour
+and proposal previews, in both renderers.
 
-The original app 15/16 and plain-iframe 14/16 pointer matrices and setup
-null-`outline` error/timeout remain historical evidence. Later work added startup
-guards and diagnosed a Chrome test-viewport sizing issue, with native-content
-sizing and raw negative controls. Do not promote historical failures to passes
-or generalize the later Chrome checks to Safari, Firefox, physical touch,
-assistive technology or actual OS background visibility.
+Latest PR #9 reports 962 passing tests, browser/package checks and seven passing
+CI checks; it also retains a macOS explorer-height failure reproduced on base.
+These are attributed reports, not fresh app tests by the docs agent. Earlier
+pointer matrices, badge timeout, socket and navigation failures remain dated
+evidence; later successes do not erase them or certify every browser/device.
 
-## Still on separate review branches
+## Unmerged work
 
-| Review unit | Observed local tip / base | Verification boundary |
-| --- | --- | --- |
-| Decision log | `review/decision-log`: `e0157cf` / `e19cd7e` | Unmerged reviewer-curated evidence index in Conversations. Original `d5b8bd3` isolated run: 597 tests and 18 Chrome checks passed. Those counts are not a fresh run of this rebased tip; all 17 product assumptions and process clarifications are retained. |
-| Syntax diff | `review/syntax-diff`: `cf6b2a6` / `73f9247` | Unmerged bounded TS/TSX/Kotlin summaries, captured-source navigation and requested-cache exports. Original `886e173` isolated run: 602 tests, 11 Chrome checks and host compiled smoke passed. All original 30 plus isolated 32 assumptions remain; current-tip/release/platform validation is separate. |
-| Viewer/provider prototype | `review/diff-viewer-prototype`: `72449d6` / `e19cd7e` | Unmerged experiment, no production migration. Original `2676dea` run passed 618 tests but its badges keyboard browser check timed out; diagnostic/retry passes did not establish a clean browser result. No newer browser result was verified here. |
-| Documentation | `review/research-docs`, rebased on `e19cd7e` | Documentation-only changes over merged main. Current statuses and historical records are separate; link/consistency/preservation checks do not substitute for runtime verification. |
+Decision log is absent from main. Last recorded implementation: `e0157cf`
+(original extraction `d5b8bd3`); its former branch/worktree is no longer listed
+locally. The 597-test/18-Chrome-check handoff and all 17 product assumptions
+remain preserved without implying current checkout availability or approval.
 
-These branches originally shared `8262d97`; their current bases now differ.
-Shared app/export/server/session integration changes still need review when
-combining unmerged features. The `39206b4` safety snapshot and earlier combined
-668-test pass are historical evidence, not an integration or release candidate.
-The old extraction audit remains recorded without asserting current merge safety.
+`review/research-docs` contains only documentation and the offline feature guide.
+The safety snapshot `39206b4` and 668-test combined run are historical, not a
+merge/release candidate. Syntax and Monaco are now merged; their old isolated
+counts do not validate their later expanded implementations.
 
 ## In progress
 
@@ -71,23 +60,18 @@ The old extraction audit remains recorded without asserting current merge safety
 
 ## Prototypes and research
 
-- **Isolated prototypes:** the Monaco comparison lab and language-support probe
-  live in `review/diff-viewer-prototype`, at `prototypes/diff-viewer/README.md`
-  and `prototypes/language-support/README.md`; see [branch locations](REVIEW_BRANCHES.md).
-  Neither is a production viewer migration or a bundled language provider.
-- **Approved direction, incomplete delivery:** a curated shared provider layer
-  with TypeScript/Kotlin defaults, native inline Peek and keyboard-accessible
-  code-context-menu actions. This is review assistance, not compiler-grade IDE
-  support. Historical source identity and project-import trust remain constraints.
-- **Viewer gate still open:** unified deleted-line actions, hidden-annotation
-  indicators, full review workflow parity, version-aware refresh/navigation,
-  exports, accessibility and performance. Scope-folding arrows were explicitly
-  dropped; local unchanged-context expansion/re-collapse remains required.
-- **Research-only alternatives:** React Flow, CodeMirror and provider candidates
-  may be evaluated where useful; no new dependency or replacement is promised.
-- **Unsupported claims:** static maps and dry runs are not execution traces;
-  syntax/hover does not establish project-aware IntelliSense; the Kotlin probe
-  does not establish real Android/KMP or compiler correctness.
+- The [viewer lab](prototypes/diff-viewer/README.md) and
+  [language-support probe](prototypes/language-support/README.md) are now in main.
+  Monaco's optional app renderer is separate from the lab's historical rollout
+  state. The language probe remains research, not a bundled project-aware
+  Kotlin/Android/KMP provider.
+- A curated provider layer remains incomplete. Highlighting, hover and source-only
+  fixtures do not establish compiler-grade IDE support.
+- Specialized Shiki fallbacks and device/performance limits remain. Scope-fold
+  arrows were dropped; inline context controls remain. See
+  [Monaco behavior](README.md#monaco-preview) and the attributed evidence.
+- React Flow, CodeMirror and further provider candidates remain research-only
+  alternatives; no new dependency or replacement is promised by this docs work.
 
 ## Delivered product refinements
 
