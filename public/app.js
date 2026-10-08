@@ -5728,7 +5728,6 @@ async function navigate(direction) {
   state.monacoRenderer?.cancelPhase();
   state.navigationDirection = direction;
   setBusy(true, direction === "next" ? "Preparing the next stop…" : "Returning to the previous stop…");
-  let shouldFocus = false;
   try {
     const session = await api("/api/tour/navigate", { method: "POST", body: JSON.stringify({ direction }) });
     if (generation !== state.navigationGeneration) return;
@@ -5740,7 +5739,10 @@ async function navigate(direction) {
     renderSessionUpdate(previous);
     await ensureTourPhaseDiffs();
     if (generation !== state.navigationGeneration) return;
-    shouldFocus = true;
+    // Navigation includes mounting and revealing the destination, not only
+    // receiving its session. Keep controls/polling in the navigation state
+    // until that work finishes; user scrolling can still cancel the reveal.
+    await focusCurrentStep();
   } catch (error) {
     if (generation === state.navigationGeneration) { state.monacoRenderer?.cancelPhase(); toast(error.message); }
   } finally {
@@ -5749,7 +5751,6 @@ async function navigate(direction) {
     setBusy(false);
     renderTour();
   }
-  if (shouldFocus && generation === state.navigationGeneration) await focusCurrentStep();
 }
 
 async function toggleTourMode() {

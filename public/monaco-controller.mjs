@@ -556,6 +556,16 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
         const start = Math.min(targetIndex, ...visible), end = Math.max(targetIndex, ...visible);
         const direct = phaseFocusId === step.id || end - start > 12 || matchMedia("(prefers-reduced-motion: reduce)").matches;
         const corridor = direct ? [latestFiles[targetIndex]] : latestFiles.slice(start, end + 1);
+        // A stop near a file's end reveals following files too. Warm that
+        // destination viewport before scrolling, not only the files between
+        // the starting viewport and the target's file header.
+        let followingHeight = 0;
+        for (let index = targetIndex + 1; index < latestFiles.length && followingHeight < scrollRoot.clientHeight; index++) {
+          const file = latestFiles[index];
+          if (!corridor.includes(file)) corridor.push(file);
+          const slot = container.querySelector(`:scope > [data-path="${CSS.escape(file.path)}"]`);
+          followingHeight += slot?.getBoundingClientRect().height || 400;
+        }
         await Promise.all(corridor.filter(file => owns(file.path) && !snapshot().collapsed.includes(file.path)).map(async file => {
           const candidate = entries.get(file.path);
           (candidate.navigationHolds ||= new Set()).add(hold); warmed.push(candidate);
