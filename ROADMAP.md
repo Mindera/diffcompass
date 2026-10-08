@@ -1,8 +1,8 @@
 # Roadmap
 
-Canonical delivery state for v2.1.1, including the v2.1.0 feature baseline
+Canonical delivery state for v2.1.2, including the v2.1.0 feature baseline
 and the patch changes below.
-[README](README.md#capabilities) gives entry points,
+[README](README.md#run) gives entry points,
 [the feature guide](docs/feature-showcase.html) illustrates them, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
 dated checks, failures and assumptions. [Review branches](REVIEW_BRANCHES.md)
@@ -11,12 +11,22 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.1.1](https://github.com/Mindera/diffcompass/releases/tag/v2.1.1).
-The additions below are included. Installed version was last observed as 2.0.0
-on 2026-10-04, not freshly queried. Tours, text/word diffs, Symbol Peek,
+Latest release: [v2.1.2](https://github.com/Mindera/diffcompass/releases/tag/v2.1.2).
+The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.1.2
+
+- Point release checks and bundled macOS/Linux/Windows installers directly at
+  `Mindera/diffcompass`. Existing installations can upgrade through GitHub's
+  redirect from the previous repository address.
+- Simplify installation and update instructions, link the interactive feature
+  catalogue, refresh README screenshots, and preserve detailed usage and
+  contributor instructions in separate guides.
+- Pin all CI and release actions to full commit SHAs to meet Mindera's workflow
+  policy ([PR #16](https://github.com/Mindera/diffcompass/pull/16)).
 
 ## Released in v2.1.1
 
