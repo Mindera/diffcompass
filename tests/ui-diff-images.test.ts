@@ -90,9 +90,16 @@ test("PNG decoding finishes offscreen before insertion and position correction",
   await Promise.resolve();
   expect(loading.replacement).toBeNull();
   expect(h.positionCorrections).toBe(0);
+  let correctedAtInsertion = false;
+  const replace = loading.replaceWith.bind(loading);
+  loading.replaceWith = node => {
+    replace(node);
+    queueMicrotask(() => { correctedAtInsertion = h.positionCorrections === 1; });
+  };
   complete(); await pending;
   expect(loading.replacement.children[0]).toMatchObject({ decoded: true, alt: "After: screens/home.png" });
   expect(h.positionCorrections).toBe(1);
+  expect(correctedAtInsertion).toBe(true);
 });
 
 test("a late PNG decode cannot attach to a refreshed comparison", async () => {
