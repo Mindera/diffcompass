@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.1.2, including the v2.1.0 feature baseline
+Canonical delivery state for v2.1.3, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -11,11 +11,20 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.1.2](https://github.com/Mindera/diffcompass/releases/tag/v2.1.2).
+Latest release: [v2.1.3](https://github.com/Mindera/diffcompass/releases/tag/v2.1.3).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.1.3
+
+- Add a Markdown feature catalogue that renders on GitHub, link it from the
+  README, and explain how to download and open the interactive HTML catalogue.
+- Update the bundled skill to skip findings by default for ordinary tours of
+  the user's own or agent-written changes and enable findings for explicitly
+  requested PR tours. Explicit requests override either default; direct CLI
+  defaults remain unchanged ([PR #17](https://github.com/Mindera/diffcompass/pull/17)).
 
 ## Released in v2.1.2
 
