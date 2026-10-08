@@ -41,13 +41,13 @@ published 2026-09-29 at `ec3c045`. These additions are **merged but unreleased**
   regression coverage without production changes.
 
 Current entry points use **Diagrams**; v2.0.0 uses **Maps**. Impact analysis,
-dry runs and bundled Archify maps were already released. Decision log remains
-an unmerged historical implementation, absent from main. The language-provider
+dry runs and bundled Archify maps were already released. Decision log was
+scrapped; its implementation history is retained only in RESEARCH. The language-provider
 probe is research only; a project-aware Kotlin provider is not bundled.
 Installed version was last observed as 2.0.0 on 2026-10-04, not freshly queried.
 
 Download the [interactive feature guide](docs/feature-showcase.html) and open
-it in a browser for 18 illustrated capabilities, delivery filters and labelled
+it in a browser for 17 illustrated capabilities, delivery filters and labelled
 archival screenshots. [Review branches](REVIEW_BRANCHES.md) gives review scope,
 [ROADMAP](ROADMAP.md) gives delivery state, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
@@ -222,23 +222,6 @@ for detailed behavior and limits.
 Suggestion bundles retain text, binary, added, deleted, and renamed files. They
 never commit or push automatically, and the review cannot be completed while a
 proposal is pending. The reviewed working tree stays untouched until `Apply`.
-
-**Decision log (historical unmerged implementation; absent from main):** its
-recorded entry point was **Conversations → Decision log → Add
-decision**; use **Correct decision** or **Remove** on a card while the review is
-open. Manually record a decision or hypothesis (the default), citing 1–8
-existing messages, comments, findings or activity entries. “Recorded” is the
-reviewer's assertion, not proof of the original author's intent. Corrections
-retain captured evidence unless it is explicitly replaced; missing, edited,
-ambiguous or stale references are not silently retargeted. Entries persist with
-the session and appear in the existing Markdown/HTML exports. The captured
-comparison records the context at capture time, not the message's original
-authorship revision. This adds no generated rationale, immutable audit history,
-GitHub publication or historical source resolver.
-Code links require a fresh exact match; unavailable evidence remains inspectable
-as saved text. Nonempty logs appear in exports independently of other section
-filters, without live editing or source lookup. Old sessions without a log still
-load; saving through an older binary may discard the new optional data.
 
 ### Findings and evidence
 

@@ -14,6 +14,36 @@ later merged work changed them. All historical handoffs, failures and enumerated
 assumptions below remain dated evidence. Two user-requested rebases completed
 cleanly and preserved the feature showcase; this branch's diff remains docs-only.
 
+### Product decision: Decision log scrapped
+
+The user explicitly confirmed that Decision log was scrapped. It is removed
+from the feature showcase and current capability/review lists, not deferred or
+awaiting a merge. The guide now contains 17 capabilities: ten released, six
+merged but unreleased, and one research prototype. The earlier 18-card count
+and unmerged-work classification below describe the pre-cancellation checkpoint.
+All historical handoffs, results and assumptions remain unchanged as history.
+
+### Release-label clarification
+
+The user is preparing a new release. Authenticated release metadata still
+reported published v2.0.0 during this correction; the forthcoming version and
+contents are not assumed. The guide now labels post-v2.0.0 additions **New on
+main**, with the comparison baseline explicit. Its **Lifecycle layout
+improvements** and **Unified Call-flow view** cards name the newer work:
+lifecycle diagrams and native call flows already existed in v2.0.0. This
+clarification does not publish a release or reclassify historical evidence.
+
+Correction verification: the same isolated guide browser harness passed all
+12 groups for the 17 remaining cards, including absence of Decision log,
+explicit existing-map versus new-improvement wording, offline operation and
+320/390/768px layouts, with zero page errors or HTTP requests. Desktop/mobile
+captures were inspected. Documentation checks passed all 54 local links/anchors
+and confirmed all 176 prior assumptions in eleven lists remain verbatim.
+Extracted guide JavaScript syntax and whitespace checks passed. Logs:
+`/tmp/diffcompass-showcase-corrected-browser.log` and
+`/tmp/diffcompass-showcase-corrected-docs.log`. These are guide-only checks,
+not a new application or release validation run.
+
 ### Newly merged source and reachability
 
 Authenticated PR metadata and fetched main identify
@@ -48,9 +78,9 @@ published 2026-09-29. No installed-version query or installation was performed.
   Exact regular-text After source, at most 100 contiguous lines in one PR hunk,
   8,000-character comment and 32,000-character context bounds apply. Durable
   receipts protect retries; GitHub remains the final anchor authority.
-- **Decision log** is still absent from main; its former local branch/worktree
-  is no longer listed. The language-provider probe is now in main but remains
-  research without a bundled project-aware Kotlin/Android provider.
+- **Decision log was scrapped**, and is not a pending capability. Its historical
+  implementation remains documented below only for provenance. The language-provider
+  probe is in main but remains research without a bundled Kotlin/Android provider.
 
 Inspected authorities: public/index.html, public/app.js,
 public/monaco-controller.mjs, public/semantic-diff.js and shared presentation;

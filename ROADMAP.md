@@ -40,12 +40,13 @@ These are attributed reports, not fresh app tests by the docs agent. Earlier
 pointer matrices, badge timeout, socket and navigation failures remain dated
 evidence; later successes do not erase them or certify every browser/device.
 
-## Unmerged work
+## Cancelled work
 
-Decision log is absent from main. Last recorded implementation: `e0157cf`
-(original extraction `d5b8bd3`); its former branch/worktree is no longer listed
-locally. The 597-test/18-Chrome-check handoff and all 17 product assumptions
-remain preserved without implying current checkout availability or approval.
+**Decision log was scrapped by the user.** It is not a planned capability or
+pending merge. Its earlier implementation, verification and all 17 product
+assumptions remain in RESEARCH as historical evidence only.
+
+## Documentation review
 
 `review/research-docs` contains only documentation and the offline feature guide.
 The safety snapshot `39206b4` and 668-test combined run are historical, not a

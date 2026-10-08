@@ -14,9 +14,11 @@ Both requested rebases preserved the showcase and replayed only docs commits.
 | Review item | Current observation |
 | --- | --- |
 | Documentation/showcase | `review/research-docs`, rebased on `607e18b`. |
-| Decision log | Absent from main. Last observed `e0157cf`; former branch/worktree no longer listed. Original `d5b8bd3` handoff remains historical evidence. |
 | Syntax diff | Merged and expanded into What changed; original `886e173` extraction is historical. |
 | Viewer prototype | Optional Monaco merged; original `2676dea` extraction is historical. The language probe still does not supply a production provider. |
+
+Decision log was scrapped by the user and is not a remaining review candidate.
+Its implementation handoff is archived in RESEARCH only.
 
 The separate local main checkout was observed at `57bf907`; the original
 Documents checkout remains frozen snapshot `39206b4`. Neither was switched or
