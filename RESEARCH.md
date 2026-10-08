@@ -14,7 +14,55 @@ later merged work changed them. All historical handoffs, failures and enumerated
 assumptions below remain dated evidence. Two user-requested rebases completed
 cleanly and preserved the feature showcase; this branch's diff remains docs-only.
 
-### Product decision: Decision log scrapped
+### Published release v2.1.0
+
+Authenticated GitHub metadata confirms **[v2.1.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.0)**
+was published on **2026-10-08 at 19:40:18 UTC**, neither draft nor prerelease.
+Annotated tag object `3782f7fe5668bb2e2af22b42126c309b016a7ecb` points to commit
+`d889a0bfdcd629213367ca6ec617436094a76769`. GitHub's comparison with inspected
+main `607e18b807f53149917dad2e3bfbd7108c919056` reports two commits ahead, zero
+behind, with only `package.json` changed. These are the 2.1.0 version bump and
+release PR #10 merge. The inspected product features are therefore in the
+published release; this is source inclusion evidence, not a new binary test.
+
+The guide now contains **16 released capabilities and one research prototype**.
+Lifecycle diagrams and native call flows existed in v2.0.0; their newer layout,
+source-return and consolidation improvements are included in v2.1.0. Decision
+log remains scrapped. Language-provider research remains research. Installed
+version was not queried and no installation or release was performed here.
+
+This publication supersedes all earlier same-day “merged but unreleased” and
+“New on main” labels below, including the previous ten/six/one classification.
+Earlier checks, failures and all 176 existing assumptions remain historical
+evidence; publication does not turn those checks into current release validation.
+
+Fresh documentation verification: `node /tmp/check-diffcompass-showcase.mjs`
+passed all 12 isolated Chrome groups for the 17-card guide, including the
+16-released/one-research filter, v2.1.0 badges, dialogs, keyboard/focus, offline
+assets, print and 320/390/768px layouts. Zero page errors or HTTP requests;
+desktop and mobile detail captures inspected. `python3
+/tmp/check-showcase-rebase-docs.py` passed all 54 local link/anchor checks,
+verbatim preservation of the 176 previous assumptions, four separate release
+assumptions, exact archival assets and docs-only scope. Extracted guide script
+syntax and `git diff --check` passed. Logs:
+`/tmp/diffcompass-showcase-v210-browser.log` and
+`/tmp/diffcompass-showcase-v210-docs.log`. These checks validate the guide;
+application suites, release binaries and installations were not exercised here.
+
+### Release-update assumptions (2026-10-08)
+
+1. Published release metadata plus the peeled tag and comparison establish
+   source inclusion; they do not prove every package/platform or installation.
+2. Product descriptions reuse the inspected `607e18b` source because the release
+   comparison changes only `package.json`. No runtime reimplementation or new
+   application verification is implied by the documentation update.
+3. “Released · v2.1.0” means available in that release, not first introduced
+   there. The 16/one split is an editorial inventory, not a coverage metric.
+4. Existing historical assumptions and failures remain preserved; cancelled
+   Decision log and the language-provider prototype are not promoted by this
+   release. Installed-version, accessibility and performance limits are unchanged.
+
+### Product decision: Decision log scrapped (pre-release checkpoint)
 
 The user explicitly confirmed that Decision log was scrapped. It is removed
 from the feature showcase and current capability/review lists, not deferred or
@@ -23,7 +71,7 @@ merged but unreleased, and one research prototype. The earlier 18-card count
 and unmerged-work classification below describe the pre-cancellation checkpoint.
 All historical handoffs, results and assumptions remain unchanged as history.
 
-### Release-label clarification
+### Release-label clarification (pre-release checkpoint)
 
 The user is preparing a new release. Authenticated release metadata still
 reported published v2.0.0 during this correction; the forthcoming version and
@@ -44,7 +92,7 @@ Extracted guide JavaScript syntax and whitespace checks passed. Logs:
 `/tmp/diffcompass-showcase-corrected-docs.log`. These are guide-only checks,
 not a new application or release validation run.
 
-### Newly merged source and reachability
+### Newly merged source and reachability (pre-release checkpoint)
 
 Authenticated PR metadata and fetched main identify
 `607e18b807f53149917dad2e3bfbd7108c919056`. Latest release remains v2.0.0,

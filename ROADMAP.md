@@ -1,6 +1,7 @@
 # Roadmap
 
-Canonical delivery state, checked **2026-10-08** against fetched main `607e18b`.
+Canonical delivery state, checked **2026-10-08** against published v2.1.0
+(`d889a0b`), which includes the previously inspected main `607e18b`.
 [README](README.md#capabilities) gives entry points,
 [the feature guide](docs/feature-showcase.html) illustrates them, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
@@ -10,14 +11,15 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0),
-2026-09-29, peeled commit `ec3c045`. Installed version was last observed as 2.0.0
-on 2026-10-04, not freshly queried. Tours, text/word diffs, Symbol Peek,
+Latest release: [v2.1.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.0),
+2026-10-08 at 19:40:18 UTC, annotated tag peeled to `d889a0b`. The additions below
+are included. Installed version was last observed as 2.0.0 on 2026-10-04, not
+freshly queried. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
 
-## Merged on main, not yet released
+## Released in v2.1.0
 
 | Change | Delivery | Scope and boundary |
 | --- | --- | --- |
@@ -50,7 +52,7 @@ assumptions remain in RESEARCH as historical evidence only.
 
 `review/research-docs` contains only documentation and the offline feature guide.
 The safety snapshot `39206b4` and 668-test combined run are historical, not a
-merge/release candidate. Syntax and Monaco are now merged; their old isolated
+merge/release candidate. Syntax and Monaco are now released; their old isolated
 counts do not validate their later expanded implementations.
 
 ## In progress

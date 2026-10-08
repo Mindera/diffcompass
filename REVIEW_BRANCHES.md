@@ -1,8 +1,9 @@
 # Review branches — 2026-10-08
 
-**Fetched main is `607e18b`; latest release remains v2.0.0.** Sequence/code,
-lifecycle improvements, optional Monaco, GitHub-native suggestions and
-What changed in both renderers are merged but unreleased (PRs #3–#9).
+**Latest published release is v2.1.0 (`d889a0b`).** It includes the previously
+inspected main `607e18b`: sequence/code, lifecycle improvements, optional Monaco,
+GitHub-native suggestions and What changed in both renderers are released
+(PRs #3–#9). This documentation branch remains based on `607e18b`.
 See [ROADMAP](ROADMAP.md) for exact PR links and scope.
 
 Review this branch at
@@ -14,8 +15,8 @@ Both requested rebases preserved the showcase and replayed only docs commits.
 | Review item | Current observation |
 | --- | --- |
 | Documentation/showcase | `review/research-docs`, rebased on `607e18b`. |
-| Syntax diff | Merged and expanded into What changed; original `886e173` extraction is historical. |
-| Viewer prototype | Optional Monaco merged; original `2676dea` extraction is historical. The language probe still does not supply a production provider. |
+| Syntax diff | Released in v2.1.0 and expanded into What changed; original `886e173` extraction is historical. |
+| Viewer prototype | Optional Monaco released in v2.1.0; original `2676dea` extraction is historical. The language probe still does not supply a production provider. |
 
 Decision log was scrapped by the user and is not a remaining review candidate.
 Its implementation handoff is archived in RESEARCH only.

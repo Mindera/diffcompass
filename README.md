@@ -19,10 +19,10 @@ and complete a local or GitHub review without leaving the browser.
 
 ## Availability
 
-Delivery checked on **2026-10-08** against fetched `origin/main` `607e18b`.
-Latest published release remains
-[v2.0.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.0.0),
-published 2026-09-29 at `ec3c045`. These additions are **merged but unreleased**:
+Latest published release: **[v2.1.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.0)**,
+published **2026-10-08** at `d889a0b`. Authenticated release/tag metadata confirms
+it contains the previously inspected main `607e18b`; the two intervening commits
+change only `package.json`. These additions are **released in v2.1.0**:
 
 - [PR #3](https://github.com/rcosteira79/diffcompass/pull/3) and
   [PR #4](https://github.com/rcosteira79/diffcompass/pull/4): sequence Code steps,
@@ -82,7 +82,7 @@ your token. Users without repository access cannot install private releases.
 | Need | Command or option |
 | --- | --- |
 | Binary only; do not install skills | Append `--minimal` or `--binary-only` (`-Minimal` on Windows) |
-| Pin a release | `DIFFCOMPASS_VERSION=v2.0.0` before `bash` |
+| Pin a release | `DIFFCOMPASS_VERSION=v2.1.0` before `bash` |
 | Update | `diffcompass update [--version vX.Y.Z]` |
 | Roll back | `diffcompass rollback [--to X.Y.Z]` |
 | Preview uninstall | `diffcompass uninstall --dry-run` |
@@ -174,7 +174,7 @@ Application appearance (`System`, `Light`, `Dark`) is independent of syntax
 themes (`GitHub`, `Vitesse`, `DiffCompass`, and Catppuccin Frappé, Macchiato,
 or Mocha).
 
-**What changed (merged, unreleased):** outside the guided tour, open
+**What changed (released in v2.1.0):** outside the guided tour, open
 **Diff → a changed file's header → What changed** in either Shiki or Monaco.
 The existing tour agent's explanation leads with the before/after mechanism and
 why it matters. **All code details** reveals bounded parser-backed declaration
@@ -198,7 +198,7 @@ separately from requested parser results still in the 32-file cache. Parser
 bounds include four concurrent requests, 256,000 bytes and 10,000 lines per
 version, 1,000 declarations and 200 displayed changes.
 
-**Optional Monaco renderer (merged, unreleased):** choose **Monaco** in
+**Optional Monaco renderer (released in v2.1.0):** choose **Monaco** in
 **Diff → Diff renderer**; Shiki remains the default. Captured read-only source,
 lazy editors, local workers/assets and review actions share the existing session.
 Paged refresh and late renderer failures retain unsaved drafts with their
@@ -236,7 +236,7 @@ proposal is pending. The reviewed working tree stays untouched until `Apply`.
 
 ### Architecture and analysis
 
-On current main, **Diagrams** groups **Architecture & design**, **Blast radius**,
+In v2.1.0, **Diagrams** groups **Architecture & design**, **Blast radius**,
 **Call flows**, **Sequence diagrams** and **Data & lifecycle**. Categories that
 need saved artifacts appear when that data exists. The released v2.0.0 labels
 are **Maps → Understand the change / Explore impact**. Release packages include
@@ -261,17 +261,17 @@ an incomplete Before view does not imply that missing connections never existed.
 | Adaptive diagrams | Evidence-gated state machines and data-model/ER views, repository observations, changed-file support, notation legends, and honest empty results when no extra diagram is justified. |
 | Blast radius (Explore impact in v2.0.0) | Per-symbol static caller/reference graphs, involved files, related tests, source navigation and return, with provider/confidence/completeness labels and bounded displayed counts. These are evidence of structural relationships, not runtime execution. |
 
-**Call-flow consolidation (merged on main, unreleased):** open **Diagrams → Call
+**Call-flow consolidation (released in v2.1.0):** open **Diagrams → Call
 flows**. Every saved call flow uses the existing native viewer, including Changes,
 Before and After, branching, recursion markers, source links, regeneration and
-linked dry-run scenarios. Current main uses category buttons; the standalone
+linked dry-run scenarios. v2.1.0 uses category buttons; the standalone
 Call flows tab is hidden. With no saved flows there is
 no Call flows option. Old Archify workflow duplicates remain in saved data but
 are hidden from Diagrams and exports, and new duplicates are no longer generated.
 In released v2.0.0, converted simple flows instead appear as Workflow maps and
 only unconverted flows remain in the native view.
 
-**Sequence source navigation (merged on main, unreleased):** select an
+**Sequence source navigation (released in v2.1.0):** select an
 arrow/caption in a supported sequence map, then use **View code** in Code steps.
 With the pane collapsed, the semantics card offers **Show code step**; the
 existing source-card actions remain available when a code pane cannot be mounted.
@@ -279,7 +279,7 @@ Validated anchors retain their old/new side, and **Back to diagram** restores th
 map, path, selection and camera. Definition matches are candidates, not verified
 historical call targets.
 
-**Sequence/code walkthrough (merged on main, unreleased):** open
+**Sequence/code walkthrough (released in v2.1.0):** open
 **Diagrams → Sequence diagrams → an existing map → Code steps**. The existing canvas
 shares the frame with a resizable, collapsible code pane, stacked below it when
 the actual map width is below 1040px. Pane dimensions use the existing map
@@ -316,7 +316,7 @@ Safari/Firefox, physical touch, screen readers and actual OS background visibili
 remain unverified. See [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08)
 for attribution and limits.
 
-**Lifecycle layouts and source return (merged on main, unreleased):** branching
+**Lifecycle layouts and source return (released in v2.1.0):** branching
 lifecycle maps retain initial/terminal states and route labelled transitions
 around obstacles, with collision validation and Mermaid fallback on genuine
 rendering failures. Interactive and native adaptive-diagram source links offer
@@ -324,13 +324,13 @@ rendering failures. Interactive and native adaptive-diagram source links offer
 lifecycle sections are numbered consecutively; the [fixture instructions](#lifecycle-layout-fixture)
 cover the captured receipt-job example.
 
-**Other merged fixes (unreleased):** interactive maps share theme, preset and motion settings
+**Other fixes released in v2.1.0:** interactive maps share theme, preset and motion settings
 through browser storage for the same origin; motion respects reduced-motion
 preferences. Impact analysis retains valid entries during bounded repair and
 shows remaining warnings or an omission reason. Those diagnostics persist in
 sessions but are not yet rendered in Markdown/HTML exports. Codex explanations
 use the final output file rather than mixing streamed progress into the answer.
-These fixes are not in the published release.
+These fixes are included in v2.1.0.
 
 Native Mermaid component diagrams automatically adjust arrow captions after every
 render, including regeneration, briefing previews, and HTML exports. Caption
@@ -418,7 +418,7 @@ isolated worktree and compared using GitHub's exact base and head commits.
 | Retry safety | A durable marker reuses a remote review instead of duplicating it after an interrupted response. |
 | Local-only exit | `Approve tour without approving the pull request` closes the local tour without publishing a GitHub review. |
 
-**GitHub-native suggestions (merged, unreleased):** save a reviewer edit, then
+**GitHub-native suggestions (released in v2.1.0):** save a reviewer edit, then
 choose **Add to GitHub review** or **Return to local**. **Submit suggestions**
 confirms the selected set and PR head, then publishes a neutral `COMMENT` review
 while ordinary comments stay drafted and the tour stays open. Queueing or
@@ -729,8 +729,8 @@ bun run build:release
 Pushing a matching `v*` tag runs the full suite, builds all six platform
 archives, publishes checksums, and creates a GitHub Release.
 
-See [ROADMAP.md](ROADMAP.md) for released scope, merged but unreleased changes,
-unmerged review branches, prototypes and remaining gaps. Automated unit/integration and
+See [ROADMAP.md](ROADMAP.md) for released scope, cancelled work,
+prototypes and remaining gaps. Automated unit/integration and
 source/DOM-contract tests do not establish browser usability; browser checks and
 their limits are recorded separately in [RESEARCH.md](RESEARCH.md).
 
