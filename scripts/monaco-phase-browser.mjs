@@ -22,6 +22,18 @@ async function at(index,path){
   },{index,path});
 }
 async function transition(direction,index,path,crossPhase){
+  // Measure navigation from a painted starting viewport, not from the initial
+  // lazy mount of a neighbouring editor before the user presses a tour button.
+  await page.waitForFunction(() => {
+    const panel = document.getElementById('diff-panel').getBoundingClientRect();
+    const top = document.querySelector('.diff-toolbar').getBoundingClientRect().bottom;
+    return [...document.querySelectorAll('.monaco-review-frame')].filter(frame => !frame.closest('.monaco-phase-staging')).every(frame => {
+      const rect = frame.getBoundingClientRect();
+      if (rect.bottom <= top || rect.top >= panel.bottom) return true;
+      return !!frame.contentWindow?.diffLab?.views.get(frame.dataset.monacoPath)?.diff.getLineChanges()
+        && !!frame.contentDocument.querySelector('.view-line');
+    });
+  });
   await page.evaluate(()=>{
     window.phaseSamples=[];window.samplingPhase=true;
     const sample=()=>{

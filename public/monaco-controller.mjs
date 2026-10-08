@@ -29,7 +29,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   const mobileActions = createMobileActions({ panel: scrollRoot, enabled: () => active && snapshot().activeTab === "diff", notify: actions.notify, onClear: actions.clearSelection });
   let phasePreparation = null, phaseFocusId = null;
   let phaseAnchor = null, phaseAnchorScrollTop = null, tourFocusGeneration = 0;
-  let cancelFileScroll = null;
+  let cancelFileScroll = null, cancelTourScroll = null;
   const phaseGeometry = new ResizeObserver(() => {
     if (phasePositionUnchanged() && phaseAnchor.slot.isConnected && owns(phaseAnchor.path) && !snapshot().collapsed.includes(phaseAnchor.path)) {
       revealPreparedEntry(phaseAnchor);
@@ -37,7 +37,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     }
   });
   function releasePhaseAnchor() { phaseAnchor = null; phaseAnchorScrollTop = null; phaseGeometry.disconnect(); }
-  function onUserInteraction() { tourFocusGeneration++; cancelFileScroll?.(); releasePhaseAnchor(); }
+  function onUserInteraction() { tourFocusGeneration++; cancelFileScroll?.(); cancelTourScroll?.(); releasePhaseAnchor(); }
   function phasePositionUnchanged() {
     if (!phaseAnchor) return false;
     // Scrollbar/accessibility scrolling and an already-running touchpad
@@ -333,7 +333,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   const resize = () => { for (const entry of entries.values()) { if (entry.preparing) entry.slot.style.width = stageWidth() + "px"; entry.child?.resize(); } };
   window.addEventListener("resize", resize);
   async function revealFile(path) {
-    cancelFileScroll?.(); releasePhaseAnchor();
+    cancelFileScroll?.(); cancelTourScroll?.(); releasePhaseAnchor();
     if (!active || !latestFiles.some(file => file.path === path)) return false;
     const generation = ++tourFocusGeneration, hold = {}, warmed = [];
     actions.expand(path); sync();
@@ -536,7 +536,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
       }
     },
     async focusTour(step) {
-      cancelFileScroll?.();
+      cancelFileScroll?.(); cancelTourScroll?.();
       const path = step.anchor.path;
       if (!owns(path) || hasDraft()) return false;
       actions.expand(path); sync(); const entry = entries.get(path); entry.targeted = true;
@@ -573,6 +573,15 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
             const settled = new Promise(resolve => { finish = resolve; });
             scrollRoot.addEventListener("scrollend", finish, { once: true });
             const timer = setTimeout(finish, 1200);
+            // Invalidating a pending focus is not enough once the browser has
+            // started native smooth scrolling. Wheel/pen/keyboard input must
+            // stop that animation as well, not fight its remaining frames.
+            const cancel = () => {
+              scrollRoot.scrollTo({ top: scrollRoot.scrollTop, behavior: "instant" });
+              finish();
+              if (cancelTourScroll === cancel) cancelTourScroll = null;
+            };
+            if (!direct) cancelTourScroll = cancel;
             if (target) {
               const toolbar = parseFloat(getComputedStyle(scrollRoot).getPropertyValue("--diff-toolbar-height")) || 0;
               const top = Math.max(0, scrollRoot.scrollTop + entry.frame.getBoundingClientRect().top + target.top - scrollRoot.getBoundingClientRect().top - toolbar - entry.header.offsetHeight - 12);
@@ -582,6 +591,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
             } else entry.slot.scrollIntoView({ block: "start", behavior: direct ? "instant" : "smooth" });
             if (!direct) await settled;
             clearTimeout(timer); scrollRoot.removeEventListener("scrollend", finish);
+            if (cancelTourScroll === cancel) cancelTourScroll = null;
           }
           phaseFocusId = null;
         }
@@ -602,7 +612,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
       await entries.get(comment.path)?.child?.editComment(comment); return true;
     },
     dispose() {
-      if (disposed) return; disposed = true; cancelFileScroll?.(); releasePhaseAnchor(); cancelPhase(); closeAll(); visibility.disconnect(); theme.disconnect(); window.removeEventListener("resize", resize);
+      if (disposed) return; disposed = true; cancelFileScroll?.(); cancelTourScroll?.(); releasePhaseAnchor(); cancelPhase(); closeAll(); visibility.disconnect(); theme.disconnect(); window.removeEventListener("resize", resize);
       mobileActions.dispose();
       for (const type of ["wheel", "pointerdown", "keydown"]) window.removeEventListener(type, onUserInteraction, true);
       scrollRoot.removeEventListener("scroll", phasePositionUnchanged);

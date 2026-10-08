@@ -28,16 +28,17 @@ async function click(path,keyboard=false) {
 async function smoothClick(path) {
   await page.evaluate(()=>{
     window.fileMotion=[]; window.recordFileMotion=true;
-    const sample=()=>{if(!window.recordFileMotion)return;window.fileMotion.push(document.getElementById('diff-panel').scrollTop);requestAnimationFrame(sample);};sample();
+    const sample=()=>{if(!window.recordFileMotion)return;const panel=document.getElementById('diff-panel');window.fileMotion.push({top:panel.scrollTop,time:performance.now(),height:panel.scrollHeight});requestAnimationFrame(sample);};sample();
   });
   await click(path);
-  const samples=await page.evaluate(()=>{window.recordFileMotion=false;return window.fileMotion;});
+  const motion=await page.evaluate(()=>{window.recordFileMotion=false;return window.fileMotion;});
+  const samples=motion.map(sample=>sample.top);
   const start=samples[0],end=samples.at(-1),distance=Math.abs(end-start),direction=Math.sign(end-start);
   assert.ok(distance>200,'Exercise a meaningful file-to-file distance');
   assert.ok(new Set(samples.filter(top=>Math.abs(top-start)>2&&Math.abs(top-end)>2).map(Math.round)).size>=4,'Explorer scroll has intermediate animation frames, not an instant jump');
   const deltas=samples.slice(1).map((top,index)=>(top-samples[index])*direction);
   assert.ok(Math.min(...deltas)>=-2,'Smooth file navigation never reverses: '+JSON.stringify(samples));
-  assert.ok(Math.max(...deltas)<distance*.45,'No large snap before or after the smooth movement: '+JSON.stringify(samples));
+  assert.ok(Math.max(...deltas)<distance*.45,'No large snap before or after the smooth movement: '+JSON.stringify(motion));
 }
 async function editor(path) {
   await page.waitForFunction(path=>[...document.querySelectorAll('.monaco-review-frame')].some(frame=>frame.dataset.monacoPath===path && frame.contentWindow?.diffLab?.views.get(path)?.diff.getLineChanges()?.length),path);

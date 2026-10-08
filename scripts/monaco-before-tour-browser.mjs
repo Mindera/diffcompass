@@ -23,6 +23,16 @@ async function checkStop(stop, layout) {
     const frame = [...document.querySelectorAll('.monaco-review-frame')].find(node => node.dataset.monacoPath === path);
     return frame?.contentDocument.querySelector(`.review-tour-stop[data-tour-stop="${id}"][data-tour-state="current"]:not([hidden])`) && !document.querySelector('#next-step').disabled;
   }, { id, path });
+  if (layout === 'unified' && side === 'old' && [6, 43].includes(start)) {
+    // Annotation overlays follow Monaco's source layout on an animation frame.
+    // A fixed sleep races that layout on a busy CI worker.
+    await page.waitForFunction(({path,start}) => {
+      const doc = [...document.querySelectorAll('.monaco-review-frame')].find(node => node.dataset.monacoPath === path)?.contentDocument;
+      const source = doc?.querySelector(`[data-review-old-line="${start}"]`)?.getBoundingClientRect();
+      const number = doc?.querySelector(`.review-unified-source-number[data-source-line="${start}"]`)?.getBoundingClientRect();
+      return source && number && Math.abs(source.top - number.top) < 1;
+    }, {path,start});
+  }
   await page.waitForTimeout(250);
   const result = await page.evaluate(({ id, path, side, start, end, layout }) => {
     const frame = [...document.querySelectorAll('.monaco-review-frame')].find(node => node.dataset.monacoPath === path);
@@ -96,4 +106,7 @@ try {
   await page.screenshot({ path: '/tmp/dc-before-tour-unified.png' });
   assert.deepEqual(errors, []);
   console.log('PASS Before/After tour anchors, Unified/Split, wrapped banner placement, context reveal, phase navigation, full-height scrolling, and no renderer fallback');
+} catch (error) {
+  await page.screenshot({path:'/tmp/dc-before-tour-failure.png'});
+  console.error(error.stack); console.error('PAGE_ERRORS',errors); process.exitCode=1;
 } finally { await browser.close(); }

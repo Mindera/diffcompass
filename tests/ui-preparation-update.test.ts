@@ -102,6 +102,19 @@ test("pending suggestion updates preserve the diff, tour and reading position", 
   expect(h.classify(next, applied)).toBe(false);
 });
 
+test("saved layout preferences arriving by polling do not replace comments or move the diff", async () => {
+  const h = harness();
+  const next = { ...structuredClone(h.state.session), revision: 5,
+    diffPreferences: { desktop: { layout: "unified", wrap: "wrap" } } };
+  await h.poll(next);
+  expect(h.renders).toBe(0);
+  expect(h.commentRenders).toBe(0);
+  expect(h.focusCalls).toBe(0);
+  expect(h.diffNode.scrollTop).toBe(1700);
+  expect(h.state.diffCache.get("cart.ts")).toBe(h.cachedFile);
+  expect(h.state.diffCacheRevision).toBe(5);
+});
+
 test("PR thread-only updates retain editors, scroll and expanded context; head changes remain structural", async () => {
   const previous = { ...snapshot(), pullRequest: { headRefOid: "head", threads: [] as object[], updatedAt: "before", threadsTruncated: false } };
   const h = harness(previous), next = structuredClone(previous);

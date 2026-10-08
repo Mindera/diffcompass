@@ -51,6 +51,9 @@ try {
   const context = await file('src/context-example.ts');
   await context.getByRole('button',{name:'Show all context',exact:true}).click();
   await page.waitForFunction(() => document.querySelector('.monaco-file-slot[data-path="src/context-example.ts"]').getBoundingClientRect().height > 3000);
+  // Expanding this file changes the viewport around its top. Move fully past
+  // the current stop: even its last visible source line correctly hides Return.
+  await place('src/context-example.ts','.editor.modified .view-line',20);
   await assertReturn(false);
   await returning.click();
   frame = await file('src/cart.ts');
