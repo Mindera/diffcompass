@@ -19,10 +19,10 @@ and complete a local or GitHub review without leaving the browser.
 
 ## Availability
 
-Latest published release: **[v2.1.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.0)**,
-published **2026-10-08** at `d889a0b`. Authenticated release/tag metadata confirms
-it contains the previously inspected main `607e18b`; the two intervening commits
-change only `package.json`. These additions are **released in v2.1.0**:
+Latest release: **[v2.1.1](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.1)**.
+This patch fixes a Monaco refresh race that could report a stale editor mount as
+a renderer failure, improves browser regression checks, and includes the updated
+documentation and feature guide. These additions were **released in v2.1.0**:
 
 - [PR #3](https://github.com/rcosteira79/diffcompass/pull/3) and
   [PR #4](https://github.com/rcosteira79/diffcompass/pull/4): sequence Code steps,
@@ -51,8 +51,7 @@ it in a browser for 17 illustrated capabilities, delivery filters and labelled
 archival screenshots. [Review branches](REVIEW_BRANCHES.md) gives review scope,
 [ROADMAP](ROADMAP.md) gives delivery state, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
-attributed verification and historical assumptions. This branch adds only docs
-and the standalone guide to merged main.
+attributed verification and historical assumptions.
 
 ## Install
 
@@ -82,7 +81,7 @@ your token. Users without repository access cannot install private releases.
 | Need | Command or option |
 | --- | --- |
 | Binary only; do not install skills | Append `--minimal` or `--binary-only` (`-Minimal` on Windows) |
-| Pin a release | `DIFFCOMPASS_VERSION=v2.1.0` before `bash` |
+| Pin a release | `DIFFCOMPASS_VERSION=v2.1.1` before `bash` |
 | Update | `diffcompass update [--version vX.Y.Z]` |
 | Roll back | `diffcompass rollback [--to X.Y.Z]` |
 | Preview uninstall | `diffcompass uninstall --dry-run` |

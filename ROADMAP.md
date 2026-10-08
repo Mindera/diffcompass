@@ -1,7 +1,7 @@
 # Roadmap
 
-Canonical delivery state, checked **2026-10-08** against published v2.1.0
-(`d889a0b`), which includes the previously inspected main `607e18b`.
+Canonical delivery state for v2.1.1, including the v2.1.0 feature baseline
+and the patch changes below.
 [README](README.md#capabilities) gives entry points,
 [the feature guide](docs/feature-showcase.html) illustrates them, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
@@ -11,13 +11,25 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.1.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.0),
-2026-10-08 at 19:40:18 UTC, annotated tag peeled to `d889a0b`. The additions below
-are included. Installed version was last observed as 2.0.0 on 2026-10-04, not
-freshly queried. Tours, text/word diffs, Symbol Peek,
+Latest release: [v2.1.1](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.1).
+The additions below are included. Installed version was last observed as 2.0.0
+on 2026-10-04, not freshly queried. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.1.1
+
+- Fix Monaco refresh cancellation and bind iframe callbacks to their current
+  mount so delayed failures cannot invalidate a replacement editor ([PR #13](https://github.com/rcosteira79/diffcompass/pull/13)).
+- Improve browser checks for editor readiness, review-collapse scrolling and
+  discussion reloads, preserve original failure diagnostics, and remove checks
+  that only inspect source text ([PR #12](https://github.com/rcosteira79/diffcompass/pull/12),
+  [PR #13](https://github.com/rcosteira79/diffcompass/pull/13),
+  [PR #14](https://github.com/rcosteira79/diffcompass/pull/14),
+  [PR #15](https://github.com/rcosteira79/diffcompass/pull/15)).
+- Include the updated feature guide, availability documentation and research
+  history ([PR #11](https://github.com/rcosteira79/diffcompass/pull/11)).
 
 ## Released in v2.1.0
 
