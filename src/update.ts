@@ -3,7 +3,7 @@ import { ReviewError } from "./errors.ts";
 import { runLifecycleCommand } from "./install-lifecycle.ts";
 import { runProcess } from "./process.ts";
 
-const RELEASE_REPOSITORY = "rcosteira79/diffcompass";
+const RELEASE_REPOSITORY = "Mindera/diffcompass";
 const CHECK_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export interface UpdateStatus {

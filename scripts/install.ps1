@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repository = "rcosteira79/diffcompass"
+$Repository = "Mindera/diffcompass"
 $Version = if ($env:DIFFCOMPASS_VERSION) { $env:DIFFCOMPASS_VERSION } else { "latest" }
 $LocalAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $HOME "AppData\Local" }
 $InstallRoot = if ($env:DIFFCOMPASS_INSTALL_ROOT) { $env:DIFFCOMPASS_INSTALL_ROOT } else { Join-Path $LocalAppData "diffcompass" }

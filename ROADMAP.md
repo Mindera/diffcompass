@@ -11,7 +11,7 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.1.1](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.1).
+Latest release: [v2.1.1](https://github.com/Mindera/diffcompass/releases/tag/v2.1.1).
 The additions below are included. Installed version was last observed as 2.0.0
 on 2026-10-04, not freshly queried. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
@@ -21,27 +21,27 @@ are simulations.
 ## Released in v2.1.1
 
 - Fix Monaco refresh cancellation and bind iframe callbacks to their current
-  mount so delayed failures cannot invalidate a replacement editor ([PR #13](https://github.com/rcosteira79/diffcompass/pull/13)).
+  mount so delayed failures cannot invalidate a replacement editor ([PR #13](https://github.com/Mindera/diffcompass/pull/13)).
 - Improve browser checks for editor readiness, review-collapse scrolling and
   discussion reloads, preserve original failure diagnostics, and remove checks
-  that only inspect source text ([PR #12](https://github.com/rcosteira79/diffcompass/pull/12),
-  [PR #13](https://github.com/rcosteira79/diffcompass/pull/13),
-  [PR #14](https://github.com/rcosteira79/diffcompass/pull/14),
-  [PR #15](https://github.com/rcosteira79/diffcompass/pull/15)).
+  that only inspect source text ([PR #12](https://github.com/Mindera/diffcompass/pull/12),
+  [PR #13](https://github.com/Mindera/diffcompass/pull/13),
+  [PR #14](https://github.com/Mindera/diffcompass/pull/14),
+  [PR #15](https://github.com/Mindera/diffcompass/pull/15)).
 - Include the updated feature guide, availability documentation and research
-  history ([PR #11](https://github.com/rcosteira79/diffcompass/pull/11)).
+  history ([PR #11](https://github.com/Mindera/diffcompass/pull/11)).
 
 ## Released in v2.1.0
 
 | Change | Delivery | Scope and boundary |
 | --- | --- | --- |
-| Sequence Code steps and earlier fixes | [PR #3](https://github.com/rcosteira79/diffcompass/pull/3), `73f9247` | Resizable/collapsible pane, eager saved excerpts, candidate lookup and source return; native Call-flow consolidation, map preferences, optional-guidedViews guard, impact recovery and final-commentary filtering. Overall impact diagnostics still lack export parity. |
-| Lifecycle layout and source return | [PR #4](https://github.com/rcosteira79/diffcompass/pull/4), `e19cd7e` | Branching/looping state maps, collision checks and source-return context with Mermaid fallback. |
-| Opt-in Monaco and review interactions | [PR #5](https://github.com/rcosteira79/diffcompass/pull/5), `57bf907` | Normal Diff renderer selector, Shiki default. Captured source, lazy editors, inline edit drafts and comments/PR threads reuse the session. This is merged app code, beyond the original isolated prototype. |
-| GitHub-native suggestions | [PR #7](https://github.com/rcosteira79/diffcompass/pull/7), `13951a2` | Queue/return saved edits; confirm selected suggestions and head for neutral COMMENT publication. Apply locally remains separate. Exact ranges and durable receipts bound publication/retries. |
-| What changed and parser evidence | [PR #6](https://github.com/rcosteira79/diffcompass/pull/6), `ffc7bf4` | Tour-agent explanations plus collapsed TS/TSX/Kotlin details, source links, tour evidence and separately disclosed explanation/parser export coverage. |
-| Phase-anchoring regression checks | [PR #8](https://github.com/rcosteira79/diffcompass/pull/8), `af709b1` | Tests for existing same-turn geometry correction during delayed image decoding; no production changes. |
-| Monaco What changed and draft recovery | [PR #9](https://github.com/rcosteira79/diffcompass/pull/9), `607e18b` | Same panel in both renderers. New tours require all-file explanation coverage, with at most two repairs; old tours are not backfilled. Refresh/failure retains drafts and old models; stale saves remain blocked. |
+| Sequence Code steps and earlier fixes | [PR #3](https://github.com/Mindera/diffcompass/pull/3), `73f9247` | Resizable/collapsible pane, eager saved excerpts, candidate lookup and source return; native Call-flow consolidation, map preferences, optional-guidedViews guard, impact recovery and final-commentary filtering. Overall impact diagnostics still lack export parity. |
+| Lifecycle layout and source return | [PR #4](https://github.com/Mindera/diffcompass/pull/4), `e19cd7e` | Branching/looping state maps, collision checks and source-return context with Mermaid fallback. |
+| Opt-in Monaco and review interactions | [PR #5](https://github.com/Mindera/diffcompass/pull/5), `57bf907` | Normal Diff renderer selector, Shiki default. Captured source, lazy editors, inline edit drafts and comments/PR threads reuse the session. This is merged app code, beyond the original isolated prototype. |
+| GitHub-native suggestions | [PR #7](https://github.com/Mindera/diffcompass/pull/7), `13951a2` | Queue/return saved edits; confirm selected suggestions and head for neutral COMMENT publication. Apply locally remains separate. Exact ranges and durable receipts bound publication/retries. |
+| What changed and parser evidence | [PR #6](https://github.com/Mindera/diffcompass/pull/6), `ffc7bf4` | Tour-agent explanations plus collapsed TS/TSX/Kotlin details, source links, tour evidence and separately disclosed explanation/parser export coverage. |
+| Phase-anchoring regression checks | [PR #8](https://github.com/Mindera/diffcompass/pull/8), `af709b1` | Tests for existing same-turn geometry correction during delayed image decoding; no production changes. |
+| Monaco What changed and draft recovery | [PR #9](https://github.com/Mindera/diffcompass/pull/9), `607e18b` | Same panel in both renderers. New tours require all-file explanation coverage, with at most two repairs; old tours are not backfilled. Refresh/failure retains drafts and old models; stale saves remain blocked. |
 
 Current navigation is **Diagrams → Architecture & design / Blast radius /
 Call flows / Sequence diagrams / Data & lifecycle**. v2.0.0 uses Maps.
