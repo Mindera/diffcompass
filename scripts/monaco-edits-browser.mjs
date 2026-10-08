@@ -13,8 +13,16 @@ const errors = []; page.on('pageerror', error => errors.push(error.message));
 page.on('dialog', dialog => { errors.push(`Unexpected native dialog: ${dialog.message()}`); void dialog.dismiss(); });
 const path = 'src/cart.ts', original = await readFile(join(repository, path), 'utf8');
 let frame;
-async function file() {
-  await page.waitForFunction(() => [...document.querySelectorAll('.monaco-review-frame')].some(frame => frame.dataset.monacoPath === 'src/cart.ts' && frame.contentWindow?.diffLab?.views.get('src/cart.ts')?.diff.getLineChanges()));
+async function file(expectedContent) {
+  // Applying a proposal changes comparison identity and replaces the iframe.
+  // A successful API response can arrive before that remount. Wait in the
+  // surviving parent document, then acquire the refreshed frame, never poll a
+  // handle that is about to detach.
+  await page.waitForFunction(({ path, expectedContent }) => [...document.querySelectorAll('.monaco-review-frame')].some(frame => {
+    if (frame.dataset.monacoPath !== path || frame.closest('.monaco-phase-staging')) return false;
+    const view = frame.contentWindow?.diffLab?.views.get(path);
+    return view?.diff.getLineChanges() && (expectedContent === undefined || view.editors.new.getValue().includes(expectedContent));
+  }), { path, expectedContent });
   frame = page.frames().find(frame => new URL(frame.url(), url).searchParams.get('file') === path);
 }
 const draftValue = () => frame.evaluate(() => monaco.editor.getModels().find(model => model.uri.scheme === 'inmemory' && model.uri.authority === 'review-suggestion')?.getValue());
@@ -166,8 +174,7 @@ try {
     await card.getByRole('button',{name:'Apply',exact:true}).click();
     await confirmation.getByRole('button',{name:'Apply change',exact:true}).click(); await applied;
     assert.ok((await readFile(join(repository,path),'utf8')).includes(replacement));
-    await file();
-    await frame.waitForFunction(replacement=>diffLab.views.get('src/cart.ts').editors.new.getValue().includes(replacement),replacement);
+    await file(replacement);
     assert.match(await page.locator('#step-count').textContent(),/Step 1\)/,'Apply refreshes the code without leaving the tour');
     await page.locator('#activity-tab').click();
     await page.locator(`[data-activity-id="${result.activityId}"] [data-activity-action="undo"]`).click();
@@ -183,5 +190,5 @@ try {
   assert.deepEqual(errors,[]);
 } catch(error) {
   await page.screenshot({path:'/tmp/dc-edits-failure.png'});
-  console.error(error.stack);console.error('PAGE_ERRORS',errors);process.exitCode=1;
+  console.error(error.message, error.stack);console.error('PAGE_ERRORS',errors);process.exitCode=1;
 } finally {await browser.close();}

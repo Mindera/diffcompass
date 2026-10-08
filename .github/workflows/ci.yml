@@ -17,6 +17,12 @@ jobs:
       - run: bun run verify
       - run: bunx playwright install --with-deps chromium
       - run: bun run test:monaco
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: monaco-browser-failure
+          path: /tmp/dc-*.png
+          if-no-files-found: ignore
       - run: bun run build:release
       - run: ./scripts/smoke-install.sh
   windows:
