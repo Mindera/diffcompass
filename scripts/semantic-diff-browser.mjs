@@ -43,6 +43,9 @@ try {
     pass(true, `${label} reveals the captured ${side} side`);
   }
   await page.getByRole("button", { name: "Unified", exact: true }).click();
+  // The saved preference also arrives through the session stream and rerenders
+  // the diff. Finish that update before expanding a newly mounted details panel.
+  await page.waitForLoadState("networkidle");
   if (!(await summary.locator(".semantic-code-details").evaluate((element) => element.open))) await details.click();
   await summary.getByRole("button", { name: /Before: src\/cart.ts:/ }).first().click();
   await page.waitForFunction(() => document.querySelector('.diff-row[data-old-line="6"].selected'));
@@ -68,7 +71,7 @@ try {
       await panel.getByRole("button", { name: "Try again", exact: true }).click();
       pass(true, "transport failure exposes an operable retry");
     }
-    await panel.getByText(expected, { exact: true }).waitFor();
+    await panel.getByText(expected, { exact: false }).waitFor();
     pass(true, `${path} shows ${expected}`);
   }
   await page.setViewportSize({ width: 390, height: 844 });

@@ -62,7 +62,11 @@ try {
   await page.getByRole("button", { name: "Exit tour", exact: true }).click();
   await page.locator('[data-file="src/cart.ts"]').click();
   await page.locator('[data-semantic-file="src/cart.ts"]').click();
-  await page.locator('[data-semantic-panel="src/cart.ts"]').getByText(/now accepts an optional input/).waitFor();
-  pass(true, "the optional file summary reuses tour-populated parser results outside the tour");
+  const summary = page.locator('[data-semantic-panel="src/cart.ts"]');
+  await summary.getByText(/source version was not recorded/).waitFor();
+  pass(!(await summary.locator(".semantic-code-details").evaluate((element) => element.open)), "legacy fixture explanation is labelled and parser details start collapsed");
+  await summary.locator(".semantic-code-details > summary").click();
+  await summary.getByText("total", { exact: true }).waitFor();
+  pass((await summary.innerText()).includes("discount?: Discount"), "file details reuse the tour-populated parser result without presenting it as an explanation");
   pass(errors.length === 0, `no browser page errors (${errors.join(", ")})`);
 } finally { await browser.close(); }
