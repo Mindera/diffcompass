@@ -3,7 +3,7 @@
 Canonical delivery state for v2.1.2, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
-[the feature guide](docs/feature-showcase.html) illustrates them, and
+[the feature catalogue](docs/features.md) describes them, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
 dated checks, failures and assumptions. [Review branches](REVIEW_BRANCHES.md)
 identifies the remaining scope; [release history](docs/roadmap-history.md)
@@ -94,7 +94,7 @@ counts do not validate their later expanded implementations.
   fixtures do not establish compiler-grade IDE support.
 - Specialized Shiki fallbacks and device/performance limits remain. Scope-fold
   arrows were dropped; inline context controls remain. See
-  [Monaco behavior](README.md#monaco-preview) and the attributed evidence.
+  [Monaco behavior](docs/features.md#optional-monaco-renderer) and the attributed evidence.
 - React Flow, CodeMirror and further provider candidates remain research-only
   alternatives; no new dependency or replacement is promised by this docs work.
 

@@ -1,6 +1,6 @@
 ---
 name: diffcompass
-description: Launch and conduct an attached-agent change walkthrough in a local browser. Use when the user asks for a guided walkthrough, code tour, interactive diff explanation, or wants to review current branch changes with the same agent answering questions and receiving line feedback.
+description: Launch and conduct an attached-agent change walkthrough in a local browser. Use when the user asks for a guided walkthrough, code tour, interactive diff explanation, or wants to review branch changes or a GitHub pull request with the same agent answering questions and receiving line feedback.
 ---
 
 # DiffCompass
@@ -16,12 +16,20 @@ Run the local tour in attached mode so every explanation and reviewer question r
 2. Start a persistent terminal process from the repository being reviewed. The server prints its bridge details immediately, prepares the outline and first explanation through this agent, and opens the browser only after the first stop is ready:
 
    ```text
-   diffcompass --attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--no-findings] [--media ABSOLUTE_MEDIA_PATH ...]
+   diffcompass --attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
    ```
+
+   For a GitHub pull request, use the PR command so the review captures the PR's base, head, and GitHub context:
+
+   ```text
+   diffcompass pr PR_URL_OR_NUMBER --attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
+   ```
+
+   Use the target repository's local checkout for `--repo`; a PR number is resolved in that repository. The CLI creates an isolated PR workspace and selects the PR base, so omit `--base` for this command.
 
    When reliable runtime metadata is available, pass the triggering model and effort with `--caller-model` and `--caller-reasoning`. Both flags are optional and independent; omit any value that is unavailable rather than guessing it. They describe the attached session in the page and do not switch the conversation to another model.
 
-   Pass `--no-findings` only when the caller explicitly wants to skip finding generation. It applies to the session without writing repository configuration; findings remain enabled when the flag is absent.
+   Keep finding generation enabled for pull-request tours and ordinary branch tours. Asking for a tour or explanation does not opt out of findings. Pass `--no-findings` only when the caller explicitly asks to skip them; do not add it to shorten startup or because the request is phrased as a walkthrough. New `pr` reviews enable findings even when repository configuration disables them for ordinary branch tours; `--no-findings` is the explicit session opt-out. Branch tours respect `.diffcompass.json` (`analysis.findings.enabled`), and resumed sessions retain their saved finding-generation setting. Do not rewrite repository configuration just to launch a tour.
 
    When the work being reviewed produced useful UI evidence, pass each PNG, JPEG, GIF, WebP, or MP4 with a separate `--media` argument. The tool copies those files into session-owned storage and adds the `Media` tab. Do not pass unrelated files, secrets, or media that contain credentials.
 
