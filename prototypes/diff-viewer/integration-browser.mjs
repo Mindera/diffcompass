@@ -1,0 +1,112 @@
+// Mutates a DISPOSABLE full integration fixture, never a review in use.
+// node integration-browser.mjs /absolute/path/to/playwright/index.mjs 'http://127.0.0.1:PORT/#token=TOKEN'
+import {pathToFileURL} from 'node:url';
+const [playwrightPath,url]=process.argv.slice(2);
+if(!playwrightPath||!url)throw Error('Supply an existing Playwright module and a disposable full-fixture URL.');
+const {chromium}=await import(pathToFileURL(playwrightPath).href);
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const page=await browser.newPage({viewport:{width:1800,height:1100},colorScheme:'dark'});
+const errors=[];page.on('pageerror',e=>errors.push(e.stack));page.setDefaultTimeout(15000);
+const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+const pass=msg=>console.log('PASS',msg);
+try{
+const token=new URL(url).hash.slice(7);
+await page.goto(url);await page.waitForFunction(()=>window.diffCompassIntegration?.child);
+let frame=page.frames().find(f=>f.url().includes('embedded=1'));
+const waitAnchor=async(path,line)=>frame.waitForFunction(({path,line})=>diffLab.file.path===path&&diffLab.anchor?.line===line,{path,line});
+const waitTour=id=>frame.locator(`[data-tour-stop="${id}"][data-tour-state="current"]`).waitFor();
+const request=async(path,body,method=body===undefined?'GET':'POST')=>page.evaluate(async({path,body,method,token})=>{
+ const r=await fetch(path,{method,headers:{'x-diffcompass-token':token,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,text:await r.text()};
+},{path,body,method,token});
+for(let i=0;i<3;i++)await request('/api/tour/navigate',{direction:'previous'});
+await request('/api/files/reviewed',{path:'src/cart.ts',reviewed:false});
+await page.reload();await page.waitForFunction(()=>window.diffCompassIntegration?.child);
+frame=page.frames().find(f=>f.url().includes('embedded=1'));
+await waitTour('extract-subtotal');
+check(await page.locator('.brand').isVisible(),'Full product brand visible');
+check(await frame.locator('[data-review-path="src/cart.ts"]').isVisible(),'Reviewed control reachable');
+pass('Full shell and initial tour → Monaco');
+await page.locator('#next-step').click();await waitTour('apply-discount');
+await page.locator('#next-step').click();await waitTour('format-receipt');
+await page.locator('#next-step').click();await waitTour('document-fixture');
+check(await page.locator('#monaco-integration-frame').isVisible(),'Markdown stop remains in Monaco');
+check(await page.locator('#diff .diff-file[data-path="README.md"]').isHidden(),'No duplicate legacy Markdown diff');
+await page.locator('#previous-step').click();await waitTour('format-receipt');
+pass('Tour Next/Previous and Markdown stay in Monaco across phases');
+await page.locator('[data-diff-layout="unified"]').click();await frame.waitForFunction(()=>document.querySelector('#layout').value==='unified');
+await page.locator('[data-diff-wrap="wrap"]').click();await frame.waitForFunction(()=>document.querySelector('#wrap').checked);
+await page.locator('[data-diff-wrap="scroll"]').click();
+pass('Full app split/unified and wrap controls');
+// Sidebar edit must open the embedded editor, including outside the current phase.
+const comment=page.locator('#comment-list [data-comment-id]').filter({hasText:/Same-line fixture:|Integration browser edited comment/});
+await comment.getByRole('button',{name:'Edit',exact:true}).click();
+await waitAnchor('src/cart.ts',17);
+const card=frame.locator('[data-comment-id]').filter({hasText:'Editing line comment'});
+await card.getByRole('textbox').fill('Integration browser edited comment');
+await card.getByRole('button',{name:'Save changes',exact:true}).click();
+await page.locator('#comment-list').getByText('Integration browser edited comment',{exact:true}).waitFor();
+pass('Sidebar edit → Monaco inline form → shared persisted comment');
+await frame.evaluate(()=>diffLab.reveal('new',17));
+await frame.locator('.conversation-badge[data-line="17"]').click();
+await page.locator('#chat-input').waitFor({state:'visible'});
+await frame.locator('.finding-badge[data-line="17"]').click();
+await page.locator('#findings-tab[aria-selected="true"]').waitFor();
+await page.locator('#findings-back').click();await page.locator('#diff-tab[aria-selected="true"]').waitFor();
+pass('Speech bubble and priority badge → native conversations/findings + back');
+await frame.evaluate(async()=>{diffLab.reveal('new',17);await diffLab.editors.new.getAction('diff-lab.new.ask').run();});
+check((await page.locator('#selection-pill').innerText()).includes('src/cart.ts:17'),'Native question scope');
+await page.locator('#chat-input').fill('Integration fixture question about discount');
+await page.locator('#chat-form').evaluate(f=>f.requestSubmit());
+await page.getByText('Fixture response — not AI.',{exact:false}).first().waitFor();
+pass('Monaco Ask action → native questions → labelled fixture answer');
+// Off-tour source nav exposed all files when the sidebar comment was opened.
+await page.locator('#archify-tab').click();
+await page.locator('[data-maps-mode="impact"]').click();
+const graph=page.locator('[data-structural-node][data-structural-path="src/cart.ts"]').first();
+await graph.click();await page.locator('#diff-tab[aria-selected="true"]').waitFor();
+check(await page.evaluate(()=>diffCompassIntegration.usingMonaco),'Graph source uses Monaco');
+await page.locator('#structural-graph-return').click();
+await page.locator('#archify-tab[aria-selected="true"]').waitFor();
+pass('Caller graph source → Monaco → floating return');
+await page.locator('#dry-runs-tab').click();
+await page.locator('[data-dry-run-source-path]').first().click();
+await page.locator('#diff-tab[aria-selected="true"]').waitFor();
+check(await page.evaluate(()=>diffCompassIntegration.usingMonaco),'Dry run source uses Monaco');
+pass('Saved dry-run source → Monaco');
+for(const id of ['screenshots-tab','pull-request-tab','activity-tab','conversations-tab']){await page.locator('#'+id).click();await page.locator('#'+id+'[aria-selected="true"]').waitFor();}
+pass('Media, PR, activity and conversation surfaces reachable');
+await page.locator('#diff-tab').click();
+await page.locator('#review-filter').selectOption('');
+await page.locator('#file-tree [data-file="src/cart.ts"]').click();
+const review=frame.locator('[data-review-path="src/cart.ts"]');
+if(await review.getAttribute('aria-pressed')==='true')await review.click();
+await review.click();await frame.locator('[data-file-toggle="src/cart.ts"][aria-expanded="false"]').waitFor();
+const saved=JSON.parse((await request('/api/session')).text);
+check(saved.reviewedFiles.includes('src/cart.ts')&&!saved.reviewedFiles.includes('src/receipt.ts'),'Review scoped per file');
+await review.click();
+pass('Mark reviewed persists and collapses only that file');
+await page.locator('#monaco-renderer').selectOption('current');await page.waitForFunction(()=>document.querySelector('#monaco-integration-frame').hidden);
+await page.locator('#monaco-renderer').selectOption('monaco');await page.waitForFunction(()=>!document.querySelector('#monaco-integration-frame').hidden);
+pass('Renderer comparison switch');
+await frame.evaluate(async()=>{diffLab.reveal('new',17);await diffLab.editors.new.getAction('diff-lab.new.source').run();});
+await frame.locator('[data-prototype-file="src/cart.ts"] [data-control="source-pane"]').waitFor({state:'visible'});
+await frame.locator('[data-prototype-file="src/cart.ts"] [data-control="return"]').click();
+await waitAnchor('src/cart.ts',17);
+await frame.evaluate(async()=>{diffLab.editors.new.setPosition({lineNumber:15,column:20});await diffLab.editors.new.getAction('diff-lab.new.peek').run();});
+await page.locator('#symbol-peek-panel').waitFor({state:'visible'});
+pass('View source/return and Find references handoff through the existing resolver');
+for(const format of ['markdown','html']){const r=await request('/api/export?format='+format,{});check(r.status===200&&r.text.includes('Integration browser edited comment'),'Export includes shared comment: '+format);}
+for(const path of ['/api/github/review','/api/edits','/api/refresh','/api/update'])check((await request(path,{})).status===403,'Forbidden mutation '+path);
+check(await page.evaluate(async()=> (await fetch('/api/prototype')).status)===401,'Source API authenticated');
+pass('Shared Markdown/HTML exports, auth and mutation boundaries');
+await page.locator('#file-tree [data-file="src/cart.ts"]').click();
+await frame.evaluate(()=>diffLab.reveal('new',17));
+await page.screenshot({path:'/tmp/dc-full-monaco-desktop.png'});
+await page.setViewportSize({width:390,height:844});
+await page.waitForTimeout(350);
+check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Narrow app does not overflow horizontally');
+await page.screenshot({path:'/tmp/dc-full-monaco-narrow.png'});
+pass('390px shell overflow check');
+console.log('PAGE_ERRORS',errors);check(!errors.length,'Page errors');
+}catch(e){console.log('FAIL',e.stack);console.log('PAGE_ERRORS',errors);await page.screenshot({path:'/tmp/dc-full-monaco-failure.png'});process.exitCode=1;}
+finally{await browser.close();}

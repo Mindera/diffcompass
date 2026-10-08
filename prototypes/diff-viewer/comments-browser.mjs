@@ -1,0 +1,63 @@
+// Run only against a disposable full-product fixture.
+import {pathToFileURL} from 'node:url';
+const [playwrightPath,url]=process.argv.slice(2);
+if(!playwrightPath||!url)throw Error('Supply an existing Playwright module and disposable fixture URL.');
+const {chromium}=await import(pathToFileURL(playwrightPath).href);
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const page=await browser.newPage({viewport:{width:1800,height:1100},colorScheme:'dark'}),errors=[];
+page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(12000);
+const check=(ok,message)=>{if(!ok)throw Error(message);};
+try{
+ await page.goto(url);await page.waitForFunction(()=>window.diffCompassIntegration?.child);
+ let frame=page.frames().find(f=>f.url().includes('embedded=1'));
+ const toggle=page.locator('#monaco-comments-toggle');
+ await toggle.waitFor();
+ await page.locator('[data-diff-layout="unified"]').click();
+ await frame.waitForFunction(()=>document.querySelector('#layout').value==='unified');
+ // Use the fixture's same-line local comment, conversation, P1 and PR thread.
+ await page.evaluate(()=>diffCompassMonacoHost.show('src/cart.ts'));
+ await frame.evaluate(()=>diffLab.reveal('new',17));
+ const before=await frame.evaluate(()=>{const e=diffLab.editors.new;return e.getTopForLineNumber(18)-e.getTopForLineNumber(17);});
+ const revision=await frame.evaluate(()=>diffLab.session.revision);
+ const styles=await frame.evaluate(()=>['[data-comment-id]','[data-pr-thread-id]'].map(selector=>{const s=getComputedStyle(document.querySelector(selector));return [s.backgroundColor,s.borderLeftColor];}));
+ check(styles[0][0]!==styles[1][0]&&styles[0][1]!==styles[1][1],'Local and PR cards have distinct backgrounds and borders');
+ await toggle.click();
+ await frame.waitForFunction(()=>document.querySelectorAll('[data-comment-id],[data-pr-thread-id]').length===0);
+ check(await frame.locator('.review-comment-badge[data-line="17"]').count()===1,'Comment marker retained');
+ check(await frame.locator('.conversation-badge[data-line="17"]').count()===1,'Question marker retained');
+ check(await frame.locator('.finding-badge[data-line="17"]').count()===1,'Finding marker retained');
+ const after=await frame.evaluate(()=>{const e=diffLab.editors.new;return e.getTopForLineNumber(18)-e.getTopForLineNumber(17);});
+ check(await frame.evaluate(()=>diffLab.session.revision)===revision,'Visibility never mutates review data');
+ check(after<before-100,'Hidden cards must remove their vertical space');
+ check(await toggle.innerText()==='Show comments','Button offers restoration');
+ await page.screenshot({path:'/tmp/dc-comments-hidden.png'});
+ await page.locator('[data-diff-layout="split"]').click();
+ await frame.waitForFunction(()=>document.querySelector('#layout').value==='split');
+ check(await frame.locator('[data-comment-id],[data-pr-thread-id]').count()===0,'Split preserves hidden cards');
+ await page.reload();await page.waitForFunction(()=>window.diffCompassIntegration?.child);
+ frame=page.frames().find(f=>f.url().includes('embedded=1'));
+ check(await toggle.innerText()==='Show comments','Reload retains preference');
+ await page.evaluate(()=>diffCompassMonacoHost.show('src/cart.ts'));
+ await frame.evaluate(()=>diffLab.reveal('new',17));
+ await frame.locator('.review-comment-badge[data-line="17"]').click();
+ await frame.locator('[data-comment-id]').first().waitFor();
+ check(await toggle.innerText()==='Hide comments','Opening a marker restores cards');
+ check(await frame.locator('[data-pr-thread-id]').count()===1,'PR thread restored too');
+ const card=frame.locator('[data-comment-id]').first();
+ await card.getByRole('button',{name:'Edit',exact:true}).click();
+ await card.getByRole('textbox').fill('Unsaved visibility draft');
+ check(await toggle.isDisabled(),'Hide is disabled while an inline draft is open');
+ const canHide=await frame.evaluate(()=>diffCompassMonaco.setCommentsVisible(false));
+ check(canHide===false,'Programmatic hiding also protects the draft');
+ check(await card.getByRole('textbox').inputValue()==='Unsaved visibility draft','Draft preserved');
+ await card.getByRole('button',{name:'Cancel',exact:true}).click();
+ check(await toggle.isEnabled(),'Toggle restored after closing editor');
+ await toggle.click();
+ await page.locator('#monaco-renderer').selectOption('current');
+ check(await toggle.isHidden(),'Unchanged renderer is not affected by prototype control');
+ await page.locator('#monaco-renderer').selectOption('monaco');
+ check(await toggle.innerText()==='Show comments','Renderer round trip retains hidden preference');
+ check(!errors.length,'No page errors: '+errors.join(';'));
+ console.log('PASS hide/show local+PR, collapsed space, markers, layout/reload, marker reveal, draft guard, native fallback');
+}catch(error){console.log('FAIL',error.stack);console.log(errors);process.exitCode=1;}
+finally{await browser.close();}

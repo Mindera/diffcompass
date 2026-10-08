@@ -93,7 +93,7 @@ test("metadata loading keeps the original review-thread location after its diff 
   }));
 
   expect(context.threads).toEqual([expect.objectContaining({
-    id: "thread-1", path: "feature/legal/LegalDataMapper.kt", line: 42, side: "new", resolved: true,
+    id: "thread-1", path: "feature/legal/LegalDataMapper.kt", line: 42, side: "new", resolved: true, outdated: true,
   })]);
 });
 

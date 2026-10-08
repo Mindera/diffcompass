@@ -1,0 +1,12 @@
+.monaco-integration-bar{display:flex;align-items:center;gap:12px;padding:8px 12px;flex-wrap:wrap;border-bottom:1px solid var(--border);font-size:12px}
+.monaco-integration-bar strong{color:var(--accent)}
+.monaco-integration-bar small{flex:1;min-width:160px}
+.monaco-integration-bar select{font:inherit;background:var(--surface-control);color:inherit;padding:5px;border:1px solid var(--border);border-radius:5px}
+@media(min-width:901px){body{height:100vh;display:flex;flex-direction:column;overflow:hidden}.topbar,.monaco-integration-bar{flex-shrink:0}.workspace,.focus-mode .workspace{height:auto;flex:1;min-height:0}}
+/* Match the native #diff inset: macOS overlay scrollbars must not cover the
+   embedded header, actions or code. Classic scrollbars keep their own lane. */
+#monaco-integration-frame{border:1px solid var(--border);width:calc(100% - 28px);margin-inline:14px;height:max(460px,calc(100vh - 310px));display:block;border-radius:8px;scroll-margin-top:60px}
+#monaco-integration-frame[hidden]{display:none}
+.monaco-host-enabled #diff>.diff-file[data-monaco-text]{display:none}
+.monaco-host-enabled #symbol-peek-open{display:none}
+.monaco-integration-note{font-size:12px;padding:8px 12px;color:var(--muted)}

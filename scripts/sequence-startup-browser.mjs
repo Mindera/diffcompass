@@ -9,6 +9,11 @@ try {
     page.setDefaultTimeout(15000); page.on('pageerror', error => errors.push(error.stack));
     let release, entered, requests = 0;
     const gate = new Promise(resolve => { release = resolve; }), held = new Promise(resolve => { entered = resolve; });
+    let releasePrototype, prototypeRequested = false;
+    const prototypeGate = new Promise(resolve => { releasePrototype = resolve; });
+    // In the combined preview, force Monaco to finish after the user chooses
+    // Sequence. Its ready callback must not steal navigation back to the diff.
+    await context.route('**/prototype/app.mjs', async route => { prototypeRequested = true; await prototypeGate; await route.continue(); });
     await context.route('**/api/session', async route => {
       requests++;
       if (recover && requests === 1) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Simulated startup outage' }) });
@@ -23,11 +28,13 @@ try {
       await page.locator('#diff-tab').focus(); await page.keyboard.press('ArrowRight');
       await page.waitForTimeout(100); assert.deepEqual(errors, []); assert.equal(await maps.isDisabled(), true);
       release(); await page.waitForFunction(() => !document.getElementById('archify-tab').disabled);
-      await maps.click(); await page.locator('#archify-select').selectOption('sequence-checkout-flow');
-      await page.frameLocator('iframe.archify-frame').locator('.sequence-step-code').first().waitFor();
-      assert.equal(await page.locator('#archify-select').isVisible(), true); assert.deepEqual(errors, []);
+      await maps.click(); await page.locator('[data-map-view="sequence"]').click(); await page.locator('#sequence-map-select').selectOption('sequence-checkout-flow');
+      releasePrototype();
+      if (prototypeRequested) await page.waitForFunction(() => window.diffCompassIntegration?.child);
+      await page.frameLocator('#sequence-map-artifacts iframe.archify-frame').locator('.sequence-step-code').first().waitFor();
+      assert.equal(await page.locator('#sequence-map-select').isVisible(), true); assert.deepEqual(errors, []);
       results.push({ recover, requests, errors }); console.log(JSON.stringify(results.at(-1)));
-    } finally { release(); await context.close(); }
+    } finally { release(); releasePrototype(); await context.close(); }
   }
   console.log(JSON.stringify({ results, browser: browser.version(), cwd: process.cwd() }, null, 2));
 } finally { await browser.close(); }

@@ -6,6 +6,14 @@ const styles = await readFile(new URL("../public/styles.css", import.meta.url), 
 const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
 const helpers = app.slice(app.indexOf("function diffLayoutPreferenceKey("), app.indexOf("const FILE_PANEL_MIN"));
 
+test("Settings summary centers its icon and label inside the mobile touch target", () => {
+  const summary = styles.match(/\.settings-menu > summary \{([^}]+)\}/)?.[1];
+  expect(summary).toContain("display: flex;");
+  expect(summary).toContain("align-items: center;");
+  expect(summary).toContain("justify-content: center;");
+  expect(styles).toContain(".topbar .button { min-height: 44px; }");
+});
+
 function preferences(mobile: boolean, saved: Record<string, string> = {}, serverDefault = "split") {
   const storage = new Map(Object.entries(saved));
   const window = { localStorage: { getItem: (key: string) => storage.get(key) ?? null } };
@@ -46,10 +54,10 @@ test("mobile layout gives paths their own wrapping row and leaves code at its no
   expect(styles).toContain(".mobile-file-status { display: none; }");
   expect(styles).toContain(".diff-file-toggle .status { display: none; }");
   expect(styles).toContain(".diff-file-toggle { position: relative;");
-  expect(styles).toContain(".collapse-caret { position: absolute; left: 1px; top: 2px;");
-  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: rotate(-45deg); }");
+  expect(styles).toContain(".collapse-caret { position: absolute; left: 1px; top: 0;");
+  expect(app).toContain('${collapsed ? "▸" : "▾"}');
   expect(app).toContain('class="status mobile-file-status"');
-  expect(styles).toContain("height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px))");
+  expect(styles).toContain("height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height, 100px) - var(--mobile-tour-peek))");
   expect(styles).toContain("grid-template-columns: 34px 18px max-content minmax(max-content, 1fr)");
   expect(styles).toContain(".tab { flex: 0 0 auto; min-height: 44px;");
   expect(styles).toContain(".settings-menu { position: static; }");

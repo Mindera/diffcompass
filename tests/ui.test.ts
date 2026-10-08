@@ -410,7 +410,7 @@ test("question scopes retain phase and stop numbers alongside their names", asyn
     state,
     () => state.session.outline.phases[1].steps[0],
     (value: string) => value,
-    () => "selected code",
+    (anchor: { path: string; line: number; side: string }) => `${anchor.path}:${anchor.line} (${anchor.side})`,
   ) as {
     conversationScopeLabel: (thread: unknown) => string;
     conversationScopeMarkup: (thread: unknown) => string;
@@ -419,9 +419,29 @@ test("question scopes retain phase and stop numbers alongside their names", asyn
   expect(helpers.conversationScopeLabel(thread)).toBe("Original tour stop: Phase 2 · Format the receipt — Stop 1 · Format totals");
   expect(helpers.conversationScopeMarkup(thread)).toContain("Phase 2 · Format the receipt — Stop 1 · Format totals");
   state.selectedLine = { path: "src/cart.ts", side: "new", line: 7, content: "applyDiscount();" };
-  expect(helpers.conversationScopeMarkup(null)).toContain("Selected code: selected code");
+  expect(helpers.conversationScopeMarkup(null)).toContain('data-question-code=""');
+  expect(helpers.conversationScopeMarkup(null)).toContain('>src/cart.ts</button>:7 (new)');
+  expect(helpers.conversationScopeMarkup({ root: { anchor: { path: "src/old.ts", side: "old", line: 50 } } })).toContain('>src/old.ts</button>:50 (old)');
   state.tourMode = false;
   expect(helpers.conversationScopeMarkup(null)).toContain("Review-wide question");
+});
+
+test("question code links preserve the saved source side and guard open edit drafts", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("async function showQuestionCode("), app.indexOf("function renderMessages()"));
+  const navigations: unknown[][] = [], warnings: string[] = [];
+  let draft = false;
+  const show = new Function("state", "showAnalysisFile", "toast", `${source}; return showQuestionCode;`)(
+    { monacoRenderer: { hasDraft: () => draft } },
+    async (...args: unknown[]) => { navigations.push(args); },
+    (message: string) => warnings.push(message),
+  );
+  await show({ path: "src/context.ts", line: 50, endLine: 52, side: "old" });
+  expect(navigations).toEqual([["src/context.ts", 50, "old"]]);
+  draft = true;
+  await show({ path: "src/other.ts", line: 10, side: "new" });
+  expect(navigations).toHaveLength(1);
+  expect(warnings[0]).toContain("Save or cancel");
 });
 
 test("comment scope labels name the discussion kind before their anchor", async () => {
@@ -1052,6 +1072,42 @@ test("pull request file links retain their reading position and provide a return
   expect(styles).toContain(".diff-return {");
 });
 
+test("GitHub reply links use the direct Changes permalink for the root comment", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("function githubThreadReplyUrl(thread)"), app.indexOf("function githubThreadLocation(thread)"));
+  const replyUrl = new Function(`${source}; return githubThreadReplyUrl;`)() as (thread: { comments?: { url: string }[] }) => string;
+  const thread = (...urls: string[]) => ({ comments: urls.map(url => ({ url })) });
+  const pr = "https://github.com/acme/widgets/pull/7";
+
+  expect(replyUrl(thread(`${pr}#discussion_r123`, `${pr}#discussion_r456`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/files#r123`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/changes#r123`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/changes#discussion_r123`))).toBe(`${pr}/changes#r123`);
+  expect(replyUrl(thread(`${pr}/files/${"a".repeat(40)}#r123`))).toBe(`${pr}/changes/${"a".repeat(40)}#r123`);
+  expect(replyUrl(thread(`${pr}/changes/${"a".repeat(40)}#r123`))).toBe(`${pr}/changes/${"a".repeat(40)}#r123`);
+  expect(replyUrl(thread(`${pr}?diff=unified#discussion_r123`))).toBe(`${pr}/changes?diff=unified#r123`);
+  expect(replyUrl(thread(`${pr}/files/?diff=split#discussion_r123`))).toBe(`${pr}/changes?diff=split#r123`);
+  expect(replyUrl(thread("https://github.com/rcosteira79/diffcompass/pull/5#discussion_r4209858327")))
+    .toBe("https://github.com/rcosteira79/diffcompass/pull/5/changes#r4209858327");
+  expect(replyUrl(thread(`${pr}#future-provider-anchor`))).toBe(`${pr}#future-provider-anchor`);
+  for (const url of ["javascript:alert(1)", "http://github.com/acme/widgets/pull/7#discussion_r123", "https://github.com.evil.test/acme/widgets/pull/7#discussion_r123", "not a URL"]) {
+    expect(replyUrl(thread(url))).toBe("");
+  }
+  expect(replyUrl({})).toBe("");
+  expect(replyUrl(thread())).toBe("");
+});
+
+test("GitHub review thread cards label status as information, not an open action", async () => {
+  const app = await readFile(join(root, "public/app.js"), "utf8");
+  const source = app.slice(app.indexOf("function githubReviewThreadCard(thread)"), app.indexOf("function renderPullRequest()"));
+  const card = new Function("escapeHtml", "githubThreadLocation", "renderInlineMarkdown", "githubThreadReplyLink", `${source}; return githubReviewThreadCard;`)(
+    (text: string) => text, () => "file.ts:71 · new", (text: string) => text, () => "",
+  ) as (thread: { id: string; path: string; resolved: boolean; comments: [] }) => string;
+  const thread = { id: "thread", path: "file.ts", comments: [] as [] };
+  expect(card({ ...thread, resolved: false })).toContain("<span>Status: Open</span>");
+  expect(card({ ...thread, resolved: true })).toContain("<span>Status: Resolved</span>");
+});
+
 test("GitHub review threads open their file and remain visible beside the diff", async () => {
   const [app, styles] = await Promise.all([
     readFile(join(root, "public", "app.js"), "utf8"),
@@ -1062,7 +1118,7 @@ test("GitHub review threads open their file and remain visible beside the diff",
   expect(app).toContain("function renderGitHubReviewThreads()");
   expect(app).toContain('inline.className = `github-thread-inline ${thread.resolved ? "resolved" : "open"}`');
   expect(app).toContain("function handleGitHubReviewThreadClick(event)");
-  expect(app).toContain('void showAnalysisFile(thread.path, thread.line, thread.side ?? "new")');
+  expect(app).toContain('void showAnalysisFile(thread.path, thread.outdated ? undefined : thread.line, thread.side ?? "new")');
   expect(app).toContain('elements["pull-request-content"].addEventListener("click", handleGitHubReviewThreadClick)');
   expect(app).toContain("Reply in GitHub");
   expect(styles).toContain(".github-thread-inline {");
@@ -1221,7 +1277,7 @@ test("validated maps expose only the evidenced Before, Delta, and After comparis
   expect(app).toContain('artifact.comparison?.delta');
   expect(app).toContain('data-archify-comparison-view="${view.id}"');
   expect(app).toContain('src="/archify/${encodeURIComponent(artifact.id)}?view=${encodeURIComponent(selectedView.id)}"');
-  expect(app).toContain('state.archifyArtifactViews.set(artifactId, view)');
+  expect(app).toContain('state.archifyArtifactViews.set(artifactId, comparisonView)');
   expect(styles).toContain(".archify-comparison button.active");
 });
 
@@ -1338,11 +1394,11 @@ test("validated Archify artifacts use a dedicated workspace pane and replace Mer
   expect(html).toContain('id="archify-select"');
   expect(html).toContain('id="archify-picker-count"');
   expect(html).toContain('id="archify-artifacts"');
-  expect(html).toContain("Understand the change");
+  expect(html).toContain("Architecture &amp; design");
   expect(app).toContain("function renderArchify()");
-  expect(app).toContain("function selectedArchifyArtifact(artifacts)");
-  expect(app).toContain('state.archifyArtifactId = elements["archify-select"].value || null');
-  expect(app).toContain('selected ? archifyArtifactCard(selected) : ""');
+  expect(app).toContain("function selectedArchifyArtifact(artifacts, view)");
+  expect(app).toContain('state.mapArtifactSelections.set(view, event.target.value || null)');
+  expect(app).toContain('selected && !selected.nativeKey ? archifyArtifactCard(selected) : ""');
   expect(app).not.toContain("function resizeArchifyFrame(event)");
   expect(app).not.toContain('diffcompass-archify-height');
   expect(app).toContain("function hasArchifyArtifact(id)");
@@ -1369,7 +1425,7 @@ test("validated Archify artifacts use a dedicated workspace pane and replace Mer
   expect(html).toContain('data-maps-mode="understand"');
   expect(app).toContain('elements["structural-blast-radius-tab"].classList.add("hidden")');
   expect(app).toContain('elements["sequence-tab"].classList.add("hidden")');
-  expect(app).toContain('elements["archify-artifacts"]._mapMarkup !== markup');
+  expect(app).toContain('container._mapMarkup !== markup');
   expect(app).toContain('MAP_VIEWS.includes(state.activeTab) ? "archify" : state.activeTab');
 });
 
@@ -1451,7 +1507,7 @@ test("flow provenance uses clear reviewer-facing wording", async () => {
   expect(app).toContain('label: "Partly verified"');
   expect(app).toContain("Some links were traced; the remaining links are informed inferences.");
   expect(app).toContain('data-flow-file="${escapeHtml(path)}"');
-  expect(app).toContain("Exact files were not captured for this saved tour. Regenerate this diagram to add them.");
+  expect(app).toContain("Exact files were not captured for this saved tour.");
   expect(app).toContain("The diagram source is invalid or unsupported.");
   expect(app).toContain("This entrypoint did not exist before the change.");
   expect(app).toContain('aria-label="Call-flow legend"');
@@ -1530,21 +1586,22 @@ test("syntax highlighting resets at hidden hunk gaps and between split sources",
   expect(app).not.toContain('const nodes = [...section.querySelectorAll(".line-code")]');
 });
 
-test("split diffs keep the native review UI without editor or moved-code overlays", async () => {
+test("the default renderer keeps native review UI; Monaco is an explicit optional adapter", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(join(root, "public/index.html"), "utf8"),
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
   expect(html).not.toContain("monaco");
-  expect(app).not.toContain("Monaco");
+  expect(app).toContain('import { createMonacoRenderer } from "/monaco-controller.mjs"');
+  expect(app).toContain("state.monacoRenderer?.render(files, { proposalActivityId })");
   expect(app).not.toContain("function detectMovedBlocks(file)");
   expect(app).not.toContain("function renderMovedConnectors()");
   expect(app).not.toContain("data-move-compare");
   expect(app).toContain('${renderDiffFileHeader(file, collapsed)}');
   expect(styles).not.toContain(".moved-connectors");
   expect(styles).not.toContain(".move-banner");
-  expect(styles).not.toContain(".monaco-");
+  expect(styles).not.toContain("[data-monaco-text]");
 });
 
 test("marking a file reviewed collapses its diff while keeping the header available", async () => {
@@ -1558,8 +1615,8 @@ test("marking a file reviewed collapses its diff while keeping the header availa
   expect(app).toContain('aria-expanded="${!collapsed}"');
   expect(app).toContain("state.collapsedFiles.delete(path);");
   expect(styles).toContain(".diff-file.collapsed .diff-file-scroll { display: none; }");
-  expect(styles).toContain(".collapse-caret { position: absolute; left: 1px; top: 2px;");
-  expect(styles).toContain(".diff-file.collapsed .collapse-caret { transform: rotate(-45deg); }");
+  expect(styles).toContain(".collapse-caret { position: absolute; left: 1px; top: 0;");
+  expect(app).toContain('${collapsed ? "▸" : "▾"}');
 });
 
 test("file headers stick to the diff viewport while their file is visible", async () => {

@@ -88,6 +88,11 @@ function highlighter() {
   return highlighterPromise;
 }
 
+// One palette source for Shiki output and Monaco's native token categories.
+export async function syntaxThemeRegistration(theme: SyntaxTheme, light: boolean) {
+  return (await highlighter()).getTheme(THEME_PAIRS[theme][light ? "light" : "dark"]);
+}
+
 export function knownLanguageForPath(path: string): BuiltinLanguage | undefined {
   const basename = path.split("/").at(-1)?.toLowerCase() ?? "";
   if (basename === "dockerfile" || basename.startsWith("dockerfile.")) return "dockerfile";

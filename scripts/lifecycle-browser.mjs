@@ -17,10 +17,10 @@ const activate=async locator=>{
 try {
  await setDiagramViewport(page,{width:1500,height:1050});
  await page.goto(url);await page.locator('#archify-tab').waitFor();
- await page.locator('#archify-tab').click();await page.locator('#maps-understand-select').selectOption('archify');
- assert.ok((await page.locator('#archify-select option').evaluateAll(nodes=>nodes.map(node=>node.value))).includes('lifecycle-state-machine'));
- await page.locator('#archify-select').selectOption('lifecycle-state-machine');
- const interactive=page.locator('#archify-artifacts .archify-artifact');
+ await page.locator('#archify-tab').click();await page.locator('[data-map-view=adaptive]').click();
+ assert.ok((await page.locator('#adaptive-map-select option').evaluateAll(nodes=>nodes.map(node=>node.value))).includes('lifecycle-state-machine'));
+ await page.locator('#adaptive-map-select').selectOption('lifecycle-state-machine');
+ const interactive=page.locator('#adaptive-map-artifacts .archify-artifact');
  const headerAlignment=()=>interactive.locator('.architecture-card-heading > div').evaluate(heading=>{
   const label=heading.querySelector('.architecture-label').getBoundingClientRect(),title=heading.querySelector('h2').getBoundingClientRect();
   return Math.abs(label.top+label.height/2-title.top-title.height/2);
@@ -58,7 +58,7 @@ try {
   return issues;
  }),[],'Rendered SVG preserves perpendicular endpoints and clears states and actual text bounds');
  assert.equal(await page.locator('#adaptive-diagrams .adaptive-card').count(),0,'Validated lifecycle has no duplicate fallback card');
- assert.equal(await page.locator('#archify-artifacts .archify-failure').count(),0);
+ assert.equal(await page.locator('#adaptive-map-artifacts .archify-failure').count(),0);
  // Retain explicit keyboard coverage alongside the pointer interactions.
  await map.locator('g[data-node-id="Pending"]').focus();
  await map.locator('g[data-node-id="Pending"]').press('Enter');
@@ -91,7 +91,7 @@ try {
  assert.ok((await page.locator('#diff').textContent()).includes('Failed: { retry: "Formatting", cancel: "Cancelled" }'));
  await page.getByRole('button',{name:'Back to diagram'}).click();
  await iframe.waitFor();
- assert.equal(await page.locator('#archify-select').inputValue(),'lifecycle-state-machine');
+ assert.equal(await page.locator('#adaptive-map-select').inputValue(),'lifecycle-state-machine');
  assert.equal(await frameHandle.evaluate(frame=>frame.isConnected),true,'Return retains the mounted lifecycle iframe');
  assert.deepEqual(await map.evaluate(()=>({camera:Archify.view.state(),selected:document.querySelector('#focus-id')?.textContent})),beforeSource);
  await page.waitForFunction(expected=>Math.abs(document.querySelector('#diff-panel').scrollTop-expected)<2,sourceScroll);
@@ -121,18 +121,18 @@ try {
  });
  page=await fallbackContext.newPage();await setDiagramViewport(page,{width:1500,height:1050});page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.stack));
  await page.goto(url);await page.locator('#archify-tab').waitFor();
- await page.locator('#archify-tab').click();await page.locator('#maps-understand-select').selectOption('archify');
- await page.locator('#archify-artifacts iframe.archify-frame').waitFor();
- assert.equal(await page.locator('#adaptive-view').isVisible(),false,'Native fallbacks are kept in their own view');
- assert.equal(await page.locator('#archify-select option[value="lifecycle-state-machine"]').count(),0);
- await page.locator('#maps-understand-select').selectOption('adaptive');
+ await page.locator('#archify-tab').click();await page.locator('[data-map-view=adaptive]').click();
+ await page.locator('#adaptive-map-artifacts iframe.archify-frame').waitFor();
+ assert.equal(await page.locator('#adaptive-view').isVisible(),true,'Interactive maps and native fallbacks share the Data & lifecycle view');
+ assert.equal(await page.locator('#adaptive-map-select option[value="lifecycle-state-machine"]').count(),0);
+ await page.locator('#adaptive-map-select').selectOption('native-state');
  const card=page.locator('#adaptive-diagrams .adaptive-card').filter({has:page.getByRole('heading',{name:'Receipt job: retry or cancel',exact:true})});
  const diagram=card.locator('[data-adaptive-diagram=state]'),svg=diagram.locator('svg');
  await svg.waitFor();assert.equal(await card.count(),1);
  for(const label of ['Pending','Formatting','Failed','Ready','Cancelled','start','succeed','fail','retry','cancel'])assert.ok((await svg.textContent()).includes(label),label);
- assert.equal(await page.locator('#archify-select option[value="lifecycle-state-machine"]').count(),0,'No stale linear lifecycle conversion');
- assert.equal(await page.locator('#archify-artifacts iframe.archify-frame').isVisible(),false,'Interactive maps are hidden while viewing the native fallback');
- assert.equal(await page.locator('#maps-understand-select').inputValue(),'adaptive');
+ assert.equal(await page.locator('#adaptive-map-select option[value="lifecycle-state-machine"]').count(),0,'No stale linear lifecycle conversion');
+ assert.equal(await page.locator('#adaptive-map-artifacts iframe.archify-frame').isVisible(),false,'Interactive maps are hidden while viewing the native fallback');
+ assert.equal(await page.locator('#adaptive-map-select').inputValue(),'native-state');
  await card.scrollIntoViewIfNeeded();
  await page.screenshot({path:'/tmp/dc-lifecycle-native-picker.png'});
  await card.getByText('Repository evidence',{exact:true}).click();
@@ -158,7 +158,7 @@ try {
  assert.ok((await page.locator('#diff').textContent()).includes('Failed: { retry: "Formatting", cancel: "Cancelled" }'));
  await page.getByRole('button',{name:'Back to diagram'}).click();
  await svg.waitFor();
- assert.equal(await page.locator('#maps-understand-select').inputValue(),'adaptive');
+ assert.equal(await page.locator('#adaptive-map-select').inputValue(),'native-state');
  assert.equal(await page.getByRole('button',{name:'Back to diagram'}).isVisible(),false);
  console.log('PASS native lifecycle source navigation returns to the selected Mermaid fallback');
  await setDiagramViewport(page,{width:390,height:844});

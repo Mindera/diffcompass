@@ -25,7 +25,9 @@ try {
   $env:BUN_BE_BUN = "1"
   try {
     & $Command scripts/smoke-archify.ts
-    if ($LASTEXITCODE -ne 0) { throw "Installed Archify renderer smoke test failed." }
+    if ($LASTEXITCODE -ne 0) { throw "Installed Archify smoke check failed." }
+    & $Command scripts/smoke-monaco.ts
+    if ($LASTEXITCODE -ne 0) { throw "Installed Monaco renderer smoke test failed." }
   } finally { Remove-Item Env:BUN_BE_BUN }
   foreach ($RootName in @("codex", "claude", "gemini", "copilot")) {
     if (-not (Test-Path (Join-Path $Root "$RootName\skills\diffcompass\.diffcompass-managed"))) { throw "$RootName skill was not installed as a managed copy." }

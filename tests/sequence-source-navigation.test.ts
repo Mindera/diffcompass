@@ -26,7 +26,7 @@ test('host opens the first captured line and highlights all grouped ranges; fail
   const app = await Bun.file(new URL('../public/app.js', import.meta.url)).text();
   const script = app.slice(app.indexOf('async function openSequenceSource('), app.indexOf('function returnToSequenceDiagram('));
   const frame: any = { isConnected: true, _sequenceEvidenceRevision: 'revision', dataset: { archifyArtifactId: 'sequence-test' }, getClientRects: () => [{}], contentWindow: { postMessage() {} } };
-  const state: any = { activeTab: 'archify', session: { comparison: { files: [{ path: 'renamed.ts', oldPath: 'a.ts' }] } } };
+  const state: any = { activeTab: 'sequence', session: { comparison: { files: [{ path: 'renamed.ts', oldPath: 'a.ts' }] } } };
   const calls: any[] = [], highlights: any[] = [], errors: string[] = [];
   let anchors: any[] = [anchor(16, 16, { side: 'old' }), anchor(17, 18, { side: 'old' })], changeRevision = false;
   const open = new Function('state', 'document', 'elements', 'window', 'api', 'renderActiveTab', 'showAnalysisFile', 'diffViewRow', 'updateSequenceSourceReturnVisibility', 'toast', 'sequenceSourceSelection', script + ';return openSequenceSource;')(
@@ -37,12 +37,12 @@ test('host opens the first captured line and highlights all grouped ranges; fail
   await open({ source: frame.contentWindow, data });
   expect(calls).toEqual([['renamed.ts', 16, 'old']]);
   expect(highlights).toEqual([['renamed.ts', 'old', 16], ['renamed.ts', 'old', 17], ['renamed.ts', 'old', 18]]);
-  state.activeTab = 'archify'; anchors = [anchors[0]];
+  state.activeTab = 'sequence'; anchors = [anchors[0]];
   await open({ source: frame.contentWindow, data });
-  expect(calls).toHaveLength(1); expect(state.activeTab).toBe('archify'); expect(errors).toHaveLength(1);
+  expect(calls).toHaveLength(1); expect(state.activeTab).toBe('sequence'); expect(errors).toHaveLength(1);
   anchors = [anchor(16), anchor(17)]; changeRevision = true;
   await open({ source: frame.contentWindow, data });
-  expect(calls).toHaveLength(1); expect(state.activeTab).toBe('archify');
+  expect(calls).toHaveLength(1); expect(state.activeTab).toBe('sequence');
 });
 
 test('moved Paths panel clamps to the actual diagram and navigation after resize without changing valid placement', async () => {

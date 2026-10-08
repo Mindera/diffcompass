@@ -14,7 +14,7 @@ function snapshot(mode = "file") {
       { id: "s1", anchor: { path: "cart.ts", startLine: 10, endLine: 14 }, explanation: "Current explanation" },
       { id: "s2", anchor: { path: "cart.ts", startLine: 20, endLine: 24 }, explanation: "" },
     ] }] },
-    messages: [] as object[], comments: [] as object[], reviewedFiles: [] as string[],
+    messages: [] as object[], comments: [] as object[], activities: [] as object[], reviewedFiles: [] as string[],
     agentActivity: { id: "a1", kind: "tour.explanation" },
   };
 }
@@ -26,6 +26,7 @@ function harness(previous = snapshot()) {
   let explanationWrites = 0;
   let renderedExplanation = "";
   let commentRenders = 0;
+  let activityRenders = 0;
   let tourRenders = 0;
   let focusCalls = 0;
   let editorClosed = false;
@@ -54,16 +55,16 @@ function harness(previous = snapshot()) {
     } },
   };
   const commentActions = app.slice(app.indexOf("async function saveInlineComment("), app.indexOf("async function askAgent("));
-  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", "renderMessages", "renderReviewerTaskAssessmentStatus", `${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
+  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", "renderMessages", "renderReviewerTaskAssessmentStatus", "renderActivities", "renderPullRequest", `${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
   const actions = run(state, elements, { setInterval(fn: () => Promise<void>) { tick = fn; } },
     async () => structuredClone(next), () => state.session.status === "open",
     () => state.session.outline.phases.flatMap((phase) => phase.steps)[state.session.currentStepIndex],
     (text: string) => `<p>${text}</p>`, () => {},
-    () => { renders += 1; diffNode.scrollTop = 0; state.diffCache.clear(); }, () => {},
+    () => { renders += 1; diffNode.scrollTop = 0; if (state.diffCacheRevision !== state.session.revision) state.diffCache.clear(); }, () => {},
     () => { commentRenders += 1; anchorPosition += commentHeightChange; }, () => { editorClosed = true; }, () => {},
-    () => {}, () => { tourRenders += 1; }, () => { focusCalls += 1; }, () => {}, () => {}) as {
+    () => {}, () => { tourRenders += 1; }, () => { focusCalls += 1; }, () => {}, () => {}, () => { activityRenders += 1; }, () => {}) as {
       classify: (a: unknown, b: unknown) => boolean;
-      classifyNavigation: (a: unknown, b: unknown) => boolean;
+      classifyNavigation: (a: unknown, b: unknown, options?: { acrossPhases: boolean }) => boolean;
       saveInlineComment: (form: unknown) => Promise<void>;
       deleteReviewComment: (comment: unknown) => Promise<void>;
     };
@@ -74,6 +75,7 @@ function harness(previous = snapshot()) {
     get anchorTop() { return anchor.getBoundingClientRect().top; },
     async poll(value: typeof next) { next = value; await tick!(); },
     get commentRenders() { return commentRenders; },
+    get activityRenders() { return activityRenders; },
     get editorClosed() { return editorClosed; },
     get renders() { return renders; },
     get tourRenders() { return tourRenders; },
@@ -82,6 +84,51 @@ function harness(previous = snapshot()) {
     get renderedExplanation() { return renderedExplanation; },
   };
 }
+
+test("pending suggestion updates preserve the diff, tour and reading position", async () => {
+  const h = harness();
+  const next = structuredClone(h.state.session);
+  next.revision += 1;
+  next.activities.push({ id: "suggestion", changeStatus: "pending", inlineSuggestions: [{ path: "cart.ts", line: 12 }] });
+  await h.poll(next);
+  expect(h.activityRenders).toBe(1);
+  expect(h.renders).toBe(0);
+  expect(h.focusCalls).toBe(0);
+  expect(h.diffNode.scrollTop).toBe(1700);
+  expect(h.tourScroll.scrollTop).toBe(430);
+  expect(h.state.diffCache.get("cart.ts")).toBe(h.cachedFile);
+  const applied = structuredClone(next);
+  applied.comparison.head = "changed";
+  expect(h.classify(next, applied)).toBe(false);
+});
+
+test("saved layout preferences arriving by polling do not replace comments or move the diff", async () => {
+  const h = harness();
+  const next = { ...structuredClone(h.state.session), revision: 5,
+    diffPreferences: { desktop: { layout: "unified", wrap: "wrap" } } };
+  await h.poll(next);
+  expect(h.renders).toBe(0);
+  expect(h.commentRenders).toBe(0);
+  expect(h.focusCalls).toBe(0);
+  expect(h.diffNode.scrollTop).toBe(1700);
+  expect(h.state.diffCache.get("cart.ts")).toBe(h.cachedFile);
+  expect(h.state.diffCacheRevision).toBe(5);
+});
+
+test("PR thread-only updates retain editors, scroll and expanded context; head changes remain structural", async () => {
+  const previous = { ...snapshot(), pullRequest: { headRefOid: "head", threads: [] as object[], updatedAt: "before", threadsTruncated: false } };
+  const h = harness(previous), next = structuredClone(previous);
+  next.revision++;
+  next.pullRequest.threads.push({ id: "thread", resolved: true, comments: [{ body: "New reply" }] });
+  next.pullRequest.updatedAt = "after";
+  await h.poll(next);
+  expect(h.commentRenders).toBe(1);
+  expect(h.renders).toBe(0);
+  expect(h.diffNode.scrollTop).toBe(1700);
+  expect(h.state.diffCache.get("cart.ts")).toBe(h.cachedFile);
+  const changedHead = structuredClone(next); changedHead.pullRequest.headRefOid = "new-head";
+  expect(h.classify(next, changedHead)).toBe(false);
+});
 
 for (const mode of ["full", "file"]) {
   test(`background preparation keeps ${mode} diff DOM, scroll, and expanded cache intact`, async () => {
@@ -151,6 +198,22 @@ test("same-phase navigation keeps the diff mounted and focuses the new stop dire
   expect(h.diffNode.innerHTML).toBe("Loaded expanded diff and comments");
   expect(h.tourRenders).toBe(1);
   expect(h.focusCalls).toBe(1);
+});
+
+for (const mode of ["full", "file"]) test(`${mode} phase navigation retains unchanged diff cache and focuses its destination`, async () => {
+  const previous = snapshot(mode);
+  previous.outline.phases.push({ id: "p2", title: "Receipt", steps: [{ id: "s3", anchor: { path: "cart.ts", startLine: 30, endLine: 32 }, explanation: "Receipt" }] });
+  const h = harness(previous), next = structuredClone(previous);
+  next.currentStepIndex = 2; next.revision += 1;
+  expect(h.classifyNavigation(previous, next)).toBe(false);
+  expect(h.classifyNavigation(previous, next, { acrossPhases: true })).toBe(true);
+  await h.poll(next);
+  expect(h.state.diffCacheRevision).toBe(next.revision);
+  expect(h.state.diffCache.get("cart.ts")).toBe(h.cachedFile);
+  expect(h.renders).toBe(1);
+  expect(h.focusCalls).toBe(1);
+  next.comparison.head = "new-source";
+  expect(h.classifyNavigation(previous, next, { acrossPhases: true })).toBe(false);
 });
 
 test("adding, editing, and deleting inline comments never rebuilds the diff", async () => {

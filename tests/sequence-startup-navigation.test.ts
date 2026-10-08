@@ -7,8 +7,8 @@ function declaration(name: string) {
 test('early Maps requests do not read an unloaded session; loaded requests use the existing available-view routing', () => {
   const state: any = { session: null, mapsLastView: 'archify' }, calls: any[] = [];
   const render = () => {};
-  const open = new Function('state', 'understandMapViews', 'activateReviewTab', 'renderArchify', 'renderCallFlows', 'renderSequenceDiagrams', 'renderAdaptiveDiagrams', 'renderStructuralBlastRadii', declaration('openMaps') + ';return openMaps;')(
-    state, () => { if (!state.session) throw Error('Session not loaded'); return [{ id: 'archify' }]; }, (...args: any[]) => calls.push(args), render, render, render, render, render,
+  const open = new Function('state', 'availableMapViews', 'activateReviewTab', 'renderArchify', 'renderCallFlows', 'renderSequenceDiagrams', 'renderAdaptiveDiagrams', 'renderStructuralBlastRadii', declaration('openMaps') + ';return openMaps;')(
+    state, () => { if (!state.session) throw Error('Session not loaded'); return [{ id: 'archify' }, { id: 'structural-blast-radius' }]; }, (...args: any[]) => calls.push(args), render, render, render, render, render,
   );
   expect(() => { open(); open('sequence'); }).not.toThrow(); expect(calls).toEqual([]);
   state.session = { outline: {} }; open(); open('missing'); open('structural-blast-radius');

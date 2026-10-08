@@ -1,5 +1,7 @@
 import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
+import { diffSourceIdentity, loadDiffSource } from "./diff-sources.ts";
+import { reviewerSuggestions } from "./reviewer-suggestions.ts";
 import { TourAgent, type AgentTransportReply, type BridgePromptKind } from "./agent.ts";
 import { validateReviewFlow } from "./flows.ts";
 import { validateCallFlows } from "./call-flows.ts";
@@ -113,6 +115,7 @@ function sameComparison(before: GitComparison, after: GitComparison): boolean {
 }
 
 export class ReviewSession {
+  private readonly discussionSources = new Map<string, Promise<Awaited<ReturnType<typeof loadDiffSource>>>>();
   readonly comments: ReviewComment[];
   readonly messages: ChatMessage[];
   readonly activities: AgentChangeActivity[];
@@ -381,12 +384,23 @@ export class ReviewSession {
       .find((row) => row.kind !== "meta" && (side === "old" ? row.oldLine : row.newLine) === line);
   }
 
-  private reviewAnchorContent(path: string, side: "old" | "new", line: number): string | undefined {
-    const row = this.findRow(path, side, line);
-    if (row) return row.content;
-    const file = this.comparison.files.find((candidate) => candidate.path === path);
-    const imageExists = side === "old" ? file?.oldPath : file?.newPath;
-    return file && /\.png$/i.test(file.path) && imageExists && line === 1 ? `[PNG image · ${side}]` : undefined;
+  private async reviewAnchorContent(path: string, side: "old" | "new", line: number): Promise<string | undefined> {
+    try { return (await this.discussionRange(path, side, line)).lineContent; }
+    catch { return undefined; }
+  }
+
+  private githubCommentInDiff(path: string, side: "old" | "new", line: number): boolean {
+    return Boolean(this.fullComparison.files.find(file => file.path === path)?.hunks.some(hunk =>
+      hunk.rows.some(row => row.kind !== "meta" && (side === "old" ? row.oldLine : row.newLine) === line)));
+  }
+
+  private githubCommentUnavailableReason(comment: ReviewComment): string | undefined {
+    if (!this.pullRequest) return undefined;
+    if (/\.png$/i.test(comment.path)) return "Local only · image comments are not included in GitHub reviews.";
+    if (comment.scope === "range") return "Local only · quote and range comments are not included in GitHub reviews.";
+    if (comment.scope === "stop") return "Local only · tour-stop comments are not included in GitHub reviews.";
+    if (!this.githubCommentInDiff(comment.path, comment.side, comment.line)) return "Local only · this line is outside the GitHub diff.";
+    return undefined;
   }
 
   private refreshFindingLifecycles(): void {
@@ -397,11 +411,11 @@ export class ReviewSession {
     }
   }
 
-  private discussionRange(path: string, side: "old" | "new", startLine: number, endLine = startLine): { lineContent: string; context: string } {
+  private async discussionRange(path: string, side: "old" | "new", startLine: number, endLine = startLine): Promise<{ lineContent: string; context: string }> {
     if (!this.comparison.files.some((file) => file.path === path)) {
       throw new ReviewError("Discussion anchor path must reference a changed file in this comparison.");
     }
-    if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine) {
+    if (!["old", "new"].includes(side) || !Number.isSafeInteger(startLine) || !Number.isSafeInteger(endLine) || startLine < 1 || endLine < startLine) {
       throw new ReviewError("Discussion anchor lines must be positive and ordered.");
     }
     if (endLine - startLine > 99) throw new ReviewError("Discussion ranges cannot exceed 100 lines.");
@@ -411,14 +425,29 @@ export class ReviewSession {
       return { lineContent: `[PNG image · ${side}]`, context: `[PNG image · ${side}]` };
     }
     const rows = Array.from({ length: endLine - startLine + 1 }, (_, index) => this.findRow(path, side, startLine + index));
-    if (rows.some((row) => !row)) throw new ReviewError("Discussion range must cover consecutive lines in the current diff.");
-    const context = rows.map((row) => row!.content).join("\n");
-    return { lineContent: rows[0]!.content, context };
+    if (rows.every(Boolean)) return { lineContent: rows[0]!.content, context: rows.map(row => row!.content).join("\n") };
+    // Expanded context is still part of the captured comparison, never the
+    // mutable checkout. Reuse the bounded regular-text source loader, keyed by
+    // immutable comparison identity; keep at most eight files in memory.
+    const comparison = this.comparison, identity = diffSourceIdentity(comparison);
+    const key = JSON.stringify([comparison.repositoryRoot, identity, path]);
+    let source = this.discussionSources.get(key);
+    if (!source) {
+      source = loadDiffSource(comparison, identity, path);
+      this.discussionSources.set(key, source);
+      if (this.discussionSources.size > 8) this.discussionSources.delete(this.discussionSources.keys().next().value!);
+    }
+    const captured = await source;
+    if (!captured.available) throw new ReviewError("Captured context is unavailable for this file. Use a line in the current diff.");
+    const text = captured[side], lines = text.split("\n");
+    if (text.endsWith("\n")) lines.pop();
+    if (!text || endLine > lines.length) throw new ReviewError("Discussion range must cover consecutive lines in the captured file.");
+    return { lineContent: lines[startLine - 1]!, context: lines.slice(startLine - 1, endLine).join("\n") };
   }
 
-  private normalizeQuestionAnchor(anchor: NonNullable<ChatMessage["anchor"]>): NonNullable<ChatMessage["anchor"]> {
+  private async normalizeQuestionAnchor(anchor: NonNullable<ChatMessage["anchor"]>): Promise<NonNullable<ChatMessage["anchor"]>> {
     const endLine = anchor.endLine ?? anchor.line;
-    const range = this.discussionRange(anchor.path, anchor.side, anchor.line, endLine);
+    const range = await this.discussionRange(anchor.path, anchor.side, anchor.line, endLine);
     if (anchor.content !== range.lineContent) throw new ReviewError("The selected code changed. Select the line or range again before asking.");
     if (anchor.context !== undefined && anchor.context !== range.context) {
       throw new ReviewError("The selected code context changed. Select the range again before asking.");
@@ -556,7 +585,7 @@ export class ReviewSession {
     this.currentRevisionSummary = revisionSummary(checkpoint.id, checkpoint.createdAt, checkpointComparison.files, full.files, since.files);
   }
 
-  private reconcileRevisionState(full: GitComparison, sinceFiles: DiffFile[]): void {
+  private async reconcileRevisionState(full: GitComparison, sinceFiles: DiffFile[]): Promise<void> {
     const changedPaths = new Set(sinceFiles.map((file) => file.path));
     const currentPaths = new Set(full.files.map((file) => file.path));
     const checkpoint = this.latestCheckpoint();
@@ -565,7 +594,10 @@ export class ReviewSession {
     for (const path of reviewedAtCheckpoint) if (currentPaths.has(path) && !changedPaths.has(path)) this.reviewedFiles.add(path);
     this.comparison = full;
     for (const comment of this.comments) {
-      comment.status = this.reviewAnchorContent(comment.path, comment.side, comment.line) === comment.lineContent ? "active" : "outdated";
+      try {
+        const range = await this.discussionRange(comment.path, comment.side, comment.line, comment.endLine ?? comment.line);
+        comment.status = range.lineContent === comment.lineContent && (!comment.context || range.context === comment.context) ? "active" : "outdated";
+      } catch { comment.status = "outdated"; }
     }
     for (const step of tourSteps(this.outline)) {
       step.outdated = changedPaths.has(step.anchor.path) || !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
@@ -696,7 +728,7 @@ export class ReviewSession {
         if (this.selectedCheckpointId === id) this.selectedCheckpointId = undefined;
         if (!this.latestCheckpoint() && this.comparisonView === "since-last-review") this.comparisonView = "full";
         await this.updateRevisionSummary(this.fullComparison);
-        this.reconcileRevisionState(this.fullComparison, this.currentSinceFiles);
+        await this.reconcileRevisionState(this.fullComparison, this.currentSinceFiles);
         await this.selectComparisonView();
         this.comparisonGeneration += 1;
         this.revision += 1;
@@ -933,9 +965,15 @@ export class ReviewSession {
       comparison,
       outline,
       currentStepIndex: this.currentStepIndex,
-      comments: this.comments,
+      comments: this.comments.map(comment => {
+        const githubUnavailableReason = this.githubCommentUnavailableReason(comment);
+        return githubUnavailableReason ? { ...comment, githubUnavailableReason } : comment;
+      }),
       messages: this.messages,
-      activities: this.activities.map(({ proposal, ...activity }) => ({ ...activity, hasProposal: Boolean(proposal) })),
+      activities: this.activities.map(({ proposal, ...activity }) => {
+        const inlineSuggestions = reviewerSuggestions({ ...activity, proposal });
+        return { ...activity, hasProposal: Boolean(proposal), ...(inlineSuggestions.length ? { inlineSuggestions } : {}) };
+      }),
       reviewedFiles: [...this.reviewedFiles].sort(),
       checkpoints: structuredClone(this.checkpoints),
       comparisonView: this.comparisonView,
@@ -1108,8 +1146,9 @@ export class ReviewSession {
     return { paths: matches.map((file) => file.path), count: matches.length };
   }
 
-  async setFileReviewed(path: string, reviewed: boolean) {
+  async setFileReviewed(path: string, reviewed: boolean, expectedComparisonId?: string) {
     return this.serializeMutation(async () => {
+      if (expectedComparisonId !== undefined && expectedComparisonId !== diffSourceIdentity(this.comparison)) throw new ReviewError("This action belongs to a previous comparison. Review the new source before marking it reviewed.");
       this.ensureOpen();
       if (!this.comparison.files.some((file) => file.path === path)) throw new ReviewError("Changed file does not exist in this comparison.");
       const wasReviewed = this.reviewedFiles.has(path);
@@ -1135,8 +1174,9 @@ export class ReviewSession {
     return { file: structuredClone(file) };
   }
 
-  async proposeInlineEdit(path: string, side: "new", line: number, expectedContent: string, replacement: string, requestedEndLine?: number) {
+  async proposeInlineEdit(path: string, side: "new", line: number, expectedContent: string, replacement: string, requestedEndLine?: number, expectedComparisonId?: string) {
     return this.serializeMutation(async () => {
+      if (expectedComparisonId !== undefined && expectedComparisonId !== diffSourceIdentity(this.comparison)) throw new ReviewError("This draft belongs to a previous comparison. Copy or cancel it before reviewing the new source.");
       this.ensureOpen();
       if (side !== "new") throw new ReviewError("Only lines on the new side of a changed file can be edited.");
       const changedFile = this.comparison.files.find((candidate) => candidate.path === path && candidate.status !== "deleted");
@@ -1233,7 +1273,7 @@ export class ReviewSession {
         if (modifiesWorkingTree) {
           this.fullComparison = await loadComparison(this.comparison.repositoryRoot, this.fullComparison.base, this.preferences.contextLines);
           await this.updateRevisionSummary(this.fullComparison);
-          this.reconcileRevisionState(this.fullComparison, this.currentSinceFiles);
+          await this.reconcileRevisionState(this.fullComparison, this.currentSinceFiles);
           await this.selectComparisonView();
           this.comparisonGeneration += 1;
         }
@@ -1604,6 +1644,40 @@ export class ReviewSession {
     });
   }
 
+  async retrySequenceDiagrams() {
+    return this.serialize(async () => {
+      const before = this.captureMutableState();
+      const terminalEpoch = this.terminalEpoch;
+      const comparisonGeneration = this.comparisonGeneration;
+      let operationRevision = before.revision;
+      try {
+        this.ensureOpen();
+        if (!this.outline) throw new ReviewError("Start the tour first.");
+        const failedIds = new Set((this.outline.archifyFailures ?? []).filter(failure => failure.type === "sequence").map(failure => failure.id));
+        if (!failedIds.size) return this.snapshot();
+        const ids = new Set(archifyCandidates(this.outline).filter(candidate => candidate.type === "sequence" && failedIds.has(candidate.id)).map(candidate => candidate.id));
+        if (!ids.size) throw new ReviewError("The saved sequence source is unsupported. Edit its source before retrying.");
+        const renderer = ArchifyRenderer.fromEnvironment();
+        if (!renderer) throw new ReviewError("The diagram renderer is unavailable. Restore the renderer before retrying.");
+        // Retry rendering saved source only. Never invoke the agent, replace
+        // healthy maps, or regenerate the review/sequence evidence.
+        const rendered = await renderer.render(this.outline, this.outline.archifyArtifacts, ids);
+        this.ensureComparisonCurrent(comparisonGeneration);
+        this.ensureOpen();
+        if (this.revision !== before.revision) throw new ReviewError("The review changed while diagrams were being retried. Retry against the latest session.");
+        this.outline.archifyArtifacts = [...(this.outline.archifyArtifacts ?? []).filter(artifact => !ids.has(artifact.id)), ...rendered.artifacts];
+        this.outline.archifyFailures = [...(this.outline.archifyFailures ?? []).filter(failure => !ids.has(failure.id)), ...rendered.failures];
+        this.revision += 1;
+        operationRevision = this.revision;
+        await this.persist();
+        return this.snapshot();
+      } catch (error) {
+        this.restoreMutableState(before, terminalEpoch, operationRevision);
+        throw error;
+      }
+    });
+  }
+
   async regenerateFlows(id?: string) {
     return this.serialize(async () => {
       const before = this.captureMutableState();
@@ -1815,8 +1889,9 @@ export class ReviewSession {
     });
   }
 
-  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; stepId?: string | null; anchor?: ChatMessage["anchor"]; contextPaths?: string[]; dryRunContext?: ChatMessage["dryRunContext"] }) {
+  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; stepId?: string | null; anchor?: ChatMessage["anchor"]; contextPaths?: string[]; dryRunContext?: ChatMessage["dryRunContext"] }, expectedComparisonId?: string) {
     return this.serialize(async () => {
+      if (expectedComparisonId !== undefined && expectedComparisonId !== diffSourceIdentity(this.comparison)) throw new ReviewError("This draft belongs to a previous comparison. Copy or cancel it before reviewing the new source.");
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;
       let operationRevision = before.revision;
@@ -1828,7 +1903,7 @@ export class ReviewSession {
       if (root && conversation?.anchor) throw new ReviewError("A follow-up keeps its original code location.");
       if (root && conversation?.stepId !== undefined) throw new ReviewError("A follow-up keeps its original tour stop.");
       const anchor = root?.anchor ?? conversation?.anchor;
-      const normalizedAnchor = root || !anchor ? anchor : this.normalizeQuestionAnchor(anchor);
+      const normalizedAnchor = root || !anchor ? anchor : await this.normalizeQuestionAnchor(anchor);
       if (root && conversation?.contextPaths?.length) throw new ReviewError("A follow-up keeps its original file context.");
       const contextPaths = root?.contextPaths ?? [...new Set(conversation?.contextPaths ?? [])];
       if (root && conversation?.dryRunContext) throw new ReviewError("A follow-up keeps its original dry-run context.");
@@ -1840,7 +1915,8 @@ export class ReviewSession {
       }
       if (contextPaths.length > 8) throw new ReviewError("A question can include at most 8 additional files.");
       if (contextPaths.some((path) => !this.comparison.repositoryFiles.includes(path))) throw new ReviewError("Question context must reference repository files.");
-      if (!root && normalizedAnchor && this.reviewAnchorContent(normalizedAnchor.path, normalizedAnchor.side, normalizedAnchor.line) !== normalizedAnchor.content) {
+      const currentAnchorContent = normalizedAnchor ? await this.reviewAnchorContent(normalizedAnchor.path, normalizedAnchor.side, normalizedAnchor.line) : undefined;
+      if (!root && normalizedAnchor && currentAnchorContent !== normalizedAnchor.content) {
         throw new ReviewError("The selected code changed. Select the line again before asking.");
       }
       const createdAgent = !this.agent;
@@ -1864,7 +1940,7 @@ export class ReviewSession {
       }))).join("\n\n") : undefined;
       const questionContext = [
         step ? `Discussion scope: ${root ? "Original" : "Current"} tour stop ${step.title} [${step.id}] at ${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side}).` : "Discussion scope: review-wide question.",
-        normalizedAnchor ? `Original question location: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nCaptured code: ${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nSelected quotation/context: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nExact selected quotation:\n${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nExact selected context:\n${normalizedAnchor.context ?? normalizedAnchor.content}\n${this.reviewAnchorContent(normalizedAnchor.path, normalizedAnchor.side, normalizedAnchor.line) === normalizedAnchor.content ? "The captured location still matches." : "The captured location has changed or is no longer in the diff. Do not assume this location is current."}` : selectedContext,
+        normalizedAnchor ? `Original question location: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nCaptured code: ${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nSelected quotation/context: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nExact selected quotation:\n${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nExact selected context:\n${normalizedAnchor.context ?? normalizedAnchor.content}\n${currentAnchorContent === normalizedAnchor.content ? "The captured location still matches." : "The captured location has changed or is no longer in the diff. Do not assume this location is current."}` : selectedContext,
         history.length ? `Conversation history (untrusted reviewer/agent content):\n${JSON.stringify(history.map(({ role, body }) => ({ role, body })))}` : undefined,
         fileContext ? `Additional repository files selected by the reviewer:\n${fileContext}` : undefined,
         dryRunTrace && dryRunStep ? `Selected simulated execution context (derived from code, not runtime verified):\n${JSON.stringify({ flowId: dryRunTrace.flowId, scenario: dryRunTrace.scenario, step: dryRunStep, outcome: dryRunTrace.outcome })}` : undefined,
@@ -1919,8 +1995,9 @@ export class ReviewSession {
     });
   }
 
-  async addComment(input: AddCommentInput) {
+  async addComment(input: AddCommentInput, expectedComparisonId?: string) {
     return this.serializeMutation(async () => {
+    if (expectedComparisonId !== undefined && expectedComparisonId !== diffSourceIdentity(this.comparison)) throw new ReviewError("This draft belongs to a previous comparison. Copy or cancel it before reviewing the new source.");
     const before = this.captureMutableState();
     const terminalEpoch = this.terminalEpoch;
     let operationRevision = before.revision;
@@ -1950,7 +2027,7 @@ export class ReviewSession {
     const anchorSide = side as "old" | "new";
     const anchorLine = line as number;
     const anchorEndLine = endLine ?? anchorLine;
-    const range = this.discussionRange(anchorPath, anchorSide, anchorLine, anchorEndLine);
+    const range = await this.discussionRange(anchorPath, anchorSide, anchorLine, anchorEndLine);
     endLine = anchorEndLine;
     if (input.context !== undefined && input.context !== range.context) throw new ReviewError("Comment context does not match the current diff range.");
     if (input.selectedText !== undefined && (!input.selectedText.trim() || input.selectedText.length > 16_000 || !range.context.includes(input.selectedText))) {
@@ -1971,7 +2048,7 @@ export class ReviewSession {
       body,
       lineContent: range.lineContent,
       status: "active",
-      publishToGitHub: scope === "line" && Boolean(this.pullRequest) && !/\.png$/i.test(path),
+      publishToGitHub: scope === "line" && Boolean(this.pullRequest) && !/\.png$/i.test(path) && this.githubCommentInDiff(anchorPath, anchorSide, anchorLine),
       id: crypto.randomUUID(),
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -1987,8 +2064,9 @@ export class ReviewSession {
     });
   }
 
-  async updateComment(id: string, body: string) {
+  async updateComment(id: string, body: string, expectedComparisonId?: string) {
     return this.serializeMutation(async () => {
+    if (expectedComparisonId !== undefined && expectedComparisonId !== diffSourceIdentity(this.comparison)) throw new ReviewError("This draft belongs to a previous comparison. Copy or cancel it before reviewing the new source.");
     const before = this.captureMutableState();
     const terminalEpoch = this.terminalEpoch;
     let operationRevision = before.revision;
@@ -2020,7 +2098,8 @@ export class ReviewSession {
       const comment = this.comments.find((candidate) => candidate.id === id);
       if (!comment) throw new ReviewError(`Review comment does not exist: ${id}`);
       if (publish && /\.png$/i.test(comment.path)) throw new ReviewError("Image comments remain local because GitHub cannot publish them as inline diff comments.");
-      if (publish && comment.scope && comment.scope !== "line") throw new ReviewError("Range and stop comments remain local because GitHub publishes line comments only.");
+      if (publish && comment.scope && comment.scope !== "line") throw new ReviewError("Range and stop comments remain local; they are not included in GitHub reviews.");
+      if (publish && !this.githubCommentInDiff(comment.path, comment.side, comment.line)) throw new ReviewError("Comments on expanded context remain local because that line is outside the GitHub diff.");
       const previous = comment.publishToGitHub;
       const previousRevision = this.revision;
       comment.publishToGitHub = publish;
@@ -2172,14 +2251,14 @@ export class ReviewSession {
       try {
       this.fullComparison = refreshed;
       await this.updateRevisionSummary(refreshed);
-      this.reconcileRevisionState(refreshed, this.currentSinceFiles);
+      await this.reconcileRevisionState(refreshed, this.currentSinceFiles);
       await this.selectComparisonView();
       this.comparisonGeneration += 1;
       this.revision += 1;
       operationRevision = this.revision;
       for (const comment of this.comments) {
         try {
-          const range = this.discussionRange(comment.path, comment.side, comment.line, comment.endLine ?? comment.line);
+          const range = await this.discussionRange(comment.path, comment.side, comment.line, comment.endLine ?? comment.line);
           comment.status = range.lineContent === comment.lineContent && (!comment.context || range.context === comment.context) && (!comment.selectedText || range.context.includes(comment.selectedText)) ? "active" : "outdated";
         } catch {
           comment.status = "outdated";
@@ -2338,7 +2417,7 @@ export class ReviewSession {
         this.pullRequest = latest;
         this.fullComparison = refreshed;
         await this.updateRevisionSummary(refreshed);
-        this.reconcileRevisionState(refreshed, this.currentSinceFiles);
+        await this.reconcileRevisionState(refreshed, this.currentSinceFiles);
         await this.selectComparisonView();
         if (wasClosed) {
           this.status = "open";
@@ -2352,7 +2431,7 @@ export class ReviewSession {
         for (const path of this.reviewedFiles) if (!refreshedPaths.has(path)) this.reviewedFiles.delete(path);
         for (const comment of this.comments) {
           try {
-            const range = this.discussionRange(comment.path, comment.side, comment.line, comment.endLine ?? comment.line);
+            const range = await this.discussionRange(comment.path, comment.side, comment.line, comment.endLine ?? comment.line);
             comment.status = range.lineContent === comment.lineContent && (!comment.context || range.context === comment.context) && (!comment.selectedText || range.context.includes(comment.selectedText)) ? "active" : "outdated";
           } catch {
             comment.status = "outdated";
@@ -2401,6 +2480,7 @@ export class ReviewSession {
       this.assertCloseAllowed(outcome, decision);
       const selected = this.comments.filter((comment) => comment.publishToGitHub);
       if (selected.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
+      if (selected.some(comment => !this.githubCommentInDiff(comment.path, comment.side, comment.line))) throw new ReviewError("Comments outside the GitHub diff must remain local. Unselect them before publishing.");
       const commentIds = selected.map((comment) => comment.id).sort();
       const existing = this.pullRequest.publication;
       const existingDecision = existing?.decision ?? (existing?.outcome === "accepted" ? "approve" : "request-changes");

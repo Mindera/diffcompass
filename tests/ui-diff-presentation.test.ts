@@ -6,10 +6,11 @@ const html = await Bun.file(new URL("../public/index.html", import.meta.url)).te
 
 test("added files render only the new side while modified files keep split layout", () => {
   const source = app.slice(app.indexOf("function renderDiff(files,"), app.indexOf("function syncDiffViewControls()"));
+  const scrollHelpers = app.slice(app.indexOf("let reviewedScrollFloor = null;"), app.indexOf("function nextRenderedPath("));
   const state = { collapsedFiles: new Set(), diffLayout: "split", session: {}, splitOldWidth: 50, proposalPreview: false, proposalActivityId: null as string | null, renderedDiffFiles: [] as unknown[] };
   const diff = { innerHTML: "", querySelectorAll: () => [] };
   const elements = { diff, "empty-diff": { classList: { toggle() {} } } };
-  const render = new Function("state", "elements", "CSS", "syncDiffViewControls", "escapeHtml", "renderDiffFileHeader", "isPngDiff", "whitespaceChangedRows", "inlineChangesForRows", "fileContext", "splitRows", "renderSplitSide", "renderUnifiedRow", "highlightRenderedCode", "hydrateDiffImages", "renderConversationBadges", "renderGitHubReviewThreads", "SPLIT_PANE_MIN", "SPLIT_PANE_MAX", `${source}; return renderDiff;`)(
+  const render = new Function("state", "elements", "CSS", "syncDiffViewControls", "escapeHtml", "renderDiffFileHeader", "isPngDiff", "whitespaceChangedRows", "inlineChangesForRows", "fileContext", "splitRows", "renderSplitSide", "renderUnifiedRow", "highlightRenderedCode", "hydrateDiffImages", "renderConversationBadges", "renderGitHubReviewThreads", "SPLIT_PANE_MIN", "SPLIT_PANE_MAX", `${scrollHelpers}\n${source}; return renderDiff;`)(
     state, elements, { escape: (s: string) => s }, () => {}, (s: string) => s, () => "", () => false,
     () => new Set(), () => new Map(), () => 3, () => [[null, {}]],
     (_file: unknown, _row: unknown, side: string) => `<div data-side="${side}"></div>`,

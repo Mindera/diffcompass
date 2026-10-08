@@ -573,7 +573,7 @@ test('source navigation shares exact captured candidate destinations, retains cu
   const script = app.slice(app.indexOf('async function openSequenceSource('), app.indexOf('function returnToSequenceDiagram('));
   const calls: any[] = [];
   const frame: any = { isConnected: true, dataset: { archifyArtifactId: 'sequence-fixture' }, getClientRects: () => [{}], contentWindow: { postMessage() {} } };
-  const state: any = { activeTab: 'archify', session: { comparison: { files: [{ path: 'renamed.ts', oldPath: 'original.ts' }] } } };
+  const state: any = { activeTab: 'sequence', session: { comparison: { files: [{ path: 'renamed.ts', oldPath: 'original.ts' }] } } };
   let anchor: any = { path: 'original.ts', side: 'old', startLine: 2, endLine: 2 };
   const open = new Function('state', 'document', 'elements', 'window', 'api', 'renderActiveTab', 'showAnalysisFile', 'showRepositoryFile', 'diffViewRow', 'updateSequenceSourceReturnVisibility', 'toast', 'sequenceSourceSelection', script + ';return openSequenceSource;')(
     state, { querySelectorAll: () => [frame] }, { 'diff-panel': { scrollTop: 100 } }, {}, async () => ({ edge: [anchor] }), () => {},
@@ -582,10 +582,10 @@ test('source navigation shares exact captured candidate destinations, retains cu
   const event = { source: frame.contentWindow, data: { type: 'diffcompass-sequence-source', edgeId: 'edge', anchorIndex: 0 } };
   await open(event);
   expect(calls).toEqual([['comparison', 'renamed.ts', 2, 'old']]);
-  state.activeTab = 'archify'; anchor = { ...anchor, path: 'renamed.ts', side: 'new', definition: true };
+  state.activeTab = 'sequence'; anchor = { ...anchor, path: 'renamed.ts', side: 'new', definition: true };
   await open(event);
   expect(calls.at(-1)).toEqual(['current', 'renamed.ts', 2, 'Current workspace · name match']);
-  state.activeTab = 'archify'; anchor = { ...anchor, comparisonMatch: true };
+  state.activeTab = 'sequence'; anchor = { ...anchor, comparisonMatch: true };
   await open(event);
   expect(calls.at(-1)).toEqual(['comparison', 'renamed.ts', 2, 'new']);
 });
