@@ -4,13 +4,15 @@ A local, agent-led walkthrough for Git changes. Follow a guided tour, explore th
 diff, ask questions, and review a branch or GitHub pull request in your browser.
 
 [Install](#install) · [Update](#update) · [Run](#run) ·
-[Feature catalogue](docs/feature-showcase.html) · [Development](#development)
+[Feature catalogue](docs/features.md) · [Development](#development)
 
 ![Current DiffCompass interface showing a demo review with changed files and a split diff](docs/images/overview.png)
 
-Explore the **[interactive feature catalogue](docs/feature-showcase.html)** for
-illustrated features and examples. On GitHub, use **Download raw file**, then open
-the downloaded HTML in your browser; it includes its own images and works offline.
+Explore the **[feature catalogue](docs/features.md)** directly on GitHub for
+features, entry points, and screenshots. Prefer the interactive version? Open the
+[HTML catalogue file](docs/feature-showcase.html), click **Download raw file**,
+then open the downloaded `.html` file in your browser. GitHub displays its source;
+the downloaded catalogue includes its images and works offline.
 
 ## Install
 
