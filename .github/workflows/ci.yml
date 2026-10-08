@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  verify:
+  foundation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,3 +52,19 @@ jobs:
         run: ./scripts/build-windows-release.ps1
       - shell: powershell
         run: ./scripts/smoke-install.ps1
+  # Preserve the existing required check: it must include every browser shard
+  # as well as both release builds, even when an upstream job fails or cancels.
+  verify:
+    if: always()
+    needs: [foundation, monaco, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all checks to pass
+        env:
+          FOUNDATION: ${{ needs.foundation.result }}
+          MONACO: ${{ needs.monaco.result }}
+          WINDOWS: ${{ needs.windows.result }}
+        run: |
+          test "$FOUNDATION" = success
+          test "$MONACO" = success
+          test "$WINDOWS" = success
