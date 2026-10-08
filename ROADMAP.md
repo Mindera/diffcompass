@@ -1,42 +1,80 @@
 # Roadmap
 
-This is the canonical roadmap. The [README](README.md#capabilities) documents
-current capabilities; [release history](docs/roadmap-history.md) preserves the
-earlier milestone record. In progress means implementation has started on an
-isolated branch, not that the feature has shipped.
+Canonical delivery state, checked **2026-10-08** against published v2.1.0
+(`d889a0b`), which includes the previously inspected main `607e18b`.
+[README](README.md#capabilities) gives entry points,
+[the feature guide](docs/feature-showcase.html) illustrates them, and
+[RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
+dated checks, failures and assumptions. [Review branches](REVIEW_BRANCHES.md)
+identifies the remaining scope; [release history](docs/roadmap-history.md)
+retains earlier milestones.
+
+## Released baseline
+
+Latest release: [v2.1.0](https://github.com/rcosteira79/diffcompass/releases/tag/v2.1.0),
+2026-10-08 at 19:40:18 UTC, annotated tag peeled to `d889a0b`. The additions below
+are included. Installed version was last observed as 2.0.0 on 2026-10-04, not
+freshly queried. Tours, text/word diffs, Symbol Peek,
+conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
+radius are already released. Static maps are not execution traces; dry runs
+are simulations.
+
+## Released in v2.1.0
+
+| Change | Delivery | Scope and boundary |
+| --- | --- | --- |
+| Sequence Code steps and earlier fixes | [PR #3](https://github.com/rcosteira79/diffcompass/pull/3), `73f9247` | Resizable/collapsible pane, eager saved excerpts, candidate lookup and source return; native Call-flow consolidation, map preferences, optional-guidedViews guard, impact recovery and final-commentary filtering. Overall impact diagnostics still lack export parity. |
+| Lifecycle layout and source return | [PR #4](https://github.com/rcosteira79/diffcompass/pull/4), `e19cd7e` | Branching/looping state maps, collision checks and source-return context with Mermaid fallback. |
+| Opt-in Monaco and review interactions | [PR #5](https://github.com/rcosteira79/diffcompass/pull/5), `57bf907` | Normal Diff renderer selector, Shiki default. Captured source, lazy editors, inline edit drafts and comments/PR threads reuse the session. This is merged app code, beyond the original isolated prototype. |
+| GitHub-native suggestions | [PR #7](https://github.com/rcosteira79/diffcompass/pull/7), `13951a2` | Queue/return saved edits; confirm selected suggestions and head for neutral COMMENT publication. Apply locally remains separate. Exact ranges and durable receipts bound publication/retries. |
+| What changed and parser evidence | [PR #6](https://github.com/rcosteira79/diffcompass/pull/6), `ffc7bf4` | Tour-agent explanations plus collapsed TS/TSX/Kotlin details, source links, tour evidence and separately disclosed explanation/parser export coverage. |
+| Phase-anchoring regression checks | [PR #8](https://github.com/rcosteira79/diffcompass/pull/8), `af709b1` | Tests for existing same-turn geometry correction during delayed image decoding; no production changes. |
+| Monaco What changed and draft recovery | [PR #9](https://github.com/rcosteira79/diffcompass/pull/9), `607e18b` | Same panel in both renderers. New tours require all-file explanation coverage, with at most two repairs; old tours are not backfilled. Refresh/failure retains drafts and old models; stale saves remain blocked. |
+
+Current navigation is **Diagrams → Architecture & design / Blast radius /
+Call flows / Sequence diagrams / Data & lifecycle**. v2.0.0 uses Maps.
+The per-file **What changed** panel appears in Diff mode outside the guided tour
+and proposal previews, in both renderers.
+
+Latest PR #9 reports 962 passing tests, browser/package checks and seven passing
+CI checks; it also retains a macOS explorer-height failure reproduced on base.
+These are attributed reports, not fresh app tests by the docs agent. Earlier
+pointer matrices, badge timeout, socket and navigation failures remain dated
+evidence; later successes do not erase them or certify every browser/device.
+
+## Cancelled work
+
+**Decision log was scrapped by the user.** It is not a planned capability or
+pending merge. Its earlier implementation, verification and all 17 product
+assumptions remain in RESEARCH as historical evidence only.
+
+## Documentation review
+
+`review/research-docs` contains only documentation and the offline feature guide.
+The safety snapshot `39206b4` and 668-test combined run are historical, not a
+merge/release candidate. Syntax and Monaco are now released; their old isolated
+counts do not validate their later expanded implementations.
 
 ## In progress
 
-| Feature | Branch | Outcome |
+| Workstream | Extension of existing features | Status boundary |
 | --- | --- | --- |
-| Structural blast radius | `feat/structural-blast-radius` | Inspect callers, structural reach, affected files, and test gaps per changed symbol. |
-| Dry run | `feat/review-dry-run` | Step through reviewed code with editable sample inputs, simulated values, and independent navigation. |
-| Skill extraction | `feat/skill-extraction` | Turn reusable review lessons into appropriate skill improvements during feedback handoff. |
-| Archify integration | `feat/archify-integration` | Optional validated interactive diagrams, with the local Mermaid renderer retained. |
+| Skill extraction | Evidence-backed reusable lessons during feedback handoff, extending suitable existing skills rather than turning every comment into a rule. | Separate agent/workstream; not audited or completed by this research delegation. |
 
-### Structural blast radius
+## Prototypes and research
 
-Add a per-changed-symbol view of what the change can structurally reach: direct callers, transitive impacted nodes, affected files, and nearby test gaps. Follow the `mobile-code-review` model by recording the structural provider, confidence, and provenance with every result; pin findings to changed or impacted symbols and use broad, untested reach as a review-prioritization signal.
-
-Keep the claim precise: graph reach is an authored or statically discovered dependency path, not proof of runtime impact. Show both the bounded graph rendered in the UI and the larger reported radius when the provider truncates visible nodes. Let reviewers select a changed symbol and inspect its isolated subgraph rather than collapsing same-named symbols into one node.
-
-### Dry run
-
-Provide a dedicated Dry runs tab for agent-simulated execution of the reviewed code. Share flow identities with call flows and sequence diagrams, suggest relevant scenarios, and let reviewers customize sample inputs and mocked responses. Show active code, value changes, branch decisions, and outputs with navigation independent of the tour.
-
-Enabled by default, with an option to skip generation entirely. Prepare detailed walkthroughs on demand, persist them for resume and offline exports, and invalidate them when inputs or source change. Archify may provide a synchronized visual map; actual code execution is outside this feature's scope. See the [agreed implementation specification](docs/dry-run-walkthrough-spec.md).
-
-### Archify integration
-
-Support [Archify](https://github.com/tt-a1i/archify) as an optional diagram renderer for architecture, workflow, sequence, data-flow, and lifecycle views. Generate typed JSON IR from the same bounded repository evidence used by the tour, run Archify validation before displaying an artifact, and preserve the last valid diagram when a generated revision fails validation.
-
-Embed the resulting self-contained interactive HTML in the briefing and exported review where practical, including search, authored upstream/downstream reach, exact routes, and Before / Delta / After architecture views. Keep DiffCompass's current validated Mermaid path as the built-in fallback; integration must not require network access or imply runtime impact from authored topology.
-
-### Skill extraction
-
-Add a feedback-handoff step that asks the receiving agent to assess whether reviewer comments, clarifications, requested changes, or corrected assumptions reveal a reusable lesson. When they do, the agent should propose or apply the lesson to the most relevant existing skill—or create a narrowly scoped skill when no suitable one exists—so the same class of mistake is less likely to recur.
-
-Implement this by extending the DiffCompass skill or introducing a companion feedback-processing skill. Extraction should require evidence from the completed review, distinguish general guidance from repository-specific convention and one-off preference, avoid duplicating existing instructions, and report what was extracted and where. Do not turn every comment into a rule or silently modify unrelated skills.
+- The [viewer lab](prototypes/diff-viewer/README.md) and
+  [language-support probe](prototypes/language-support/README.md) are now in main.
+  Monaco's optional app renderer is separate from the lab's historical rollout
+  state. The language probe remains research, not a bundled project-aware
+  Kotlin/Android/KMP provider.
+- A curated provider layer remains incomplete. Highlighting, hover and source-only
+  fixtures do not establish compiler-grade IDE support.
+- Specialized Shiki fallbacks and device/performance limits remain. Scope-fold
+  arrows were dropped; inline context controls remain. See
+  [Monaco behavior](README.md#monaco-preview) and the attributed evidence.
+- React Flow, CodeMirror and further provider candidates remain research-only
+  alternatives; no new dependency or replacement is promised by this docs work.
 
 ## Delivered product refinements
 
