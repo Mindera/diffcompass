@@ -15,11 +15,13 @@ Run the local tour in attached mode so every explanation and reviewer question r
    - From this repository checkout, use `bun run src/cli.ts` from the repository root.
 2. Start a persistent terminal process from the repository being reviewed. The server prints its bridge details immediately, prepares the outline and first explanation through this agent, and opens the browser only after the first stop is ready:
 
+   For an ordinary branch or working-tree tour, skip findings by default. This includes walking through code the user wrote or had an agent write for them:
+
    ```text
-   diffcompass --attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
+   diffcompass --attached --start-tour --open --preview-redirect --no-findings --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
    ```
 
-   For a GitHub pull request, use the PR command so the review captures the PR's base, head, and GitHub context:
+   When the user asks for a tour of a GitHub pull request, enable findings by default: use the PR command and omit `--no-findings`. This captures the PR's base, head, and GitHub context:
 
    ```text
    diffcompass pr PR_URL_OR_NUMBER --attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
@@ -29,7 +31,9 @@ Run the local tour in attached mode so every explanation and reviewer question r
 
    When reliable runtime metadata is available, pass the triggering model and effort with `--caller-model` and `--caller-reasoning`. Both flags are optional and independent; omit any value that is unavailable rather than guessing it. They describe the attached session in the page and do not switch the conversation to another model.
 
-   Keep finding generation enabled for pull-request tours and ordinary branch tours. Asking for a tour or explanation does not opt out of findings. Pass `--no-findings` only when the caller explicitly asks to skip them; do not add it to shorten startup or because the request is phrased as a walkthrough. New `pr` reviews enable findings even when repository configuration disables them for ordinary branch tours; `--no-findings` is the explicit session opt-out. Branch tours respect `.diffcompass.json` (`analysis.findings.enabled`), and resumed sessions retain their saved finding-generation setting. Do not rewrite repository configuration just to launch a tour.
+   Choose the default from the requested tour: an ordinary tour skips findings even if its branch happens to have an open PR; an explicitly requested PR tour includes findings regardless of who authored the PR. Explicit user instructions override either default: omit `--no-findings` if they ask for findings on their own changes, or add it if they ask to skip findings on a PR. Do not disable findings merely to shorten PR startup.
+
+   `--no-findings` affects only the session. New `pr` reviews otherwise enable findings even when repository configuration disables them for ordinary branch tours. Branch tours without the flag respect `.diffcompass.json` (`analysis.findings.enabled`); if that setting prevents an explicit request for findings, tell the user rather than silently claiming findings are enabled. Resumed sessions retain their saved finding-generation setting; these launch defaults apply to new tours. Do not rewrite repository configuration just to launch a tour.
 
    When the work being reviewed produced useful UI evidence, pass each PNG, JPEG, GIF, WebP, or MP4 with a separate `--media` argument. The tool copies those files into session-owned storage and adds the `Media` tab. Do not pass unrelated files, secrets, or media that contain credentials.
 

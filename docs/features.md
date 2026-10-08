@@ -207,11 +207,17 @@ Inspect and resolve review concerns with their supporting evidence.
 - Accept, dismiss, defer, or mark findings fixed with reviewer notes.
 - Reassess evidence after refresh and optionally publish selected review comments.
 
-Findings are enabled by default. New `diffcompass pr` reviews enable them even
-when [repository configuration](usage.md#repository-defaults) disables them for
-ordinary branch tours. Use `--no-findings` to explicitly skip them for a session;
-resumed sessions retain their saved setting. A finding is a review claim, not
-proof; publishing to GitHub is a separate explicit action.
+With the bundled skill, ordinary branch or working-tree tours skip findings by
+default, including tours of code you wrote or had an agent write for you. Ask for
+a PR tour to include findings by default, or explicitly ask the agent to enable
+or skip them for either kind of tour.
+
+The skill uses `--no-findings` to skip analysis for a session. Direct CLI launches
+default to findings enabled, subject to [repository configuration](usage.md#repository-defaults)
+for branch tours. New `diffcompass pr` reviews enable findings even when that
+configuration disables them, unless you pass `--no-findings`. Resumed sessions
+retain their saved setting. A finding is a review claim, not proof; publishing
+to GitHub is a separate explicit action.
 
 ## Revisit and share
 
