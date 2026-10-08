@@ -23,6 +23,8 @@ import bootstrap from "../public/monaco/bootstrap.mjs" with { type: "text" };
 // @ts-expect-error Bun embeds this browser asset as text.
 import penScroll from "../public/monaco/pen-scroll.mjs" with { type: "text" };
 // @ts-expect-error Bun embeds this browser asset as text.
+import contextMenu from "../public/monaco/context-menu.mjs" with { type: "text" };
+// @ts-expect-error Bun embeds this browser asset as text.
 import mobileActions from "../public/monaco/mobile-actions.mjs" with { type: "text" };
 // @ts-expect-error Bun embeds this browser asset as text.
 import controller from "../public/monaco-controller.mjs" with { type: "text" };
@@ -32,6 +34,7 @@ const files: Record<string, { body: string; type: string }> = {
   "/monaco/themes.mjs": { body: String(themes), type: "text/javascript; charset=utf-8" },
   "/monaco/bootstrap.mjs": { body: String(bootstrap), type: "text/javascript; charset=utf-8" },
   "/monaco/pen-scroll.mjs": { body: String(penScroll), type: "text/javascript; charset=utf-8" },
+  "/monaco/context-menu.mjs": { body: String(contextMenu), type: "text/javascript; charset=utf-8" },
   "/monaco/mobile-actions.mjs": { body: String(mobileActions), type: "text/javascript; charset=utf-8" },
   "/monaco-controller.mjs": { body: String(controller), type: "text/javascript; charset=utf-8" },
   "/monaco/app.mjs": { body: String(asset0), type: "text/javascript; charset=utf-8" },

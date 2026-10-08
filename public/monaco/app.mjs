@@ -1,5 +1,6 @@
 import { sourceAnchor, freeTextRange, suggestedEditTarget, suggestedEditLanguage, suggestionMatchesSource } from "./source-anchor.mjs";
 import { installSyntaxThemes } from "/monaco/themes.mjs";
+import { installContextMenuViewport } from "./context-menu.mjs";
 import { syntaxThemes } from "/monaco/theme-data.mjs";
 import { installDeletedSelection } from "./deleted-selection.mjs";
 import { installPenScroll, installPeekPenScroll } from "./pen-scroll.mjs";
@@ -227,6 +228,7 @@ async function setFileReviewed(path) {
 window.require.config({ paths: { vs: "/vendor/vs" } });
 await new Promise((resolve, reject) => window.require(["vs/editor/editor.main"], resolve, reject));
 const monaco = window.monaco;
+const disposeContextMenuViewport = installContextMenuViewport(window);
 configureReferenceActions(monaco);
 const applySyntaxTheme = installSyntaxThemes(monaco, syntaxThemes, document.documentElement);
 const appearance = host ? window.parent.document.documentElement : document.documentElement;
@@ -1589,6 +1591,7 @@ if (host) {
       if (disposed) return;
       disposed = true; focusGeneration++;
       lazyObserver?.disconnect(); sizeObserver.disconnect();
+      disposeContextMenuViewport();
       clearInterval(pollTimer);
       if (embeddedHeightFrame !== null) cancelAnimationFrame(embeddedHeightFrame);
       for (const view of fileViews.values()) view.dispose();
