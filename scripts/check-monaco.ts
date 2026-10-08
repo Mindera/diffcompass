@@ -21,13 +21,18 @@ try {
   }
 } finally { clearTimeout(timeout); child.kill(); await child.exited; }
 }
-for (const script of ["scripts/monaco-foundation-browser.mjs", "scripts/monaco-scroll-browser.mjs", "scripts/file-header-browser.mjs", "scripts/monaco-edits-browser.mjs", "scripts/monaco-edits-syntax-browser.mjs", "scripts/monaco-themes-browser.mjs"]) {
-  console.log(`BROWSER CHECK ${script} (local fixture)`);
-  await checkFixture(false, [script]);
+const groups = {
+  local: { samplePr: false, scripts: ["monaco-foundation", "monaco-scroll", "file-header", "monaco-edits", "monaco-edits-syntax", "monaco-themes"] },
+  navigation: { samplePr: true, scripts: ["monaco-phase", "monaco-phase-scroll", "monaco-reviewed-scroll", "monaco-sticky", "monaco-file-explorer"] },
+  discussions: { samplePr: true, scripts: ["renderer-comments", "monaco-context", "monaco-edits", "monaco-edits-syntax", "monaco-discussions"] },
+  before: { samplePr: true, beforeTour: true, scripts: ["monaco-before-tour"] },
+};
+const requested = process.env.MONACO_CHECK_GROUP;
+if (requested && !Object.hasOwn(groups, requested)) throw Error("Unknown MONACO_CHECK_GROUP: " + requested);
+for (const [name, group] of Object.entries(groups)) {
+  if (requested && name !== requested) continue;
+  for (const script of group.scripts) {
+    console.log(`BROWSER CHECK scripts/${script}-browser.mjs (${name} fixture)`);
+    await checkFixture(group.samplePr, [`scripts/${script}-browser.mjs`], "beforeTour" in group && group.beforeTour);
+  }
 }
-for (const script of ["scripts/renderer-comments-browser.mjs", "scripts/monaco-phase-browser.mjs", "scripts/monaco-phase-scroll-browser.mjs", "scripts/monaco-reviewed-scroll-browser.mjs", "scripts/monaco-sticky-browser.mjs", "scripts/monaco-context-browser.mjs", "scripts/monaco-edits-browser.mjs", "scripts/monaco-edits-syntax-browser.mjs", "scripts/monaco-discussions-browser.mjs", "scripts/monaco-file-explorer-browser.mjs"]) {
-  console.log(`BROWSER CHECK ${script} (PR fixture)`);
-  await checkFixture(true, [script]);
-}
-console.log("BROWSER CHECK scripts/monaco-before-tour-browser.mjs (Before-side fixture)");
-await checkFixture(true, ["scripts/monaco-before-tour-browser.mjs"], true);
