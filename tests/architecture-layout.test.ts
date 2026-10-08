@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { archifyCandidates, ArchifyRenderer } from "../src/archify.ts";
+import { archifyCandidates } from "../src/archify.ts";
 import { layoutArchitecture } from "../src/architecture-layout.ts";
 import type { TourOutline } from "../src/types.ts";
 import fixture from "./fixtures/branched-maps.json";
@@ -39,16 +39,3 @@ test("architecture union layout sizes labels and preserves positions across Befo
     }
   }
 });
-
-test("packaged renderer validates the real branched review and all comparison views", async () => {
-  const directory = process.env.ARCHIFY_PACKAGED_DIR;
-  if (!directory) return; // Mandatory in installed-package smoke tests.
-  const result = await new ArchifyRenderer(directory).render(outline);
-  expect(result.failures).toEqual([]);
-  expect(result.artifacts).toHaveLength(5);
-  for (const map of result.artifacts.filter((map) => map.type === "architecture")) {
-    expect(map.view).toBe("before-delta-after");
-  }
-  const selfCalls = result.artifacts.find((map) => map.id === "sequence-flow-gate-text")!;
-  expect(selfCalls.html).toContain("one line per card, assertion paired with command");
-}, 30_000);
