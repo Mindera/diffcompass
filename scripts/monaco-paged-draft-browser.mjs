@@ -73,6 +73,14 @@ try {
     await frame.getByRole("button", { name: "Add comment", exact: true }).click();
     await frame.waitForFunction(() => document.getElementById("status").textContent.includes("previous comparison"));
     await retained(frame, input, body);
+    if (mode === "browse") {
+      await page.evaluate(() => diffCompassProductionHost.reveal("src/lazy-10.ts"));
+      assert.equal(await page.locator('.monaco-review-frame[data-monaco-path="src/lazy-10.ts"]').count(), 0,
+        "do not mount new editors against a comparison held for an old draft");
+      await retained(frame, input, body);
+      await page.evaluate(() => diffCompassProductionHost.reveal("src/cart.ts"));
+      pass("scrolling a retained comparison cannot mount offscreen editors against the new source");
+    }
     pass(`${mode}: delayed/failed pages preserve draft, editor and old source; stale save is rejected`);
     await page.unroute("**/api/diff?*");
     await frame.getByRole("button", { name: "Cancel", exact: true }).click();

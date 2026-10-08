@@ -163,6 +163,9 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   }
   async function mount(entry) {
     if (disposed || pendingFailure || (!owns(entry.path) && !entry.preparing) || !entry.slot.isConnected) return null;
+    // A retained draft pins the old models. New frames would fetch the newer
+    // comparison and fail the captured-source handshake against mountKey.
+    if (!entry.preparing && mountKey !== keyOf(snapshot().session)) return null;
     if (entry.child) return entry.child;
     if (entry.frame) return entry.ready;
     const ticket = ++entry.generation;
@@ -300,6 +303,9 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     const key = keyOf(snapshot().session);
     if (key !== mountKey) {
       if (hasDraft()) {
+        // Invalidate unfinished old mounts before they can report a stale
+        // source failure and request a renderer fallback after cancellation.
+        for (const entry of entries.values()) if (entry.frame && !entry.child) closeEntry(entry);
         notice.textContent = "The comparison changed. Your draft is retained with the previous source; copy or cancel it to load the new comparison. Saving stale source is blocked.";
         return;
       }
