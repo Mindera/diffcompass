@@ -10,6 +10,7 @@ export function installContextMenuViewport(win) {
   const doc = win.document;
   let pending = null;
   const menus = new Map();
+  const roots = new Map();
   function bounds() {
     const box = { left: 4, top: 4, right: win.innerWidth - 4, bottom: win.innerHeight - 4 };
     const frame = win.frameElement;
@@ -39,24 +40,38 @@ export function installContextMenuViewport(win) {
     }
   }
   function schedule() { if (pending === null) pending = win.requestAnimationFrame(layout); }
+  function watchRoot(root) {
+    if (roots.has(root)) return;
+    const observer = new win.MutationObserver(discover);
+    observer.observe(root, { childList: true });
+    roots.set(root, observer);
+  }
   function discover() {
     for (const [menu, observer] of menus) if (!menu.isConnected) { observer.disconnect(); menus.delete(menu); }
-    for (const menu of doc.querySelectorAll('body > .context-view')) {
-      if (menus.has(menu)) continue;
-      const observer = new win.MutationObserver(schedule);
-      observer.observe(menu, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
-      menus.set(menu, observer);
+    for (const [root, observer] of roots) if (!root.isConnected) { observer.disconnect(); roots.delete(root); }
+    // useShadowDOM hosts the native menu in a shadow root under the public
+    // overflow layer. Observe those small containers too, not the editor DOM.
+    for (const layer of doc.querySelectorAll('body > .review-editor-overflow')) {
+      watchRoot(layer);
+      for (const child of layer.children) if (child.shadowRoot) watchRoot(child.shadowRoot);
+    }
+    for (const root of roots.keys()) for (const menu of [...root.children].filter(node => node.matches('.context-view'))) {
+      if (!menus.has(menu)) {
+        const observer = new win.MutationObserver(schedule);
+        observer.observe(menu, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
+        menus.set(menu, observer);
+      }
     }
     schedule();
   }
   // Watch only the body and menu subtrees, never Monaco's changing source DOM.
-  const observer = new win.MutationObserver(discover);
-  observer.observe(doc.body, { childList: true });
+  watchRoot(doc.body);
   discover();
   win.addEventListener('resize', schedule);
   if (win.frameElement) win.parent.addEventListener('scroll', schedule, true);
   return () => {
-    observer.disconnect();
+    for (const observer of roots.values()) observer.disconnect();
+    roots.clear();
     for (const observer of menus.values()) observer.disconnect();
     menus.clear();
     win.removeEventListener('resize', schedule);

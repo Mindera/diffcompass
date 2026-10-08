@@ -19,11 +19,10 @@ async function open(path, line, endLine = line) {
   }, {path,line,endLine});
   await page.keyboard.press('Shift+F10');
   await page.waitForTimeout(150); // Monaco's context-menu mouse-up guard.
-  await frame.waitForFunction(() => {
-    const menu = document.querySelector('.context-view:has(.monaco-menu)');
-    const rect = menu?.getBoundingClientRect();
-    return rect && rect.top >= 0 && rect.bottom <= innerHeight;
-  });
+  assert.equal(await frame.getByRole('menu').evaluate(node => {
+    const rect = node.closest('.context-view').getBoundingClientRect();
+    return rect.top >= 0 && rect.bottom <= window.innerHeight;
+  }), true, 'Menu stays inside the file frame after closing a composer');
   await frame.getByRole('menuitem', {name: 'Suggest edit', exact: true}).click();
   await frame.locator('form.review-suggestion').waitFor();
   return frame;
