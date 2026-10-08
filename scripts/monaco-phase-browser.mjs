@@ -70,6 +70,10 @@ async function transition(direction,index,path,crossPhase){
     assert.ok(shown.every(sample=>sample.files.some(file=>file.path===path&&file.ready)), 'Destination is ready on the first displayed frame');
     const tops=shown.map(sample=>sample.files.find(file=>file.path===path).top);
     assert.ok(Math.max(...tops)-Math.min(...tops)<=2,'Destination stays anchored while other files settle: '+JSON.stringify(shown));
+    if (path === 'src/receipt.ts') await page.waitForFunction(() => {
+      const img = document.querySelector('[data-diff-image-path="screens/receipt.png"] img');
+      return img?.complete && img.naturalWidth > 0;
+    });
   }
 }
 try{

@@ -1874,20 +1874,25 @@ async function hydrateDiffImages(files) {
         url = URL.createObjectURL(blob);
         state.diffImageUrls.set(key, url);
       }
+      // Decode outside the document: an undecoded image can change the card's
+      // height during layout, before its load event can preserve a tour anchor.
+      const img = new Image();
+      img.alt = `${side === "old" ? "Before" : "After"}: ${path}`;
+      img.src = url;
+      let decoded = true;
+      try { await img.decode(); } catch { decoded = false; }
+      if (requestId !== state.diffImageRequestId || !figure.isConnected) return;
       const loading = figure.querySelector(".image-diff-loading");
-      if (loading) loading.outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(`${side === "old" ? "Before" : "After"}: ${path}`)}" /></a>`;
-      const img = figure.querySelector("img");
-      // Native image cards also precede Monaco tour destinations. Keep the
-      // phase anchor in this paint, including when cached PNGs decode at once.
-      const preservePosition = () => state.monacoRenderer?.preservePhasePosition();
-      if (img) img.onload = preservePosition;
-      if (img) img.onerror = () => {
-        const link = img.closest("a");
+      if (!loading) return;
+      const link = document.createElement("a");
+      link.href = url; link.target = "_blank"; link.rel = "noopener"; link.title = "Open full-size image";
+      if (decoded) link.append(img);
+      else {
         link.className = "image-diff-loading";
         link.textContent = "Unable to display this PNG. Open the original image.";
-        preservePosition();
-      };
-      preservePosition();
+      }
+      loading.replaceWith(link);
+      state.monacoRenderer?.preservePhasePosition();
     } catch (error) {
       const loading = figure.querySelector(".image-diff-loading");
       if (loading) loading.textContent = error.message;
