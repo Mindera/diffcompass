@@ -166,6 +166,9 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     // A retained draft pins the old models. New frames would fetch the newer
     // comparison and fail the captured-source handshake against mountKey.
     if (!entry.preparing && mountKey !== keyOf(snapshot().session)) return null;
+    // The server may finish a refresh before the parent receives its response.
+    // Wait for that comparison instead of repeatedly loading a rejected one.
+    if (entry.rejectedKey === mountKey) return null;
     if (entry.child) return entry.child;
     if (entry.frame) return entry.ready;
     const ticket = ++entry.generation;
@@ -226,7 +229,15 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
         actions.ask(anchor);
       },
       setCollapsed(path, collapsed) { if (valid() && isCurrent(entry)) actions.setCollapsed(path, collapsed); },
-      acceptComparison(session) { return valid() && isCurrent(entry) && keyOf(session) === entry.key; },
+      acceptComparison(session) {
+        if (!valid()) return false;
+        if (isCurrent(entry) && keyOf(session) === entry.key) return true;
+        // A superseded mount is cancellation, not a broken renderer. Retiring
+        // its generation also makes any delayed bootstrap failure harmless.
+        entry.rejectedKey = entry.key;
+        closeEntry(entry);
+        return false;
+      },
       failed: fail,
       ready(child) {
         if (!valid()) { child.dispose(); return; }
@@ -310,6 +321,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
         return;
       }
       closeAll(); mountKey = key; fallbacks.clear();
+      for (const entry of entries.values()) entry.rejectedKey = null;
     }
     for (const entry of entries.values()) {
       updateHeader(entry);
@@ -325,7 +337,10 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   // Each iframe resolves a scoped host; no last-mounted-file global callbacks.
   const host = {
     ...actions,
-    forFile(path) { return entries.get(path)?.host; },
+    forFile(path, frameWindow) {
+      const entry = entries.get(path);
+      return !frameWindow || entry?.frame?.contentWindow === frameWindow ? entry?.host : null;
+    },
     failed(message, path) { entries.get(path)?.host?.failed(message); },
   };
   window.diffCompassProductionHost = host;
