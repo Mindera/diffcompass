@@ -47,7 +47,7 @@ async function transition(direction,index,path,crossPhase){
         const view=frame.contentWindow?.diffLab?.views.get(frame.dataset.monacoPath);
         return [{path:frame.dataset.monacoPath,top:rect.top,ready:!!view?.diff.getLineChanges()&&!!frame.contentDocument.querySelector('.view-line')}];
       });
-      window.phaseSamples.push({current,files});
+      window.phaseSamples.push({current,files,scroll:document.getElementById('diff-panel').scrollTop,toolbar:top});
       requestAnimationFrame(()=>setTimeout(sample,0)); // Sample after layout/ResizeObserver corrections.
     };sample();
   });
@@ -62,7 +62,7 @@ async function transition(direction,index,path,crossPhase){
     assert.ok(shown.length>0);
     assert.ok(shown.every(sample=>sample.files.some(file=>file.path===path&&file.ready)), 'Destination is ready on the first displayed frame');
     const tops=shown.map(sample=>sample.files.find(file=>file.path===path).top);
-    assert.ok(Math.max(...tops)-Math.min(...tops)<=2,'Destination stays anchored while other files settle: '+JSON.stringify(tops));
+    assert.ok(Math.max(...tops)-Math.min(...tops)<=2,'Destination stays anchored while other files settle: '+JSON.stringify(shown));
   }
 }
 try{

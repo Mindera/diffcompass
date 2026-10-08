@@ -19,6 +19,7 @@ const stops = [
 ];
 async function checkStop(stop, layout) {
   const [id, path, side, start, end] = stop;
+  console.log('CHECK',layout,id);
   await page.waitForFunction(({ id, path }) => {
     const frame = [...document.querySelectorAll('.monaco-review-frame')].find(node => node.dataset.monacoPath === path);
     return frame?.contentDocument.querySelector(`.review-tour-stop[data-tour-stop="${id}"][data-tour-state="current"]:not([hidden])`) && !document.querySelector('#next-step').disabled;
@@ -85,8 +86,13 @@ try {
   await page.goto(url);
   await page.locator('#step-count').filter({ hasText: 'Step 1)' }).waitFor();
   await page.locator('#diff-renderer').selectOption('monaco');
+  // Renderer opt-in preserves the reading position, not an implicit tour
+  // navigation. Explicitly request the current stop before the first check.
+  await page.waitForFunction(() => document.querySelector('.monaco-review-frame')?.contentWindow?.diffCompassMonaco);
+  await page.evaluate(() => focusCurrentStep());
   for (const layout of ['unified', 'split', 'unified']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
+    await page.waitForFunction(() => document.getElementById('current-step-return').classList.contains('hidden'));
     for (let index = 0; index < stops.length; index++) {
       if (index) await page.locator('#next-step').click();
       await checkStop(stops[index], layout);

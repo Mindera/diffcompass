@@ -1720,6 +1720,8 @@ function diffViewRow(path, side, line) {
 function changeDiffView(layout, wrap, persist = true) {
   if (state.monacoRenderer?.hasDraft() && layout !== state.diffLayout) return toast("Save or cancel the Monaco draft before switching layout.");
   if (!["unified", "split"].includes(layout) || !["scroll", "wrap"].includes(wrap)) return;
+  const step = state.tourMode && state.monacoRenderer?.active ? currentStep() : null;
+  const keepTourVisible = Boolean(step && state.tourMode && state.monacoRenderer?.isStepVisible(step));
   const panel = elements["diff-panel"];
   const panelTop = panel.getBoundingClientRect().top;
   const toolbarHeight = document.querySelector('.diff-toolbar').getBoundingClientRect().height;
@@ -1769,6 +1771,10 @@ function changeDiffView(layout, wrap, persist = true) {
   const target = anchor && diffViewRow(anchor.path, anchor.side, anchor.line);
   if (target) panel.scrollTop += target.getBoundingClientRect().top - anchor.top;
   scheduleCurrentStepReturnUpdate();
+  // Split and Unified reserve different spaces for Before-side banners.
+  // Preserve a visible current stop by source identity, not its old pixels.
+  // Do not pull a reviewer back to a stop they had already scrolled away from.
+  if (keepTourVisible) void focusCurrentStep();
 }
 
 function isPngDiff(file) {

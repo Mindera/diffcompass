@@ -25,7 +25,12 @@ async function fileFrame(path, expectModel = true) {
   return page.frames().find(frame => new URL(frame.url(), url).searchParams.get("file") === path);
 }
 const step = () => frame.evaluate(() => diffLab.session.currentStepIndex);
-const focusCode = () => frame.evaluate(() => diffLab.views.get("src/cart.ts").editors.new.focus());
+const focusCode = async () => {
+  // The stop metadata arrives before mounting and scrolling finish. Keyboard
+  // input is intentionally gated by the same busy state as the tour buttons.
+  await page.waitForFunction(() => !document.getElementById('next-step').disabled);
+  await frame.evaluate(() => diffLab.views.get("src/cart.ts").editors.new.focus());
+};
 async function reset() {
   await page.evaluate(async token => {
     for (let i = 0; i < 4; i++) await fetch("/api/tour/navigate", { method: "POST", headers: { "x-diffcompass-token": token, "content-type": "application/json" }, body: JSON.stringify({ direction: "previous" }) });
@@ -66,6 +71,7 @@ try {
   await focusCode(); await page.keyboard.press("j");
   frame = await fileFrame("src/receipt.ts");
   await frame.waitForFunction(() => diffLab.session.currentStepIndex === 2);
+  await page.waitForFunction(() => !document.getElementById('next-step').disabled);
   await frame.evaluate(() => diffLab.views.get("src/receipt.ts").editors.new.focus());
   await page.keyboard.press("k");
   frame = await fileFrame("src/cart.ts");
