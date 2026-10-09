@@ -1,6 +1,6 @@
 {
   "name": "diffcompass",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "private": true,
   "description": "A local, agent-led walkthrough for Git changes.",
   "repository": {

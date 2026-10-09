@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm, symlink, realpath } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArchifyRenderer, archifyCandidates, type ArchifyCommandRunner } from "../src/archify.ts";
+import boundaryCases from "./fixtures/lifecycle-boundaries.json";
 import type { TourOutline } from "../src/types.ts";
 
 test("discovers bundled Archify relative to the real executable, including install symlinks", async () => {
@@ -299,19 +300,50 @@ for (const example of lifecycleCases) test.skipIf(!lifecycleDirectory)(`validate
   expect(input).toEqual(original);
 }, 30_000);
 
-test("retains lifecycle boundaries regardless of arrow order and keeps richer boundary semantics native", () => {
+test("retains lifecycle boundaries regardless of arrow order", () => {
   const input = lifecycleOutline("Done --> [*]\nActive --> Done : finish\n[*] --> Active\nActive --> Active : wait");
   const candidate = archifyCandidates(input).find(item => item.type === "lifecycle")!;
   expect(candidate.ir.states).toEqual(expect.arrayContaining([
     expect.objectContaining({ id: "Active", initial: true, terminal: false }),
     expect.objectContaining({ id: "Done", initial: false, terminal: true }),
   ]));
-  for (const body of ["[*] --> A : begin\nA --> B", "[*] --> A\nA --> B\nB --> [*] : finish", "[*] --> A\nA --> B\nB --> [*]\nB --> A : again"]) {
-    const native = lifecycleOutline(body);
-    expect(archifyCandidates(native).some(item => item.type === "lifecycle")).toBe(false);
-    expect(native.stateDiagram!.mermaid).toBe(`stateDiagram-v2\n${body}`);
-  }
 });
+
+function expectBoundaryArrows(body: string, ir: ReturnType<typeof archifyCandidates>[number]["ir"]) {
+  const states = ir.states as Array<{id: string; label: string; boundary?: string; sublabel?: string}>;
+  const edges = ir.transitions as Array<{from: string; to: string; label?: string}>;
+  const isBoundary = (state: typeof states[number]) => Boolean(state.boundary || state.sublabel?.endsWith(" boundary"));
+  const sourceName = (id: string) => {
+    const state = states.find(state => state.id === id)!;
+    return isBoundary(state) ? "[*]" : state.label;
+  };
+  expect(edges.map(edge => `${sourceName(edge.from)} --> ${sourceName(edge.to)}${edge.label ? ` : ${edge.label}` : ""}`)).toEqual(body.split("\n"));
+  const names = [...new Set(body.split("\n").flatMap(line => line.split(" : ")[0]!.split(" --> ")).filter(id => id !== "[*]"))].sort();
+  expect(states.filter(state => !isBoundary(state)).map(state => state.label).sort()).toEqual(names);
+  expect(new Set(states.map(state => state.id)).size).toBe(states.length);
+}
+
+for (const example of boundaryCases) {
+  test(`preserves lifecycle boundary semantics: ${example.name}`, () => {
+    const input = lifecycleOutline(example.body);
+    const original = structuredClone(input);
+    const candidate = archifyCandidates(input).find(item => item.type === "lifecycle");
+    expect(candidate).toBeDefined();
+    expectBoundaryArrows(example.body, candidate!.ir);
+    expect(input).toEqual(original);
+  });
+  test.skipIf(!lifecycleDirectory)(`validates lifecycle boundary geometry: ${example.name}`, async () => {
+    const result = await new ArchifyRenderer(lifecycleDirectory!).render(lifecycleOutline(example.body));
+    expect(result.failures).toEqual([]);
+    expect(result.artifacts).toHaveLength(1);
+    const artifact = result.artifacts[0]!;
+    expectBoundaryArrows(example.body, artifact.ir);
+    const receipt = JSON.parse(artifact.validationReceipt.split("\n\n")[0]!);
+    expect(receipt.ok).toBe(true);
+    expect(receipt.composition.summary.errors).toBe(0);
+    for (const label of example.body.split("\n").map(line => line.split(" : ")[1]).filter(Boolean)) expect(artifact.html).toContain(label!);
+  }, 30_000);
+}
 
 test("lifecycle layout failure retains the native graph and the previous validated artifact", async () => {
   const root = await mkdtemp(join(tmpdir(), "archify-lifecycle-failure-"));

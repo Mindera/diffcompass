@@ -246,23 +246,37 @@ export function sequenceCandidate(flow: ReviewFlow): ArchifyCandidate | undefine
 
 function lifecycleCandidate(diagram: ReviewAdaptiveDiagram): ArchifyCandidate | undefined {
   if (diagram.kind !== "state-machine") return undefined;
-  const states = new Map<string, { id: string; initial: boolean; terminal: boolean }>();
+  let states = new Map<string, { id: string; label: string; initial: boolean; terminal: boolean; boundary?: "initial" | "final" }>();
   const transitions: Array<{ from: string; to: string; label?: string }> = [];
   for (const raw of diagram.mermaid.split("\n").slice(1)) {
     const match = /^(\[\*\]|[A-Za-z][A-Za-z0-9_]*)\s+-->\s+(\[\*\]|[A-Za-z][A-Za-z0-9_]*)(?:\s*:\s*(.+))?$/.exec(raw.trim());
     if (!raw.trim()) continue;
     if (!match || (match[1] === "[*]" && match[2] === "[*]")) return undefined;
-    // A boundary event label cannot be represented by a state annotation.
-    if (match[3] && (match[1] === "[*]" || match[2] === "[*]")) return undefined;
-    for (const id of [match[1]!, match[2]!]) if (id !== "[*]" && !states.has(id)) states.set(id, { id: safeId(id), initial: false, terminal: false });
-    if (match[1] !== "[*]" && match[2] !== "[*]") transitions.push({ from: match[1]!, to: match[2]!, ...(match[3] ? { label: match[3]!.trim() } : {}) });
+    for (const id of [match[1]!, match[2]!]) if (id !== "[*]" && !states.has(id)) states.set(id, { id: safeId(id), label: id, initial: false, terminal: false });
+    transitions.push({ from: match[1]!, to: match[2]!, ...(match[3] ? { label: match[3]!.trim() } : {}) });
     if (match[1] === "[*]" && match[2] !== "[*]") states.get(match[2]!)!.initial = true;
     if (match[2] === "[*]" && match[1] !== "[*]") states.get(match[1]!)!.terminal = true;
   }
-  if (states.size < 2 || transitions.length === 0 || new Set([...states.values()].map(state => state.id)).size !== states.size) return undefined;
-  // A state with both a final arrow and outgoing events needs an explicit
-  // final pseudostate; keep that richer graph in Mermaid.
-  if (transitions.some(transition => states.get(transition.from)!.terminal)) return undefined;
+  if (states.size < 2 || new Set([...states.values()].map(state => state.id)).size !== states.size) return undefined;
+  // Simple unlabelled boundaries can remain annotations. Event-labelled
+  // boundaries and states that can both exit and continue need real arrows:
+  // represent Mermaid's initial/final pseudostates explicitly in that case.
+  const explicitBoundaries = transitions.some(edge => edge.label && (edge.from === "[*]" || edge.to === "[*]"))
+    || transitions.some(edge => edge.to !== "[*]" && states.get(edge.from)?.terminal);
+  let edges = transitions;
+  if (explicitBoundaries) {
+    const initial = [...states.values()].some(state => state.initial);
+    const final = [...states.values()].some(state => state.terminal);
+    for (const state of states.values()) { state.initial = false; state.terminal = false; }
+    // Hyphens cannot occur in the accepted Mermaid state identifiers, so
+    // these reserved IDs cannot collide with a user-authored state.
+    if (initial) states = new Map([["lifecycle-initial", { id: "lifecycle-initial", label: "Start", initial: true, terminal: false, boundary: "initial" }], ...states]);
+    if (final) states.set("lifecycle-final", { id: "lifecycle-final", label: "End", initial: false, terminal: true, boundary: "final" });
+    edges = transitions.map(edge => ({ ...edge, from: edge.from === "[*]" ? "lifecycle-initial" : edge.from, to: edge.to === "[*]" ? "lifecycle-final" : edge.to }));
+  } else {
+    edges = transitions.filter(edge => edge.from !== "[*]" && edge.to !== "[*]");
+  }
+  if (edges.length === 0) return undefined;
   return {
     id: "lifecycle-state-machine",
     type: "lifecycle",
@@ -273,8 +287,8 @@ function lifecycleCandidate(diagram: ReviewAdaptiveDiagram): ArchifyCandidate | 
       schema_version: 1,
       diagram_type: "lifecycle",
       meta: { title: diagram.title, quality_profile: "standard", locale: "en", legend: { mode: "hidden" } },
-      states: [...states.entries()].map(([label, state]) => ({ ...state, label })),
-      transitions: transitions.map((transition, index) => ({ id: stableRelationshipId("lifecycle", `${index}:${transition.from}:${transition.label ?? ""}:${transition.to}`), from: states.get(transition.from)!.id, to: states.get(transition.to)!.id, ...(transition.label ? { label: transition.label } : {}) })),
+      states: [...states.values()],
+      transitions: edges.map((transition, index) => ({ id: stableRelationshipId("lifecycle", `${index}:${transition.from}:${transition.label ?? ""}:${transition.to}`), from: states.get(transition.from)!.id, to: states.get(transition.to)!.id, ...(transition.label ? { label: transition.label } : {}) })),
     },
   };
 }

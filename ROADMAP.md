@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.1.4, including the v2.1.0 feature baseline
+Canonical delivery state for v2.1.5, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -11,13 +11,22 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.1.4](https://github.com/Mindera/diffcompass/releases/tag/v2.1.4).
+Latest release: [v2.1.5](https://github.com/Mindera/diffcompass/releases/tag/v2.1.5).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
 
-## Released in v2.1.4
+## Released in v2.1.5
+
+The v2.1.4 publication was cancelled before release; its fixes are included here.
+
+- Preserve labelled initial and final state-machine transitions in interactive
+  lifecycle maps. Explicit boundary nodes also retain states that can either
+  exit or continue. Dense event labels use a roomier layout when needed, with
+  all arrows and labels preserved and the normal collision checks retained.
+- Check labelled lifecycle boundaries with the bundled renderer during package
+  verification, so CI and release builds cover the reported fallback case.
 
 - Preserve unchanged What changed panels across Monaco rerenders so Retry clicks,
   focus, and expanded details survive background updates. Add a browser regression

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "labelled initial transition and reconverging exits",
+    "body": "[*] --> Queued : enqueue creates the job\nQueued --> Started : dequeued after preparing\nQueued --> Skipped : dequeued before preparing\nStarted --> Finishing : previous job settled\nFinishing --> Released : completion callback after cleanup\nStarted --> Released : worker leaves the pool\nFinishing --> Released : worker leaves the pool\nSkipped --> Released : cleanup releases it\nReleased --> [*]"
+  },
+  {
+    "name": "labelled final transition",
+    "body": "[*] --> A\nA --> B\nB --> [*] : finish"
+  },
+  {
+    "name": "final transition alongside outgoing events",
+    "body": "B --> [*]\n[*] --> A\nA --> B\nB --> A : again"
+  },
+  {
+    "name": "multiple labelled boundaries and state names resembling boundaries",
+    "body": "[*] --> Initial : begin\n[*] --> Initial : resume\n[*] --> Final\nInitial --> Final : finish\nFinal --> [*] : release\nInitial --> [*] : cancel"
+  },
+  {
+    "name": "labelled initial transition without a final boundary",
+    "body": "[*] --> A : begin\nA --> B"
+  }
+]

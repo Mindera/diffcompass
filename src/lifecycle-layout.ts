@@ -1,7 +1,7 @@
 import type { ArchifyJson } from "./types.ts";
 
 type Document = { [key: string]: ArchifyJson };
-type State = Document & { id: string; label: string; initial: boolean; terminal: boolean };
+type State = Document & { id: string; label: string; initial: boolean; terminal: boolean; boundary?: "initial" | "final" };
 type Transition = Document & { from: string; to: string; label?: string };
 type Point = [number, number];
 type Side = "left" | "right" | "top" | "bottom";
@@ -12,6 +12,7 @@ const intersects = (a: Box, b: Box, gap = 0) => a.x < b.x + b.width + gap && a.x
 const segmentBox = (a: Point, b: Point): Box => ({ x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), width: Math.abs(a[0] - b[0]), height: Math.abs(a[1] - b[1]) });
 const distance = (a: Point, b: Point) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
 const sides: Side[] = ["right", "bottom", "left", "top"];
+class LifecycleLabelPlacementError extends Error {}
 function port(box: Placement, side: Side, stub = 0): Point {
   if (side === "left") return [box.x - stub, box.cy];
   if (side === "right") return [box.x + box.width + stub, box.cy];
@@ -37,6 +38,17 @@ function simplify(points: Point[]): Point[] {
  * obstacle grid. No state/event is dropped and the renderer still validates
  * every generated document and delivered artifact. */
 export function layoutLifecycle(states: State[], transitions: Transition[]): Document {
+  try {
+    return layoutLifecycleAttempt(states, transitions, false);
+  } catch (error) {
+    if (!(error instanceof LifecycleLabelPlacementError)) throw error;
+    // Dense fan-in and parallel events may leave no room beside a compact
+    // route. A single column gives their verbatim labels wider corridors.
+    return layoutLifecycleAttempt(states, transitions, true);
+  }
+}
+
+function layoutLifecycleAttempt(states: State[], transitions: Transition[], spacious: boolean): Document {
   const boxes = new Map<string, Placement>();
   const active = states.filter(state => !state.terminal);
   // Align exits with their furthest predecessor so fan-in outcomes follow
@@ -46,9 +58,9 @@ export function layoutLifecycle(states: State[], transitions: Transition[]): Doc
   // Wider names need fewer columns; labels remain verbatim.
   const width = Math.max(118, ...states.map(state => units(state.label) * 7 + 30));
   if (width > 600) throw new Error("Lifecycle state labels are wider than the supported layout.");
-  const mainCols = width <= 124 ? [0, 2, 4] : width <= 400 ? [1, 4] : [4];
-  const otherCols = width <= 260 ? [0, 2] : [2];
-  const rowGap = 180;
+  const mainCols = spacious ? [4] : width <= 124 ? [0, 2, 4] : width <= 400 ? [1, 4] : [4];
+  const otherCols = spacious ? [2] : width <= 260 ? [0, 2] : [2];
+  const rowGap = spacious ? 240 : 180;
   const lowerRows = Math.ceil(Math.max(0, active.length - mainCols.length) / otherCols.length);
   const terminalY = Math.max(450, 278 + lowerRows * rowGap);
   // Archify's band headings stay fixed even when rows wrap below them.
@@ -64,8 +76,9 @@ export function layoutLifecycle(states: State[], transitions: Transition[]): Doc
     const cx = (main ? 94 : 402) + col * 154;
     const height = 62;
     boxes.set(state.id, { x: cx - width / 2, y, width, height, cx, cy: y + height / 2 });
-    const { initial, terminal: ends, ...rest } = state;
-    return { ...rest, type: initial ? "start" : "neutral", lane, col, width, height, yOffset: y - (main ? 126 : ends ? 450 : 278), ...(initial || ends ? { sublabel: [initial && "Initial state", ends && "Terminal exit"].filter(Boolean).join(" · ") } : {}) };
+    const { initial, terminal: ends, boundary, ...rest } = state;
+    const sublabel = boundary ? (boundary === "initial" ? "Initial boundary" : "Final boundary") : [initial && "Initial state", ends && "Terminal exit"].filter(Boolean).join(" · ");
+    return { ...rest, type: initial ? "start" : "neutral", lane, col, width, height, yOffset: y - (main ? 126 : ends ? 450 : 278), ...(sublabel ? { sublabel } : {}) };
   });
   const obstacles = [...boxes.values()];
   const routes: Point[][] = [];
@@ -157,7 +170,9 @@ export function layoutLifecycle(states: State[], transitions: Transition[]): Doc
     sourceRoutes[index] = path.points;
     routed[index] = { ...transition, fromSide: path.fromSide, toSide: path.toSide, via: path.points.slice(1, -1) };
   }
-  for (const [index, transition] of routed.entries()) {
+  // Reserve room for long event labels before smaller ones consume it.
+  const labelOrder = [...routed.entries()].sort((a, b) => units(b[1].label ?? "") - units(a[1].label ?? ""));
+  for (const [index, transition] of labelOrder) {
     if (!transition.label) continue;
     const labelWidth = Math.max(32, units(transition.label) * 4.9 + 12);
     const path = sourceRoutes[index]!;
@@ -174,7 +189,7 @@ export function layoutLifecycle(states: State[], transitions: Transition[]): Doc
       const rect = { x: p[0] - labelWidth / 2, y: p[1] - 11, width: labelWidth, height: 16 };
       return rect.x >= 16 && rect.y >= 64 && ![...obstacles, ...labels].some(b => intersects(rect, b, 6)) && !routes.some(route => route.some((b, i) => i > 0 && intersects(rect, segmentBox(route[i - 1]!, b), 4)));
     });
-    if (!point) throw new Error(`Lifecycle transition label "${transition.label}" could not be placed without overlaps.`);
+    if (!point) throw new LifecycleLabelPlacementError(`Lifecycle transition label "${transition.label}" could not be placed without overlaps.`);
     transition.labelAt = point;
     labels.push({ x: point[0] - labelWidth / 2, y: point[1] - 11, width: labelWidth, height: 16 });
   }
