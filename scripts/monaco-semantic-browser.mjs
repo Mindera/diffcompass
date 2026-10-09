@@ -126,8 +126,21 @@ try {
     if (path === "broken.ts") {
       await panel(path).getByRole("alert").waitFor();
       await page.unroute("**/api/diff/semantic?path=broken.ts");
-      await panel(path).getByRole("button", { name: "Try again", exact: true }).click();
-      pass(true, "Monaco transport error can recover through Try again");
+      // Reproduce a background render between pointer-down and click. Replacing
+      // the unchanged panel here swallows the click and leaves the error visible.
+      const retry = panel(path).getByRole("button", { name: "Try again", exact: true });
+      await retry.evaluate(button => button.addEventListener("mousedown", () => {
+        queueMicrotask(() => globalThis.DiffCompassSemantic.hydrate());
+      }, { once: true }));
+      const [response] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === "/api/diff/semantic"
+          && new URL(response.url()).searchParams.get("path") === path),
+        retry.click(),
+      ]);
+      assert(response.ok(), "Retry must reach the summary endpoint");
+      assert.equal((await response.json()).status, "parse-error");
+      await panel(path).getByText(text, { exact: false }).first().waitFor();
+      pass(true, "Monaco Retry survives a concurrent summary render and recovers from a transport error");
     }
     await panel(path).getByText(text, { exact: false }).first().waitFor();
     pass(true, `${path}: shared summary fallback remains reachable`);

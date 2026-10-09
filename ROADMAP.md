@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.1.3, including the v2.1.0 feature baseline
+Canonical delivery state for v2.1.4, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -11,11 +11,22 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.1.3](https://github.com/Mindera/diffcompass/releases/tag/v2.1.3).
+Latest release: [v2.1.4](https://github.com/Mindera/diffcompass/releases/tag/v2.1.4).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.1.4
+
+- Preserve unchanged What changed panels across Monaco rerenders so Retry clicks,
+  focus, and expanded details survive background updates. Add a browser regression
+  that forces a rerender between mouse-down and click and verifies actual recovery.
+- Skip Monaco browser jobs for documentation-only changes. Application, test, and
+  workflow changes still run every browser group, and the required check rejects
+  failed, cancelled, or unexpectedly skipped jobs.
+- Add a copyable agent installation prompt to the README, covering prerequisites,
+  GitHub access, PATH, bundled skills, and setup verification.
 
 ## Released in v2.1.3
 

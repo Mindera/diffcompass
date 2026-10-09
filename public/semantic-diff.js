@@ -1,6 +1,7 @@
 /* A bounded syntax summary layered onto the existing diff, never a second viewer. */
 globalThis.DiffCompassSemantic = (() => {
   const opened = new Map();
+  const renderedContent = new WeakMap();
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
   const identity = () => JSON.stringify([state.session?.comparison?.base, state.session?.comparison?.head, state.session?.comparison?.mergeBase, state.session?.comparison?.sourceTree, state.session?.comparison?.patch,
     state.session?.outline?.phases.map((phase) => [phase.title, phase.fileChanges, phase.steps.map((step) => [step.title, step.anchor, step.outdated])])]);
@@ -22,19 +23,28 @@ globalThis.DiffCompassSemantic = (() => {
     for (const section of elements.diff.querySelectorAll(".diff-file, .monaco-file-slot")) {
       const path = section.dataset.path;
       const entry = opened.get(path);
-      section.querySelector("[data-semantic-panel]")?.remove();
+      let panel = section.querySelector("[data-semantic-panel]");
       section.querySelector("[data-semantic-file]")?.setAttribute("aria-expanded", String(Boolean(entry)));
-      if (!entry || state.tourMode || state.proposalPreview) continue;
-      const panel = document.createElement("section");
+      if (!entry || state.tourMode || state.proposalPreview) { panel?.remove(); continue; }
+      const createPanel = !panel;
+      if (!panel) panel = document.createElement("section");
       panel.id = panelId(path);
       panel.className = "semantic-summary";
       panel.hidden = state.collapsedFiles.has(path);
       panel.dataset.semanticPanel = path;
       panel.setAttribute("aria-label", `What changed in ${path}`);
-      panel.innerHTML = entry.summary ? summaryHtml(entry.summary) : entry.error ? `<p role="alert">${esc(entry.error)}</p><button type="button" data-semantic-retry="${esc(path)}">Try again</button>` : '<p role="status">Comparing the saved before and after code…</p>';
-      const monacoHeader = section.querySelector(".monaco-file-header");
-      if (monacoHeader) monacoHeader.after(panel);
-      else section.querySelector(".diff-file-scroll")?.prepend(panel);
+      const content = entry.summary ? summaryHtml(entry.summary) : entry.error ? `<p role="alert">${esc(entry.error)}</p><button type="button" data-semantic-retry="${esc(path)}">Try again</button>` : '<p role="status">Comparing the saved before and after code…</p>';
+      // Unrelated Monaco rerenders must not replace a focused control, lose an
+      // in-flight pointer click, or collapse details the reviewer has opened.
+      if (renderedContent.get(panel) !== content) {
+        panel.innerHTML = content;
+        renderedContent.set(panel, content);
+      }
+      if (createPanel) {
+        const monacoHeader = section.querySelector(".monaco-file-header");
+        if (monacoHeader) monacoHeader.after(panel);
+        else section.querySelector(".diff-file-scroll")?.prepend(panel);
+      }
     }
     // Virtualized Monaco slots reserve space for both the summary and editor.
     state.monacoRenderer?.sync?.();
