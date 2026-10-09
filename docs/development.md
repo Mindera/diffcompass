@@ -2,6 +2,8 @@
 
 [Back to the README](../README.md)
 
+For repository administration, see the [nightly Minders team sync](minders-team-sync.md).
+
 ```sh
 bun install --frozen-lockfile
 bun run src/cli.ts --repo /path/to/repository --base origin/main --open
