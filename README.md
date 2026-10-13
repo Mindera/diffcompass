@@ -3,6 +3,10 @@
 A local, agent-led walkthrough for Git changes. Follow a guided tour, explore the
 diff, ask questions, and review a branch or GitHub pull request in your browser.
 
+Pull request integration is officially supported and tested only with GitHub.
+GitLab, Bitbucket, and other hosting providers have not been tested and are not
+officially supported.
+
 [Install](#install) · [Update](#update) · [Run](#run) ·
 [Feature catalogue](docs/features.md) · [Development](#development)
 
