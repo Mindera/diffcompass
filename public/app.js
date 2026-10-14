@@ -4824,7 +4824,6 @@ function renderMapsNavigation() {
 }
 
 function renderActiveTab() {
-  syncBriefingLayout();
   for (const tabName of ["briefing", "diff", "call-flows", "structural-blast-radius", "archify", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
@@ -4832,6 +4831,7 @@ function renderActiveTab() {
     elements[`${tabName}-tab`].setAttribute("aria-selected", String(active));
     elements[`${tabName}-tab`].tabIndex = active ? 0 : -1;
   }
+  syncBriefingLayout();
   updatePullRequestReturnVisibility();
   renderMapsNavigation();
   state.monacoRenderer?.updateMobileActions();

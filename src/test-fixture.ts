@@ -781,32 +781,29 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
     outline.briefing = await buildBriefing(comparison, outline, briefingIntent({ pullRequest: persisted.pullRequest, reviewerTask: persisted.pullRequest?.reviewerTask }), {
       title: "Discounted checkout, from calculation to receipt",
       sections: [
-        { id: "intent", title: "What changes", blocks: [
+        { id: "intent", title: "Keep the calculation reusable", blocks: [
           { id: "intent-text", kind: "prose", basis: "stated", text: "The linked issue asks for discounted receipt output: apply a fractional percentage and present the final total with two decimal places." },
-          { id: "behavior-text", kind: "prose", basis: "observed", text: "The cart now separates subtotal calculation from discount application. A new receipt formatter calls that calculation and turns the result into display text." },
+          { id: "behavior-text", kind: "prose", basis: "observed", text: "The implementation keeps arithmetic separate from display text. It first moves the existing price × quantity sum into subtotal, giving the discount calculation a reusable starting point:" },
+          { id: "subtotal-source", kind: "source", evidenceId: "subtotal-body" },
         ] },
-        { id: "boundaries", title: "Calculation and presentation", blocks: [
-          { id: "boundary-text", kind: "prose", basis: "observed", text: "Cart totals own the arithmetic; the receipt formatter owns the display. The caller stays outside these two responsibilities. Inspect a component to see its implementation." },
+        { id: "calculation", title: "Apply the discount once", blocks: [
+          { id: "calculation-text", kind: "prose", basis: "observed", text: "The public total function still returns a number. Without a discount, it returns the subtotal unchanged; with one, it subtracts a fraction of that amount. A percentage of 0.1 therefore means ten percent, not 0.1 percent." },
+          { id: "total-source", kind: "source", evidenceId: "total-body" },
+          { id: "calculation-result", kind: "prose", basis: "observed", text: "For two items priced at 10, subtotal produces 20 and a ten-percent discount reduces total to 18. No string formatting happens in this layer." },
+        ] },
+        { id: "boundaries", title: "Format at the receipt boundary", blocks: [
+          { id: "boundary-text", kind: "prose", basis: "observed", text: "The new receipt formatter sits between the caller and the cart calculation. That boundary lets a caller request display text while other consumers continue to use numeric totals:" },
           { id: "components", kind: "diagram", diagramId: "architecture-journey" },
+          { id: "format-text", kind: "prose", basis: "observed", text: "The formatter delegates the arithmetic to total, then uses toFixed(2) to produce the two-decimal string. The discount formula stays in the cart module:" },
           { id: "format-source", kind: "source", evidenceId: "receipt-body" },
-        ] },
-        { id: "flow", title: "Follow one receipt", blocks: [
-          { id: "flow-text", kind: "prose", basis: "observed", text: "The formatter asks for a numeric total, then formats it. Each message keeps its own code evidence; the external caller has no binding in this fixture." },
-          { id: "sequence", kind: "diagram", diagramId: "sequence-" + outline.flows[0]!.id },
+          { id: "receipt-result", kind: "prose", basis: "observed", text: "Putting those steps together, the same two items now produce a receipt with the discounted amount:" },
           { id: "example", kind: "example", language: "typescript", text: 'receipt([{ price: 10, quantity: 2 }], { percentage: 0.1 })\n// "Total: 18.00"' },
-          { id: "calls", kind: "diagram", diagramId: "call-flow-" + outline.callFlows[0]!.id },
         ] },
-        { id: "model", title: "State and data", blocks: [
-          { id: "state", kind: "diagram", diagramId: "lifecycle-state-machine" },
-          { id: "data", kind: "diagram", diagramId: "dataflow-data-model" },
-          { id: "domain-text", kind: "prose", text: "The domain map below preserves the project's documented vocabulary. Its glossary passages describe concepts; they are separate from implementation evidence." },
-          { id: "domain", kind: "diagram", diagramId: "domain-" + outline.domainModels![0]!.id },
-        ] },
-        { id: "limits", title: "Boundaries to keep in mind", blocks: [
-          { id: "limits-text", kind: "prose", basis: "observed", text: "The implementation formats two decimal places but does not localize currency output or reject percentages outside the supported fractional range. The dedicated findings and task views hold the review assessment." },
+        { id: "limits", title: "What this path leaves to callers", blocks: [
+          { id: "limits-text", kind: "prose", basis: "observed", text: "This path assumes a valid fractional discount: total does not reject negative percentages or values above 1. The two-decimal rounding happens only when receipt builds its string; the numeric total remains unrounded. Receipt also returns a fixed “Total:” label, without currency or locale formatting." },
         ] },
       ],
-      evidence: [{ id: "receipt-body", ...presentation }],
+      evidence: [{ id: "subtotal-body", ...excerpt("src/cart.ts", 10, 12) }, { id: "total-body", ...calculation }, { id: "receipt-body", ...presentation }],
     });
   }
   // A resumed fixture normally skips the agent generation path that refreshes

@@ -7,7 +7,7 @@ import { loadComparison } from "../src/git.ts";
 import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
 import { buildBriefing, briefingFingerprint, briefingIntent, resolveBriefingQuestion, validBriefingDocument, validBriefingProposal } from "../src/briefing.ts";
 import { ReviewSession } from "../src/session.ts";
-import { withBriefingExport } from "../src/briefing-export.ts";
+import { briefingMarkdown, withBriefingExport } from "../src/briefing-export.ts";
 import { exportReview } from "../src/export.ts";
 import type { GitComparison, PersistedReviewSession } from "../src/types.ts";
 let root: string, fixture: Awaited<ReturnType<typeof prepareTestFixture>>, persisted: PersistedReviewSession, comparison: GitComparison;
@@ -49,6 +49,37 @@ test("unverified excerpts never become quoted code and source capture ignores wo
     expect(doc.evidence.some(e => e.available && e.quote.includes("export function receipt"))).toBe(true);
     expect(doc.evidence.some(e => e.quote.includes("workspace drift"))).toBe(false);
   } finally { await writeFile(join(fixture.repository, "src/receipt.ts"), actual); }
+});
+
+test("basic overview follows tour phases with captured code and does not append a diagram gallery", async () => {
+  const outline = structuredClone(persisted.outline!);
+  delete outline.briefingProposal;
+  const doc = await buildBriefing(comparison, outline);
+  expect(doc.mode).toBe("overview");
+  expect(validBriefingDocument(doc)).toBe(true);
+  expect(doc.sections.slice(1).map(s => s.title)).toEqual(outline.phases.map(p => p.title));
+  expect(doc.sections.flatMap(s => s.blocks).some(b => b.kind === "diagram")).toBe(false);
+  const excerpts = doc.sections.flatMap(s => s.blocks).flatMap(b => b.kind === "source" ? [doc.evidence.find(e => e.id === b.evidenceId)!] : []);
+  expect(excerpts).toHaveLength(2);
+  expect(excerpts.every(e => e.available && e.endLine - e.startLine < 12)).toBe(true);
+  expect(excerpts[0]!.quote).toContain("export function subtotal");
+  expect(excerpts[1]!.quote).toContain("export function receipt");
+  for (const step of outline.phases[0]!.steps) step.outdated = true;
+  const stale = await buildBriefing(comparison, outline);
+  expect(stale.outdated).toBe(true);
+  expect(stale.sections[1]!.blocks.some(b => b.kind === "source")).toBe(false);
+});
+
+test("Markdown keeps implementation excerpts at their authored position in the story", () => {
+  const doc = persisted.outline!.briefing!, markdown = briefingMarkdown(doc);
+  const firstCode = markdown.indexOf("export function subtotal"), nextSection = markdown.indexOf("### Apply the discount once");
+  expect(firstCode).toBeGreaterThan(markdown.indexOf("### Keep the calculation reusable"));
+  expect(firstCode).toBeLessThan(nextSection);
+  const unavailable = structuredClone(doc);
+  unavailable.evidence.find(e => e.id === "subtotal-body")!.available = false;
+  const story = briefingMarkdown(unavailable).split("### Briefing evidence")[0]!;
+  expect(story).not.toContain("export function subtotal");
+  expect(story).toContain("Source unavailable");
 });
 
 test("additional diagram evidence uses exact element IDs and keeps domain code separate from glossary evidence", async () => {

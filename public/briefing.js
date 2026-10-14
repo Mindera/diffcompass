@@ -10,16 +10,37 @@ function createBriefingReader(options) {
   const diagramFor = block => document?.diagrams.find(d => d.id === block?.diagramId);
   const action = (label, attrs) => `<button type="button" class="text-button" ${attrs}>${esc(label)}</button>`;
   function rememberAnchor() {
-    if (!active) return;
+    if (!active || !view.getClientRects().length) return;
     const top = scroll.getBoundingClientRect().top;
     const block = [...view.querySelectorAll("[data-briefing-block]")].find(el => el.getBoundingClientRect().bottom > top + 12);
     if (block) anchor = { id: block.dataset.briefingBlock, offset: block.getBoundingClientRect().top - top };
   }
   function restoreAnchor() {
+    if (!active || !view.getClientRects().length) return;
     const block = anchor && view.querySelector(`[data-briefing-block="${CSS.escape(anchor.id)}"]`);
-    if (active && block) scroll.scrollTop += block.getBoundingClientRect().top - scroll.getBoundingClientRect().top - anchor.offset;
+    if (block) scroll.scrollTop += block.getBoundingClientRect().top - scroll.getBoundingClientRect().top - anchor.offset;
+    updateOutline();
   }
-  scroll.addEventListener("scroll", rememberAnchor, { passive: true });
+  function updateOutline() {
+    if (!active || !view.getClientRects().length) return;
+    const sections = [...view.querySelectorAll(".briefing-section")];
+    const top = scroll.getBoundingClientRect().top + 48;
+    let current = sections[0];
+    for (const section of sections) { if (section.getBoundingClientRect().top <= top) current = section; }
+    if (scroll.scrollTop > 0 && scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 2) current = sections.at(-1);
+    for (const button of outline.querySelectorAll("[data-briefing-section]")) {
+      const selected = current?.id === `briefing-section-${button.dataset.briefingSection}`;
+      const changed = selected && !button.hasAttribute("aria-current");
+      if (selected) button.setAttribute("aria-current", "location"); else button.removeAttribute("aria-current");
+      // Scroll only the outline, never the reader or the surrounding workspace.
+      if (changed && outline.clientHeight) {
+        const bounds = outline.getBoundingClientRect(), item = button.getBoundingClientRect();
+        if (item.top < bounds.top + 12) outline.scrollTop += item.top - bounds.top - 12;
+        else if (item.bottom > bounds.bottom - 12) outline.scrollTop += item.bottom - bounds.bottom + 12;
+      }
+    }
+  }
+  scroll.addEventListener("scroll", () => { rememberAnchor(); updateOutline(); }, { passive: true });
   let width = scroll.clientWidth;
   new ResizeObserver(() => { if (scroll.clientWidth !== width) { width = scroll.clientWidth; restoreAnchor(); } }).observe(scroll);
   function render(value) {
@@ -36,14 +57,17 @@ function createBriefingReader(options) {
     }
     outline.innerHTML = `<div class="eyebrow">In this change</div><nav aria-label="Briefing sections">${document.sections.map(s => action(s.title, `data-briefing-section="${esc(s.id)}"`)).join("")}</nav><p class="briefing-version">${document.mode === "overview" ? "Basic overview · from saved tour" : "Authored walkthrough"}</p><button type="button" class="text-button" data-briefing-generate>Regenerate Briefing</button>${document.outdated ? '<p role="status" class="briefing-stale">Source or intent changed. This is the saved snapshot.</p>' : ''}`;
     view.innerHTML = heading + document.sections.map(s => `<section id="briefing-section-${esc(s.id)}" class="briefing-section"><h2>${esc(s.title)}</h2>${s.blocks.map(blockHtml).join("")}</section>`).join("");
-    renderInspector(); renderChips(); restoreAnchor(); void renderDiagrams(ticket);
+    renderInspector(); renderChips(); restoreAnchor(); void highlightEvidence(view, document.evidence); void renderDiagrams(ticket);
   }
   function blockHtml(b) {
     const attrs = `data-briefing-block="${esc(b.id)}"`;
-    const ask = action("Ask", `data-briefing-ask="${esc(b.id)}"`);
-    if (b.kind === "prose") return `<article class="briefing-block briefing-prose" ${attrs}>${b.basis ? `<span class="briefing-basis">${esc({ stated: "Stated intent", observed: "Observed behavior", inferred: "Inference" }[b.basis])}</span>` : ""}<p data-briefing-text>${esc(b.text)}</p><div class="briefing-block-actions">${ask}</div></article>`;
-    if (b.kind === "example") return `<article class="briefing-block" ${attrs}><span class="briefing-basis">Illustrative example${b.language ? ` · ${esc(b.language)}` : ""}</span><pre data-briefing-text><code>${esc(b.text)}</code></pre><div class="briefing-block-actions">${ask}</div></article>`;
-    if (b.kind === "source") { const e = document.evidence.find(e => e.id === b.evidenceId); return `<article class="briefing-block briefing-citation" ${attrs}>${action(e ? `${e.path}:${e.startLine}–${e.endLine} · ${e.side}` : "Source unavailable", `data-briefing-inspect="${esc(b.id)}"`)}${ask}</article>`; }
+    const ask = action("Ask", `data-briefing-ask="${esc(b.id)}" aria-label="Ask about ${b.kind === "prose" ? "this passage" : b.kind === "source" ? "this code excerpt" : `this ${b.kind}`}"`);
+    if (b.kind === "prose") return `<article class="briefing-block briefing-prose" ${attrs}>${b.basis === "inferred" ? '<span class="briefing-basis">Inference</span>' : ""}<p data-briefing-text>${esc(b.text)}</p><div class="briefing-block-actions">${ask}</div></article>`;
+    if (b.kind === "example") return `<article class="briefing-block briefing-example" ${attrs}><header class="briefing-excerpt-heading"><span class="briefing-basis">Illustrative example${b.language ? ` · ${esc(b.language)}` : ""}</span>${ask}</header><pre data-briefing-text><code>${esc(b.text)}</code></pre></article>`;
+    if (b.kind === "source") {
+      const e = document.evidence.find(e => e.id === b.evidenceId);
+      return `<article class="briefing-block briefing-source briefing-excerpt" ${attrs} data-evidence-id="${esc(b.evidenceId)}"><header class="briefing-excerpt-heading"><span class="briefing-source-label">${e ? sourceLabel(e) : "Source unavailable"}</span>${action("Inspect", `data-briefing-inspect="${esc(b.id)}"`)}${ask}</header>${sourceCodeHtml(e)}</article>`;
+    }
     const d = diagramFor(b);
     return `<figure class="briefing-block briefing-diagram" ${attrs}><figcaption><div><span class="eyebrow">${esc(d?.family)}${d?.outdated ? " · saved diagram, source changed" : ""}</span><strong>${esc(d?.title)}</strong></div>${action("Inspect", `data-briefing-inspect="${esc(b.id)}"`)}${ask}</figcaption><div class="briefing-canvas ${["architecture", "domain", "call-flow"].includes(d?.family) ? "architecture-node-skin" : ""}" aria-label="${esc(d?.title)}">Rendering diagram…</div><details class="briefing-elements"><summary>Explore ${d?.elements.length ?? 0} ${d?.family === "sequence" ? "messages" : "elements"}</summary><div>${(d?.elements ?? []).map(e => `<button type="button" data-briefing-element="${esc(e.id)}" data-block-id="${esc(b.id)}">${esc(e.label)}</button>`).join("")}</div></details></figure>`;
   }
@@ -103,9 +127,15 @@ function createBriefingReader(options) {
     el.setAttribute("tabindex", "0"); el.setAttribute("role", "button");
     el.addEventListener("keydown", event => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); event.stopPropagation(); inspect(blockId, elementId); } });
   }
+  function sourceLabel(e) {
+    return `${esc(e.kind === "document" ? "Documentary evidence · " : "")}${esc(e.path)}:${e.startLine}–${e.endLine} · ${e.side === "old" ? "before" : "after"}`;
+  }
+  function sourceCodeHtml(e) {
+    return e?.available ? `<pre><code>${e.quote.split("\n").map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${esc(line)}</span>`).join("")}</code></pre>` : `<p class="muted">${esc(e?.reason ?? "Source unavailable")}</p>`;
+  }
   function evidenceHtml(e) {
     if (!e) return '<p class="muted">No verified source binding is available for this element.</p>';
-    return `<div class="briefing-source" data-evidence-id="${esc(e.id)}"><div class="briefing-source-label">${esc(e.kind === "document" ? "Documentary evidence · " : "")}${esc(e.path)}:${e.startLine}–${e.endLine} · ${e.side}</div>${e.available ? `<pre><code>${e.quote.split("\n").map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${esc(line)}</span>`).join("")}</code></pre>${action("Open in Changes", `data-briefing-source="${esc(e.id)}"`)}` : `<p class="muted">${esc(e.reason ?? "Source unavailable")}</p>`}</div>`;
+    return `<div class="briefing-source" data-evidence-id="${esc(e.id)}"><div class="briefing-source-label">${sourceLabel(e)}</div>${sourceCodeHtml(e)}${e.available ? action("Open in Changes", `data-briefing-source="${esc(e.id)}"`) : ""}</div>`;
   }
   function renderInspector() {
     if (!inspection) { pane.innerHTML = '<header><span class="eyebrow">Evidence</span><h2>Explore this change</h2></header><div class="briefing-evidence-scroll"><p class="muted">Inspect a passage, diagram, or source citation. Evidence stays here while you read.</p></div>'; return; }
@@ -118,24 +148,26 @@ function createBriefingReader(options) {
     const title = d?.title ?? (b.kind === "source" ? "Source citation" : "Selected passage");
     let content;
     if (d) content = d.elements.map((e, index) => `<article class="briefing-evidence-card" data-evidence-element="${esc(e.id)}"><button class="briefing-card-title" type="button" data-briefing-element="${esc(e.id)}" data-block-id="${esc(b.id)}">${d.family === "sequence" ? `${index + 1}. ` : ""}${esc(e.label)}</button>${e.evidenceIds.length ? e.evidenceIds.map(id => evidenceHtml(document.evidence.find(e => e.id === id))).join("") : evidenceHtml(null)}${action(`Ask about ${d.family === "sequence" ? "message" : e.kind === "components" ? "component" : "element"}`, `data-briefing-ask="${esc(b.id)}" data-element-id="${esc(e.id)}"`)}</article>`).join("");
-    else content = b.kind === "source" ? evidenceHtml(document.evidence.find(e => e.id === b.evidenceId)) : `<p class="briefing-quotation">${esc(inspection.quote ?? b.text)}</p>${action("Ask about passage", `data-briefing-ask="${esc(b.id)}"` )}`;
+    else content = b.kind === "source" ? evidenceHtml(document.evidence.find(e => e.id === b.evidenceId)) : `${b.basis ? `<span class="briefing-basis">${esc({ stated: "Stated intent", observed: "Observed behavior", inferred: "Inference" }[b.basis])}</span>` : ""}<p class="briefing-quotation">${esc(inspection.quote ?? b.text)}</p>${action("Ask about passage", `data-briefing-ask="${esc(b.id)}"` )}`;
     pane.innerHTML = `<header><span class="eyebrow">${esc(d?.family ?? "Evidence")}</span><h2>${esc(title)}</h2></header><div class="briefing-evidence-scroll">${content}<details class="briefing-review-details"><summary>Review details</summary><p>${esc(session.comparison.repositoryName)} · ${esc(session.comparison.branch)}<br>Saved ${esc(document.createdAt)}${document.outdated ? " · outdated source or intent" : ""}</p></details></div>`;
     highlight(); void highlightEvidence();
   }
-  async function highlightEvidence() {
+  async function highlightEvidence(root = pane, evidence = inspection?.frozen?.evidence ?? document?.evidence ?? []) {
     if (!options.highlight) return;
     const captured = document;
-    const sources = (inspection?.frozen?.evidence ?? document?.evidence ?? []).filter(e => e.available);
-    const needed = sources.filter(e => pane.querySelector(`[data-evidence-id="${CSS.escape(e.id)}"]`) && !syntaxCache.has(`${e.blob}:${e.startLine}:${e.endLine}`));
+    const sources = evidence.filter(e => e.available);
+    const key = e => `${e.blob}:${e.path}:${e.startLine}:${e.endLine}`;
+    const targets = sources.flatMap(e => [...root.querySelectorAll(`[data-evidence-id="${CSS.escape(e.id)}"] code`)].map(code => ({ e, code })));
+    const needed = sources.filter(e => targets.some(target => target.e === e) && !syntaxCache.has(key(e)));
     if (needed.length) {
       try { const groups = await options.highlight(needed.map(e => ({ id: e.id, path: e.path, lines: e.quote.split("\n") })));
-        for (const group of groups) { const source = needed.find(e => e.id === group.id); if (source) syntaxCache.set(`${source.blob}:${source.startLine}:${source.endLine}`, group.lines); }
+        for (const group of groups) { const source = needed.find(e => e.id === group.id); if (source) syntaxCache.set(key(source), group.lines); }
       } catch { return; }
     }
     if (captured !== document) return;
-    for (const e of sources) {
-      const tokens = syntaxCache.get(`${e.blob}:${e.startLine}:${e.endLine}`); if (!tokens) continue;
-      for (const code of pane.querySelectorAll(`[data-evidence-id="${CSS.escape(e.id)}"] code`)) code.innerHTML = tokens.map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${line.map(token => options.tokenHtml(token)).join("")}</span>`).join("");
+    for (const { e, code } of targets) {
+      const tokens = syntaxCache.get(key(e)); if (!tokens || !code.isConnected) continue;
+      code.innerHTML = tokens.map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${line.map(token => options.tokenHtml(token)).join("")}</span>`).join("");
     }
   }
   function inspect(blockId, elementId, quote) {

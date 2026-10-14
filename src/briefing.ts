@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { archifyCandidates } from "./archify.ts";
 import { diffSourceIdentity, loadCapturedSource } from "./diff-sources.ts";
 import { ReviewError } from "./errors.ts";
-import type { GitComparison, TourOutline, SequenceSourceAnchor } from "./types.ts";
+import type { GitComparison, TourOutline, TourAnchor, SequenceSourceAnchor } from "./types.ts";
 
 export type BriefingFamily = "sequence" | "architecture" | "lifecycle" | "data-model" | "call-flow" | "domain";
 export interface ElementSource { elementId: string; anchors: SequenceSourceAnchor[] }
@@ -88,7 +88,11 @@ export function normalizeElementSources(value: unknown): ElementSource[] | undef
   });
 }
 
-export const BRIEFING_PROMPT = `Also return briefingProposal, a concise, intent-led reading document. Schema: {title,sections:[{id,title,blocks:[{id,kind:"prose",text,basis:"stated"|"observed"|"inferred"}|{id,kind:"diagram",diagramId}|{id,kind:"example",text,language}|{id,kind:"source",evidenceId}]}],evidence:[{id,path,side:"old"|"new",startLine,endLine,quote}]}. Text is plain text, not Markdown. Explain what changes, why (only if supplied by the author), how it works, and meaningful boundaries or tradeoffs. Label inferred rationale explicitly. Interleave diagrams only when useful; a small change may need just a short summary. No findings dashboard, review effort, checklist or question form. Limits: 12 sections, 60 blocks, 24000 text characters, 40 exact captured evidence excerpts, each at most 30 lines and 8000 characters. Use diagramId architecture-behavior, architecture-journey, sequence-{flow.id}, lifecycle-state-machine, dataflow-data-model, call-flow-{callFlow.id}, or domain-{model.id}, only for diagrams present in this outline. Architecture, stateDiagram and dataModel may include elementSources:[{elementId,anchors:[{path,side,startLine,endLine,quote}]}]. Use exact renderer IR element IDs supplied during regeneration; for new architecture components use their Mermaid node IDs. Never guess a relationship ID, code location, or match by label. Evidence unavailable is preferable to an invented binding. Existing sequence messageSources and call-flow old/new locations are reused. For lifecycle state elements use the state identifier; for data-model entities use data-{ENTITY}. For existing diagrams, briefingProposal may additionally include diagramSources:[{diagramId,elementId,anchors:[{path,side,startLine,endLine,quote}]}] using only supplied exact IDs. This can supply relationship evidence and separate implementation excerpts for domain concepts. Domain vocabulary evidence is documentary, never proof of runtime behavior.`;
+export const BRIEFING_PROMPT = `Also return briefingProposal, a concise, intent-led reading document. Schema: {title,sections:[{id,title,blocks:[{id,kind:"prose",text,basis:"stated"|"observed"|"inferred"}|{id,kind:"diagram",diagramId}|{id,kind:"example",text,language}|{id,kind:"source",evidenceId}]}],evidence:[{id,path,side:"old"|"new",startLine,endLine,quote}]}.
+Tell one coherent story: establish the intended outcome, follow the important behavior or data through the implementation, and finish with meaningful boundaries or tradeoffs. Choose section titles that advance that story, rather than categories of artifacts. Explain why only when supplied by the author; mark inferred rationale explicitly. Text is plain text, not Markdown; basis is metadata, not a repeated prose heading.
+Weave short, exact source blocks into the explanation at the point they substantiate a claim. For code changes, show the first useful implementation excerpt early; do not hide all code in citations or the inspector. Prefer a complete small function or decisive branch, usually 3–12 lines. An illustrative example shows an input and outcome but does not replace implementation evidence. Documentation-only changes can use documentary excerpts instead. Include evidence entries for every source block.
+Choose diagrams by the question they answer: responsibility boundaries, request ordering, state transitions, data relationships, calls, or domain concepts. Introduce each diagram with the specific relationship it explains and connect it to the nearby code and the next narrative step. Supporting six diagram families does not mean using all six. Never append a diagram gallery, stack unrelated maps, or repeat the same explanation in multiple diagram types. A small change may need only a few paragraphs and one excerpt, with no diagram. No findings dashboard, review effort, checklist, question form, or explanation of the review UI in the story.
+Limits: 12 sections, 60 blocks, 24000 text characters, 40 exact captured evidence excerpts, each at most 30 lines and 8000 characters. Use diagramId architecture-behavior, architecture-journey, sequence-{flow.id}, lifecycle-state-machine, dataflow-data-model, call-flow-{callFlow.id}, or domain-{model.id}, only for diagrams present in this outline. Architecture, stateDiagram and dataModel may include elementSources:[{elementId,anchors:[{path,side,startLine,endLine,quote}]}]. Use exact renderer IR element IDs supplied during regeneration; for new architecture components use their Mermaid node IDs. Never guess a relationship ID, code location, or match by label. Evidence unavailable is preferable to an invented binding. Existing sequence messageSources and call-flow old/new locations are reused. For lifecycle state elements use the state identifier; for data-model entities use data-{ENTITY}. For existing diagrams, briefingProposal may additionally include diagramSources:[{diagramId,elementId,anchors:[{path,side,startLine,endLine,quote}]}] using only supplied exact IDs. This can supply relationship evidence and separate implementation excerpts for domain concepts. Domain vocabulary evidence is documentary, never proof of runtime behavior.`;
 
 /** Capture a saved document, including its exact diagram identities and source text. */
 export async function buildBriefing(comparison: GitComparison, outline: TourOutline, intent = "", proposal: unknown = outline.briefingProposal): Promise<BriefingDocument> {
@@ -113,6 +117,18 @@ export async function buildBriefing(comparison: GitComparison, outline: TourOutl
   }
   const authored = validBriefingProposal(proposal) ? proposal : undefined;
   for (const e of authored?.evidence ?? []) await add(e, /\.md$/i.test(e.path) ? "document" : "code", e.id);
+  // Reserve evidence space for the reading path before capturing optional maps.
+  let sections = authored ? structuredClone(authored.sections) : await overviewSections(outline, async anchor => {
+    if (!Number.isSafeInteger(anchor.startLine) || anchor.startLine < 1 || !Number.isSafeInteger(anchor.endLine) || anchor.endLine < anchor.startLine) return undefined;
+    const endLine = Math.min(anchor.endLine, anchor.startLine + 11);
+    try {
+      const key = `${anchor.side}:${anchor.path}`;
+      if (!cache.has(key)) cache.set(key, loadCapturedSource(comparison, anchor.side, anchor.path));
+      const source = await cache.get(key)!;
+      const quote = source.text.split(/\r?\n/).slice(anchor.startLine - 1, endLine).join("\n");
+      return await add({ ...anchor, endLine, quote }, /\.md$/i.test(anchor.path) ? "document" : "code");
+    } catch { return undefined; }
+  });
   const diagrams: BriefingDiagram[] = [];
   for (const candidate of archifyCandidates(outline)) {
     const flow = outline.flows.find(f => candidate.id === `sequence-${f.id}`);
@@ -161,15 +177,23 @@ export async function buildBriefing(comparison: GitComparison, outline: TourOutl
       if (key && !element.evidenceIds.includes(key)) element.evidenceIds.push(key);
     }
   }
-  let sections = authored ? structuredClone(authored.sections) : overviewSections(outline, diagrams);
   // Invalid optional references cannot invalidate the rest of a tour/document.
   sections = sections.map(s => ({ ...s, blocks: s.blocks.map(b => b.kind === "diagram" && !diagrams.some(d => d.id === b.diagramId) || b.kind === "source" && !evidence.some(e => e.id === b.evidenceId) ? { id: b.id, kind: "prose" as const, text: "The referenced evidence is unavailable in this snapshot." } : b) }));
   return { version: 1, id: crypto.randomUUID(), title: authored?.title ?? outline.title.slice(0, 500), createdAt: new Date().toISOString(), fingerprint: briefingFingerprint(comparison, intent), comparisonId: diffSourceIdentity(comparison), mode: authored ? "authored" : "overview", ...(!authored && (outline.phases.some(p => p.steps.some(s => s.outdated)) || diagrams.some(d => d.outdated)) ? { outdated: true } : {}), sections, diagrams, evidence, intent };
 }
-function overviewSections(outline: TourOutline, diagrams: BriefingDiagram[]): NarrativeSection[] {
+async function overviewSections(outline: TourOutline, capture: (anchor: TourAnchor) => Promise<string | undefined>): Promise<NarrativeSection[]> {
   const sections: NarrativeSection[] = [{ id: "summary", title: "What changes", blocks: [{ id: "summary-text", kind: "prose", text: outline.summary.slice(0, 4000) }] }];
-  for (const [i, phase] of outline.phases.slice(0, 6).entries()) sections.push({ id: `phase-${i}`, title: phase.title.slice(0, 200), blocks: [{ id: `phase-text-${i}`, kind: "prose", text: phase.summary.slice(0, 2000), basis: "observed" }] });
-  if (diagrams.length) sections.push({ id: "design", title: "How it fits together", blocks: diagrams.slice(0, 24).map((d, i) => ({ id: `diagram-${i}`, kind: "diagram", diagramId: d.id })) });
+  for (const [i, phase] of outline.phases.slice(0, 6).entries()) {
+    const blocks: NarrativeBlock[] = [{ id: `phase-text-${i}`, kind: "prose", text: phase.summary.slice(0, 2000), basis: "observed" }];
+    for (const step of phase.steps) {
+      if (step.outdated) continue;
+      const evidenceId = await capture(step.anchor);
+      if (evidenceId) { blocks.push({ id: `phase-source-${i}`, kind: "source", evidenceId }); break; }
+    }
+    sections.push({ id: `phase-${i}`, title: phase.title.slice(0, 200), blocks });
+  }
+  // Saved tours provide an order and source anchors, not authored transitions
+  // between diagrams. Keep the basic overview short until explicit regeneration.
   return sections;
 }
 export function resolveBriefingQuestion(document: BriefingDocument | undefined, value: unknown): BriefingQuestionContext {
