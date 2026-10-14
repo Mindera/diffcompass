@@ -1,3 +1,4 @@
+import { normalizeElementSources } from "./briefing.ts";
 import type { ReviewArchitecture } from "./types.ts";
 import { validateMapNodeRoles } from "./map-node-roles.ts";
 
@@ -61,7 +62,7 @@ export function normalizeReviewArchitectureMermaid(source: string): string {
 export function validateReviewArchitecture(value: unknown): ReviewArchitecture {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Architecture must be an object.");
   const architecture = value as Record<string, unknown>;
-  const allowed = ["title", "summary", "mermaid", "dependencyChanges", "affectedFiles", "outdated", "nodeRoles"];
+  const allowed = ["title", "summary", "mermaid", "dependencyChanges", "affectedFiles", "outdated", "nodeRoles", "elementSources"];
   const unknown = Object.keys(architecture).find((key) => !allowed.includes(key));
   if (unknown) throw new Error(`Architecture contains an unsupported field: ${unknown}`);
   if (architecture.outdated !== undefined && typeof architecture.outdated !== "boolean") throw new Error("Architecture outdated must be a boolean.");
@@ -114,5 +115,5 @@ export function validateReviewArchitecture(value: unknown): ReviewArchitecture {
     throw new Error("Architecture affectedFiles must contain 1-100 unique changed paths.");
   }
   const nodeRoles = validateMapNodeRoles(architecture.nodeRoles, nodes);
-  return { title, summary, mermaid, ...(nodeRoles ? { nodeRoles } : {}), dependencyChanges: dependencyChanges.map((item) => item.trim()), affectedFiles: affectedFiles.map((path) => path.trim()), ...(architecture.outdated === true ? { outdated: true } : {}) };
+  return { title, summary, mermaid, ...(architecture.elementSources ? { elementSources: normalizeElementSources(architecture.elementSources) } : {}), ...(nodeRoles ? { nodeRoles } : {}), dependencyChanges: dependencyChanges.map((item) => item.trim()), affectedFiles: affectedFiles.map((path) => path.trim()), ...(architecture.outdated === true ? { outdated: true } : {}) };
 }

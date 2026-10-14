@@ -25,7 +25,8 @@
         </span>
       </div>
       <div class="tabs" role="tablist">
-        <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Diff</button>
+        <button id="briefing-tab" class="tab" data-tab="briefing" role="tab" aria-selected="false" aria-controls="briefing-view" tabindex="-1">Briefing</button>
+        <button id="diff-tab" class="tab active" data-tab="diff" role="tab" aria-selected="true" aria-controls="diff-view" tabindex="0">Changes</button>
         <button id="call-flows-tab" class="tab" data-tab="call-flows" role="tab" aria-selected="false" aria-controls="call-flows-view" tabindex="-1">Call flows</button>
         <button id="structural-blast-radius-tab" class="tab" data-tab="structural-blast-radius" role="tab" aria-selected="false" aria-controls="structural-blast-radius-view" tabindex="-1">Blast radius</button>
         <button id="archify-tab" class="tab" data-tab="archify" role="tab" aria-selected="false" aria-controls="archify-view" tabindex="-1" disabled>Diagrams</button>
@@ -56,9 +57,9 @@
               </select></label>
               <p>Prepared explanations are kept if this is reduced.</p>
               <div class="settings-subsection">
-                <strong>Before the tour</strong>
-                <label><span>Show briefing</span><input id="show-tour-briefing" type="checkbox" aria-controls="briefing-options" /></label>
-                <div id="briefing-options" class="briefing-options" role="list" aria-label="Briefing sections. Drag rows to reorder them. Keyboard users can focus a row, press Space or Enter, then use Up and Down.">
+                <strong>Briefing</strong>
+                <label><span>Open reviews in Briefing</span><input id="show-tour-briefing" type="checkbox" aria-controls="briefing-options" /></label>
+                <div hidden id="briefing-options" class="briefing-options" role="list" aria-label="Briefing sections. Drag rows to reorder them. Keyboard users can focus a row, press Space or Enter, then use Up and Down.">
                   <div class="briefing-option" data-briefing-option="architecture" role="listitem" draggable="true" tabindex="0" aria-label="Component diagrams briefing section. Drag to reorder.">
                     <span class="briefing-option-grip" aria-hidden="true">⋮⋮</span>
                     <label><span>Component diagrams</span><input id="briefing-architecture" type="checkbox" /></label>
@@ -72,7 +73,7 @@
                     <label><span>Review effort</span><input id="briefing-review-effort" type="checkbox" /></label>
                   </div>
                 </div>
-                <p>Interactive maps open in their own workspace pane. Choose whether the compact component overview, review context, and effort estimate appear before the tour, then drag rows to reorder them.</p>
+                <p>The Briefing tab is always available. Regenerate its saved narrative after changing the source or review intent.</p>
               </div>
             </section>
             <section class="settings-section">
@@ -152,11 +153,13 @@
             Test files only
           </button>
         </div>
+        <div id="briefing-outline" class="briefing-outline hidden"></div>
         <div id="file-tree" class="file-tree"></div>
         <div id="file-resizer" class="file-resizer" role="separator" aria-label="Resize file tree" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="480" aria-valuenow="240" tabindex="0"></div>
       </aside>
 
       <section id="diff-panel" class="diff-panel">
+        <div id="briefing-view" class="review-view briefing-view hidden" role="tabpanel" aria-labelledby="briefing-tab"></div>
         <div id="diff-view" class="review-view" role="tabpanel" aria-labelledby="diff-tab">
           <p id="diff-instructions" class="sr-only">Choose a code line to comment or ask the agent. Select code to copy, edit, comment, or ask about the selection.</p>
           <div id="code-selection-toolbar" class="code-selection-toolbar hidden" role="toolbar" aria-label="Actions for selected code">
@@ -303,6 +306,7 @@
           </div>
         </div>
 
+        <section id="briefing-inspector" class="briefing-inspector hidden" aria-label="Briefing evidence"></section>
         <div id="tour-empty" class="tour-empty">
           <div class="agent-orb">✦</div>
           <h2 id="tour-empty-title">Walk through this change</h2>
@@ -414,6 +418,7 @@
               <button id="add-question-files" class="text-button question-add-files" type="button">+ Add file</button>
               <div id="chat-messages" class="chat-messages"></div>
             </div>
+            <div id="briefing-context" class="briefing-context hidden"></div>
             <div class="question-composer">
             <form id="chat-form" class="chat-form">
               <textarea id="chat-input" rows="2" placeholder="Ask about this step or selected code…"></textarea>
@@ -435,6 +440,9 @@
       </aside>
     </main>
     <button id="file-panel-backdrop" class="file-panel-backdrop hidden" type="button" aria-label="Close changed files"></button>
+
+    <button id="briefing-mobile-tools" class="button primary briefing-mobile-tools hidden" type="button">Evidence &amp; questions</button>
+    <dialog id="briefing-sheet" class="briefing-sheet briefing-mode" aria-label="Briefing evidence and questions"><button id="briefing-sheet-close" class="text-button briefing-sheet-close" type="button">Close</button></dialog>
 
     <dialog id="question-files-dialog" class="question-files-dialog" aria-labelledby="question-files-title">
       <form id="question-files-form">

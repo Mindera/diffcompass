@@ -177,3 +177,15 @@ See the [development guide](docs/development.md) for running from source,
 browser fixtures, verification, and release builds. The [roadmap](ROADMAP.md)
 tracks delivery status; [research notes](RESEARCH.md) retain detailed evidence
 and historical decisions.
+
+### Narrative Briefing
+
+The **Briefing** tab explains a change through its intent, behavior, design, and boundaries. It interleaves short passages, illustrative examples, diagrams, and captured source citations. The code workspace is labelled **Changes**; reading or inspecting a Briefing does not advance the tour or mark files reviewed.
+
+Inspect a diagram to open its complete evidence stack in the right pane. Sequence messages, architecture components, lifecycle states and transitions, data-model entities and relationships, call-flow nodes and edges, and domain concepts share the same inspector. Exact source bindings are validated against the captured old/new Git trees. Domain glossary passages are labelled documentary evidence. Unlinked elements remain visible with an explicit unavailable state; every diagram has an accessible element list when canvas selection is unavailable.
+
+Use **Ask** to attach a passage, exact quotation, diagram, or element to a question. Inspecting something else does not replace those attachments. Conversations retain their original saved context across regeneration. The reader and question draft remain in place when switching to Changes and back. On mobile, evidence and questions open in a dismissible sheet.
+
+“Open reviews in Briefing” controls the opening view; the tab remains available when disabled. New tours generate the document with the existing outline request. Older tours receive a basic overview from their saved outline. **Regenerate Briefing** replaces only the document and validates its source excerpts again. Changed source or author/reviewer intent marks an existing document outdated. HTML exports include an offline reader and inspector; Markdown exports include linked evidence excerpts.
+
+The document contract is bounded to 12 sections, 60 blocks, 24,000 prose characters, and 40 source excerpts (30 lines/8,000 characters each). Questions accept up to eight selected items and 8,000 characters of selected context. See `src/briefing.ts` for the versioned contract and validation rules.

@@ -140,6 +140,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
+    "briefing-tab", "briefing-view", "briefing-outline", "briefing-inspector", "briefing-context", "briefing-sheet", "briefing-sheet-close", "briefing-mobile-tools",
     "tour-intro-eyebrow",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "dry-runs-view", "dry-runs", "dry-runs-tab", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings", "include-dry-runs",
@@ -2776,11 +2777,10 @@ function handleGitHubReviewThreadClick(event) {
 function renderReviewOverview() {
   const outline = state.session.outline;
   const pullRequest = state.session.pullRequest;
-  const showBriefing = state.session.preferences?.showBriefing !== false;
   elements["review-overview"].classList.toggle("hidden", !outline && !pullRequest);
   elements["tour-overview"].classList.toggle("hidden", !outline);
   // Resumed reviews may not have shown the briefing in this browser session.
-  elements["tour-intro-return"].classList.toggle("hidden", !outline || !showBriefing);
+  elements["tour-intro-return"].classList.toggle("hidden", !outline);
   elements["tour-intro-return"].textContent = state.tourIntroReturn ? "↩ Back to briefing" : "View briefing";
   if (outline) {
     elements["review-overview-title"].textContent = outline.title;
@@ -2975,9 +2975,9 @@ function renderCallTree(flow, mode) {
     const branches = recursive || depth >= 12 ? "" : (children.get(nodeId) ?? []).map((edge) => {
       const child = nodes.get(edge.to);
       const evidence = mode === "before" ? edge.oldCallSite : mode === "after" ? edge.newCallSite : edge.change === "removed" ? edge.oldCallSite : edge.newCallSite ?? edge.oldCallSite;
-      return `<li class="call-edge ${edge.change}"><div class="call-edge-row"><span class="call-edge-mark" aria-label="${escapeHtml(edge.change)}">${edge.change === "added" ? "+" : edge.change === "removed" ? "−" : "→"}</span>${evidence ? `<button class="call-edge-link" type="button" data-call-path="${escapeHtml(evidence.path)}" data-call-side="${evidence.side}" data-call-line="${evidence.line}" title="Open call site ${escapeHtml(`${evidence.path}:${evidence.line}`)}">${escapeHtml(edge.label || "calls")}</button>` : `<span>${escapeHtml(edge.label || "calls")}</span>`}<span class="call-arrow">→</span><span class="call-child-label">${escapeHtml(child?.label ?? edge.to)}</span></div>${renderBranch(edge.to, nextAncestry, depth + 1)}</li>`;
+      return `<li class="call-edge ${edge.change}" data-edge-id="${escapeHtml(edge.id)}"><div class="call-edge-row"><span class="call-edge-mark" aria-label="${escapeHtml(edge.change)}">${edge.change === "added" ? "+" : edge.change === "removed" ? "−" : "→"}</span>${evidence ? `<button class="call-edge-link" type="button" data-call-path="${escapeHtml(evidence.path)}" data-call-side="${evidence.side}" data-call-line="${evidence.line}" title="Open call site ${escapeHtml(`${evidence.path}:${evidence.line}`)}">${escapeHtml(edge.label || "calls")}</button>` : `<span>${escapeHtml(edge.label || "calls")}</span>`}<span class="call-arrow">→</span><span class="call-child-label">${escapeHtml(child?.label ?? edge.to)}</span></div>${renderBranch(edge.to, nextAncestry, depth + 1)}</li>`;
     }).join("");
-    return `<div class="call-node ${node.change}${nodeId === flow.entrypointNodeId ? " entrypoint" : ""}"><div class="call-node-row"><span class="call-kind">${escapeHtml(node.kind)}</span>${location ? `<button type="button" class="call-node-link" data-call-path="${escapeHtml(location.path)}" data-call-side="${location.side}" data-call-line="${location.line}">${escapeHtml(node.label)}</button>` : `<strong>${escapeHtml(node.label)}</strong>`}${recursive ? '<span class="call-cycle">recursive</span>' : ""}</div>${branches ? `<ul>${branches}</ul>` : ""}</div>`;
+    return `<div data-node-id="${escapeHtml(node.id)}" class="call-node ${node.change}${nodeId === flow.entrypointNodeId ? " entrypoint" : ""}"><div class="call-node-row"><span class="call-kind">${escapeHtml(node.kind)}</span>${location ? `<button type="button" class="call-node-link" data-call-path="${escapeHtml(location.path)}" data-call-side="${location.side}" data-call-line="${location.line}">${escapeHtml(node.label)}</button>` : `<strong>${escapeHtml(node.label)}</strong>`}${recursive ? '<span class="call-cycle">recursive</span>' : ""}</div>${branches ? `<ul>${branches}</ul>` : ""}</div>`;
   };
   const tree = renderBranch(flow.entrypointNodeId);
   if (tree) return tree;
@@ -3581,24 +3581,15 @@ function renderTourIntroDiagrams() {
 }
 
 function maybeShowTourIntro() {
-  if (!state.tourIntroPending || state.tourIntroShown || state.session.preferences?.showBriefing === false || elements["tour-intro-dialog"].open) return;
-  renderTourIntro();
-  renderTourIntroDiagrams();
+  if (!state.tourIntroPending || state.tourIntroShown || (state.session.preferences?.showBriefing === false && !launchTourIntro)) return;
   state.tourIntroShown = true;
-  elements["tour-intro-dialog"].showModal();
-  window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
+  activateReviewTab("briefing");
 }
 
 function reopenTourIntro() {
-  if (state.session.preferences?.showBriefing === false) return;
   state.tourIntroReturn = false;
-  state.tourIntroPending = false;
   state.tourIntroShown = true;
-  renderReviewOverview();
-  renderTourIntro();
-  renderTourIntroDiagrams();
-  elements["tour-intro-dialog"].showModal();
-  window.requestAnimationFrame(() => { elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop = 0; });
+  activateReviewTab("briefing");
 }
 
 function renderArchitecture() {
@@ -4787,7 +4778,7 @@ function addDryRunScenario() {
 }
 
 function availableTabs() {
-  return ["diff", "archify", "dry-runs", "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["briefing", "diff", "archify", "dry-runs", "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 const MAP_VIEWS = ["archify", "call-flows", "sequence", "adaptive", "structural-blast-radius"];
@@ -4833,7 +4824,8 @@ function renderMapsNavigation() {
 }
 
 function renderActiveTab() {
-  for (const tabName of ["diff", "call-flows", "structural-blast-radius", "archify", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
+  syncBriefingLayout();
+  for (const tabName of ["briefing", "diff", "call-flows", "structural-blast-radius", "archify", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
     elements[`${tabName}-tab`].classList.toggle("active", active);
@@ -4898,16 +4890,72 @@ async function renderScreenshots() {
   })]);
 }
 
+let briefingReader;
+let briefingSheetTrigger;
+function getBriefingReader() {
+  return briefingReader ??= createBriefingReader({
+    view: elements["briefing-view"], outline: elements["briefing-outline"], pane: elements["briefing-inspector"], chips: elements["briefing-context"],
+    notify: toast,
+    highlight: async groups => (await api("/api/highlight", { method: "POST", body: JSON.stringify({ groups, theme: state.syntaxTheme }) })).groups,
+    tokenHtml: syntaxTokenHtml,
+    callFlowHtml: flow => `<div class="call-tree">${renderCallTree(flow, "changes")}</div>`,
+    hasThread: () => Boolean(state.activeThreadId),
+    getThreadContext: () => state.session?.messages.find(m => m.id === state.activeThreadId)?.briefingContext,
+    onAsk: () => { if (state.activeThreadId) openConversation(null); state.questionsOpen = true; state.selectedLine = null; state.questionContextPaths.clear(); renderMessages(); elements["chat-input"].focus(); },
+    openTools: () => {
+      if (matchMedia("(max-width: 900px)").matches) openBriefingSheet();
+      else setPaneCollapsed("agent", false);
+    },
+    onChanges: async (evidence, comparisonId) => {
+      const manifest = await api("/api/diff/sources");
+      if (comparisonId !== manifest.comparisonId) { toast("This source belongs to a saved comparison. Its excerpt remains available here."); return; }
+      if (!state.session.comparison.files.some(f => f.path === evidence.path || f.oldPath === evidence.path)) { toast("This supporting source is outside the changed files. Its captured excerpt is shown here."); return; }
+      const path = state.session.comparison.files.find(f => f.path === evidence.path || f.oldPath === evidence.path)?.path;
+      const captured = await api(`/api/diff/sources?${new URLSearchParams({ path, comparisonId: manifest.comparisonId })}`);
+      if (!captured.available || captured.blobs[evidence.side] !== evidence.blob) { toast("This excerpt belongs to an earlier source snapshot. Its saved code remains in the inspector."); return; }
+      closeBriefingSheet();
+      activateReviewTab("diff");
+      void showChangedFile(path, evidence.startLine, evidence.side);
+    },
+    onGenerate: async () => {
+      if (state.busy || !reviewIsOpen()) return;
+      if (!state.session.outline) { state.tourIntroPending = true; await startTour(); return; }
+      setBusy(true);
+      try { const previous = state.session; state.session = await api("/api/briefing/regenerate", { method: "POST", body: "{}" }); renderSessionUpdate(previous); }
+      catch (error) { toast(error.message); }
+      finally { setBusy(false); }
+    },
+  });
+}
+function openBriefingSheet() {
+  const sheet = elements["briefing-sheet"];
+  if (sheet.open) return;
+  briefingSheetTrigger = document.activeElement;
+  sheet.appendChild(elements["agent-panel"]);
+  sheet.showModal();
+}
+function closeBriefingSheet() { if (elements["briefing-sheet"].open) elements["briefing-sheet"].close(); }
+function syncBriefingLayout() {
+  const active = state.activeTab === "briefing";
+  elements.workspace.classList.toggle("briefing-mode", active);
+  for (const id of ["briefing-outline", "briefing-inspector", "briefing-context", "briefing-mobile-tools"]) elements[id].classList.toggle("hidden", !active);
+  if (!active) closeBriefingSheet();
+  if (state.session) getBriefingReader().render(state.session);
+  getBriefingReader().setActive(active);
+  if (state.session) renderQuestionLayout();
+}
+
 function activateReviewTab(tabName, render = null) {
   if (!state.session || tabName === state.activeTab) return;
   if (tabName !== "diff") state.pullRequestReturn = null;
+  if (state.activeTab === "briefing") getBriefingReader().rememberAnchor();
   state.tabScrollPositions.set(state.activeTab, elements["diff-panel"].scrollTop);
   state.activeTab = tabName;
   render?.();
   renderActiveTab();
   const scrollTop = state.tabScrollPositions.get(tabName) ?? 0;
   window.requestAnimationFrame(() => {
-    if (state.activeTab === tabName) elements["diff-panel"].scrollTop = scrollTop;
+    if (state.activeTab === tabName) { elements["diff-panel"].scrollTop = scrollTop; if (tabName === "briefing") getBriefingReader().restoreAnchor(); }
   });
 }
 
@@ -5065,7 +5113,7 @@ function conversationThreads() {
 
 function renderQuestionLayout() {
   const panel = elements["questions-pane"].closest(".agent-panel");
-  const guided = Boolean(state.tourMode && state.session.outline);
+  const guided = Boolean(state.activeTab === "briefing" || (state.tourMode && state.session.outline));
   const open = state.questionsOpen || !guided;
   panel.classList.toggle("questions-open", open);
   panel.classList.toggle("questions-only", Boolean(state.session.outline && !guided));
@@ -5131,6 +5179,7 @@ function conversationScopeLabel(thread = null) {
 }
 
 function conversationScopeMarkup(thread = null) {
+  if (thread?.root?.briefingContext) return `<span class="conversation-scope"><strong>Briefing question</strong><span>${escapeHtml(thread.root.briefingContext.title)}</span></span><span class="conversation-scope-detail">Saved passages and source evidence are retained. No tour stop is attached.</span>`;
   const scope = conversationScope(thread);
   const heading = scope.step ? `${scope.original ? "Original" : "Current"} tour stop` : "Review-wide question";
   const stop = scope.step ? escapeHtml(discussionStopLabel(scope)) : "No tour stop is attached.";
@@ -5223,6 +5272,7 @@ function renderMessages() {
   elements["question-file-context"].innerHTML = starting ? [...state.questionContextPaths].map((path) => `<span class="question-context-chip"><span>${escapeHtml(path)}</span><button type="button" data-remove-question-file="${escapeHtml(path)}" aria-label="Remove ${escapeHtml(path)} from question context">×</button></span>`).join("") : "";
   elements["add-question-files"].classList.toggle("hidden", !starting);
   renderQuestionLayout();
+  if (state.activeTab === "briefing") getBriefingReader().renderChips();
   renderConversationBadges();
 }
 
@@ -5549,6 +5599,7 @@ function renderSessionUpdate(previous, options) {
 }
 
 function renderSession() {
+  getBriefingReader().render(state.session);
   const { comparison, comments } = state.session;
   syncDryRunSourceCache();
   const briefingWasOpen = elements["tour-intro-dialog"].open;
@@ -5668,7 +5719,7 @@ function renderSession() {
   renderAgentOptions();
   renderTour();
   maybeShowTourIntro();
-  if (state.session.outline && state.focusedStepId === null && !state.tourIntroPending) void focusCurrentStep();
+  if (state.activeTab !== "briefing" && state.session.outline && state.focusedStepId === null && !state.tourIntroPending) void focusCurrentStep();
 }
 
 async function beginPreparedTour() {
@@ -6442,6 +6493,10 @@ async function askAgent(event) {
   event.preventDefault();
   const body = elements["chat-input"].value.trim();
   if (!body || state.busy || !reviewIsOpen()) return;
+  let briefingContext;
+  if (state.activeTab === "briefing" && !state.activeThreadId) {
+    try { briefingContext = getBriefingReader().context(); } catch (error) { toast(error.message); return; }
+  }
   elements["chat-input"].value = "";
   const selectedContext = state.selectedLine
     ? `${state.selectedLine.path}:${state.selectedLine.line}${state.selectedLine.endLine && state.selectedLine.endLine !== state.selectedLine.line ? `-${state.selectedLine.endLine}` : ""} (${state.selectedLine.side})\n${state.selectedLine.selectedText ? `Exact selected quotation:\n${state.selectedLine.selectedText}\nExact selected context:\n${state.selectedLine.context ?? state.selectedLine.content}` : state.selectedLine.content}`
@@ -6449,10 +6504,10 @@ async function askAgent(event) {
   const originalThreadId = state.activeThreadId;
   const requestThreadId = originalThreadId?.startsWith("local-question-") ? null : originalThreadId;
   const localId = `local-question-${crypto.randomUUID()}`;
-  const requestedStepId = !requestThreadId && state.tourMode ? currentStep()?.id ?? null : null;
-  const anchor = !requestThreadId && state.selectedLine ? { ...state.selectedLine } : undefined;
-  const contextPaths = !requestThreadId ? [...state.questionContextPaths] : [];
-  const dryRunContext = !requestThreadId ? state.dryRunQuestionContext : null;
+  const requestedStepId = state.activeTab !== "briefing" && !requestThreadId && state.tourMode ? currentStep()?.id ?? null : null;
+  const anchor = state.activeTab !== "briefing" && !requestThreadId && state.selectedLine ? { ...state.selectedLine } : undefined;
+  const contextPaths = state.activeTab !== "briefing" && !requestThreadId ? [...state.questionContextPaths] : [];
+  const dryRunContext = state.activeTab !== "briefing" && !requestThreadId ? state.dryRunQuestionContext : null;
   const pending = { id: localId, threadId: requestThreadId ?? localId, role: "user", body, ...(requestedStepId ? { stepId: requestedStepId } : {}), anchor, contextPaths, ...(dryRunContext ? { dryRunContext } : {}) };
   state.pendingQuestions.set(localId, pending);
   state.activeThreadId = pending.threadId;
@@ -6490,7 +6545,7 @@ async function askAgent(event) {
     try {
       const response = await api("/api/agent/message", {
         method: "POST",
-        body: JSON.stringify({ body, selectedContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined, dryRunContext: dryRunContext ?? undefined }),
+        body: JSON.stringify({ body, selectedContext: state.activeTab === "briefing" ? undefined : selectedContext, briefingContext, threadId: requestThreadId ?? undefined, stepId: requestThreadId ? undefined : requestedStepId, anchor, contextPaths: contextPaths.length ? contextPaths : undefined, dryRunContext: dryRunContext ?? undefined }),
       });
       const previous = state.session;
       state.session = response;
@@ -7494,6 +7549,7 @@ new ResizeObserver(([entry]) => {
     scheduleCurrentStepReturnUpdate();
   }
 }).observe(document.querySelector('.diff-toolbar'));
+elements["briefing-tab"].addEventListener("click", () => activateReviewTab("briefing"));
 elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"));
 elements["diff-tab"].addEventListener("click", () => revealMobilePanel("diff-panel"));
 elements["call-flows-tab"].addEventListener("click", () => activateReviewTab("call-flows", renderCallFlows));
@@ -8322,3 +8378,11 @@ window.setInterval(async () => {
 }, 2_000);
 
 window.setInterval(checkForUpdate, 6 * 60 * 60 * 1_000);
+
+elements["briefing-mobile-tools"].addEventListener("click", openBriefingSheet);
+elements["briefing-sheet-close"].addEventListener("click", closeBriefingSheet);
+elements["briefing-sheet"].addEventListener("close", () => {
+  elements.workspace.appendChild(elements["agent-panel"]);
+  if (briefingSheetTrigger?.isConnected) briefingSheetTrigger.focus();
+});
+matchMedia("(max-width: 900px)").addEventListener("change", event => { if (!event.matches) closeBriefingSheet(); });

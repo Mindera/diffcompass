@@ -65,3 +65,9 @@ export async function loadDiffSource(comparison: GitComparison, comparisonId: st
     return { comparisonId, path, available: false as const, reason: error instanceof UnavailableSource ? error.message : "Captured source is unavailable. Use the current renderer." };
   }
 }
+
+/** Read an exact regular file from the saved old/new Git tree, including context outside the patch. */
+export async function loadCapturedSource(comparison: GitComparison, side: "old" | "new", path: string) {
+  if (!path || path.startsWith("/") || path.split("/").some(part => !part || part === "." || part === "..") || /[\x00-\x1f]/.test(path)) throw new Error("Invalid captured source path.");
+  return capturedSide(comparison, side === "old" ? comparison.mergeBase : comparison.sourceTree, path);
+}

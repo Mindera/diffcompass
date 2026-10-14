@@ -1,3 +1,4 @@
+import { validBriefingDocument, validBriefingQuestionContext } from "./briefing.ts";
 import { validDomainModels, validDomainDetails } from "./domain-context.ts";
 import { githubSuggestionBody } from "./github-suggestions.ts";
 import { validateMapNodeRoles } from "./map-node-roles.ts";
@@ -487,6 +488,7 @@ function validPullRequest(value: unknown): boolean {
 function validMessage(value: unknown): boolean {
   return record(value) && nonEmptyString(value.id, 128) && ["user", "agent"].includes(String(value.role)) &&
     nonEmptyString(value.body, 500_000) && (value.stepId === undefined || nonEmptyString(value.stepId, 128)) &&
+    (value.briefingContext === undefined || validBriefingQuestionContext(value.briefingContext)) &&
     (value.threadId === undefined || nonEmptyString(value.threadId, 128)) &&
     (value.anchor === undefined || (record(value.anchor) && nonEmptyString(value.anchor.path, 4096) &&
       ["old", "new"].includes(String(value.anchor.side)) && Number.isInteger(value.anchor.line) && Number(value.anchor.line) > 0 &&
@@ -643,6 +645,10 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     throw new Error(`Could not read review session ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (!record(value)) throw new Error("The review session file is invalid.");
+  if (record(value.outline)) {
+    if (value.outline.briefing !== undefined && !validBriefingDocument(value.outline.briefing)) delete value.outline.briefing;
+    delete value.outline.briefingProposal;
+  }
   if (value.schemaVersion === 1 && record(value.outline)) {
     const legacySteps = Array.isArray(value.outline.steps) ? value.outline.steps : [];
     const legacyPaths = [...new Set(legacySteps.flatMap((step) => record(step) && record(step.anchor) && typeof step.anchor.path === "string" ? [step.anchor.path] : []))];

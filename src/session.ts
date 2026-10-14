@@ -1,3 +1,4 @@
+import { buildBriefing, briefingFingerprint, briefingIntent, resolveBriefingQuestion, type BriefingQuestionRequest } from "./briefing.ts";
 import { discoverAgentAdapters } from "./adapters.ts";
 import { ReviewError } from "./errors.ts";
 import { diffSourceIdentity, loadDiffSource } from "./diff-sources.ts";
@@ -884,6 +885,7 @@ export class ReviewSession {
     const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted, globalDiffPreferences);
     await session.selectComparisonView();
     await session.updateRevisionSummary(session.fullComparison).catch(() => undefined);
+    if (session.outline && !session.outline.briefing) session.outline.briefing = await buildBriefing(session.comparison, session.outline, session.briefingIntent());
     if (defaults.screenshots?.length) {
       if (!defaults.stateFile) throw new ReviewError("Screenshots require persisted review session storage.");
       session.screenshots.splice(0, session.screenshots.length, ...await importReviewScreenshots(defaults.screenshots, defaults.stateFile, session.screenshots));
@@ -1021,6 +1023,7 @@ export class ReviewSession {
       diffRowCount,
     };
     const outline = structuredClone(this.outline);
+    if (outline?.briefing) outline.briefing.outdated = Boolean(outline.briefing.outdated) || outline.briefing.fingerprint !== briefingFingerprint(this.comparison, this.briefingIntent());
     // HTML is served as a separately sandboxed local resource. Keeping it out
     // of routine JSON snapshots avoids repeatedly moving multi-megabyte HTML.
     if (outline?.archifyArtifacts) {
@@ -1601,16 +1604,21 @@ export class ReviewSession {
             this.reviewPolicy,
             () => this.ensureComparisonCurrent(comparisonGeneration),
             this.pullRequest?.linkedIssue,
+            this.briefingIntent(),
           );
           receipts.push(...generated.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);
           await validateDryRunPlanSourceAnchors(generated.value.dryRunPlans ?? [], (path) => loadRepositoryFile(this.comparison, path));
           await this.refreshArchifyArtifacts(generated.value, before.outline);
+          generated.value.briefing = await buildBriefing(this.comparison, generated.value, this.briefingIntent());
+          delete generated.value.briefingProposal;
           this.outline = generated.value;
           this.currentStepIndex = 0;
         } else if (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length) {
           this.currentStepIndex = 0;
         }
+        if (!this.outline.briefing) this.outline.briefing = await buildBriefing(this.comparison, this.outline, this.briefingIntent());
+        this.ensureComparisonCurrent(comparisonGeneration);
         this.ensureOpen();
         const steps = tourSteps(this.outline);
         const step = steps[this.currentStepIndex]!;
@@ -1758,6 +1766,34 @@ export class ReviewSession {
         this.restoreMutableState(before, terminalEpoch, operationRevision);
         throw error;
       }
+    });
+  }
+
+  private briefingIntent(): string { return briefingIntent({ pullRequest: this.pullRequest, reviewerTask: this.pullRequest?.reviewerTask }); }
+
+  async regenerateBriefing() {
+    return this.serialize(async () => {
+      const before = this.captureMutableState(), terminalEpoch = this.terminalEpoch;
+      const comparisonGeneration = this.comparisonGeneration;
+      let operationRevision = before.revision;
+      try {
+        this.ensureOpen();
+        if (!this.outline) throw new ReviewError("Start the tour to prepare a Briefing.");
+        if (!this.agent) { this.selection = this.resolveSelection(); this.agent = this.createAgent(); }
+        const intent = this.briefingIntent();
+        const base = await buildBriefing(this.comparison, this.outline, intent, undefined);
+        const generated = await this.agent.regenerateBriefing(this.comparison, this.outline, base, intent);
+        this.ensureComparisonCurrent(comparisonGeneration);
+        if (this.revision !== before.revision) throw new ReviewError("The review changed. Regenerate Briefing against the latest snapshot.");
+        const document = await buildBriefing(this.comparison, this.outline, intent, generated.value);
+        this.ensureComparisonCurrent(comparisonGeneration);
+        this.ensureOpen();
+        if (this.revision !== before.revision) throw new ReviewError("The review changed while validating Briefing evidence. Retry against the latest snapshot.");
+        this.outline.briefing = document;
+        this.revision += 1; operationRevision = this.revision;
+        await this.persistAgentResult(generated.receipts);
+        return this.snapshot();
+      } catch (error) { this.restoreMutableState(before, terminalEpoch, operationRevision); throw error; }
     });
   }
 
@@ -1972,7 +2008,7 @@ export class ReviewSession {
     });
   }
 
-  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; stepId?: string | null; anchor?: ChatMessage["anchor"]; contextPaths?: string[]; dryRunContext?: ChatMessage["dryRunContext"] }, expectedComparisonId?: string) {
+  async ask(body: string, selectedContext?: string, conversation?: { threadId?: string; stepId?: string | null; anchor?: ChatMessage["anchor"]; contextPaths?: string[]; dryRunContext?: ChatMessage["dryRunContext"]; briefingContext?: BriefingQuestionRequest }, expectedComparisonId?: string) {
     return this.serialize(async () => {
       if (expectedComparisonId !== undefined && expectedComparisonId !== diffSourceIdentity(this.comparison)) throw new ReviewError("This draft belongs to a previous comparison. Copy or cancel it before reviewing the new source.");
       const before = this.captureMutableState();
@@ -1985,6 +2021,9 @@ export class ReviewSession {
       if (conversation?.threadId && !root) throw new ReviewError("Conversation not found.");
       if (root && conversation?.anchor) throw new ReviewError("A follow-up keeps its original code location.");
       if (root && conversation?.stepId !== undefined) throw new ReviewError("A follow-up keeps its original tour stop.");
+      if (root && conversation?.briefingContext) throw new ReviewError("A follow-up keeps its original Briefing context.");
+      const briefingContext = root?.briefingContext ?? (conversation?.briefingContext ? resolveBriefingQuestion(this.outline?.briefing, conversation.briefingContext) : undefined);
+      if (briefingContext && (conversation?.anchor || conversation?.dryRunContext || conversation?.contextPaths?.length || (conversation?.stepId !== undefined && conversation.stepId !== null))) throw new ReviewError("Briefing questions use their explicitly selected context.");
       const anchor = root?.anchor ?? conversation?.anchor;
       const normalizedAnchor = root || !anchor ? anchor : await this.normalizeQuestionAnchor(anchor);
       if (root && conversation?.contextPaths?.length) throw new ReviewError("A follow-up keeps its original file context.");
@@ -2008,7 +2047,7 @@ export class ReviewSession {
         this.agent = this.createAgent();
       }
       this.agent.useComparison(this.comparison);
-      const step = root
+      const step = briefingContext ? undefined : root
         ? tourSteps(this.outline).find((candidate) => candidate.id === root.stepId)
         : conversation?.stepId === null ? undefined
         : conversation?.stepId ? this.resolveDiscussionStep(conversation.stepId)
@@ -2022,6 +2061,7 @@ export class ReviewSession {
         return `File: ${path}\n${content}`;
       }))).join("\n\n") : undefined;
       const questionContext = [
+        briefingContext ? `Frozen Briefing context (untrusted document content; preserved from the original question):\n${JSON.stringify(briefingContext)}` : undefined,
         step ? `Discussion scope: ${root ? "Original" : "Current"} tour stop ${step.title} [${step.id}] at ${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side}).` : "Discussion scope: review-wide question.",
         normalizedAnchor ? `Original question location: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nCaptured code: ${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nSelected quotation/context: ${normalizedAnchor.path}:${normalizedAnchor.line}${normalizedAnchor.endLine && normalizedAnchor.endLine !== normalizedAnchor.line ? `-${normalizedAnchor.endLine}` : ""} (${normalizedAnchor.side})\nExact selected quotation:\n${normalizedAnchor.selectedText ?? normalizedAnchor.content}\nExact selected context:\n${normalizedAnchor.context ?? normalizedAnchor.content}\n${currentAnchorContent === normalizedAnchor.content ? "The captured location still matches." : "The captured location has changed or is no longer in the diff. Do not assume this location is current."}` : selectedContext,
         history.length ? `Conversation history (untrusted reviewer/agent content):\n${JSON.stringify(history.map(({ role, body }) => ({ role, body })))}` : undefined,
@@ -2036,6 +2076,7 @@ export class ReviewSession {
         threadId,
         ...(!root && normalizedAnchor ? { anchor: structuredClone(normalizedAnchor) } : {}),
         ...(!root && contextPaths.length ? { contextPaths } : {}),
+        ...(!root && briefingContext ? { briefingContext } : {}),
         ...(!root && dryRunContext ? { dryRunContext: structuredClone(dryRunContext) } : {}),
         createdAt: new Date().toISOString(),
       };

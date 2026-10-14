@@ -1,3 +1,7 @@
+// @ts-expect-error Bun embeds the narrative reader.
+import briefingScript from "../public/briefing.js" with { type: "text" };
+// @ts-expect-error Bun embeds the narrative styles.
+import briefingStyles from "../public/briefing.css" with { type: "text" };
 import { timingSafeEqual } from "node:crypto";
 import { monacoAsset } from "./monaco-assets.ts";
 import { resolve } from "node:path";
@@ -60,12 +64,12 @@ const semanticPresentationScript = `const semanticPresentation = (${createSemant
 const PUBLIC_FILES: Record<string, { body: BodyInit; contentType: string }> = {
   ...BRAND_FILES,
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
-  "app.js": { body: String(diagramLabelsScript) + "\n" + String(semanticPresentationScript) + "\n" + String(semanticDiffScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
+  "app.js": { body: String(diagramLabelsScript) + "\n" + String(semanticPresentationScript) + "\n" + String(semanticDiffScript) + "\n" + String(briefingScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
   "semantic-diff-notices.txt": { body: String(semanticDiffNotices), contentType: "text/plain; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
   "sequence-walkthrough-host.js": { body: String(sequenceWalkthroughHost), contentType: "text/javascript; charset=utf-8" },
   "mermaid.min.js": { body: String(mermaidScript), contentType: "text/javascript; charset=utf-8" },
-  "styles.css": { body: `${styles}\n${mapNodeStyles}\n${semanticDiffStyles}`, contentType: "text/css; charset=utf-8" },
+  "styles.css": { body: `${styles}\n${mapNodeStyles}\n${semanticDiffStyles}\n${briefingStyles}`, contentType: "text/css; charset=utf-8" },
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
@@ -582,9 +586,13 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         exactKeys(input, []);
         return json(await session.cancelDryRunPreparation());
       }
+      if (request.method === "POST" && url.pathname === "/api/briefing/regenerate") {
+        const input = await readJsonObject(request); exactKeys(input, []);
+        return json(await session.regenerateBriefing());
+      }
       if (request.method === "POST" && url.pathname === "/api/agent/message") {
         const input = await readJsonObject(request, 32 * 1024);
-        exactKeys(input, ["body", "selectedContext", "threadId", "stepId", "anchor", "contextPaths", "dryRunContext"]);
+        exactKeys(input, ["body", "selectedContext", "threadId", "stepId", "anchor", "contextPaths", "dryRunContext", "briefingContext"]);
         let anchor;
         if (input.anchor !== undefined) {
           if (!input.anchor || typeof input.anchor !== "object" || Array.isArray(input.anchor)) throw new ReviewError("anchor must be an object.");
@@ -630,6 +638,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
             anchor,
             contextPaths: input.contextPaths as string[] | undefined,
             dryRunContext,
+            briefingContext: input.briefingContext as import("./briefing.ts").BriefingQuestionRequest | undefined,
           },
           capturedComparison ?? undefined,
         ));

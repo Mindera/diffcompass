@@ -20,7 +20,7 @@ test("briefing remains accessible after resume without having been shown in this
           session: { outline: hasOutline ? { title: 'Saved tour', summary: 'Saved summary' } : undefined,
             preferences: { showBriefing } }, tourIntroShown,
         } });
-        expect(hidden.get('tour-intro-return')).toBe(!hasOutline || showBriefing === false);
+        expect(hidden.get('tour-intro-return')).toBe(!hasOutline);
         expect(elements['tour-intro-return']!.textContent).toBe('View briefing');
       }
     }
@@ -1143,10 +1143,10 @@ test("agent-launched tours introduce the change before navigating to the first s
   expect(html).toContain('id="tour-intro-call-flows"');
   expect(app).toContain('tourIntroPending: launchTourIntro');
   expect(app).toContain('state.session.pullRequest?.title ?? outline?.title ?? `${state.session.comparison.repositoryName} review briefing`');
-  expect(app).toContain('if (state.session.outline && state.focusedStepId === null && !state.tourIntroPending)');
+  expect(app).toContain('if (state.activeTab !== "briefing" && state.session.outline && state.focusedStepId === null && !state.tourIntroPending)');
   expect(app).toContain('state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null');
   expect(app).toContain('if (!state.tourIntroPending) await focusCurrentStep()');
-  expect(app).toContain('elements["tour-intro-dialog"].showModal()');
+  expect(app).toContain('activateReviewTab("briefing")');
   expect(app).toContain('state.session.preferences?.showBriefing === false');
   expect(app).toContain('state.tourIntroPending = false');
   expect(app).toContain('if (!state.session.outline) {');
@@ -1179,7 +1179,7 @@ test("the pre-tour briefing is evidence-labelled, linked, responsive, and export
   expect(html).toContain('id="tour-intro-estimate-factors"');
   expect(html.indexOf('id="tour-intro-architecture-section"')).toBeLessThan(html.indexOf('id="tour-intro-attention"'));
   expect(app).toContain("function renderTourAttention()");
-  expect(app).toContain('querySelector(".tour-intro-scroll").scrollTop = 0');
+  expect(app).toContain('getBriefingReader().restoreAnchor()');
   expect(app).toContain("Bounded heuristic");
   expect(app).toContain('data-attention-kind');
   expect(app).toContain("review cue");
@@ -1326,7 +1326,7 @@ test("settings consolidate runtime preferences, exports, and sessions", async ()
   expect(html).toContain('id="briefing-needs-attention"');
   expect(html).toContain('id="briefing-review-effort"');
   expect(html).toContain('data-briefing-option="architecture"');
-  expect(html).toContain("Interactive maps open in their own workspace pane.");
+  expect(html).toContain("The Briefing tab is always available.");
   expect(html).toContain('draggable="true"');
   expect(html).toContain('id="briefing-options" class="briefing-options"');
   expect(html).toContain('aria-controls="briefing-options"');
@@ -1632,7 +1632,7 @@ test("top-level panes preserve independent scroll positions", async () => {
   expect(app).toContain("function activateReviewTab(tabName, render = null)");
   expect(app).toContain('state.tabScrollPositions.set(state.activeTab, elements["diff-panel"].scrollTop)');
   expect(app).toContain("const scrollTop = state.tabScrollPositions.get(tabName) ?? 0");
-  expect(app).toContain('if (state.activeTab === tabName) elements["diff-panel"].scrollTop = scrollTop');
+  expect(app).toContain('if (state.activeTab === tabName) { elements["diff-panel"].scrollTop = scrollTop');
   expect(app).toContain('elements["diff-tab"].addEventListener("click", () => activateReviewTab("diff"))');
   expect(app).toContain("activateReviewTab(nextTab, render)");
 });

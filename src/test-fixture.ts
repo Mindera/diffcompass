@@ -1,3 +1,4 @@
+import { buildBriefing, briefingIntent } from "./briefing.ts";
 import { domainFixtureModel, domainFixtureText } from "./domain-fixture.ts";
 import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,7 +11,7 @@ import { comparisonFingerprint, dryRunFlowFingerprint } from "./dry-runs.ts";
 import { ArchifyRenderer } from "./archify.ts";
 import type { GitComparison, PersistedReviewSession } from "./types.ts";
 
-const FIXTURE_SCHEMA = 5;
+const FIXTURE_SCHEMA = 6;
 const FIXTURE_DIRECTORY = "diffcompass-test-fixture-v2";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
@@ -768,6 +769,46 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
   const canonicalRepository = await realpath(repository);
   const comparison = await loadComparison(canonicalRepository, baseOid);
   const persisted = persistedFixture(canonicalRepository, crypto.randomUUID(), baseOid, headOid, comparison);
+  if (persisted.outline) {
+    const outline = persisted.outline;
+    const excerpt = (path: keyof typeof workingFiles, startLine: number, endLine: number) => ({ path, side: "new" as const, startLine, endLine, quote: String(workingFiles[path]).split("\n").slice(startLine - 1, endLine).join("\n") });
+    const calculation = excerpt("src/cart.ts", 14, 18), presentation = excerpt("src/receipt.ts", 3, 6);
+    for (const diagram of [outline.architecture, outline.behaviorArchitecture]) if (diagram) diagram.elementSources = [
+      { elementId: "cart", anchors: [calculation] }, { elementId: "receipt", anchors: [presentation] },
+    ];
+    if (outline.stateDiagram) outline.stateDiagram.elementSources = [{ elementId: "calculated", anchors: [calculation] }, { elementId: "formatted", anchors: [presentation] }];
+    if (outline.dataModel) outline.dataModel.elementSources = [{ elementId: "data-ITEM", anchors: [excerpt("src/cart.ts", 1, 4)] }, { elementId: "data-DISCOUNT", anchors: [excerpt("src/cart.ts", 6, 8)] }];
+    outline.briefing = await buildBriefing(comparison, outline, briefingIntent({ pullRequest: persisted.pullRequest, reviewerTask: persisted.pullRequest?.reviewerTask }), {
+      title: "Discounted checkout, from calculation to receipt",
+      sections: [
+        { id: "intent", title: "What changes", blocks: [
+          { id: "intent-text", kind: "prose", basis: "stated", text: "The linked issue asks for discounted receipt output: apply a fractional percentage and present the final total with two decimal places." },
+          { id: "behavior-text", kind: "prose", basis: "observed", text: "The cart now separates subtotal calculation from discount application. A new receipt formatter calls that calculation and turns the result into display text." },
+        ] },
+        { id: "boundaries", title: "Calculation and presentation", blocks: [
+          { id: "boundary-text", kind: "prose", basis: "observed", text: "Cart totals own the arithmetic; the receipt formatter owns the display. The caller stays outside these two responsibilities. Inspect a component to see its implementation." },
+          { id: "components", kind: "diagram", diagramId: "architecture-journey" },
+          { id: "format-source", kind: "source", evidenceId: "receipt-body" },
+        ] },
+        { id: "flow", title: "Follow one receipt", blocks: [
+          { id: "flow-text", kind: "prose", basis: "observed", text: "The formatter asks for a numeric total, then formats it. Each message keeps its own code evidence; the external caller has no binding in this fixture." },
+          { id: "sequence", kind: "diagram", diagramId: "sequence-" + outline.flows[0]!.id },
+          { id: "example", kind: "example", language: "typescript", text: 'receipt([{ price: 10, quantity: 2 }], { percentage: 0.1 })\n// "Total: 18.00"' },
+          { id: "calls", kind: "diagram", diagramId: "call-flow-" + outline.callFlows[0]!.id },
+        ] },
+        { id: "model", title: "State and data", blocks: [
+          { id: "state", kind: "diagram", diagramId: "lifecycle-state-machine" },
+          { id: "data", kind: "diagram", diagramId: "dataflow-data-model" },
+          { id: "domain-text", kind: "prose", text: "The domain map below preserves the project's documented vocabulary. Its glossary passages describe concepts; they are separate from implementation evidence." },
+          { id: "domain", kind: "diagram", diagramId: "domain-" + outline.domainModels![0]!.id },
+        ] },
+        { id: "limits", title: "Boundaries to keep in mind", blocks: [
+          { id: "limits-text", kind: "prose", basis: "observed", text: "The implementation formats two decimal places but does not localize currency output or reject percentages outside the supported fractional range. The dedicated findings and task views hold the review assessment." },
+        ] },
+      ],
+      evidence: [{ id: "receipt-body", ...presentation }],
+    });
+  }
   // A resumed fixture normally skips the agent generation path that refreshes
   // optional diagrams. When a local Archify skill is deliberately configured,
   // pre-render it here so the manual fixture exercises the same saved artifact

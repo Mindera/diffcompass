@@ -152,3 +152,9 @@ diffcompass bridge ack --url URL --token-file TOKEN_FILE --event EVENT_ID --leas
 ```
 
 Never invent feedback not present in the event. Every repository change after review closure must be directly required to resolve the submitted note or comments. Preserve unrelated work and report independently discovered issues separately instead of including them in the feedback implementation. If implementation needs authority beyond the review scope, stop and ask the user before making that change.
+
+### Narrative Briefing prompts
+
+The initial outline prompt may request `briefingProposal` alongside the tour. Return concise plain-text sections with explicit stated, observed, or inferred basis; interleave optional existing diagram references, examples, and exact captured source citations. Do not turn the reading document into a findings dashboard. Follow the event's bounds and IDs exactly. Architecture and adaptive diagrams may propose `elementSources`; never invent a code binding from a similar label. Sequence `messageSources`, native call-flow locations, and domain glossary sources retain their own semantics.
+
+A `tour.outline` event can instead request only a regenerated Briefing proposal. Return that event's document shape without regenerating tour stops or diagrams. `review.question` may include frozen Briefing context: answer the explicit selected passages/elements and saved evidence, even if the current document has since changed. Such questions have no implicit current tour stop.

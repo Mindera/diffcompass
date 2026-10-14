@@ -1,3 +1,4 @@
+import { normalizeElementSources } from "./briefing.ts";
 import type { ReviewAdaptiveDiagram } from "./types.ts";
 
 const STATE_HEADER = "stateDiagram-v2";
@@ -17,7 +18,7 @@ function text(value: Record<string, unknown>, field: string, max: number): strin
 }
 
 function common(value: Record<string, unknown>) {
-  const allowed = ["kind", "title", "summary", "mermaid", "evidence", "materiallyImprovesUnderstanding", "affectedFiles"];
+  const allowed = ["kind", "title", "summary", "mermaid", "evidence", "materiallyImprovesUnderstanding", "affectedFiles", "elementSources"];
   const unknown = Object.keys(value).find((key) => !allowed.includes(key));
   if (unknown) throw new Error(`Adaptive diagram contains an unsupported field: ${unknown}`);
   const kind = value.kind;
@@ -32,6 +33,7 @@ function common(value: Record<string, unknown>) {
   }
   return {
     kind,
+    ...(value.elementSources ? { elementSources: normalizeElementSources(value.elementSources) } : {}),
     title: text(value, "title", 8_000),
     summary: text(value, "summary", 50_000),
     mermaid: text(value, "mermaid", 16_000).replaceAll("\r\n", "\n"),

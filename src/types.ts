@@ -109,6 +109,9 @@ export interface TourPhase {
 }
 
 export interface TourOutline {
+  briefing?: import("./briefing.ts").BriefingDocument;
+  /** Transient agent proposal; resolved to captured evidence before persistence. */
+  briefingProposal?: import("./briefing.ts").BriefingProposal;
   /** Source-backed domain vocabulary, saved with the reviewed snapshot. */
   domainModels?: import("./domain-context.ts").DomainModel[];
   title: string;
@@ -331,6 +334,7 @@ export interface CallFlow {
 }
 
 export interface ReviewArchitecture {
+  elementSources?: import("./briefing.ts").ElementSource[];
   nodeRoles?: import("./map-node-roles.ts").MapNodeRoles;
   title: string;
   summary: string;
@@ -343,6 +347,7 @@ export interface ReviewArchitecture {
 export type ReviewAdaptiveDiagramKind = "state-machine" | "data-model";
 
 export interface ReviewAdaptiveDiagram {
+  elementSources?: import("./briefing.ts").ElementSource[];
   kind: ReviewAdaptiveDiagramKind;
   title: string;
   summary: string;
@@ -748,6 +753,7 @@ export interface ReviewBriefing {
 }
 
 export interface ChatMessage {
+  briefingContext?: import("./briefing.ts").BriefingQuestionContext;
   id: string;
   role: "user" | "agent";
   body: string;

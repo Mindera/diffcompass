@@ -21,7 +21,7 @@
     "test:monaco": "bun scripts/check-monaco.ts",
     "test:github-suggestions-browser": "bun scripts/check-github-suggestions.ts",
     "typecheck": "bunx tsc --noEmit",
-    "verify": "bun run typecheck && bun test && node --check public/theme.js && node --check public/app.js && node --check public/diagram-labels.js"
+    "verify": "bun run typecheck && bun test && node --check public/theme.js && node --check public/app.js && node --check public/diagram-labels.js && node --check public/briefing.js"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

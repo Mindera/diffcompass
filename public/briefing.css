@@ -1,0 +1,59 @@
+.briefing-view { padding: 42px clamp(24px, 5vw, 80px) 100px; max-width: 1120px; margin: auto; }
+.briefing-heading { margin-bottom: 40px; }
+.briefing-heading h1 { font-size: clamp(28px, 3vw, 42px); line-height: 1.18; letter-spacing: -.03em; max-width: 24ch; margin: 14px 0; }
+.briefing-section { margin: 40px 0; scroll-margin-top: 24px; }
+.briefing-section h2 { font-size: 21px; margin-bottom: 20px; }
+.briefing-block { margin: 22px 0; position: relative; }
+.briefing-prose p, .briefing-quotation { font-size: 16px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.briefing-basis { font-size: 11px; color: var(--muted); }
+.briefing-block-actions { display: flex; justify-content: flex-end; }
+.briefing-block-actions button { font-size: 12px; }
+.briefing-diagram { margin: 30px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.briefing-diagram figcaption { display: flex; gap: 14px; padding: 14px 16px; align-items: center; border-bottom: 1px solid var(--border); }
+.briefing-diagram figcaption > div { display: grid; gap: 5px; flex: 1; }
+.briefing-canvas { overflow: auto; padding: 20px; min-height: 100px; }
+.briefing-canvas svg { display: block; width: 100%; height: auto; margin: auto; }
+.briefing-canvas [data-briefing-element] { cursor: pointer; }
+.briefing-canvas .briefing-selected { filter: drop-shadow(0 0 3px var(--accent)); }
+.briefing-canvas .briefing-selected rect { stroke: var(--accent) !important; stroke-width: 3px !important; }
+.briefing-elements { padding: 12px 16px; border-top: 1px solid var(--border); }
+.briefing-elements summary { color: var(--muted); cursor: pointer; font-size: 12px; }
+.briefing-elements > div { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; }
+.briefing-elements button { border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--panel); padding: 6px 9px; cursor: pointer; }
+.briefing-elements .briefing-selected { border-color: var(--accent); }
+.briefing-outline { padding: 24px 16px; overflow: auto; }
+.briefing-outline nav { display: grid; gap: 12px; margin-top: 18px; }
+.briefing-outline nav button { text-align: left; line-height: 1.5; }
+.briefing-version, .briefing-stale { color: var(--muted); font-size: 12px; margin-top: 28px; line-height: 1.6; }
+.briefing-mode .file-panel > :not(.briefing-outline):not(.file-resizer) { display: none !important; }
+.briefing-mode .agent-panel > #tour-empty, .briefing-mode .agent-panel > #tour-active, .briefing-mode #agent-pane-switch, .briefing-mode #comment-drawer, .briefing-mode #questions-resizer { display: none !important; }
+.briefing-mode .agent-heading { height: 44px; }
+.briefing-mode .agent-heading > :first-child, .briefing-mode #agent-mode, .briefing-mode #mobile-tour-jump { visibility: hidden; }
+.briefing-inspector { min-height: 0; display: flex; flex-direction: column; flex: 1 1 50%; overflow: hidden; }
+.briefing-inspector > header { padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.briefing-inspector h2 { font-size: 17px; margin: 6px 0 0; line-height: 1.4; }
+.briefing-evidence-scroll { padding: 16px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
+.briefing-evidence-card { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; padding: 12px; scroll-margin: 12px; }
+.briefing-evidence-card.briefing-selected { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
+.briefing-card-title { display: block; border: 0; padding: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; font-weight: 600; margin-bottom: 12px; }
+.briefing-source-label { font: 11px/1.6 var(--font-mono, monospace); color: var(--muted); overflow-wrap: anywhere; }
+.briefing-source pre, .briefing-block pre { font: 12px/1.7 var(--font-mono, monospace); overflow: auto; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.briefing-code-line { display: block; white-space: pre; }
+.briefing-line-number { color: var(--muted); user-select: none; display: inline-block; width: 3.5em; }
+.briefing-review-details { margin-top: 25px; font-size: 12px; color: var(--muted); }
+.briefing-mode #questions-pane { display: flex !important; flex: 0 1 auto; min-height: 48px; max-height: 50%; border-top: 1px solid var(--border); }
+.briefing-mode #questions-pane:has(#questions-body:not(.hidden)) { flex: 1 1 40%; }
+.briefing-mode #questions-body { min-height: 0; }
+.briefing-mode #question-scope, .briefing-mode #add-question-files, .briefing-mode #question-file-context, .briefing-mode #selection-pill { display: none !important; }
+.briefing-context { padding: 10px 14px; font-size: 12px; }
+.briefing-chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 100px; overflow: auto; }
+.briefing-chip { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; max-width: 100%; }
+.briefing-chip button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; padding: 6px; background: none; color: var(--text); border: 0; cursor: pointer; }
+.briefing-mobile-tools, .briefing-sheet-close { display: none; }
+.briefing-sheet { padding: 0; width: min(95vw, 560px); height: 90dvh; max-height: 90dvh; background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+.briefing-sheet #agent-panel { height: calc(100% - 42px); }
+.briefing-sheet-close { margin: 8px 16px; }
+@media(min-width: 901px) { .workspace.briefing-mode.file-pane-collapsed { grid-template-columns: var(--file-panel-width) minmax(420px, 1fr) var(--agent-panel-width); } .workspace.briefing-mode.file-pane-collapsed .file-panel > .briefing-outline { display: block; } .workspace.briefing-mode.file-pane-collapsed.agent-pane-collapsed { grid-template-columns: var(--file-panel-width) minmax(420px, 1fr) 40px; } }
+@media(max-width: 900px) { .briefing-mode.workspace { display: block; } .briefing-mode #diff-panel { height: 100%; } .briefing-mode.workspace > #file-panel, .briefing-mode.workspace > #agent-panel { display: none !important; } .briefing-view { padding: 24px 20px 90px; } .briefing-mobile-tools { display: block; position: fixed; bottom: 20px; right: 20px; z-index: 10; } .briefing-sheet-close { display: block; } .briefing-sheet #agent-panel { display: flex !important; } .briefing-sheet .agent-heading { display: none; } .briefing-mode #questions-pane { flex-direction: column; } }
+
+.briefing-citation { display: flex; align-items: center; gap: 16px; }
