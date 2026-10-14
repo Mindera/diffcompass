@@ -1,4 +1,5 @@
 import type { BriefingDocument } from "./briefing.ts";
+import { briefingEvidenceText } from "./briefing-diff.ts";
 // @ts-expect-error Bun embeds the same reader for offline review.
 import reader from "../public/briefing.js" with { type: "text" };
 // @ts-expect-error Bun embeds the shared reader styles.
@@ -15,7 +16,7 @@ export function briefingMarkdown(document?: BriefingDocument): string {
       if (b.kind === "example") lines.push("*Illustrative example*", fence(b.text, b.language), "");
       if (b.kind === "source") {
         const e = document.evidence.find(e => e.id === b.evidenceId);
-        if (e) lines.push(`[${escape(e.path)}:${e.startLine}–${e.endLine} (${e.side === "old" ? "before" : "after"})](#briefing-evidence-${e.id})`, "", e.available ? fence(e.quote) : escape(e.reason ?? "Source unavailable"), "");
+        if (e) lines.push(`[${escape(e.path)}:${e.startLine}–${e.endLine} (${e.kind === "code" ? "diff" : e.side === "old" ? "before" : "after"})](#briefing-evidence-${e.id})`, "", e.available && (e.kind !== "code" || e.diff?.available) ? fence(briefingEvidenceText(e), e.kind === "code" ? "diff" : "") : escape(briefingEvidenceText(e)), "");
       }
       if (b.kind === "diagram") {
         const d = document.diagrams.find(d => d.id === b.diagramId); if (!d) continue;
@@ -26,7 +27,7 @@ export function briefingMarkdown(document?: BriefingDocument): string {
     }
   }
   lines.push("### Briefing evidence", "");
-  for (const e of document.evidence) lines.push(`<a id="briefing-evidence-${e.id}"></a>`, `**${escape(e.path)}:${e.startLine}–${e.endLine} (${e.side}; ${e.kind})**`, "", e.available ? fence(e.quote) : escape(e.reason ?? "Source unavailable"), "");
+  for (const e of document.evidence) lines.push(`<a id="briefing-evidence-${e.id}"></a>`, `**${escape(e.path)}:${e.startLine}–${e.endLine} (${e.side}; ${e.kind})**`, "", e.available && (e.kind !== "code" || e.diff?.available) ? fence(briefingEvidenceText(e), e.kind === "code" ? "diff" : "") : escape(briefingEvidenceText(e)), "");
   return lines.join("\n") + "\n";
 }
 export function withBriefingExport(html: string, document: BriefingDocument | undefined, comparison: { repositoryName: string; branch?: string }): string {

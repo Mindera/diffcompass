@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import { archifyCandidates } from "./archify.ts";
 import { diffSourceIdentity, loadCapturedSource } from "./diff-sources.ts";
 import { ReviewError } from "./errors.ts";
+import { briefingEvidenceText, captureBriefingDiffs, validBriefingDiff, type BriefingDiff } from "./briefing-diff.ts";
 import type { GitComparison, TourOutline, TourAnchor, SequenceSourceAnchor } from "./types.ts";
 
 export type BriefingFamily = "sequence" | "architecture" | "lifecycle" | "data-model" | "call-flow" | "domain";
 export interface ElementSource { elementId: string; anchors: SequenceSourceAnchor[] }
-export interface BriefingEvidence extends SequenceSourceAnchor { id: string; kind: "code" | "document"; blob?: string; available: boolean; reason?: string }
+export interface BriefingEvidence extends SequenceSourceAnchor { id: string; kind: "code" | "document"; blob?: string; available: boolean; reason?: string; diff?: BriefingDiff }
 export interface BriefingElement { id: string; label: string; kind: string; evidenceIds: string[] }
 export interface BriefingDiagram { id: string; title: string; family: BriefingFamily; outdated?: boolean; mermaid?: string; ir: Record<string, unknown>; elements: BriefingElement[] }
 export type NarrativeBlock =
@@ -58,7 +59,7 @@ export function validBriefingDocument(value: unknown): value is BriefingDocument
   if (!validBriefingProposal(value)) return false;
   const v = value as unknown as Record<string, any>;
   if (!record(v) || v.version !== 1 || !id(v.id) || !str(v.createdAt) || !/^[a-f0-9]{64}$/.test(v.fingerprint) || !/^[a-f0-9]{64}$/.test(v.comparisonId) || !["authored", "overview"].includes(v.mode) || typeof v.intent !== "string" || v.intent.length > 24000 || !Array.isArray(v.evidence) || !Array.isArray(v.diagrams) || v.diagrams.length > 24) return false;
-  if (!v.evidence.every((e: any) => typeof e.available === "boolean" && validAnchor(e as unknown) && ["code", "document"].includes(e.kind) && (!e.available || /^[a-f0-9]{40,64}$/.test(e.blob)))) return false;
+  if (!v.evidence.every((e: any) => typeof e.available === "boolean" && validAnchor(e as unknown) && ["code", "document"].includes(e.kind) && (!e.available || /^[a-f0-9]{40,64}$/.test(e.blob)) && (e.diff === undefined || validBriefingDiff(e.diff)))) return false;
   const evidence = new Set(v.evidence.map((e: any) => e.id)), diagrams = new Set<string>();
   for (const d of v.diagrams) {
     if (!record(d) || !id(d.id) || diagrams.has(d.id) || !str(d.title, 8000) || !["sequence", "architecture", "lifecycle", "data-model", "call-flow", "domain"].includes(d.family) || !record(d.ir) || JSON.stringify(d.ir).length > 200000 || (d.mermaid !== undefined && !str(d.mermaid, 50000)) || !Array.isArray(d.elements) || d.elements.length > 240 || (d.outdated !== undefined && typeof d.outdated !== "boolean")) return false;
@@ -90,7 +91,7 @@ export function normalizeElementSources(value: unknown): ElementSource[] | undef
 
 export const BRIEFING_PROMPT = `Also return briefingProposal, a concise, intent-led reading document. Schema: {title,sections:[{id,title,blocks:[{id,kind:"prose",text,basis:"stated"|"observed"|"inferred"}|{id,kind:"diagram",diagramId}|{id,kind:"example",text,language}|{id,kind:"source",evidenceId}]}],evidence:[{id,path,side:"old"|"new",startLine,endLine,quote}]}.
 Tell one coherent story: establish the intended outcome, follow the important behavior or data through the implementation, and finish with meaningful boundaries or tradeoffs. Choose section titles that advance that story, rather than categories of artifacts. Explain why only when supplied by the author; mark inferred rationale explicitly. Text is plain text, not Markdown; basis is metadata, not a repeated prose heading.
-Weave short, exact source blocks into the explanation at the point they substantiate a claim. For code changes, show the first useful implementation excerpt early; do not hide all code in citations or the inspector. Prefer a complete small function or decisive branch, usually 3–12 lines. An illustrative example shows an input and outcome but does not replace implementation evidence. Documentation-only changes can use documentary excerpts instead. Include evidence entries for every source block.
+Weave short, exact source blocks into the explanation at the point they substantiate a claim. All implementation code is displayed as a unified before-and-after diff, derived from the captured comparison. Cite the decisive changed range on either side; the reader includes the corresponding replacement and surrounding context. Do not duplicate the same change as separate before and after blocks or author diff markers in the quote. For code changes, show the first useful diff early; do not hide all code in citations or the inspector. Prefer a complete small function or decisive branch, usually 3–12 lines. Use illustrative examples for inputs and outcomes, not standalone implementation code. Documentation-only changes can use documentary excerpts instead. Include evidence entries for every source block.
 Choose diagrams by the question they answer: responsibility boundaries, request ordering, state transitions, data relationships, calls, or domain concepts. Introduce each diagram with the specific relationship it explains and connect it to the nearby code and the next narrative step. Supporting six diagram families does not mean using all six. Never append a diagram gallery, stack unrelated maps, or repeat the same explanation in multiple diagram types. A small change may need only a few paragraphs and one excerpt, with no diagram. No findings dashboard, review effort, checklist, question form, or explanation of the review UI in the story.
 Limits: 12 sections, 60 blocks, 24000 text characters, 40 exact captured evidence excerpts, each at most 30 lines and 8000 characters. Use diagramId architecture-behavior, architecture-journey, sequence-{flow.id}, lifecycle-state-machine, dataflow-data-model, call-flow-{callFlow.id}, or domain-{model.id}, only for diagrams present in this outline. Architecture, stateDiagram and dataModel may include elementSources:[{elementId,anchors:[{path,side,startLine,endLine,quote}]}]. Use exact renderer IR element IDs supplied during regeneration; for new architecture components use their Mermaid node IDs. Never guess a relationship ID, code location, or match by label. Evidence unavailable is preferable to an invented binding. Existing sequence messageSources and call-flow old/new locations are reused. For lifecycle state elements use the state identifier; for data-model entities use data-{ENTITY}. For existing diagrams, briefingProposal may additionally include diagramSources:[{diagramId,elementId,anchors:[{path,side,startLine,endLine,quote}]}] using only supplied exact IDs. This can supply relationship evidence and separate implementation excerpts for domain concepts. Domain vocabulary evidence is documentary, never proof of runtime behavior.`;
 
@@ -179,7 +180,9 @@ export async function buildBriefing(comparison: GitComparison, outline: TourOutl
   }
   // Invalid optional references cannot invalidate the rest of a tour/document.
   sections = sections.map(s => ({ ...s, blocks: s.blocks.map(b => b.kind === "diagram" && !diagrams.some(d => d.id === b.diagramId) || b.kind === "source" && !evidence.some(e => e.id === b.evidenceId) ? { id: b.id, kind: "prose" as const, text: "The referenced evidence is unavailable in this snapshot." } : b) }));
-  return { version: 1, id: crypto.randomUUID(), title: authored?.title ?? outline.title.slice(0, 500), createdAt: new Date().toISOString(), fingerprint: briefingFingerprint(comparison, intent), comparisonId: diffSourceIdentity(comparison), mode: authored ? "authored" : "overview", ...(!authored && (outline.phases.some(p => p.steps.some(s => s.outdated)) || diagrams.some(d => d.outdated)) ? { outdated: true } : {}), sections, diagrams, evidence, intent };
+  const document: BriefingDocument = { version: 1, id: crypto.randomUUID(), title: authored?.title ?? outline.title.slice(0, 500), createdAt: new Date().toISOString(), fingerprint: briefingFingerprint(comparison, intent), comparisonId: diffSourceIdentity(comparison), mode: authored ? "authored" : "overview", ...(!authored && (outline.phases.some(p => p.steps.some(s => s.outdated)) || diagrams.some(d => d.outdated)) ? { outdated: true } : {}), sections, diagrams, evidence, intent };
+  await captureBriefingDiffs(comparison, document, cache);
+  return document;
 }
 async function overviewSections(outline: TourOutline, capture: (anchor: TourAnchor) => Promise<string | undefined>): Promise<NarrativeSection[]> {
   const sections: NarrativeSection[] = [{ id: "summary", title: "What changes", blocks: [{ id: "summary-text", kind: "prose", text: outline.summary.slice(0, 4000) }] }];
@@ -215,8 +218,8 @@ export function resolveBriefingQuestion(document: BriefingDocument | undefined, 
     }
     const evidenceIds = element?.evidenceIds ?? (block.kind === "source" ? [block.evidenceId] : []);
     const sources = document.evidence.filter(e => evidenceIds.includes(e.id));
-    if (block.kind === "source") text = sources.map(e => `${e.path}:${e.startLine}\n${e.quote}`).join("\n");
-    chars += text.length + (block.kind === "source" ? 0 : sources.reduce((n, e) => n + e.quote.length, 0));
+    if (block.kind === "source") text = sources.map(e => `${e.path}:${e.startLine}\n${briefingEvidenceText(e)}`).join("\n");
+    chars += text.length + (block.kind === "source" ? 0 : sources.reduce((n, e) => n + briefingEvidenceText(e).length, 0));
     if (chars > 8000) throw new ReviewError("Selected Briefing context exceeds 8,000 characters. Remove an item or select a shorter passage.");
     const key = JSON.stringify([block.id, input.elementId, input.quote]); if (keys.has(key)) throw new ReviewError("Duplicate Briefing selection."); keys.add(key);
     return { blockId: block.id, ...(element ? { elementId: element.id } : {}), ...(input.quote ? { quote: input.quote } : {}), label: element?.label ?? diagram?.title ?? text.slice(0, 100), text, evidence: structuredClone(sources) };
@@ -224,5 +227,5 @@ export function resolveBriefingQuestion(document: BriefingDocument | undefined, 
   return { documentId: document.id, fingerprint: document.fingerprint, title: document.title, items };
 }
 export function validBriefingQuestionContext(v: unknown): v is BriefingQuestionContext {
-  return record(v) && id(v.documentId) && str(v.fingerprint) && str(v.title, 500) && Array.isArray(v.items) && v.items.length <= 8 && v.items.every(i => record(i) && id(i.blockId) && str(i.label, 8000) && typeof i.text === "string" && i.text.length <= 8000 && Array.isArray(i.evidence) && i.evidence.length <= 8 && i.evidence.every((e: unknown) => validAnchor(e))) && JSON.stringify(v).length < 100000;
+  return record(v) && id(v.documentId) && str(v.fingerprint) && str(v.title, 500) && Array.isArray(v.items) && v.items.length <= 8 && v.items.every(i => record(i) && id(i.blockId) && str(i.label, 8000) && typeof i.text === "string" && i.text.length <= 8000 && Array.isArray(i.evidence) && i.evidence.length <= 8 && i.evidence.every((e: any) => record(e) && (e.diff === undefined || validBriefingDiff(e.diff)) && validAnchor(e))) && JSON.stringify(v).length < 100000;
 }

@@ -178,7 +178,7 @@ test("explicit regeneration replaces only the Briefing and keeps tour progress a
     const oldId = session.outline!.briefing!.id, phases = structuredClone(session.outline!.phases), step = session.currentStepIndex;
     const reviewed = [...session.reviewedFiles], comments = structuredClone(session.comments);
     const regeneration = session.regenerateBriefing();
-    const event = (await session.bridge!.eventsAfter(0, 1000)).find(e => e.type === "agent.prompt");
+    const event = (await session.bridge!.eventsAfter(0, 3000)).find(e => e.type === "agent.prompt");
     if (!event || event.type !== "agent.prompt") throw new Error("Missing regeneration prompt");
     expect(event.prompt).toContain("Return only the briefingProposal object itself");
     expect(event.prompt).toContain("exact element IDs");

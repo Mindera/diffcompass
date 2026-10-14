@@ -29,12 +29,16 @@ try {
       await workspace.locator(".briefing-excerpt code span[style]").first().waitFor();
       assert.ok(await workspace.locator(".briefing-excerpt").count() >= 3);
       assert.ok(!(await workspace.textContent())!.includes("Source unavailable"));
+      assert.equal(await workspace.locator(".briefing-excerpt pre:not(.briefing-diff)").count(), 0);
+      assert.ok(await workspace.locator('.briefing-excerpt [data-diff-kind="addition"]').count() > 0);
+      if (item === "publication") assert.ok(await workspace.locator('.briefing-excerpt [data-diff-kind="deletion"]').count() > 0);
       for (const diagram of await workspace.locator(".briefing-diagram").all()) {
         await diagram.locator("svg").waitFor();
         for (const element of await diagram.locator("svg [data-briefing-element]").all()) {
           const id = await element.getAttribute("data-briefing-element");
           await element.click();
           await workspace.locator(`.lab-evidence [data-evidence-element="${id}"] code`).first().waitFor();
+          assert.equal(await workspace.locator(".lab-evidence pre:not(.briefing-diff)").count(), 0);
         }
       }
       const sections = workspace.locator("[data-briefing-section]");

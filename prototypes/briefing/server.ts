@@ -7,7 +7,7 @@ const repository = fileURLToPath(new URL("../../", import.meta.url));
 const cases = await buildReadingCases(repository);
 const unique = new Map<string, HighlightGroup>();
 for (const item of cases) for (const document of Object.values(item.documents)) for (const source of document.evidence.filter(e => e.available)) {
-  const lines = source.quote.split("\n"), key = JSON.stringify([source.path, lines]);
+  const lines = source.kind === "code" && source.diff?.available ? source.diff.rows.map(r => r.content) : source.quote.split("\n"), key = JSON.stringify([source.path, lines]);
   if (!unique.has(key)) unique.set(key, { id: String(unique.size), path: source.path, lines });
 }
 const tokens = await highlightGroups([...unique.values()], "diffcompass");

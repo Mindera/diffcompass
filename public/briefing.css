@@ -50,6 +50,20 @@
 .briefing-excerpt > .muted { padding: 0 16px; }
 .briefing-code-line { display: block; white-space: pre; }
 .briefing-line-number { color: var(--muted); user-select: none; display: inline-block; width: 3.5em; }
+.briefing-diff-summary { display: flex; justify-content: space-between; gap: 12px; padding: 7px 12px; font: 10px/1.5 ui-monospace, monospace; color: var(--muted); border-bottom: 1px solid var(--border); }
+.briefing-source pre.briefing-diff { padding: 8px 0; border: 0; border-radius: 0; }
+.briefing-diff .briefing-code-line { display: grid; grid-template-columns: 3.5em 3.5em 1.5em minmax(0, 1fr); padding: 0 12px 0 4px; white-space: normal; border-left: 2px solid transparent; }
+.briefing-diff-number { color: var(--muted); text-align: right; padding-right: 8px; user-select: none; }
+.briefing-diff-sign { user-select: none; text-align: center; }
+.briefing-line-content { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.briefing-diff .briefing-addition { background: var(--addition, rgba(35,134,84,.16)); border-left-color: var(--addition-line, #27854b); }
+.briefing-diff .briefing-deletion { background: var(--deletion, rgba(189,65,74,.16)); border-left-color: var(--deletion-line, #c34b55); }
+.briefing-addition .briefing-diff-sign, .briefing-diff-added { color: var(--addition-line, #27854b); }
+.briefing-deletion .briefing-diff-sign, .briefing-diff-removed { color: var(--deletion-line, #c34b55); }
+.briefing-diff-note { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 3px 12px; color: var(--muted); background: var(--panel); font-style: italic; }
+.briefing-inspector .briefing-diff code { display: block; width: max-content; min-width: 100%; }
+.briefing-inspector .briefing-line-content { white-space: pre; }
+@media(max-width: 900px) { .briefing-diff code { display: block; width: max-content; min-width: 100%; } .briefing-line-content { white-space: pre; } }
 .briefing-review-details { margin-top: 25px; font-size: 12px; color: var(--muted); }
 .briefing-mode #questions-pane { display: flex !important; flex: 0 1 auto; min-height: 48px; max-height: 50%; border-top: 1px solid var(--border); }
 .briefing-mode #questions-pane:has(#questions-body:not(.hidden)) { flex: 1 1 40%; }

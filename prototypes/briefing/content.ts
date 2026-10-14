@@ -40,7 +40,7 @@ async function documents(comparison: GitComparison, source: TourOutline, evidenc
     const proposal: BriefingProposal = { ...story, evidence, sections: story.sections.map(s => ({ ...s, id: `${prefix}-section-${s.id}`, blocks: s.blocks.map(b => ({ ...b, id: `${prefix}-block-${b.id}` })) })) };
     const document = await buildBriefing(comparison, source, JSON.stringify({ source: "Pinned repository history", head: comparison.head }), proposal);
     // Authored experiments must fail visibly if a historical citation drifts.
-    if (document.mode !== "authored" || !validBriefingDocument(document) || document.evidence.some(e => !e.available)) throw new Error(`Invalid captured evidence for ${comparison.head} / ${approach}`);
+    if (document.mode !== "authored" || !validBriefingDocument(document) || document.evidence.some(e => !e.available || (e.kind === "code" && !e.diff?.available))) throw new Error(`Invalid captured evidence for ${comparison.head} / ${approach}`);
     for (const block of proposal.sections.flatMap(s => s.blocks)) {
       if (block.kind !== "diagram") continue;
       const rendered = document.diagrams.find(d => d.id === block.diagramId);
@@ -64,7 +64,6 @@ async function publication(repository: string): Promise<ReadingCase> {
     excerpt(captured, "neutral", "src/github.ts", 408, 417),
     excerpt(captured, "review-event", "src/github.ts", 408, 411),
     excerpt(captured, "receipt", "src/github.ts", 417, 419),
-    excerpt(captured, "before", "src/github.ts", 400, 403, "old"),
     excerpt(captured, "recovery-test", "tests/github-suggestions.test.ts", 306, 320),
   ]);
   const e = (id: string) => evidence.find(e => e.id === id)!;
@@ -105,7 +104,7 @@ async function publication(repository: string): Promise<ReadingCase> {
       section("recover", "Recover an uncertain result", p("retry-text", recovery), code("retry-code", "retry"), p("limits", limits)),
     ] },
     outcome: { title: "Send useful feedback without ending the review", sections: [
-      section("promise", "The outcome the reviewer needs", p("promise", need, "stated"), p("promise-boundary", guarantee, "stated"), p("old-context", "Previously, this publication path selected APPROVE or REQUEST_CHANGES. The new branch adds COMMENT without changing those two decisions:"), code("before-code", "before"), code("neutral-code", "review-event")),
+      section("promise", "The outcome the reviewer needs", p("promise", need, "stated"), p("promise-boundary", guarantee, "stated"), p("old-context", "Previously, this publication path selected APPROVE or REQUEST_CHANGES. The new branch adds COMMENT without changing those two decisions:"), code("neutral-code", "review-event")),
       section("system", "Three responsibilities make that possible", p("system-text", "The draft remembers what was proposed. The session freezes the chosen batch and persists its intent. The GitHub boundary checks the current head and submits the review. Storage connects those responsibilities across a retry."), diagram("architecture"), code("intent-code", "intent")),
       section("uncertainty", "The outcome must survive a lost response", p("uncertain-text", recovery), code("retry-code", "retry"), p("proof-text", "The regression below models GitHub accepting the request and the response being lost. A resumed session recovers the review beyond the first hundred entries, with only one POST recorded by the test."), code("test-code", "recovery-test")),
       section("boundary", "Where the promise stops", p("limits", limits)),

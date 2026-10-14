@@ -3,7 +3,9 @@
 Run `bun run fixture:briefing-experiments` and open the printed URL. The default
 port is 47561; pass `--port 0` for an available port. These experiments live on
 `experiment/briefing-reading-paths`, based on the accepted reader at `76a45d6`.
-The production reader, generation prompt, and session contract are unchanged.
+The narrative experiments live here; code diff rendering is shared with the
+production reader, inspector, and exports. Each code citation shows the captured
+before-and-after change, with additions, deletions, and unchanged context.
 
 The comparison uses two real historical changes, rather than the checkout sample:
 

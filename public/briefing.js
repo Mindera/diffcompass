@@ -128,10 +128,30 @@ function createBriefingReader(options) {
     el.addEventListener("keydown", event => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); event.stopPropagation(); inspect(blockId, elementId); } });
   }
   function sourceLabel(e) {
+    if (e.kind === "code") {
+      const diff = e.diff;
+      const path = diff?.available && diff.oldPath && diff.newPath && diff.oldPath !== diff.newPath ? `${diff.oldPath} → ${diff.newPath}` : e.path;
+      return `${esc(path)} · diff`;
+    }
     return `${esc(e.kind === "document" ? "Documentary evidence · " : "")}${esc(e.path)}:${e.startLine}–${e.endLine} · ${e.side === "old" ? "before" : "after"}`;
   }
+  function sourceLines(e) {
+    return e.kind === "code" ? e.diff?.available ? e.diff.rows.map(r => r.content) : [] : e.quote.split("\n");
+  }
+  function codeRowsHtml(e, tokens) {
+    if (e.kind !== "code") return e.quote.split("\n").map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${tokens?.[i] ? tokens[i].map(token => options.tokenHtml(token)).join("") : esc(line)}</span>`).join("");
+    return e.diff.rows.map((row, i) => {
+      if (row.kind === "meta") return `<span class="briefing-diff-note">${esc(row.content)}</span>`;
+      const content = tokens?.[i] ? tokens[i].map(token => options.tokenHtml(token)).join("") : esc(row.content);
+      return `<span class="briefing-code-line briefing-${row.kind}" data-diff-kind="${row.kind}" data-old-line="${row.oldLine ?? ""}" data-new-line="${row.newLine ?? ""}"><span class="briefing-diff-number" title="Before">${row.oldLine ?? ""}</span><span class="briefing-diff-number" title="After">${row.newLine ?? ""}</span><span class="briefing-diff-sign">${row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " "}</span><span class="briefing-line-content">${content}</span></span>`;
+    }).join("");
+  }
   function sourceCodeHtml(e) {
-    return e?.available ? `<pre><code>${e.quote.split("\n").map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${esc(line)}</span>`).join("")}</code></pre>` : `<p class="muted">${esc(e?.reason ?? "Source unavailable")}</p>`;
+    if (!e?.available) return `<p class="muted">${esc(e?.reason ?? "Source unavailable")}</p>`;
+    if (e.kind !== "code") return `<pre><code>${codeRowsHtml(e)}</code></pre>`;
+    if (!e.diff?.available) return `<p class="muted">${esc(e.diff?.reason ?? "Diff unavailable in this saved Briefing. Regenerate the Briefing to capture it.")}</p>`;
+    const added = e.diff.rows.filter(r => r.kind === "addition").length, removed = e.diff.rows.filter(r => r.kind === "deletion").length;
+    return `<div class="briefing-diff-summary"><span>Before → After</span><span>${added || removed ? `<span class="briefing-diff-added">+${added}</span> <span class="briefing-diff-removed">−${removed}</span>${e.diff.rows.some(r => r.content.startsWith("… ")) ? " shown" : ""}` : "Unchanged context"}</span></div><pre class="briefing-diff" aria-label="Before and after code diff"><code>${codeRowsHtml(e)}</code></pre>`;
   }
   function evidenceHtml(e) {
     if (!e) return '<p class="muted">No verified source binding is available for this element.</p>';
@@ -155,19 +175,19 @@ function createBriefingReader(options) {
   async function highlightEvidence(root = pane, evidence = inspection?.frozen?.evidence ?? document?.evidence ?? []) {
     if (!options.highlight) return;
     const captured = document;
-    const sources = evidence.filter(e => e.available);
-    const key = e => `${e.blob}:${e.path}:${e.startLine}:${e.endLine}`;
+    const sources = evidence.filter(e => e.available && (e.kind !== "code" || e.diff?.available));
+    const key = e => `${e.blob}:${e.path}:${e.side}:${e.startLine}:${e.endLine}:${JSON.stringify(e.diff ?? null)}`;
     const targets = sources.flatMap(e => [...root.querySelectorAll(`[data-evidence-id="${CSS.escape(e.id)}"] code`)].map(code => ({ e, code })));
     const needed = sources.filter(e => targets.some(target => target.e === e) && !syntaxCache.has(key(e)));
     if (needed.length) {
-      try { const groups = await options.highlight(needed.map(e => ({ id: e.id, path: e.path, lines: e.quote.split("\n") })));
+      try { const groups = await options.highlight(needed.map(e => ({ id: e.id, path: e.path, lines: sourceLines(e) })));
         for (const group of groups) { const source = needed.find(e => e.id === group.id); if (source) syntaxCache.set(key(source), group.lines); }
       } catch { return; }
     }
     if (captured !== document) return;
     for (const { e, code } of targets) {
       const tokens = syntaxCache.get(key(e)); if (!tokens || !code.isConnected) continue;
-      code.innerHTML = tokens.map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${line.map(token => options.tokenHtml(token)).join("")}</span>`).join("");
+      code.innerHTML = codeRowsHtml(e, tokens);
     }
   }
   function inspect(blockId, elementId, quote) {

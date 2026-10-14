@@ -29,7 +29,7 @@
 #reading-lab .briefing-view { padding-top: 30px; padding-bottom: 90px; }
 #reading-lab .briefing-heading h1 { font-size: clamp(28px, 2.6vw, 38px); max-width: 26ch; }
 #reading-lab [data-briefing-ask], #reading-lab [data-briefing-source], #reading-lab [data-briefing-generate], #reading-lab .briefing-version { display: none; }
-#reading-lab .briefing-code-line { position: relative; padding-left: 3.5em; white-space: pre-wrap; overflow-wrap: anywhere; }
+#reading-lab pre:not(.briefing-diff) .briefing-code-line { position: relative; padding-left: 3.5em; white-space: pre-wrap; overflow-wrap: anywhere; }
 #reading-lab .briefing-line-number { position: absolute; left: 0; }
 #reading-lab .briefing-excerpt pre { font-size: 12px; line-height: 1.75; }
 #reading-lab .briefing-canvas svg { max-height: none; }

@@ -797,7 +797,7 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
           { id: "format-text", kind: "prose", basis: "observed", text: "The formatter delegates the arithmetic to total, then uses toFixed(2) to produce the two-decimal string. The discount formula stays in the cart module:" },
           { id: "format-source", kind: "source", evidenceId: "receipt-body" },
           { id: "receipt-result", kind: "prose", basis: "observed", text: "Putting those steps together, the same two items now produce a receipt with the discounted amount:" },
-          { id: "example", kind: "example", language: "typescript", text: 'receipt([{ price: 10, quantity: 2 }], { percentage: 0.1 })\n// "Total: 18.00"' },
+          { id: "example", kind: "example", text: 'Two items at 10.00 each, with a 10% discount\nReceipt: "Total: 18.00"' },
         ] },
         { id: "limits", title: "What this path leaves to callers", blocks: [
           { id: "limits-text", kind: "prose", basis: "observed", text: "This path assumes a valid fractional discount: total does not reject negative percentages or values above 1. The two-decimal rounding happens only when receipt builds its string; the numeric total remains unrounded. Receipt also returns a fixed “Total:” label, without currency or locale formatting." },

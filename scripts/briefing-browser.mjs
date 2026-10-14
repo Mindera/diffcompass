@@ -27,6 +27,9 @@ try {
   assert.equal(await page.locator('#briefing-view .briefing-excerpt').count(), 3);
   const source = page.locator('#briefing-view [data-evidence-id="subtotal-body"]');
   assert.match(await source.textContent(), /export function subtotal/);
+  assert.ok(await source.locator('[data-diff-kind="addition"]').count() > 0);
+  assert.ok(await source.locator('[data-diff-kind="deletion"]').count() > 0);
+  assert.equal(await page.locator('#briefing-view .briefing-excerpt pre:not(.briefing-diff)').count(), 0);
   const box = await source.boundingBox();
   assert.ok(box.y + box.height < 1000, 'Implementation code appears in the opening viewport');
 
@@ -53,6 +56,7 @@ try {
   const beforeInspect = await readerScroll();
   await source.locator('[data-briefing-inspect]').click();
   assert.match(await page.locator('#briefing-inspector code').textContent(), /export function subtotal/);
+  assert.equal(await page.locator('#briefing-inspector pre:not(.briefing-diff)').count(), 0);
   assert.ok(Math.abs(await readerScroll() - beforeInspect) < 2);
   await source.locator('[data-briefing-ask]').click();
   assert.equal(await page.locator('#briefing-context .briefing-chip').count(), 1);

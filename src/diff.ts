@@ -99,11 +99,11 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
     }
 
     let row: DiffRow;
-    if (line.startsWith("+") && !line.startsWith("+++")) {
+    if (line.startsWith("+")) {
       row = { kind: "addition", content: line.slice(1), oldLine: null, newLine };
       newLine += 1;
       file.additions += 1;
-    } else if (line.startsWith("-") && !line.startsWith("---")) {
+    } else if (line.startsWith("-")) {
       row = { kind: "deletion", content: line.slice(1), oldLine, newLine: null };
       oldLine += 1;
       file.deletions += 1;

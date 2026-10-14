@@ -2,6 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { parseUnifiedDiff } from "../src/diff.ts";
 
 describe("parseUnifiedDiff", () => {
+  test("keeps code beginning with repeated signs inside a hunk", () => {
+    const [file] = parseUnifiedDiff("diff --git a/count.ts b/count.ts\n--- a/count.ts\n+++ b/count.ts\n@@ -1 +1 @@\n---count;\n+++count;\n");
+    expect(file!.hunks[0]!.rows).toEqual([
+      { kind: "deletion", content: "--count;", oldLine: 1, newLine: null },
+      { kind: "addition", content: "++count;", oldLine: null, newLine: 1 },
+    ]);
+  });
   test("parses additions, deletions, and line numbers", () => {
     const files = parseUnifiedDiff(`diff --git a/src/example.ts b/src/example.ts
 index 1111111..2222222 100644
