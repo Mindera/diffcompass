@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { chromium } from "playwright";
+
+const child = Bun.spawn([process.execPath, "prototypes/briefing/server.ts", "--port", "0"], { stdout: "pipe", stderr: "inherit" });
+const startup = setTimeout(() => child.kill(), 30_000);
+let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+try {
+  let output = "", url: string | undefined;
+  for await (const chunk of child.stdout) {
+    output += new TextDecoder().decode(chunk);
+    url = /^Briefing experiments: (.+)$/m.exec(output)?.[1];
+    if (url) break;
+  }
+  clearTimeout(startup);
+  if (!url) throw new Error("Experiment server failed to start: " + output);
+  browser = await chromium.launch({ channel: process.env.CI ? undefined : "chrome", headless: true });
+  const page = await browser.newPage({ viewport: { width: 1600, height: 1050 }, reducedMotion: "reduce", acceptDownloads: true });
+  page.setDefaultTimeout(20_000);
+  const errors: string[] = [], external: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  page.on("request", request => { if (new URL(request.url()).origin !== new URL(url!).origin) external.push(request.url()); });
+  await page.goto(url);
+  const workspace = page.locator(".lab-workspace:not([hidden])");
+  for (const item of ["publication", "checkpoints"]) {
+    await page.locator("#case-picker").selectOption(item);
+    for (const approach of ["linear", "outcome", "trace", "decisions"]) {
+      await page.locator(`#approach-${approach}`).click();
+      await workspace.locator(".briefing-canvas svg").waitFor();
+      await workspace.locator(".briefing-excerpt code span[style]").first().waitFor();
+      assert.ok(await workspace.locator(".briefing-excerpt").count() >= 3);
+      assert.ok(!(await workspace.textContent())!.includes("Source unavailable"));
+      for (const diagram of await workspace.locator(".briefing-diagram").all()) {
+        await diagram.locator("svg").waitFor();
+        for (const element of await diagram.locator("svg [data-briefing-element]").all()) {
+          const id = await element.getAttribute("data-briefing-element");
+          await element.click();
+          await workspace.locator(`.lab-evidence [data-evidence-element="${id}"] code`).first().waitFor();
+        }
+      }
+      const sections = workspace.locator("[data-briefing-section]");
+      const lastId = await sections.last().getAttribute("data-briefing-section");
+      await sections.last().click();
+      await page.waitForFunction(id => document.querySelector('.lab-workspace:not([hidden]) [aria-current="location"]')?.getAttribute("data-briefing-section") === id, lastId);
+      await sections.first().click();
+      if (approach === "trace") {
+        for (const route of await workspace.locator("[data-scenario]").all()) {
+          await route.click();
+          for (const step of await workspace.locator("[data-stage-evidence]").all()) {
+            const id = await step.getAttribute("data-stage-evidence");
+            await step.click();
+            await workspace.locator(`.lab-evidence [data-evidence-id="${id}"] code`).waitFor();
+          }
+        }
+      }
+      if (approach === "decisions") {
+        const reasoning = workspace.locator(".lab-reasoning").first();
+        assert.equal(await reasoning.getAttribute("open"), null);
+        await reasoning.locator("summary").click();
+        assert.notEqual(await reasoning.getAttribute("open"), null);
+      }
+      console.log(`PASS ${item} / ${approach}: diagram, highlighted source, outline, interactions`);
+    }
+  }
+  // Per-approach reading position and notes survive switching and reloads.
+  const before = await workspace.locator(".lab-scroll").evaluate(el => el.scrollTop);
+  await page.locator("#approach-outcome").click();
+  await page.locator("#approach-decisions").click();
+  await page.waitForFunction(top => Math.abs(document.querySelector('.lab-workspace:not([hidden]) .lab-scroll')!.scrollTop - top) < 2, before);
+  await page.locator("#notes-open").click();
+  await page.locator("#notes-text").fill("The two baselines explain why a checked path can reopen.");
+  await page.locator("#notes-close").click();
+  await page.reload();
+  await page.locator("#notes-open").click();
+  assert.match(await page.locator("#notes-text").inputValue(), /two baselines/);
+  const download = page.waitForEvent("download"); await page.locator("#notes-download").click();
+  assert.equal((await download).suggestedFilename(), "briefing-experiment-notes.md");
+  await page.locator("#notes-close").click();
+  await page.locator("#approach-outcome").focus(); await page.keyboard.press("ArrowRight");
+  assert.equal(await page.locator("#approach-trace").getAttribute("aria-selected"), "true");
+  await page.goBack();
+  assert.equal(await page.locator("#approach-decisions").getAttribute("aria-selected"), "true");
+  await page.goForward();
+  assert.equal(await page.locator("#approach-trace").getAttribute("aria-selected"), "true");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await workspace.locator(".lab-scroll").evaluate(el => { el.scrollTop = 0; });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  assert.ok(await workspace.evaluate(el => el.getBoundingClientRect().right <= innerWidth));
+  await page.locator("#approach-outcome").click();
+  assert.ok(await workspace.locator(".briefing-view").evaluate(el => el.getBoundingClientRect().right <= innerWidth));
+  await page.locator("#approach-trace").click();
+  await workspace.locator("[data-stage-evidence]").first().click();
+  await page.locator("#evidence-sheet[open] .briefing-source code").waitFor();
+  await page.keyboard.press("Escape");
+  await page.locator("#evidence-sheet[open]").waitFor({ state: "hidden" });
+  await page.locator("#case-picker").selectOption("publication");
+  await workspace.locator("[data-stage-evidence]").first().click();
+  await page.locator("#evidence-sheet[open] .briefing-source code").waitFor();
+  assert.deepEqual(errors, []); assert.deepEqual(external, []);
+  console.log("PASS reading restoration, local notes, export, keyboard navigation, mobile inspection, no external requests");
+} finally { clearTimeout(startup); await browser?.close(); child.kill(); await child.exited; }
