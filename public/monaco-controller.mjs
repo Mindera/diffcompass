@@ -272,7 +272,10 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
         // must not move the visible content. Native anchoring is disabled on
         // this panel, so compensate only for cards wholly above that area.
         const delta = entry.slot.getBoundingClientRect().height - before.height;
-        if (!entry.preparing && before.bottom <= readingTop && delta) {
+        // An explicit reveal owns the viewport while it animates. Writing
+        // scrollTop here would cancel the browser's smooth scroll, leaving
+        // an upward tour/file destination offscreen after a late measurement.
+        if (!entry.preparing && !cancelTourScroll && !cancelFileScroll && before.bottom <= readingTop && delta) {
           const anchored = phasePositionUnchanged();
           scrollRoot.scrollTop += delta;
           if (anchored) phaseAnchorScrollTop = scrollRoot.scrollTop;
