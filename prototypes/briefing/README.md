@@ -7,7 +7,23 @@ The narrative experiments live here; code diff rendering is shared with the
 production reader, inspector, and exports. Each code citation shows the captured
 before-and-after change, with additions, deletions, and unchanged context.
 
-The comparison uses two real historical changes, rather than the checkout sample:
+To use examples from other local repositories, create
+`prototypes/briefing/local/cases.ts` exporting
+`buildReadingCases(root: string): Promise<ReadingCase[]>`. The server loads it
+automatically when present. The `local/` directory is Git-ignored so repository
+specific narratives and captured source can stay on the local machine. Use the
+helpers in `capture.ts` to read pinned Git trees and validate excerpts and diagram
+bindings through the production reader. Include `repositoryName` and an optional
+GitHub `repositoryUrl` on each case so the heading and comparison link identify
+the source repository.
+
+Use `--cases /absolute/path/cases.ts` to load a different trusted local module,
+or `--builtin` to explicitly load the portable DiffCompass examples. These are
+TypeScript modules executed by Bun, not untrusted data uploads. The browser test
+accepts the same flags. The default local module can contain the familiar examples
+without making CI or another contributor depend on those checkouts.
+
+Without a local module, the portable comparison uses two historical changes:
 
 | Change | Pinned range | Complexity to explain |
 | --- | --- | --- |

@@ -1,10 +1,18 @@
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { existsSync } from "node:fs";
 import { approaches, buildReadingCases } from "./content.ts";
 import { highlightGroups, type HighlightGroup } from "../../src/highlight.ts";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
-const cases = await buildReadingCases(repository);
+const casesIndex = process.argv.indexOf("--cases");
+if (casesIndex !== -1 && !process.argv[casesIndex + 1]) throw new Error("--cases needs a local TypeScript module path.");
+const defaultCases = resolve(repository, "prototypes/briefing/local/cases.ts");
+const casesPath = casesIndex !== -1 ? resolve(process.argv[casesIndex + 1]!)
+  : !process.argv.includes("--builtin") && existsSync(defaultCases) ? defaultCases : undefined;
+const builder = casesPath ? (await import(pathToFileURL(casesPath).href)).buildReadingCases : buildReadingCases;
+const cases = await builder(repository) as Awaited<ReturnType<typeof buildReadingCases>>;
+if (!cases.length || cases.some(item => !item.repositoryName)) throw new Error("Reading cases need repository names and at least one example.");
 const unique = new Map<string, HighlightGroup>();
 for (const item of cases) for (const document of Object.values(item.documents)) for (const source of document.evidence.filter(e => e.available)) {
   const lines = source.kind === "code" && source.diff?.available ? source.diff.rows.map(r => r.content) : source.quote.split("\n"), key = JSON.stringify([source.path, lines]);
@@ -43,5 +51,5 @@ const server = Bun.serve({
     } });
   },
 });
-console.log(`Briefing experiments: http://127.0.0.1:${server.port}/#case=publication&approach=outcome`);
-console.log("Two pinned historical changes; four reading approaches. No agent or GitHub calls.");
+console.log(`Briefing experiments: http://127.0.0.1:${server.port}/#case=${cases[0]!.id}&approach=outcome`);
+console.log(`${cases.length} pinned historical changes; four reading approaches. No agent or GitHub calls.`);

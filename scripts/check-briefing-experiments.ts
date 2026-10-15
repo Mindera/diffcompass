@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
-const child = Bun.spawn([process.execPath, "prototypes/briefing/server.ts", "--port", "0"], { stdout: "pipe", stderr: "inherit" });
+const child = Bun.spawn([process.execPath, "prototypes/briefing/server.ts", "--port", "0", ...process.argv.slice(2)], { stdout: "pipe", stderr: "inherit" });
 const startup = setTimeout(() => child.kill(), 30_000);
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 try {
@@ -20,8 +20,13 @@ try {
   page.on("pageerror", e => errors.push(e.message));
   page.on("request", request => { if (new URL(request.url()).origin !== new URL(url!).origin) external.push(request.url()); });
   await page.goto(url);
+  const payload = await (await page.request.get(new URL("/cases.json", url).href)).json();
+  const caseIds: string[] = payload.cases.map((item: { id: string }) => item.id);
+  assert.equal(caseIds.length, 2);
+  const [firstCase, secondCase] = caseIds as [string, string];
   const workspace = page.locator(".lab-workspace:not([hidden])");
-  for (const item of ["publication", "checkpoints"]) {
+  let sawDeletion = false;
+  for (const item of caseIds) {
     await page.locator("#case-picker").selectOption(item);
     for (const approach of ["linear", "outcome", "trace", "decisions"]) {
       await page.locator(`#approach-${approach}`).click();
@@ -31,7 +36,7 @@ try {
       assert.ok(!(await workspace.textContent())!.includes("Source unavailable"));
       assert.equal(await workspace.locator(".briefing-excerpt pre:not(.briefing-diff)").count(), 0);
       assert.ok(await workspace.locator('.briefing-excerpt [data-diff-kind="addition"]').count() > 0);
-      if (item === "publication") assert.ok(await workspace.locator('.briefing-excerpt [data-diff-kind="deletion"]').count() > 0);
+      sawDeletion ||= await workspace.locator('.briefing-excerpt [data-diff-kind="deletion"]').count() > 0;
       for (const diagram of await workspace.locator(".briefing-diagram").all()) {
         await diagram.locator("svg").waitFor();
         for (const element of await diagram.locator("svg [data-briefing-element]").all()) {
@@ -65,6 +70,7 @@ try {
       console.log(`PASS ${item} / ${approach}: diagram, highlighted source, outline, interactions`);
     }
   }
+  assert.ok(sawDeletion, "The examples must show removed code as well as additions");
   // Both inner edges resize the actual panes, without losing the reading point.
   const paneWidth = (side: string) => workspace.locator(`.lab-${side}`).evaluate(el => el.getBoundingClientRect().width);
   const dragPane = async (side: string, delta: number) => {
@@ -97,7 +103,7 @@ try {
   await evidenceHandle.focus(); await page.keyboard.press("ArrowRight");
   assert.equal(await paneWidth("outline"), initialOutline + 50);
   assert.equal(await paneWidth("evidence"), initialEvidence + 80);
-  await page.locator("#case-picker").selectOption("publication");
+  await page.locator("#case-picker").selectOption(firstCase);
   await page.locator("#approach-outcome").click();
   assert.equal(await paneWidth("outline"), initialOutline + 50);
   assert.equal(await paneWidth("evidence"), initialEvidence + 80);
@@ -117,7 +123,7 @@ try {
   await outlineHandle.dblclick(); await evidenceHandle.dblclick();
   assert.equal(await paneWidth("outline"), initialOutline);
   assert.equal(await paneWidth("evidence"), initialEvidence);
-  await page.locator("#case-picker").selectOption("checkpoints");
+  await page.locator("#case-picker").selectOption(secondCase);
   await page.locator("#approach-decisions").click();
   console.log("PASS draggable inner edges, reading point, keyboard sizing, shared saved widths, viewport limits, reset");
 
@@ -127,11 +133,11 @@ try {
   await page.locator("#approach-decisions").click();
   await page.waitForFunction(top => Math.abs(document.querySelector('.lab-workspace:not([hidden]) .lab-scroll')!.scrollTop - top) < 2, before);
   await page.locator("#notes-open").click();
-  await page.locator("#notes-text").fill("The two baselines explain why a checked path can reopen.");
+  await page.locator("#notes-text").fill("The ownership diagram makes the intent clearer.");
   await page.locator("#notes-close").click();
   await page.reload();
   await page.locator("#notes-open").click();
-  assert.match(await page.locator("#notes-text").inputValue(), /two baselines/);
+  assert.match(await page.locator("#notes-text").inputValue(), /ownership diagram/);
   const download = page.waitForEvent("download"); await page.locator("#notes-download").click();
   assert.equal((await download).suggestedFilename(), "briefing-experiment-notes.md");
   await page.locator("#notes-close").click();
@@ -153,7 +159,7 @@ try {
   await page.locator("#evidence-sheet[open] .briefing-source code").waitFor();
   await page.keyboard.press("Escape");
   await page.locator("#evidence-sheet[open]").waitFor({ state: "hidden" });
-  await page.locator("#case-picker").selectOption("publication");
+  await page.locator("#case-picker").selectOption(firstCase);
   await workspace.locator("[data-stage-evidence]").first().click();
   await page.locator("#evidence-sheet[open] .briefing-source code").waitFor();
   assert.deepEqual(errors, []); assert.deepEqual(external, []);

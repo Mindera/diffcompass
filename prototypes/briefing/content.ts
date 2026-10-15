@@ -1,8 +1,5 @@
-import { buildBriefing, validBriefingDocument, type BriefingDocument, type BriefingProposal, type NarrativeBlock, type NarrativeSection } from "../../src/briefing.ts";
-import { validateReviewArchitecture } from "../../src/architecture.ts";
-import { loadCapturedSource } from "../../src/diff-sources.ts";
-import { loadComparisonBetweenTrees } from "../../src/git.ts";
-import type { GitComparison, SequenceSourceAnchor, TourOutline } from "../../src/types.ts";
+import type { BriefingDocument, NarrativeSection } from "../../src/briefing.ts";
+import { comparison, excerpt, outline, documents, p, code, diagram, example, section, changeClasses } from "./capture.ts";
 
 export const approaches = [
   { id: "linear", label: "Current approach", description: "Read the implementation in a deliberate order.", question: "Can you explain what changed after one pass?" },
@@ -13,42 +10,8 @@ export const approaches = [
 export type Approach = typeof approaches[number]["id"];
 export interface Scenario { id: string; label: string; summary: string; steps: Array<{ label: string; value: string; evidenceId: string }>; outcome: string }
 export interface ReadingCase {
-  id: string; title: string; description: string; base: string; head: string; files: number;
+  id: string; title: string; description: string; repositoryName: string; repositoryUrl?: string; base: string; head: string; files: number;
   documents: Record<Approach, BriefingDocument>; scenarios: Scenario[];
-}
-type Evidence = SequenceSourceAnchor & { id: string };
-const p = (id: string, text: string, basis: "observed" | "stated" | "inferred" = "observed"): NarrativeBlock => ({ id, kind: "prose", text, basis });
-const code = (id: string, evidenceId: string): NarrativeBlock => ({ id, kind: "source", evidenceId });
-const diagram = (id: string, diagramId = "architecture-journey"): NarrativeBlock => ({ id, kind: "diagram", diagramId });
-const example = (id: string, text: string): NarrativeBlock => ({ id, kind: "example", text });
-const section = (id: string, title: string, ...blocks: NarrativeBlock[]): NarrativeSection => ({ id, title, blocks });
-const changeClasses = '\nclassDef new stroke:#2e7d32,stroke-width:3px\nclassDef touched stroke:#f9a825,stroke-width:3px\nclassDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\nclassDef external stroke:#888888,stroke-dasharray:3 3';
-
-async function comparison(repository: string, base: string, head: string) {
-  return loadComparisonBetweenTrees(repository, { base, mergeBase: base, head, sourceTree: head, repositoryName: "diffcompass", branch: head.slice(0, 7) });
-}
-async function excerpt(comparison: GitComparison, id: string, path: string, startLine: number, endLine: number, side: "old" | "new" = "new"): Promise<Evidence> {
-  const source = await loadCapturedSource(comparison, side, path);
-  return { id, path, side, startLine, endLine, quote: source.text.split(/\r?\n/).slice(startLine - 1, endLine).join("\n") };
-}
-function outline(title: string): TourOutline { return { title, summary: title, phases: [], callFlows: [], flows: [], findings: [] }; }
-async function documents(comparison: GitComparison, source: TourOutline, evidence: Evidence[], stories: Record<Approach, { title: string; sections: NarrativeSection[] }>): Promise<Record<Approach, BriefingDocument>> {
-  if (source.architecture) source.architecture = validateReviewArchitecture(source.architecture);
-  const entries = [];
-  for (const [approach, story] of Object.entries(stories)) {
-    const prefix = `${comparison.head.slice(0, 7)}-${approach}`;
-    const proposal: BriefingProposal = { ...story, evidence, sections: story.sections.map(s => ({ ...s, id: `${prefix}-section-${s.id}`, blocks: s.blocks.map(b => ({ ...b, id: `${prefix}-block-${b.id}` })) })) };
-    const document = await buildBriefing(comparison, source, JSON.stringify({ source: "Pinned repository history", head: comparison.head }), proposal);
-    // Authored experiments must fail visibly if a historical citation drifts.
-    if (document.mode !== "authored" || !validBriefingDocument(document) || document.evidence.some(e => !e.available || (e.kind === "code" && !e.diff?.available))) throw new Error(`Invalid captured evidence for ${comparison.head} / ${approach}`);
-    for (const block of proposal.sections.flatMap(s => s.blocks)) {
-      if (block.kind !== "diagram") continue;
-      const rendered = document.diagrams.find(d => d.id === block.diagramId);
-      if (!rendered || rendered.elements.some(e => !e.evidenceIds.length)) throw new Error(`Missing diagram or element evidence for ${block.diagramId} / ${approach}`);
-    }
-    entries.push([approach, document]);
-  }
-  return Object.fromEntries(entries) as Record<Approach, BriefingDocument>;
 }
 
 async function publication(repository: string): Promise<ReadingCase> {
@@ -121,7 +84,7 @@ async function publication(repository: string): Promise<ReadingCase> {
       section("identity", "What makes a retry the same operation?", p("recovery", recovery), code("retry-code", "retry"), p("constraint", "Selection identity and source identity matter alongside the marker. The session rejects a changed batch; the provider rejects a changed PR head."), code("head-code", "head"), p("limits", limits)),
     ] },
   };
-  return { id: "publication", title: "GitHub suggestions", description: "Draft selection, durable intent, an external write, and recovery after uncertainty.", base, head, files: captured.files.length, documents: await documents(captured, source, evidence, stories), scenarios: [
+  return { repositoryName: "diffcompass", repositoryUrl: "https://github.com/Mindera/diffcompass", id: "publication", title: "GitHub suggestions", description: "Draft selection, durable intent, an external write, and recovery after uncertainty.", base, head, files: captured.files.length, documents: await documents(captured, source, evidence, stories), scenarios: [
     { id: "normal", label: "Normal send", summary: "The confirmed source and selection still match, and GitHub has no review with this intent marker.", steps: [{ label: "Persist", value: "Pending intent saved", evidenceId: "intent" }, { label: "Send", value: "COMMENT review created", evidenceId: "neutral" }, { label: "Record", value: "Receipt saved locally", evidenceId: "intent" }], outcome: "The suggestions are published. The local review remains open." },
     { id: "lost", label: "Response lost", summary: "GitHub accepted the first POST, but the client did not receive its response. The session resumes with the same pending intent.", steps: [{ label: "Resume", value: "Reuse the intent ID", evidenceId: "intent" }, { label: "Find", value: "Search all review pages", evidenceId: "retry" }, { label: "Recover", value: "Return the existing receipt", evidenceId: "recovery-test" }], outcome: "The tested retry recovers the first review instead of sending another POST." },
     { id: "head", label: "PR changed", summary: "The reviewer confirmed one commit, but the provider loads a newer head before publication.", steps: [{ label: "Load", value: "Read the current PR", evidenceId: "head" }, { label: "Compare", value: "Head IDs differ", evidenceId: "head" }, { label: "Stop", value: "Require a refresh", evidenceId: "head" }], outcome: "This attempt sends no review against the changed head." },
@@ -187,7 +150,7 @@ async function checkpoints(repository: string): Promise<ReadingCase> {
       section("confidence", "How much confidence should survive a refresh?", p("retained", retained), code("reviewed-code", "reviewed"), p("conservative", "Reopening an entire changed file can ask a reviewer to revisit unaffected code. It also avoids assuming that a line-level match proves a file's behavior is unchanged.", "inferred"), p("stale", "Saved explanations follow the same conservative boundary: a changed dependency marks the corresponding diagram outdated."), code("stale-code", "stale"), p("caveat", caveat)),
     ] },
   };
-  return { id: "checkpoints", title: "Review checkpoints", description: "Immutable source, two baselines, retained review state, and stale evidence.", base, head, files: captured.files.length, documents: await documents(captured, source, evidence, stories), scenarios: [
+  return { repositoryName: "diffcompass", repositoryUrl: "https://github.com/Mindera/diffcompass", id: "checkpoints", title: "Review checkpoints", description: "Immutable source, two baselines, retained review state, and stale evidence.", base, head, files: captured.files.length, documents: await documents(captured, source, evidence, stories), scenarios: [
     { id: "changed", label: "A new revision", summary: "The first pass reviewed a.ts and b.ts. The next revision edits a.ts and adds c.ts.", steps: [{ label: "Compare", value: "Delta: a.ts and c.ts", evidenceId: "compare" }, { label: "Retain", value: "b.ts stays reviewed", evidenceId: "reviewed" }, { label: "Revisit", value: "a.ts and c.ts need review", evidenceId: "classify" }], outcome: "Review the new work while preserving the unchanged first-pass decision." },
     { id: "resolved", label: "A path leaves the change", summary: "A path belonged to the earlier full change but no longer differs from the original base.", steps: [{ label: "Compare", value: "Absent from current change", evidenceId: "classify" }, { label: "Classify", value: "Label the path resolved", evidenceId: "classify" }, { label: "Retain", value: "Remove it from reviewed paths", evidenceId: "reviewed" }], outcome: "“Resolved” describes the diff relationship; it does not certify a bug fix." },
     { id: "missing", label: "Checkpoint unavailable", summary: "The selected checkpoint cannot produce a comparison, or no checkpoint was selected.", steps: [{ label: "Select", value: "Try the checkpoint view", evidenceId: "compare" }, { label: "Fallback", value: "Return the full comparison", evidenceId: "compare" }, { label: "Read", value: "Original base → current", evidenceId: "compare" }], outcome: "This version still shows the full change instead of failing the review view." },

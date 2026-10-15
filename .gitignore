@@ -3,3 +3,4 @@ dist/
 .*.bun-build
 .DS_Store
 *.log
+prototypes/briefing/local/

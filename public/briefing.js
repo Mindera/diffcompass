@@ -163,7 +163,8 @@ function createBriefingReader(options) {
       const i = inspection.frozen;
       pane.innerHTML = `<header><span class="eyebrow">Saved question context</span><h2>${esc(i.label)}</h2></header><div class="briefing-evidence-scroll"><p class="briefing-quotation">${esc(i.text)}</p>${i.evidence.map(evidenceHtml).join("")}</div>`; void highlightEvidence(); return;
     }
-    const b = blockFor(inspection.blockId), d = diagramFor(b);
+    const b = inspection.evidenceId ? { kind: "source", evidenceId: inspection.evidenceId } : blockFor(inspection.blockId);
+    const d = diagramFor(b);
     if (!b) { pane.innerHTML = '<p>This inspected item belongs to an earlier Briefing. Attached question context is retained.</p>'; return; }
     const title = d?.title ?? (b.kind === "source" ? "Source citation" : "Selected passage");
     let content;
@@ -199,6 +200,13 @@ function createBriefingReader(options) {
       const card = pane.querySelector(`[data-evidence-element="${CSS.escape(elementId)}"]`), container = pane.querySelector(".briefing-evidence-scroll");
       if (card && container) container.scrollTop += card.getBoundingClientRect().top - container.getBoundingClientRect().top - 12;
     }
+  }
+  function inspectEvidence(evidenceId) {
+    if (!document?.evidence.some(e => e.id === evidenceId)) return;
+    inspection = { evidenceId };
+    selected = null;
+    renderInspector();
+    options.openTools?.();
   }
   function highlight() {
     for (const el of view.querySelectorAll("[data-briefing-element]")) { const current = el.dataset.blockId === selected?.blockId && el.dataset.briefingElement === selected?.elementId; el.classList.toggle("briefing-selected", current); el.setAttribute("aria-pressed", String(current)); }
@@ -244,7 +252,7 @@ function createBriefingReader(options) {
   }
   [view, outline, pane, chips].forEach(el => el.addEventListener("click", click));
   return {
-    render, renderChips, rememberAnchor, restoreAnchor,
+    render, renderChips, rememberAnchor, restoreAnchor, inspectEvidence,
     setActive(value) { active = value; if (active) restoreAnchor(); },
     context() {
       if (!attachments.length || !document) return undefined;

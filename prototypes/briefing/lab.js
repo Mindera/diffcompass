@@ -25,8 +25,7 @@
   get("mobile-evidence").addEventListener("click", openEvidence);
   matchMedia("(max-width: 900px)").addEventListener("change", event => { if (!event.matches) closeEvidence(); });
   function inspectSource(instance, evidenceId) {
-    const button = instance.view.querySelector(`[data-evidence-id="${CSS.escape(evidenceId)}"] [data-briefing-inspect]`);
-    if (button) button.click();
+    instance.reader.inspectEvidence(evidenceId);
   }
   function scenarioPanel(instance, item) {
     const panel = document.createElement("section"); panel.className = "lab-scenario";
@@ -77,7 +76,7 @@
         tokenHtml: token => `<span style="color:#${esc(token.dark)};${token.fontStyle & 1 ? "font-style:italic;" : ""}${token.fontStyle & 2 ? "font-weight:600;" : ""}">${esc(token.content)}</span>`,
         openTools: openEvidence,
       });
-      instance.reader.render({ outline: { briefing: item.documents[approach.id] }, comparison: { repositoryName: "diffcompass", branch: item.head.slice(0, 7) } });
+      instance.reader.render({ outline: { briefing: item.documents[approach.id] }, comparison: { repositoryName: item.repositoryName, branch: item.head.slice(0, 7) } });
       if (approach.id === "trace") scenarioPanel(instance, item);
       if (approach.id === "decisions") designReadings(instance);
       instances.set(key, instance); return instance;
@@ -92,7 +91,12 @@
       current = instances.get(key) ?? mount(item, approach);
       current.workspace.hidden = false; current.reader.setActive(true);
       get("case-picker").value = item.id;
-      get("case-source").innerHTML = `<span>Historical change · ${item.files} files</span><a href="https://github.com/Mindera/diffcompass/compare/${item.base}...${item.head}" target="_blank" rel="noopener noreferrer">${item.base.slice(0, 7)} → ${item.head.slice(0, 7)} ↗</a>`;
+      const revisions = `${item.base.slice(0, 7)} → ${item.head.slice(0, 7)}`;
+      const repositoryUrl = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(item.repositoryUrl ?? "") ? item.repositoryUrl : null;
+      const revisionLabel = repositoryUrl
+        ? `<a href="${esc(repositoryUrl)}/compare/${esc(item.base)}...${esc(item.head)}" target="_blank" rel="noopener noreferrer">${esc(revisions)} ↗</a>`
+        : `<span>${esc(revisions)}</span>`;
+      get("case-source").innerHTML = `<span>${esc(item.repositoryName)} · ${item.files} changed files</span>${revisionLabel}`;
       get("approach-description").textContent = approach.description;
       get("case-description").textContent = item.description;
       for (const button of get("approaches").querySelectorAll("button")) {
@@ -127,7 +131,7 @@
     });
     get("notes-download").addEventListener("click", () => {
       const report = ["# Briefing experiment notes", "", ...data.cases.flatMap(item => [
-        `## ${item.title}`, `Source: ${item.base} → ${item.head}`, "",
+        `## ${item.title}`, `Repository: ${item.repositoryName}`, `Source: ${item.base} → ${item.head}`, "",
         ...data.approaches.flatMap(a => [`### ${a.label}`, notes[`${item.id}/${a.id}`] || "No notes yet.", ""]),
       ])].join("\n");
       const url = URL.createObjectURL(new Blob([report], { type: "text/markdown" }));
