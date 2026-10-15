@@ -65,6 +65,62 @@ try {
       console.log(`PASS ${item} / ${approach}: diagram, highlighted source, outline, interactions`);
     }
   }
+  // Both inner edges resize the actual panes, without losing the reading point.
+  const paneWidth = (side: string) => workspace.locator(`.lab-${side}`).evaluate(el => el.getBoundingClientRect().width);
+  const dragPane = async (side: string, delta: number) => {
+    const edge = await workspace.locator(`[data-resize-pane="${side}"]`).boundingBox();
+    assert.ok(edge);
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(edge.x + edge.width / 2 + delta, edge.y + 100, { steps: 12 });
+    await page.mouse.up();
+  };
+  await workspace.locator("[data-briefing-section]").nth(1).click();
+  const readingPoint = await workspace.locator(".lab-scroll").evaluate(scroll => {
+    const top = scroll.getBoundingClientRect().top;
+    const block = [...scroll.querySelectorAll<HTMLElement>("[data-briefing-block]")].find(el => el.getBoundingClientRect().bottom > top + 12)!;
+    return { id: block.dataset.briefingBlock, offset: block.getBoundingClientRect().top - top };
+  });
+  const initialOutline = await paneWidth("outline"), initialEvidence = await paneWidth("evidence");
+  await dragPane("outline", 70);
+  await dragPane("evidence", -100);
+  assert.equal(await paneWidth("outline"), initialOutline + 70);
+  assert.equal(await paneWidth("evidence"), initialEvidence + 100);
+  await page.waitForFunction(({ id, offset }) => {
+    const scroll = document.querySelector('.lab-workspace:not([hidden]) .lab-scroll')!;
+    const block = scroll.querySelector(`[data-briefing-block="${id}"]`)!;
+    return Math.abs(block.getBoundingClientRect().top - scroll.getBoundingClientRect().top - offset) < 2;
+  }, readingPoint);
+  const outlineHandle = workspace.locator('[data-resize-pane="outline"]');
+  const evidenceHandle = workspace.locator('[data-resize-pane="evidence"]');
+  await outlineHandle.focus(); await page.keyboard.press("ArrowLeft");
+  await evidenceHandle.focus(); await page.keyboard.press("ArrowRight");
+  assert.equal(await paneWidth("outline"), initialOutline + 50);
+  assert.equal(await paneWidth("evidence"), initialEvidence + 80);
+  await page.locator("#case-picker").selectOption("publication");
+  await page.locator("#approach-outcome").click();
+  assert.equal(await paneWidth("outline"), initialOutline + 50);
+  assert.equal(await paneWidth("evidence"), initialEvidence + 80);
+  await page.reload();
+  await workspace.waitFor();
+  assert.equal(await paneWidth("outline"), initialOutline + 50);
+  assert.equal(await paneWidth("evidence"), initialEvidence + 80);
+  await evidenceHandle.focus(); await page.keyboard.press("End");
+  await outlineHandle.focus(); await page.keyboard.press("End");
+  assert.ok(await workspace.locator(".lab-scroll").evaluate(el => el.clientWidth >= 360));
+  await page.setViewportSize({ width: 950, height: 1050 });
+  await page.waitForFunction(() => document.querySelector('.lab-workspace:not([hidden]) .lab-scroll')!.clientWidth >= 360);
+  assert.ok(await workspace.evaluate(el => el.scrollWidth <= el.clientWidth));
+  assert.equal(Number(await outlineHandle.getAttribute("aria-valuenow")), await paneWidth("outline"));
+  await page.setViewportSize({ width: 1600, height: 1050 });
+  await page.waitForFunction(() => document.querySelector('.lab-workspace:not([hidden]) [data-resize-pane="evidence"]')?.getAttribute("aria-valuenow") === "720");
+  await outlineHandle.dblclick(); await evidenceHandle.dblclick();
+  assert.equal(await paneWidth("outline"), initialOutline);
+  assert.equal(await paneWidth("evidence"), initialEvidence);
+  await page.locator("#case-picker").selectOption("checkpoints");
+  await page.locator("#approach-decisions").click();
+  console.log("PASS draggable inner edges, reading point, keyboard sizing, shared saved widths, viewport limits, reset");
+
   // Per-approach reading position and notes survive switching and reloads.
   const before = await workspace.locator(".lab-scroll").evaluate(el => el.scrollTop);
   await page.locator("#approach-outcome").click();
@@ -86,6 +142,7 @@ try {
   await page.goForward();
   assert.equal(await page.locator("#approach-trace").getAttribute("aria-selected"), "true");
   await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await workspace.locator('[data-resize-pane]:visible').count(), 0);
   await workspace.locator(".lab-scroll").evaluate(el => { el.scrollTop = 0; });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   assert.ok(await workspace.evaluate(el => el.getBoundingClientRect().right <= innerWidth));

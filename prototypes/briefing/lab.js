@@ -4,6 +4,7 @@
   const get = id => document.getElementById(id);
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const stage = get("lab-stage"), sheet = get("evidence-sheet"), notesDialog = get("notes-dialog");
+  const paneResizers = createReadingPaneResizers(stage);
   let current, sheetOwner;
   const instances = new Map();
   const notesKey = "diffcompass-reading-experiment-notes-v1";
@@ -68,6 +69,7 @@
       workspace.setAttribute("role", "tabpanel"); workspace.setAttribute("aria-labelledby", `approach-${approach.id}`);
       workspace.innerHTML = '<aside class="briefing-outline lab-outline"></aside><div class="lab-scroll"><article class="briefing-view"></article></div><aside class="briefing-inspector lab-evidence"></aside><div class="lab-chips" hidden></div>';
       stage.appendChild(workspace);
+      paneResizers.mount(workspace);
       const instance = { key, item, approach, workspace, view: workspace.querySelector(".briefing-view"), pane: workspace.querySelector(".lab-evidence"), scroll: workspace.querySelector(".lab-scroll") };
       instance.reader = createBriefingReader({
         view: instance.view, outline: workspace.querySelector(".lab-outline"), pane: instance.pane, chips: workspace.querySelector(".lab-chips"),

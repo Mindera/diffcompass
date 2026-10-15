@@ -21,11 +21,14 @@
 .lab-caption > span { color: var(--muted); font-size: 11px; max-width: 45%; }
 #lab-stage { min-height: 0; min-width: 0; position: relative; }
 .lab-loading { padding: 48px; color: var(--muted); }
-.lab-workspace { height: 100%; display: grid; grid-template-columns: 210px minmax(0, 1fr) 340px; }
+.lab-workspace { position: relative; height: 100%; display: grid; grid-template-columns: var(--lab-outline-width, 210px) minmax(0, 1fr) var(--lab-evidence-width, 340px); }
 .lab-workspace[hidden] { display: none; }
-.lab-outline { border-right: 1px solid var(--border); background: var(--panel); min-height: 0; }
+.lab-outline { border-right: 1px solid var(--border); background: var(--panel); min-height: 0; min-width: 0; }
 .lab-scroll { min-width: 0; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; }
 .lab-evidence { border-left: 1px solid var(--border); background: var(--panel); min-width: 0; }
+.lab-resizer.file-resizer { left: calc(var(--lab-outline-width, 210px) - 7px); right: auto; }
+.lab-resizer.agent-resizer { right: calc(var(--lab-evidence-width, 340px) - 7px); left: auto; }
+.lab-resizing, .lab-resizing * { cursor: col-resize !important; user-select: none !important; }
 #reading-lab .briefing-view { padding-top: 30px; padding-bottom: 90px; }
 #reading-lab .briefing-heading h1 { font-size: clamp(28px, 2.6vw, 38px); max-width: 26ch; }
 #reading-lab [data-briefing-ask], #reading-lab [data-briefing-source], #reading-lab [data-briefing-generate], #reading-lab .briefing-version { display: none; }
@@ -70,7 +73,7 @@
 .lab-sheet { height: 88dvh; max-height: 88dvh; padding: 12px 0 0; }
 .lab-sheet > button { margin: 0 16px 12px; }
 .lab-sheet .lab-evidence { height: calc(100% - 48px); border: 0; }
-@media (max-width: 1200px) { .lab-workspace { grid-template-columns: 175px minmax(0, 1fr) 285px; } .lab-header { gap: 18px; } .lab-source { display: none; } .lab-header > button { margin-left: auto; } .lab-caption > span { display: none; } }
+@media (max-width: 1200px) { .lab-header { gap: 18px; } .lab-source { display: none; } .lab-header > button { margin-left: auto; } .lab-caption > span { display: none; } }
 @media (max-width: 900px) {
   .lab-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
   .lab-brand { margin-right: auto; }

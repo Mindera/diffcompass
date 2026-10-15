@@ -75,6 +75,32 @@ try {
   await page.locator('#briefing-view .briefing-canvas [data-briefing-element="receipt"]').click();
   assert.match(await page.locator('#briefing-inspector [data-evidence-element="receipt"] code').textContent(), /export function receipt/);
 
+  console.log('CHECK Briefing pane resizing after collapsing the Changes file tree');
+  await page.locator('#diff-tab').click();
+  await page.locator('#file-panel-collapse').click();
+  await page.locator('#briefing-tab').click();
+  await page.locator('#file-resizer').waitFor({ state: 'visible' });
+  for (const [handle, pane, delta] of [['file', 'file', 60], ['agent', 'agent', -80]]) {
+    const panel = page.locator(`#${pane}-panel`);
+    const before = (await panel.boundingBox()).width;
+    const edge = await page.locator(`#${handle}-resizer`).boundingBox();
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(edge.x + edge.width / 2 + delta, edge.y + 100, { steps: 12 });
+    await page.mouse.up();
+    assert.equal((await panel.boundingBox()).width, before + Math.abs(delta));
+  }
+  const savedWidths = await page.locator('#workspace').evaluate(el => [el.style.getPropertyValue('--file-panel-width'), el.style.getPropertyValue('--agent-panel-width')]);
+  await page.locator('#diff-tab').click();
+  assert.equal(await page.locator('#file-panel-collapse').getAttribute('aria-expanded'), 'false');
+  await page.reload();
+  await page.locator('#briefing-tab').click();
+  await page.locator('#briefing-view .briefing-canvas svg').waitFor();
+  assert.deepEqual(await page.locator('#workspace').evaluate(el => [el.style.getPropertyValue('--file-panel-width'), el.style.getPropertyValue('--agent-panel-width')]), savedWidths);
+  await page.setViewportSize({ width: 1200, height: 1000 });
+  await page.locator('#agent-resizer').focus(); await page.keyboard.press('End');
+  assert.ok(await page.locator('#workspace').evaluate(el => el.scrollWidth <= el.clientWidth), 'Visible Briefing outline counts towards the evidence pane width limit');
+
   console.log('CHECK Briefing mobile evidence sheet');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#diff-panel').evaluate(el => { el.scrollTop = 0; });

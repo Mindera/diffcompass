@@ -1264,7 +1264,8 @@ function setFilePanelWidth(value, persist = false) {
 }
 
 function setAgentPanelWidth(value, persist = false) {
-  const fileWidth = state.filePanelCollapsed ? COLLAPSED_PANE_WIDTH : state.filePanelWidth;
+  const fileCollapsed = state.filePanelCollapsed && state.activeTab !== "briefing";
+  const fileWidth = fileCollapsed ? COLLAPSED_PANE_WIDTH : state.filePanelWidth;
   const viewportLimit = Math.max(AGENT_PANEL_MIN, Math.min(AGENT_PANEL_MAX, window.innerWidth - fileWidth - diffPanelMinimum()));
   const width = Math.round(Math.max(AGENT_PANEL_MIN, Math.min(viewportLimit, value)));
   state.agentPanelWidth = width;
@@ -4938,6 +4939,12 @@ function closeBriefingSheet() { if (elements["briefing-sheet"].open) elements["b
 function syncBriefingLayout() {
   const active = state.activeTab === "briefing";
   elements.workspace.classList.toggle("briefing-mode", active);
+  elements["file-resizer"].setAttribute("aria-label", active ? "Resize outline pane" : "Resize file tree");
+  elements["agent-resizer"].setAttribute("aria-label", active ? "Resize evidence pane" : "Resize agent pane");
+  if (state.session) {
+    setAgentPanelWidth(state.agentPanelWidth);
+    setFilePanelWidth(state.filePanelWidth);
+  }
   for (const id of ["briefing-outline", "briefing-inspector", "briefing-context", "briefing-mobile-tools"]) elements[id].classList.toggle("hidden", !active);
   if (!active) closeBriefingSheet();
   if (state.session) getBriefingReader().render(state.session);

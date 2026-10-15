@@ -41,6 +41,11 @@ exactly-once guarantee, and a checkpoint's “resolved” classification is not 
 that a finding was fixed. Historical test excerpts are evidence of the committed
 regressions, not a claim that those historical suites were executed by this lab.
 
+Drag either side pane's inner edge to resize it; double-click the edge to reset
+that pane. Focus an edge and use the arrow keys, Home, or End to resize by keyboard.
+Widths are shared across examples and remembered in this browser. Smaller windows
+temporarily limit them to keep the story readable; mobile uses the evidence sheet.
+
 The version switcher retains each reading position. URLs identify the example
 and approach and work with Back/Forward. **Comparison notes** saves text per
 example and approach in this browser; download the notes to share them. This

@@ -18,6 +18,7 @@ const localFile = (name: string) => fileURLToPath(new URL(name, import.meta.url)
 const assets: Record<string, { type: string; body: string }> = {
   "/": { type: "text/html", body: await Bun.file(localFile("index.html")).text() },
   "/lab.js": { type: "text/javascript", body: await Bun.file(localFile("lab.js")).text() },
+  "/panes.js": { type: "text/javascript", body: await Bun.file(localFile("panes.js")).text() },
   "/lab.css": { type: "text/css", body: await Bun.file(localFile("lab.css")).text() },
   "/reader.js": { type: "text/javascript", body: await Bun.file(publicFile("briefing.js")).text() },
   "/diagram-labels.js": { type: "text/javascript", body: await Bun.file(publicFile("diagram-labels.js")).text() },
