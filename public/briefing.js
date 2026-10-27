@@ -173,6 +173,13 @@ function createBriefingReader(options) {
           if (generation !== ticket) return;
           if (window.ReviewDiagramLabels) window.ReviewDiagramLabels.mount(box, result.svg);
           else box.innerHTML = result.svg;
+          const svg = box.querySelector("svg");
+          if (svg?.viewBox.baseVal.width) {
+            // Wide maps scroll at their native text size instead of shrinking
+            // every label to fit the prose column, including on mobile.
+            svg.style.minWidth = `${svg.viewBox.baseVal.width}px`;
+            box.tabIndex = 0;
+          }
           if (d.family === "sequence") {
             const messages = box.querySelectorAll(".messageText");
             if (messages.length === d.elements.length) messages.forEach((el, i) => bindElement(el, b.id, d.elements[i].id));
@@ -323,6 +330,12 @@ function createBriefingReader(options) {
   }
   function revealSelectedEvidence() {
     if (!selected) return;
+    const canvas = view.querySelector(`[data-briefing-block="${CSS.escape(selected.blockId)}"] .briefing-canvas`);
+    const element = canvas?.querySelector(`[data-briefing-element="${CSS.escape(selected.elementId)}"]`);
+    if (element) {
+      const target = element.getBoundingClientRect(), bounds = canvas.getBoundingClientRect();
+      if (target.left < bounds.left || target.right > bounds.right) canvas.scrollLeft += target.left - bounds.left - (bounds.width - target.width) / 2;
+    }
     const card = pane.querySelector(`[data-evidence-element="${CSS.escape(selected.elementId)}"]`);
     const container = pane.querySelector(".briefing-evidence-scroll");
     if (card && container) container.scrollTop += card.getBoundingClientRect().top - container.getBoundingClientRect().top - 12;

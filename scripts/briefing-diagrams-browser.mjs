@@ -47,6 +47,10 @@ try {
   async function exercise(reader, inspector, nativeCallFlow) {
     for (const [index, diagram] of document.diagrams.entries()) {
       const map = reader.locator(`[data-briefing-block="map-${index}"] .briefing-canvas`);
+      if (diagram.family !== 'call-flow' || !nativeCallFlow) {
+        await map.locator('svg').waitFor();
+        assert.ok(await map.locator('svg').evaluate(svg => svg.getBoundingClientRect().width >= svg.viewBox.baseVal.width - 1), 'Diagram labels retain their native size');
+      }
       for (const element of diagram.elements) {
         const target = map.locator(`[data-briefing-element="${element.id}"]`).filter({ visible: true }).first();
         await target.waitFor();
@@ -71,6 +75,9 @@ try {
     assert.equal(await reader.locator('.briefing-canvas [data-briefing-element="root_start"]').count(), 0, 'Uncaptured pseudostates do not acquire evidence');
   }
   await exercise(page.locator('#briefing-view'), page.locator('#briefing-inspector'), true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.locator('#briefing-view').evaluate(el => el.scrollWidth <= el.clientWidth), 'Wide diagrams scroll inside the mobile reader');
+  await page.setViewportSize({ width: 1600, height: 1000 });
 
   // Render the same captured document through the real offline HTML exporter.
   const saved = await loadPersistedSession(join(dirname(repository), 'session.json'));
