@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
-import { captureBriefingSequences } from "./briefing-sequence.ts";
+import { captureBriefingDiagrams } from "./briefing-diagrams.ts";
 import { archifyCandidates } from "./archify.ts";
+import { validDomainDetails } from "./domain-context.ts";
+import { validateMapNodeRoles } from "./map-node-roles.ts";
 import { diffSourceIdentity, loadCapturedSource } from "./diff-sources.ts";
 import { ReviewError } from "./errors.ts";
 import { briefingEvidenceText, captureBriefingDiffs, validBriefingDiff, type BriefingDiff } from "./briefing-diff.ts";
-import type { GitComparison, TourOutline, TourAnchor, SequenceSourceAnchor } from "./types.ts";
+import type { ArchifyArtifact, GitComparison, TourOutline, TourAnchor, SequenceSourceAnchor } from "./types.ts";
 
 export type BriefingFamily = "sequence" | "architecture" | "lifecycle" | "data-model" | "call-flow" | "domain";
 export interface ElementSource { elementId: string; anchors: SequenceSourceAnchor[] }
 export interface BriefingEvidence extends SequenceSourceAnchor { id: string; kind: "code" | "document"; blob?: string; available: boolean; reason?: string; diff?: BriefingDiff }
 export interface BriefingElement { id: string; label: string; kind: string; evidenceIds: string[] }
-export interface BriefingDiagram { id: string; title: string; family: BriefingFamily; outdated?: boolean; mermaid?: string; archifyHtml?: string; ir: Record<string, unknown>; elements: BriefingElement[] }
+export interface BriefingDiagram { id: string; title: string; family: BriefingFamily; outdated?: boolean; mermaid?: string; archifyHtml?: string; nodeRoles?: ArchifyArtifact["nodeRoles"]; domainDetails?: ArchifyArtifact["domainDetails"]; ir: Record<string, unknown>; elements: BriefingElement[] }
 export type NarrativeBlock =
   | { id: string; kind: "prose"; text: string; basis?: "stated" | "observed" | "inferred" }
   | { id: string; kind: "example"; text: string; language?: string }
@@ -64,7 +66,9 @@ export function validBriefingDocument(value: unknown): value is BriefingDocument
   const evidence = new Set(v.evidence.map((e: any) => e.id)), diagrams = new Set<string>();
   for (const d of v.diagrams) {
     if (!record(d) || !id(d.id) || diagrams.has(d.id) || !str(d.title, 8000) || !["sequence", "architecture", "lifecycle", "data-model", "call-flow", "domain"].includes(d.family) || !record(d.ir) || JSON.stringify(d.ir).length > 200000 || (d.mermaid !== undefined && !str(d.mermaid, 50000)) || !Array.isArray(d.elements) || d.elements.length > 240 || (d.outdated !== undefined && typeof d.outdated !== "boolean")) return false;
-    if (d.archifyHtml !== undefined && (d.family !== "sequence" || !str(d.archifyHtml, 5 * 1024 * 1024))) return false;
+    if (d.archifyHtml !== undefined && (d.family === "call-flow" || !str(d.archifyHtml, 5 * 1024 * 1024))) return false;
+    if (!validDomainDetails(d.domainDetails)) return false;
+    try { validateMapNodeRoles(d.nodeRoles); } catch { return false; }
     diagrams.add(d.id); const elements = new Set<string>();
     for (const e of d.elements) {
       if (!record(e) || !id(e.id) || elements.has(e.id) || !str(e.label, 8000) || !str(e.kind) || !Array.isArray(e.evidenceIds) || e.evidenceIds.length > 8 || !e.evidenceIds.every((key: string) => evidence.has(key))) return false;
@@ -141,6 +145,8 @@ export async function buildBriefing(comparison: GitComparison, outline: TourOutl
     const source = candidate.id === "architecture-behavior" ? outline.behaviorArchitecture : candidate.id === "architecture-journey" ? outline.architecture : candidate.type === "lifecycle" ? outline.stateDiagram : candidate.type === "dataflow" ? outline.dataModel : undefined;
     const family: BriefingFamily = model ? "domain" : flow ? "sequence" : candidate.type === "lifecycle" ? "lifecycle" : candidate.type === "dataflow" ? "data-model" : "architecture";
     const d: BriefingDiagram = { id: candidate.id, title: candidate.title, family, mermaid: flow?.mermaid ?? source?.mermaid, ir: structuredClone(candidate.ir), ...(flow?.outdated || (source && "outdated" in source && source.outdated) ? { outdated: true } : {}), elements: [] };
+    d.nodeRoles = structuredClone(candidate.nodeRoles);
+    d.domainDetails = structuredClone(candidate.domainDetails);
     const groups = family === "sequence" ? ["messages"] : family === "lifecycle" ? ["states", "transitions"] : family === "data-model" ? ["nodes", "flows"] : ["components", "connections"];
     for (const group of groups) for (const [index, value] of ((candidate.ir[group] ?? []) as Record<string, unknown>[]).entries()) {
       if (!id(value.id)) continue;
@@ -186,7 +192,7 @@ export async function buildBriefing(comparison: GitComparison, outline: TourOutl
   sections = sections.map(s => ({ ...s, blocks: s.blocks.map(b => b.kind === "diagram" && !diagrams.some(d => d.id === b.diagramId) || b.kind === "source" && !evidence.some(e => e.id === b.evidenceId) ? { id: b.id, kind: "prose" as const, text: "The referenced evidence is unavailable in this snapshot." } : b) }));
   const document: BriefingDocument = { version: 1, id: crypto.randomUUID(), title: authored?.title ?? outline.title.slice(0, 500), createdAt: new Date().toISOString(), fingerprint: briefingFingerprint(comparison, intent), comparisonId: diffSourceIdentity(comparison), mode: authored ? "authored" : "overview", ...(!authored && (outline.phases.some(p => p.steps.some(s => s.outdated)) || diagrams.some(d => d.outdated)) ? { outdated: true } : {}), sections, diagrams, evidence, intent };
   await captureBriefingDiffs(comparison, document, cache);
-  await captureBriefingSequences(document, outline.archifyArtifacts);
+  await captureBriefingDiagrams(document, outline.archifyArtifacts);
   return document;
 }
 async function overviewSections(outline: TourOutline, capture: (anchor: TourAnchor) => Promise<string | undefined>): Promise<NarrativeSection[]> {

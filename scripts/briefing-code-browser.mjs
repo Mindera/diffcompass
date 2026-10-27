@@ -48,7 +48,9 @@ try {
   await page.locator('#diff-tab').click();
   assert.equal(await page.locator('[data-diff-layout="split"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('[data-diff-wrap="wrap"]').getAttribute('aria-pressed'), 'true');
+  const savedScroll = page.waitForResponse(response => response.url().endsWith('/api/preferences') && response.request().postDataJSON()?.diffWrap === 'scroll' && response.request().postDataJSON()?.diffLayout === 'split');
   await page.locator('[data-diff-wrap="scroll"]').click();
+  await savedScroll;
   await page.locator('#briefing-tab').click();
   assert.equal(await reader.locator('[data-briefing-wrap="scroll"]').getAttribute('aria-pressed'), 'true');
   assert.ok(await source.locator('.briefing-diff-column').first().evaluate(el => el.scrollWidth > el.clientWidth));
@@ -94,7 +96,7 @@ try {
   }
   assert.ok(await originalFrame.evaluate(el => el.isConnected), 'Fast reader scroll reversals retain the Monaco frame');
   await page.locator('[data-briefing-section="boundaries"]').click();
-  await reader.locator('.briefing-canvas [data-briefing-element="receipt"]').click();
+  await reader.frameLocator('.briefing-canvas iframe').first().locator('g[data-node-id="receipt"]').click();
   const paneSource = page.locator('#briefing-inspector [data-evidence-element="receipt"] .briefing-source').first();
   const paneIframe = paneSource.locator('.briefing-code-frame:not([hidden])');
   await paneIframe.waitFor();

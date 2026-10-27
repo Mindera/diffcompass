@@ -23,7 +23,7 @@ try {
   await page.locator('#diff-tab').click();
   await page.locator('[data-diff-layout="unified"]').click();
   await page.locator('#briefing-tab').click();
-  await page.locator('#briefing-view .briefing-canvas svg').waitFor();
+  await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('.diagram-container > svg').waitFor();
   await page.locator('#briefing-view [data-evidence-id="subtotal-body"] code span[style]').first().waitFor();
   await currentSection('intent');
   assert.equal(await page.locator('#briefing-outline [aria-current]').count(), 1);
@@ -89,7 +89,7 @@ try {
   console.log('CHECK Briefing diagram source selection');
   await page.locator('[data-briefing-section="boundaries"]').click();
   await currentSection('boundaries');
-  await page.locator('#briefing-view .briefing-canvas [data-briefing-element="receipt"]').click();
+  await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('g[data-node-id="receipt"]').click();
   assert.match(await page.locator('#briefing-inspector [data-evidence-element="receipt"] code').textContent(), /export function receipt/);
 
   const cartCard = page.locator('#briefing-inspector [data-evidence-element="cart"]');
@@ -148,7 +148,7 @@ try {
   assert.equal(await evidenceScroll.evaluate(el => el.scrollTop), evidencePosition, 'Reopening preserves the evidence reading position');
   assert.equal(await receiptTitle.getAttribute('aria-pressed'), 'true', 'Reopening retains the selection');
   await page.getByRole('button', { name: 'Collapse evidence pane', exact: true }).click();
-  await page.locator('#briefing-view .briefing-canvas [data-briefing-element="cart"]').click();
+  await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('g[data-node-id="cart"]').click();
   await page.locator('#agent-panel').waitFor({ state: 'visible' });
   assert.equal(await cartCard.locator('.briefing-card-title').getAttribute('aria-pressed'), 'true', 'A diagram click reopens the matching evidence');
   await receiptTitle.click();
@@ -179,7 +179,7 @@ try {
   assert.equal(await page.locator('#file-panel-collapse').getAttribute('aria-expanded'), 'false');
   await page.reload();
   await page.locator('#briefing-tab').click();
-  await page.locator('#briefing-view .briefing-canvas svg').waitFor();
+  await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('.diagram-container > svg').waitFor();
   assert.equal(await wideButton.getAttribute('aria-pressed'), 'true', 'The wider reading preference survives reload');
   assert.deepEqual(await page.locator('#workspace').evaluate(el => [el.style.getPropertyValue('--file-panel-width'), el.style.getPropertyValue('--agent-panel-width')]), savedWidths);
   try { await page.waitForFunction(({ id, offset }) => {
@@ -194,7 +194,7 @@ try {
     }), savedPosition.id));
     throw error;
   }
-  await page.locator('#briefing-view .briefing-canvas [data-briefing-element="receipt"][aria-pressed="true"]').waitFor();
+  await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('g[data-node-id="receipt"][aria-pressed="true"]').waitFor();
   assert.match(await page.locator('#briefing-inspector [data-evidence-element="receipt"] code').textContent(), /export function receipt/);
   await wideButton.click();
   assert.equal(await wideButton.getAttribute('aria-pressed'), 'false');
@@ -209,7 +209,7 @@ try {
   const freshPage = await page.context().newPage();
   await freshPage.goto(url);
   await freshPage.locator('#briefing-tab').click();
-  await freshPage.locator('#briefing-view .briefing-canvas svg g[data-briefing-element]').first().waitFor();
+  await freshPage.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('g[data-node-id]').first().waitFor();
   await freshPage.waitForFunction(() => document.getElementById('diff-panel').scrollTop === 0);
   assert.equal(await freshPage.locator('#briefing-view [data-briefing-element][aria-pressed="true"]').count(), 0);
   await freshPage.close();

@@ -1,4 +1,4 @@
-import { captureBriefingSequences, briefingSequenceHtml } from "../src/briefing-sequence.ts";
+import { captureBriefingDiagrams, briefingDiagramHtml } from "../src/briefing-diagrams.ts";
 import { createRequestHandler } from "../src/server.ts";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -244,43 +244,66 @@ test("regeneration captures reviewed sequence repairs and diffs without rewritin
 test("sequence viewers reuse matching Archify artifacts and remain pinned when the tour changes", async () => {
   const document = structuredClone(persisted.outline!.briefing!);
   const diagram = document.diagrams.find(d => d.family === "sequence")!;
+  document.diagrams = [diagram];
   const savedHtml = (): string | undefined => diagram.archifyHtml;
   delete diagram.archifyHtml;
   const artifact = { id: diagram.id, type: "sequence", ir: diagram.ir, html: "<html><head></head><body>saved viewer</body></html>" } as import("../src/types.ts").ArchifyArtifact;
   let renders = 0;
-  const renderer = { async renderSequenceSnapshot() { renders++; return "replacement viewer"; } };
-  await captureBriefingSequences(document, [artifact], renderer);
+  const renderer = { async renderSnapshot() { renders++; return { ...artifact, html: "replacement viewer" }; } };
+  await captureBriefingDiagrams(document, [artifact], renderer);
   expect(renders).toBe(0);
   expect(savedHtml()).toBe(artifact.html);
   const changed = { ...artifact, html: "new tour", ir: { ...artifact.ir, title: "Different diagram" } };
-  await captureBriefingSequences(document, [changed], renderer);
+  await captureBriefingDiagrams(document, [changed], renderer);
   expect(savedHtml()).toBe(artifact.html);
   delete diagram.archifyHtml;
-  await captureBriefingSequences(document, [changed], renderer);
+  await captureBriefingDiagrams(document, [changed], renderer);
   expect(renders).toBe(1);
   expect(savedHtml()).toBe("replacement viewer");
   delete diagram.archifyHtml;
-  await captureBriefingSequences(document, [changed], { async renderSequenceSnapshot() { throw new Error("renderer unavailable"); } });
+  await captureBriefingDiagrams(document, [changed], { async renderSnapshot() { throw new Error("renderer unavailable"); } });
   expect(savedHtml()).toBeUndefined();
   expect(diagram.elements).toEqual(persisted.outline!.briefing!.diagrams.find(d => d.id === diagram.id)!.elements);
 });
 
-test("Briefing sequence route serves the saved viewer separately from snapshots and rejects retired documents", async () => {
+test("every Archify family captures its native viewer without mutating source IR", async () => {
+  const document = structuredClone(persisted.outline!.briefing!);
+  const original = structuredClone(document.diagrams);
+  const types: string[] = [];
+  for (const diagram of document.diagrams) delete diagram.archifyHtml;
+  await captureBriefingDiagrams(document, [], { async renderSnapshot(id, title, type, ir) {
+    types.push(type);
+    return { id, title, type, ir: { ...ir, layoutMarker: true } as import("../src/types.ts").ArchifyArtifact["ir"], html: `<html><head></head><body>${type}</body></html>`, evidence: [], affectedFiles: [], view: "single", validationReceipt: "fixture", renderedAt: new Date().toISOString() };
+  } });
+  expect(types.sort()).toEqual(["architecture", "architecture", "architecture", "dataflow", "lifecycle", "sequence"]);
+  expect(document.diagrams.find(d => d.family === "call-flow")?.archifyHtml).toBeUndefined();
+  for (const diagram of document.diagrams.filter(d => d.family !== "call-flow")) {
+    expect(diagram.elements).toEqual(original.find(d => d.id === diagram.id)!.elements);
+    expect(briefingDiagramHtml(diagram)).toContain("connect-src 'none'");
+    expect(briefingDiagramHtml(diagram)).toContain("diffcompass-briefing-diagram-select");
+  }
+  expect(validBriefingDocument(document)).toBe(true);
+  document.diagrams[0]!.nodeRoles = { invented: { type: "Made up", evidence: "bad" } } as any;
+  expect(validBriefingDocument(document)).toBe(false);
+});
+
+test("Briefing diagram routes serve pinned viewers separately from snapshots and reject retired documents", async () => {
   const session = await ReviewSession.create(fixture.repository, undefined, { resume: true, stateFile: fixture.stateFile, agentAdapters: [] });
   try {
     const document = session.outline!.briefing!;
-    const diagram = document.diagrams.find(d => d.family === "sequence")!;
-    diagram.archifyHtml = "<html><head></head><body>saved viewer</body></html>";
-    const handler = createRequestHandler(session);
-    const url = `http://localhost/briefing-sequence/${document.id}/${diagram.id}`;
-    const response = await handler(new Request(url));
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-security-policy")).toContain("connect-src 'none'");
-    expect(await response.text()).toContain("saved viewer");
-    expect(session.snapshot().outline!.briefing!.diagrams.find(d => d.id === diagram.id)!.archifyHtml).toBeUndefined();
-    expect((await handler(new Request(url, { method: "HEAD" }))).status).toBe(200);
-    const retired = await handler(new Request(url.replace(document.id, "retired")));
-    expect(retired.status).toBe(404);
-    expect(briefingSequenceHtml(diagram)).toContain('data-sequence-external-inspector');
+    for (const diagram of document.diagrams.filter(d => d.family !== "call-flow")) {
+      diagram.archifyHtml = "<html><head></head><body>saved viewer</body></html>";
+      const handler = createRequestHandler(session);
+      const url = `http://localhost/briefing-diagram/${document.id}/${diagram.id}`;
+      const response = await handler(new Request(url));
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-security-policy")).toContain("connect-src 'none'");
+      expect(await response.text()).toContain("saved viewer");
+      expect(session.snapshot().outline!.briefing!.diagrams.find(d => d.id === diagram.id)!.archifyHtml).toBeUndefined();
+      expect((await handler(new Request(url, { method: "HEAD" }))).status).toBe(200);
+      const retired = await handler(new Request(url.replace(document.id, "retired")));
+      expect(retired.status).toBe(404);
+      expect(briefingDiagramHtml(diagram)).toContain(diagram.family === "sequence" ? 'data-sequence-external-inspector' : 'data-diffcompass-briefing-inspector');
+    }
   } finally { await session.dispose(); }
 });

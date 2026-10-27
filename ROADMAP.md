@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.2.0, including the v2.1.0 feature baseline
+Canonical delivery state for v2.2.2, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -11,11 +11,28 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.2.0](https://github.com/Mindera/diffcompass/releases/tag/v2.2.0).
+Latest release: [v2.2.2](https://github.com/Mindera/diffcompass/releases/tag/v2.2.2).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.2.2
+
+- Use the shared Archify viewers for every supported Briefing map family:
+  sequence, architecture, lifecycle, data model and domain. Keep native call
+  trees consistent across the live reader, preview and offline export.
+- Start with the whole diagram visible. Preserve exact code bindings, selection,
+  user zoom and evidence scroll position. Keep saved viewers pinned to their
+  Briefing snapshot, with an explicit element-list fallback if unavailable.
+
+## Released in v2.2.1
+
+- Finish outcome-first Briefings with shared code renderer preferences,
+  split/unified diffs, scroll/wrap controls, adjustable side panes and a wider
+  reading column. Review generated sequences for missing causal steps.
+- Allow approval or change requests without an extra summary when inline review
+  comments already exist. Stabilize the browser checks used for release.
 
 ## Released in v2.2.0
 

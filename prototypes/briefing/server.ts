@@ -1,4 +1,4 @@
-import { captureBriefingSequences, briefingSequenceHtml, BRIEFING_SEQUENCE_CSP } from "../../src/briefing-sequence.ts";
+import { captureBriefingDiagrams, briefingDiagramHtml, BRIEFING_DIAGRAM_CSP } from "../../src/briefing-diagrams.ts";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
@@ -23,15 +23,15 @@ for (const item of cases) for (const source of item.document.evidence.filter(e =
 }
 const tokens = await highlightGroups([...unique.values()], "diffcompass");
 const highlighted = Object.fromEntries([...unique].map(([key, group]) => [key, tokens.find(t => t.id === group.id)!.lines]));
-const sequencePages = new Map<string, string>();
+const diagramPages = new Map<string, string>();
 const capturedDocuments = new Set<string>();
 for (const { document } of cases) {
   if (capturedDocuments.has(document.id)) continue;
   capturedDocuments.add(document.id);
-  await captureBriefingSequences(document);
+  await captureBriefingDiagrams(document);
   for (const diagram of document.diagrams) {
-    const html = briefingSequenceHtml(diagram);
-    if (html) sequencePages.set(`/briefing-sequence/${document.id}/${diagram.id}`, html);
+    const html = briefingDiagramHtml(diagram);
+    if (html) diagramPages.set(`/briefing-diagram/${document.id}/${diagram.id}`, html);
     delete diagram.archifyHtml;
   }
 }
@@ -44,10 +44,10 @@ const assets: Record<string, { type: string; body: string }> = {
   "/panes.js": { type: "text/javascript", body: await Bun.file(localFile("panes.js")).text() },
   "/lab.css": { type: "text/css", body: await Bun.file(localFile("lab.css")).text() },
   "/map-presentation.js": { type: "text/javascript", body: await Bun.file(publicFile("map-presentation.js")).text() },
-  "/reader.js": { type: "text/javascript", body: await Bun.file(publicFile("briefing.js")).text() },
+  "/reader.js": { type: "text/javascript", body: (await Promise.all(["call-tree.js", "briefing.js"].map(name => Bun.file(publicFile(name)).text()))).join("\n") },
   "/diagram-labels.js": { type: "text/javascript", body: await Bun.file(publicFile("diagram-labels.js")).text() },
   "/mermaid.js": { type: "text/javascript", body: await Bun.file(resolve(repository, "node_modules/mermaid/dist/mermaid.min.js")).text() },
-  "/styles.css": { type: "text/css", body: (await Promise.all(["styles.css", "map-nodes.css", "briefing.css"].map(name => Bun.file(publicFile(name)).text()))).join("\n") },
+  "/styles.css": { type: "text/css", body: (await Promise.all(["styles.css", "call-tree.css", "map-nodes.css", "briefing.css"].map(name => Bun.file(publicFile(name)).text()))).join("\n") },
   "/cases.json": { type: "application/json", body: payload },
 };
 const portIndex = process.argv.indexOf("--port");
@@ -58,10 +58,10 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     if (request.headers.get("host") !== url.host || !["127.0.0.1", "localhost"].includes(url.hostname)) return new Response("Invalid host", { status: 403 });
-    if (["GET", "HEAD"].includes(request.method) && url.pathname.startsWith("/briefing-sequence/")) {
-      const html = sequencePages.get(decodeURI(url.pathname));
-      return new Response(request.method === "HEAD" ? null : html ?? "Saved sequence viewer unavailable.", { status: html ? 200 : 404, headers: {
-        "content-type": "text/html; charset=utf-8", "content-security-policy": BRIEFING_SEQUENCE_CSP + "; frame-ancestors 'self'", "cache-control": "no-store",
+    if (["GET", "HEAD"].includes(request.method) && url.pathname.startsWith("/briefing-diagram/")) {
+      const html = diagramPages.get(decodeURI(url.pathname));
+      return new Response(request.method === "HEAD" ? null : html ?? "Saved diagram viewer unavailable.", { status: html ? 200 : 404, headers: {
+        "content-type": "text/html; charset=utf-8", "content-security-policy": BRIEFING_DIAGRAM_CSP + "; frame-ancestors 'self'", "cache-control": "no-store",
       } });
     }
     if (request.method !== "GET") return new Response("This reading prototype is read-only.", { status: 405 });

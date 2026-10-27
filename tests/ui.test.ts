@@ -58,7 +58,7 @@ test("map nodes share a visual skin and About credits Archify", async () => {
   expect(html).toContain('Third-party tools');
   expect(skin).toContain('.structural-graph-symbol,');
   expect(skin).toContain('g[data-node-id] > text[data-node-label]');
-  expect(server).toContain('${styles}\\n${mapNodeStyles}');
+  expect(server).toContain('${styles}\\n${callTreeStyles}\\n${mapNodeStyles}');
   expect(app).toContain('!state.structuralBlastRadiusId || (!event.ctrlKey && !event.metaKey)');
 });
 
@@ -1509,7 +1509,8 @@ test("flow provenance uses clear reviewer-facing wording", async () => {
   expect(app).toContain('data-flow-file="${escapeHtml(path)}"');
   expect(app).toContain("Exact files were not captured for this saved tour.");
   expect(app).toContain("The diagram source is invalid or unsupported.");
-  expect(app).toContain("This entrypoint did not exist before the change.");
+  const callTree = await readFile(join(root, "public/call-tree.js"), "utf8");
+  expect(callTree).toContain("This entrypoint did not exist before the change.");
   expect(app).toContain('aria-label="Call-flow legend"');
   expect(app).toContain("A changed callable exists before and after this change");
   expect(app).toContain('toast("Tour paused so this evidence can be shown. Resume the tour when you are ready."');

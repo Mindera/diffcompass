@@ -1,3 +1,7 @@
+// @ts-expect-error Bun embeds the shared native call-flow renderer.
+import callTreeScript from "../public/call-tree.js" with { type: "text" };
+// @ts-expect-error Bun embeds the shared native call-flow styles.
+import callTreeStyles from "../public/call-tree.css" with { type: "text" };
 // @ts-expect-error Bun embeds the narrative reader.
 import briefingScript from "../public/briefing.js" with { type: "text" };
 // @ts-expect-error Bun embeds the narrative styles.
@@ -6,7 +10,7 @@ import { timingSafeEqual } from "node:crypto";
 import { monacoAsset } from "./monaco-assets.ts";
 import { resolve } from "node:path";
 import { withArchifyEmbedAdapter } from "./archify-embed.ts";
-import { briefingSequenceHtml, BRIEFING_SEQUENCE_CSP } from "./briefing-sequence.ts";
+import { briefingDiagramHtml, BRIEFING_DIAGRAM_CSP } from "./briefing-diagrams.ts";
 import { highlightedSequenceSources } from "./sequence-walkthrough-preview.ts";
 import { BRAND_FILES } from "./brand.ts";
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
@@ -65,12 +69,12 @@ const semanticPresentationScript = `const semanticPresentation = (${createSemant
 const PUBLIC_FILES: Record<string, { body: BodyInit; contentType: string }> = {
   ...BRAND_FILES,
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
-  "app.js": { body: String(diagramLabelsScript) + "\n" + String(semanticPresentationScript) + "\n" + String(semanticDiffScript) + "\n" + String(briefingScript) + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
+  "app.js": { body: String(diagramLabelsScript) + "\n" + String(semanticPresentationScript) + "\n" + String(semanticDiffScript) + "\n" + `${callTreeScript}\n${briefingScript}` + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
   "semantic-diff-notices.txt": { body: String(semanticDiffNotices), contentType: "text/plain; charset=utf-8" },
   "theme.js": { body: String(themeScript), contentType: "text/javascript; charset=utf-8" },
   "sequence-walkthrough-host.js": { body: String(sequenceWalkthroughHost), contentType: "text/javascript; charset=utf-8" },
   "mermaid.min.js": { body: String(mermaidScript), contentType: "text/javascript; charset=utf-8" },
-  "styles.css": { body: `${styles}\n${mapNodeStyles}\n${semanticDiffStyles}\n${briefingStyles}`, contentType: "text/css; charset=utf-8" },
+  "styles.css": { body: `${styles}\n${callTreeStyles}\n${mapNodeStyles}\n${semanticDiffStyles}\n${briefingStyles}`, contentType: "text/css; charset=utf-8" },
 };
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
@@ -205,15 +209,15 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         const sources = edge ? await session.resolveArchifySequenceSources(id, edge) : session.archifySequenceSources(id);
         return json(await highlightedSequenceSources(sources, comparison));
       }
-      if (["GET", "HEAD"].includes(request.method) && url.pathname.startsWith("/briefing-sequence/")) {
-        const [documentId, diagramId] = url.pathname.slice("/briefing-sequence/".length).split("/").map(decodeURIComponent);
+      if (["GET", "HEAD"].includes(request.method) && url.pathname.startsWith("/briefing-diagram/")) {
+        const [documentId, diagramId] = url.pathname.slice("/briefing-diagram/".length).split("/").map(decodeURIComponent);
         const document = session.outline?.briefing;
         const diagram = document?.id === documentId ? document.diagrams.find(item => item.id === diagramId) : undefined;
-        const html = diagram && briefingSequenceHtml(diagram);
-        if (!html) throw new HttpError(404, "Saved sequence viewer unavailable. Explore its messages below.");
+        const html = diagram && briefingDiagramHtml(diagram);
+        if (!html) throw new HttpError(404, "Saved diagram viewer unavailable. Explore its elements below.");
         return new Response(request.method === "HEAD" ? null : html, { headers: {
           "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
-          "content-security-policy": BRIEFING_SEQUENCE_CSP + "; frame-ancestors 'self'",
+          "content-security-policy": BRIEFING_DIAGRAM_CSP + "; frame-ancestors 'self'",
           "referrer-policy": "no-referrer", "x-content-type-options": "nosniff",
         } });
       }

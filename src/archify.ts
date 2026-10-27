@@ -425,12 +425,11 @@ export class ArchifyRenderer {
     return existsSync(join(directory, "bin/archify.mjs")) ? directory : undefined;
   }
 
-  /** Render an already captured sequence IR using the same validation and viewer. */
-  async renderSequenceSnapshot(id: string, title: string, ir: Record<string, unknown>): Promise<string> {
-    const artifact = await this.renderCandidate(await this.cli(), {
-      id, title, type: "sequence", ir: ir as ArchifyDocument, evidence: [], affectedFiles: [],
+  /** Render captured IR using the same layout, validation and viewer as Diagrams. */
+  async renderSnapshot(id: string, title: string, type: ArchifyDiagramType, ir: Record<string, unknown>): Promise<ArchifyArtifact> {
+    return this.renderCandidate(await this.cli(), {
+      id, title, type, ir: structuredClone(ir) as ArchifyDocument, evidence: [], affectedFiles: [],
     });
-    return artifact.html;
   }
 
   private async cli(): Promise<string> {

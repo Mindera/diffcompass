@@ -66,10 +66,10 @@ import { createBriefingCodeRenderer, preferredBriefingRenderer } from "/briefing
           else setEvidenceClosed(true);
         },
         toolsCollapsed: () => !matchMedia("(max-width: 900px)").matches && stage.classList.contains("lab-evidence-closed"),
-        sequenceUrl: async (document, diagram) => {
-          const url = `/briefing-sequence/${encodeURIComponent(document.id)}/${encodeURIComponent(diagram.id)}`;
+        diagramUrl: async (document, diagram) => {
+          const url = `/briefing-diagram/${encodeURIComponent(document.id)}/${encodeURIComponent(diagram.id)}`;
           const response = await fetch(url, { method: 'HEAD' });
-          if (!response.ok) throw new Error('Saved sequence viewer unavailable.');
+          if (!response.ok) throw new Error('Saved diagram viewer unavailable.');
           return url;
         },
       });

@@ -47,7 +47,7 @@ try {
     assert.ok(await workspace.locator('.briefing-excerpt [data-diff-kind="addition"]').count() > 0);
     sawDeletion ||= await workspace.locator('.briefing-excerpt [data-diff-kind="deletion"]').count() > 0;
     for (const diagram of await workspace.locator(".briefing-diagram").all()) {
-      if (await diagram.locator('iframe[data-briefing-sequence]').count()) {
+      if (await diagram.locator('iframe[data-briefing-diagram]').count()) {
         await diagram.scrollIntoViewIfNeeded();
         const frame = await (await diagram.locator('iframe').elementHandle())!.contentFrame();
         await frame!.waitForFunction(() => window.Archify?.view?.state?.().mode === 'review');

@@ -1,6 +1,6 @@
 {
   "name": "diffcompass",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": true,
   "description": "A local, agent-led walkthrough for Git changes.",
   "repository": {
@@ -23,7 +23,7 @@
     "test:monaco": "bun scripts/check-monaco.ts",
     "test:github-suggestions-browser": "bun scripts/check-github-suggestions.ts",
     "typecheck": "bunx tsc --noEmit",
-    "verify": "bun run typecheck && bun test && node --check public/theme.js && node --check public/app.js && node --check public/diagram-labels.js && node --check public/briefing.js"
+    "verify": "bun run typecheck && bun test && node --check public/theme.js && node --check public/app.js && node --check public/diagram-labels.js && node --check public/briefing.js && node --check public/briefing-diagram.js && node --check public/call-tree.js"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

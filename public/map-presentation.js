@@ -32,7 +32,7 @@
   }
   window.addEventListener('message', (event) => {
     if (['diffcompass-map-preferences-ready', 'diffcompass-map-preferences-change'].includes(event.data?.type)) {
-      const frames = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame],iframe[data-briefing-sequence]')];
+      const frames = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame],iframe[data-briefing-diagram]')];
       const source = frames.find(frame => frame.contentWindow === event.source);
       if (!source) return;
       if (event.data.type === 'diffcompass-map-preferences-change') {
@@ -44,7 +44,7 @@
       return;
     }
     if (event.data?.type !== 'diffcompass-map-present' || typeof event.data.active !== 'boolean') return;
-    const frame = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame],iframe[data-briefing-sequence]')]
+    const frame = [...document.querySelectorAll('iframe.archify-frame,iframe[data-archify-export-frame],iframe[data-briefing-diagram]')]
       .find(node => node.contentWindow === event.source);
     if (!frame || !frame.getClientRects().length) return;
     if (!event.data.active) { if (expanded === frame) close(); return; }

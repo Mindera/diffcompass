@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { loadPersistedSession, savePersistedSession } from '../src/store.ts';
 import { ReviewSession } from '../src/session.ts';
+import { captureBriefingDiagrams, briefingDiagramHtml } from '../src/briefing-diagrams.ts';
 import { exportReview } from '../src/export.ts';
 
 const [playwrightPath, url, repository] = process.argv.slice(2);
@@ -25,10 +26,10 @@ try {
   const parallel = {
     id: 'parallel', title: 'Repeated captions, distinct evidence', family: 'architecture',
     mermaid: 'flowchart LR\n left["Same"]\n right["Same"]\n left -->|same| right\n left -->|same| right',
-    ir: { components: [{ id: 'left' }, { id: 'right' }], connections: [
-      { id: 'first', from: 'left', to: 'right', label: 'same' },
-      { id: 'second', from: 'left', to: 'right', label: 'same' },
-    ] },
+    ir: (() => {
+      const template = document.diagrams.find(d => d.family === 'architecture').ir;
+      return { ...structuredClone(template), components: ['left', 'right'].map(id => ({ ...template.components[0], id, label: 'Same' })), connections: ['first', 'second'].map(id => ({ ...template.connections[0], id, from: 'left', to: 'right', label: 'same' })) };
+    })(),
     elements: ['left', 'right', 'first', 'second'].map((id, i) => ({
       id, label: 'same', kind: i < 2 ? 'components' : 'connections', evidenceIds: [i % 2 ? 'receipt-body' : 'subtotal-body'],
     })),
@@ -41,15 +42,21 @@ try {
   document.sections.push({ id: 'repeat', title: 'Second embedding', blocks: [{ id: 'second-embedding', kind: 'diagram', diagramId: 'parallel' }] });
   const sequence = document.diagrams.find(diagram => diagram.family === 'sequence');
   document.sections.push({ id: 'repeat-sequence', title: 'Sequence revisited', blocks: [{ id: 'sequence-revisited', kind: 'diagram', diagramId: sequence.id }] });
+  await captureBriefingDiagrams(document);
+  for (const diagram of document.diagrams.filter(d => d.family !== 'call-flow')) {
+    const html = briefingDiagramHtml(diagram);
+    assert.ok(html, `Archify artifact required for ${diagram.family}`);
+    await page.route(`**/briefing-diagram/${document.id}/${diagram.id}`, route => route.fulfill({ contentType: 'text/html', body: route.request().method() === 'HEAD' ? '' : html }));
+  }
   await page.route('**/api/session', route => route.fulfill({ json: snapshot }));
   await page.goto(url);
   await page.locator('#diff-tab').click();
   await page.locator('[data-diff-layout="unified"]').click();
   await page.locator('#briefing-tab').click();
 
-  async function exerciseSequence(map, inspector, diagram) {
+  async function exerciseArchify(map, inspector, diagram) {
     await map.scrollIntoViewIfNeeded();
-    const element = await map.locator('iframe[data-briefing-sequence]').elementHandle();
+    const element = await map.locator('iframe[data-briefing-diagram]').elementHandle();
     const frame = await element.contentFrame();
     await frame.waitForFunction(() => window.Archify?.view?.state?.().mode === 'review');
     assert.equal(await frame.locator('.sequence-code-pane').count(), 0, 'The Briefing supplies its existing diff pane');
@@ -61,8 +68,10 @@ try {
     // Restored/shared relationship focus must not start a second camera animation.
     // Checking view.state() alone misses a renderer that overwrites the SVG while
     // leaving the review controller and its percentage label unchanged.
-    await frame.evaluate(id => { location.hash = `relation=${encodeURIComponent(id)}`; }, diagram.elements[0].id);
-    await frame.waitForFunction(id => window.Archify.focus.relationship()?.id === id, diagram.elements[0].id);
+    const isNode = element => ['components', 'states', 'nodes'].includes(element.kind);
+    const focusMatches = id => window.Archify.focus.relationship()?.id === id || window.Archify.focus.active() === id;
+    await frame.evaluate(({ id, node }) => { location.hash = `${node ? 'focus' : 'relation'}=${encodeURIComponent(id)}`; }, { id: diagram.elements[0].id, node: isNode(diagram.elements[0]) });
+    await frame.waitForFunction(focusMatches, diagram.elements[0].id);
     await frame.waitForTimeout(650); // The native camera animation lasts up to 520ms.
     const renderedCamera = await frame.evaluate(() => {
       const svg = document.querySelector('.diagram-container > svg');
@@ -75,7 +84,7 @@ try {
     await frame.locator('[data-diffcompass-action="in"]').click();
     const camera = await frame.evaluate(() => window.Archify.view.state());
     for (const message of diagram.elements) {
-      const target = frame.locator(`[data-relationship-id="${message.id}"]`).first();
+      const target = frame.locator(`[${isNode(message) ? 'data-node-id' : 'data-relationship-id'}="${message.id}"]`).first();
       await target.focus(); await target.press('Enter');
       const card = inspector.locator(`[data-evidence-element="${message.id}"].briefing-selected`);
       await card.waitFor();
@@ -92,7 +101,7 @@ try {
         }
       } else assert.match(await card.textContent(), /No verified source binding/);
       await card.locator('.briefing-card-title').click();
-      await frame.waitForFunction(id => window.Archify.focus.relationship()?.id === id, message.id);
+      await frame.waitForFunction(focusMatches, message.id);
       assert.deepEqual(await frame.evaluate(() => window.Archify.view.state()), camera, 'Evidence inspection preserves the camera');
     }
     // Selecting a different message from the pane syncs the arrow without the
@@ -106,22 +115,18 @@ try {
     const scroll = inspector.locator('.briefing-evidence-scroll');
     const before = await scroll.evaluate(el => el.scrollTop);
     await card.locator('.briefing-card-title').click();
-    await frame.waitForFunction(id => window.Archify.focus.relationship()?.id === id, message.id);
+    await frame.waitForFunction(focusMatches, message.id);
     await frame.waitForTimeout(650);
     assert.equal(await scroll.evaluate(el => el.scrollTop), before, 'Pane selection stays in place after Archify focus settles');
     assert.deepEqual(await frame.evaluate(() => window.Archify.view.state()), camera);
-    console.log('PASS Archify sequence: fitted initial overview, native arrow selection, captured before/after diffs, camera retained');
+    console.log(`PASS Archify ${diagram.family}: fitted initial overview, native element selection, captured diffs, camera and scroll retained`);
   }
   async function exercise(reader, inspector, nativeCallFlow) {
     for (const [index, diagram] of document.diagrams.entries()) {
       const map = reader.locator(`[data-briefing-block="map-${index}"] .briefing-canvas`);
-      if (diagram.family === 'sequence') {
-        await exerciseSequence(map, inspector, diagram);
+      if (diagram.family !== 'call-flow') {
+        await exerciseArchify(map, inspector, diagram);
         continue;
-      }
-      if (diagram.family !== 'call-flow' || !nativeCallFlow) {
-        await map.locator('svg').waitFor();
-        assert.ok(await map.locator('svg').evaluate(svg => svg.getBoundingClientRect().width >= svg.viewBox.baseVal.width - 1), 'Diagram labels retain their native size');
       }
       for (const element of diagram.elements) {
         const target = map.locator(`[data-briefing-element="${element.id}"]`).filter({ visible: true }).first();
@@ -140,21 +145,29 @@ try {
       console.log(`PASS ${nativeCallFlow ? 'production' : 'offline'} ${diagram.family}: exact nodes and relationships`);
     }
     const repeatedSequence = reader.locator('[data-briefing-block="sequence-revisited"] .briefing-canvas');
-    await exerciseSequence(repeatedSequence, inspector, sequence);
+    await exerciseArchify(repeatedSequence, inspector, sequence);
     const originalSequence = await (await reader.locator(`[data-briefing-block="map-${document.diagrams.indexOf(sequence)}"] iframe`).elementHandle()).contentFrame();
     await originalSequence.waitForFunction(() => window.Archify.focus.relationship() === null);
     // Window messages and messages from another frame cannot select this saved evidence.
     const before = await inspector.locator('.briefing-evidence-card.briefing-selected').getAttribute('data-evidence-element');
-    await page.evaluate(() => window.postMessage({ type: 'diffcompass-briefing-sequence-select', elementId: 'invented' }, '*'));
+    await page.evaluate(() => window.postMessage({ type: 'diffcompass-briefing-diagram-select', elementId: 'invented' }, '*'));
     assert.equal(await inspector.locator('.briefing-evidence-card.briefing-selected').getAttribute('data-evidence-element'), before);
-    const repeated = reader.locator('[data-briefing-block="second-embedding"] .briefing-canvas [data-briefing-element="second"]').filter({ visible: true }).first();
-    await repeated.focus(); await page.keyboard.press('Enter');
-    const original = reader.locator(`[data-briefing-block="map-${document.diagrams.length - 1}"] [data-briefing-element="second"]`);
-    for (const item of await original.all()) assert.equal(await item.getAttribute('aria-pressed'), 'false');
+    const repeated = reader.locator('[data-briefing-block="second-embedding"] .briefing-canvas');
+    await exerciseArchify(repeated, inspector, parallel);
+    const repeatedFrame = await (await repeated.locator('iframe').elementHandle()).contentFrame();
+    await repeatedFrame.locator('[data-relationship-id="second"]').first().focus();
+    await repeatedFrame.locator('[data-relationship-id="second"]').first().press('Enter');
+    await inspector.locator('[data-evidence-element="second"].briefing-selected').waitFor();
+    const original = await (await reader.locator(`[data-briefing-block="map-${document.diagrams.length - 1}"] iframe`).elementHandle()).contentFrame();
+    await original.waitForFunction(() => window.Archify.focus.relationship() === null && window.Archify.focus.active() === null);
     assert.match(await inspector.locator('[data-evidence-element="second"] code').textContent(), /export function receipt/);
     assert.equal(await reader.locator('.briefing-canvas [data-briefing-element="root_start"]').count(), 0, 'Uncaptured pseudostates do not acquire evidence');
   }
   await exercise(page.locator('#briefing-view'), page.locator('#briefing-inspector'), true);
+  await page.locator('[data-briefing-block="map-1"] .briefing-canvas').scrollIntoViewIfNeeded();
+  const visibleMap = await (await page.locator('[data-briefing-block="map-1"] iframe').elementHandle()).contentFrame();
+  await visibleMap.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.screenshot({ path: '/tmp/diffcompass-archify-briefing.png' });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.locator('#briefing-view').evaluate(el => el.scrollWidth <= el.clientWidth), 'Wide diagrams scroll inside the mobile reader');
   await page.setViewportSize({ width: 1600, height: 1000 });

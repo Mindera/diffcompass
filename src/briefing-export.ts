@@ -1,4 +1,8 @@
-import { briefingSequenceHtml } from "./briefing-sequence.ts";
+// @ts-expect-error Bun embeds the shared native call-flow renderer.
+import callTree from "../public/call-tree.js" with { type: "text" };
+// @ts-expect-error Bun embeds the same call-flow styles.
+import callTreeStyles from "../public/call-tree.css" with { type: "text" };
+import { briefingDiagramHtml } from "./briefing-diagrams.ts";
 import type { BriefingDocument } from "./briefing.ts";
 import { briefingEvidenceText } from "./briefing-diff.ts";
 // @ts-expect-error Bun embeds the same reader for offline review.
@@ -33,17 +37,17 @@ export function briefingMarkdown(document?: BriefingDocument): string {
 }
 export function withBriefingExport(html: string, document: BriefingDocument | undefined, comparison: { repositoryName: string; branch?: string }): string {
   if (!document) return html;
-  const sequenceHtml = JSON.stringify(Object.fromEntries(document.diagrams.flatMap(diagram => {
-    const html = briefingSequenceHtml(diagram);
+  const diagramHtml = JSON.stringify(Object.fromEntries(document.diagrams.flatMap(diagram => {
+    const html = briefingDiagramHtml(diagram);
     return html ? [[diagram.id, html]] : [];
   }))).replace(/</g, "\\u003c");
   const snapshot = { ...document, diagrams: document.diagrams.map(({ archifyHtml: _html, ...diagram }) => diagram) };
   const data = JSON.stringify({ outline: { briefing: snapshot }, comparison }).replace(/</g, "\\u003c");
   const button = '<button id="export-briefing-tab" type="button">Briefing</button>';
-  const body = `<style>${styles}
+  const body = `<style>${styles}\n${callTreeStyles}
 #export-briefing{--border:var(--line);--muted:var(--soft);position:fixed;inset:98px 0 0;background:var(--bg,#f6f8fc);z-index:10;display:grid;grid-template-columns:200px minmax(0,1fr) 400px;color:var(--text,#172033)}#export-briefing[hidden]{display:none}#export-briefing.evidence-closed{grid-template-columns:200px minmax(0,1fr) 40px}#export-briefing-scroll{overflow:auto}#export-briefing-pane{background:var(--panel,#fff);border-left:1px solid var(--border,#ccd4e0)}#export-briefing [data-briefing-ask],#export-briefing [data-briefing-generate],#export-briefing [data-briefing-source]{display:none}#export-briefing-close{position:fixed;right:16px;bottom:16px;z-index:11}#export-briefing .text-button:not([data-briefing-section]){border:0;background:none;color:var(--accent);cursor:pointer;padding:4px}#export-briefing .briefing-canvas svg{max-height:none}@media(max-width:900px){#export-briefing{grid-template-columns:minmax(0,1fr) minmax(220px,40vw)}#export-briefing-outline{display:none}#export-briefing.evidence-closed{grid-template-columns:minmax(0,1fr) 40px}}
-</style><section id="export-briefing" hidden aria-label="Saved Briefing"><aside id="export-briefing-outline" class="briefing-outline"></aside><div id="export-briefing-scroll"><article id="export-briefing-reader" class="briefing-view"></article></div><aside id="export-briefing-pane" class="briefing-inspector"></aside><div id="export-briefing-chips" hidden></div><button id="export-briefing-close" type="button">Close Briefing</button></section><script>${reader}</script><script>
-window.addEventListener('DOMContentLoaded',()=>{const get=id=>document.getElementById(id),panel=get('export-briefing');const sequences=${sequenceHtml};const reader=createBriefingReader({sequenceHtml:(_document,diagram)=>sequences[diagram.id],view:get('export-briefing-reader'),outline:get('export-briefing-outline'),pane:get('export-briefing-pane'),chips:get('export-briefing-chips'),openTools:()=>panel.classList.remove('evidence-closed'),closeTools:()=>panel.classList.add('evidence-closed'),toolsCollapsed:()=>panel.classList.contains('evidence-closed')});let rendered=false;get('export-briefing-tab').addEventListener('click',()=>{panel.hidden=false;reader.setActive(true);if(!rendered){reader.render(${data});rendered=true}});get('export-briefing-close').addEventListener('click',()=>{reader.setActive(false);panel.hidden=true;get('export-briefing-tab').focus()});document.querySelector('.tabs').addEventListener('click',event=>{if(event.target.closest('[data-view]')){panel.hidden=true;reader.setActive(false)}})});
+</style><section id="export-briefing" hidden aria-label="Saved Briefing"><aside id="export-briefing-outline" class="briefing-outline"></aside><div id="export-briefing-scroll"><article id="export-briefing-reader" class="briefing-view"></article></div><aside id="export-briefing-pane" class="briefing-inspector"></aside><div id="export-briefing-chips" hidden></div><button id="export-briefing-close" type="button">Close Briefing</button></section><script>${callTree}\n${reader}</script><script>
+window.addEventListener('DOMContentLoaded',()=>{const get=id=>document.getElementById(id),panel=get('export-briefing');const diagrams=${diagramHtml};const reader=createBriefingReader({diagramHtml:(_document,diagram)=>diagrams[diagram.id],view:get('export-briefing-reader'),outline:get('export-briefing-outline'),pane:get('export-briefing-pane'),chips:get('export-briefing-chips'),openTools:()=>panel.classList.remove('evidence-closed'),closeTools:()=>panel.classList.add('evidence-closed'),toolsCollapsed:()=>panel.classList.contains('evidence-closed')});let rendered=false;get('export-briefing-tab').addEventListener('click',()=>{panel.hidden=false;reader.setActive(true);if(!rendered){reader.render(${data});rendered=true}});get('export-briefing-close').addEventListener('click',()=>{reader.setActive(false);panel.hidden=true;get('export-briefing-tab').focus()});document.querySelector('.tabs').addEventListener('click',event=>{if(event.target.closest('[data-view]')){panel.hidden=true;reader.setActive(false)}})});
 </script>`;
   const page = html.replace(/(<nav class="tabs"[^>]*>)/, (_, opening: string) => opening + button);
   // Bundled Mermaid contains HTML strings, including closing body tags. Insert

@@ -120,5 +120,5 @@
 @media(max-width: 900px) { .briefing-mode.workspace { display: block; } .briefing-mode #diff-panel { height: 100%; } .briefing-mode.workspace > #file-panel, .briefing-mode.workspace > #agent-panel { display: none !important; } .briefing-view { padding: 24px 20px 90px; } .briefing-block-actions { position: static; padding: 0; display: flex; justify-content: flex-end; opacity: 1; } .briefing-mobile-tools { display: block; position: fixed; bottom: 20px; right: 20px; z-index: 10; } .briefing-sheet-close { display: block; } .briefing-sheet #agent-panel { display: flex !important; } .briefing-sheet .agent-heading { display: none; } .briefing-mode #questions-pane { flex-direction: column; } }
 @media(hover: none) { .briefing-block-actions { opacity: 1; } }
 
-.briefing-canvas:has(.briefing-sequence-frame){padding:0;overflow:hidden}
-.briefing-sequence-frame{display:block;width:100%;height:clamp(420px,65vh,680px);border:0;background:#101418}
+.briefing-canvas:has(.briefing-diagram-frame){padding:0;overflow:hidden}
+.briefing-diagram-frame{display:block;width:100%;height:clamp(420px,65vh,680px);border:0;background:#101418}

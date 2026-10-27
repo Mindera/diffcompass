@@ -36,6 +36,15 @@ comparison notes, and browser validation.
 
 ## Verify and release
 
+The Briefing browser group checks all five Archify diagram families and the
+shared native call tree in both the production reader and offline HTML. It covers
+initial fit, exact node and relationship bindings, repeated labels, two-way
+evidence selection, and preservation of camera and pane scroll position.
+Run `MONACO_CHECK_GROUP=briefing bun run test:monaco` with
+`DIFFCOMPASS_ARCHIFY_DIR` pointing to the pinned packaged renderer (created by
+`bun scripts/package-archify.ts /absolute/output/directory`). A development
+checkout without that renderer shows the saved element list instead.
+
 ### Monaco preview
 
 The normal review UI includes **Shiki** and **Monaco** renderer choices. Monaco

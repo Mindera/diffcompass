@@ -1,4 +1,4 @@
-import { captureBriefingSequences } from "./briefing-sequence.ts";
+import { captureBriefingDiagrams } from "./briefing-diagrams.ts";
 import { buildBriefing, briefingFingerprint, briefingIntent, resolveBriefingQuestion, type BriefingQuestionRequest } from "./briefing.ts";
 import { captureBriefingDiffs } from "./briefing-diff.ts";
 import { discoverAgentAdapters } from "./adapters.ts";
@@ -890,7 +890,7 @@ export class ReviewSession {
     if (session.outline && !session.outline.briefing) session.outline.briefing = await buildBriefing(session.comparison, session.outline, session.briefingIntent());
     if (session.outline?.briefing) {
       await captureBriefingDiffs(session.comparison, session.outline.briefing);
-      await captureBriefingSequences(session.outline.briefing, session.outline.archifyArtifacts);
+      await captureBriefingDiagrams(session.outline.briefing, session.outline.archifyArtifacts);
     }
     if (defaults.screenshots?.length) {
       if (!defaults.stateFile) throw new ReviewError("Screenshots require persisted review session storage.");

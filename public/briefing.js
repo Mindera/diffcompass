@@ -203,106 +203,29 @@ function createBriefingReader(options) {
       const d = diagramFor(b), box = view.querySelector(`[data-briefing-block="${CSS.escape(b.id)}"] .briefing-canvas`);
       if (!box || !d) continue;
       try {
-        if (d.family === "sequence") {
-          const url = await options.sequenceUrl?.(document, d);
-          const html = url ? undefined : await options.sequenceHtml?.(document, d);
+        if (d.family === "call-flow") {
+          box.innerHTML = `<div class="call-tree">${window.renderCallTree(d.ir, "changes")}</div>`;
+          for (const el of box.querySelectorAll("[data-node-id], [data-edge-id]")) bindElement(el, b.id, el.dataset.nodeId ?? el.dataset.edgeId);
+        } else {
+          const url = await options.diagramUrl?.(document, d);
+          const html = url ? undefined : await options.diagramHtml?.(document, d);
           if (generation !== ticket) return;
-          if (!url && !html) throw new Error("Saved sequence viewer unavailable.");
+          if (!url && !html) throw new Error("Saved diagram viewer unavailable.");
           const frame = window.document.createElement("iframe");
-          frame.className = "briefing-sequence-frame";
-          frame.dataset.briefingSequence = b.id;
-          frame.title = `Sequence: ${d.title}`;
+          frame.className = "briefing-diagram-frame";
+          frame.dataset.briefingDiagram = b.id;
+          frame.title = `${d.family}: ${d.title}`;
           frame.setAttribute("sandbox", "allow-scripts allow-downloads");
           frame.referrerPolicy = "no-referrer";
           if (url) frame.src = url;
           else frame.srcdoc = html;
           box.replaceChildren(frame);
-        } else if (d.family === "call-flow" && options.callFlowHtml) {
-          box.innerHTML = options.callFlowHtml(d.ir);
-          // The native map exposes exact node/edge IDs; no label matching.
-          for (const el of box.querySelectorAll("[data-node-id], [data-edge-id]")) bindElement(el, b.id, el.dataset.nodeId ?? el.dataset.edgeId);
-        } else {
-          let mermaid = d.mermaid;
-          if (!mermaid && ["domain", "call-flow"].includes(d.family)) {
-            // Domain IDs are native authored identifiers. Labels are escaped for Mermaid.
-            const label = s => String(s).replace(/["<>\n]/g, " ");
-            const nodes = d.ir.components ?? d.ir.nodes, edges = d.ir.connections ?? d.ir.edges;
-            const ids = new Map(nodes.map((c, i) => [c.id, `item${i}`]));
-            mermaid = `flowchart LR\n${nodes.map(c => `${ids.get(c.id)}["${label(c.label)}${c.change ? ` (${label(c.change)})` : ""}"]`).join("\n")}\n${edges.map(c => `${ids.get(c.from)} -->|"${label(c.label ?? "calls")}"| ${ids.get(c.to)}`).join("\n")}`;
-          }
-          if (!mermaid || !window.mermaid) throw new Error("Use the element list to explore this diagram.");
-          const renderId = `briefing-${readerId}-${ticket}-${b.id.replace(/[^a-zA-Z0-9]/g, "-")}`;
-          const result = await window.mermaid.render(renderId, mermaid);
-          if (generation !== ticket) return;
-          if (window.ReviewDiagramLabels) window.ReviewDiagramLabels.mount(box, result.svg);
-          else box.innerHTML = result.svg;
-          const svg = box.querySelector("svg");
-          if (svg?.viewBox.baseVal.width) {
-            // Wide maps scroll at their native text size instead of shrinking
-            // every label to fit the prose column, including on mobile.
-            svg.style.minWidth = `${svg.viewBox.baseVal.width}px`;
-            box.tabIndex = 0;
-          }
-          // A binding failure keeps the rendered diagram and its exact-ID list.
-          try { await bindMermaidGraph(box, b, d, mermaid, renderId, ticket); }
-          catch { /* Unsupported renderer identities remain selectable in the list. */ }
         }
       } catch { box.textContent = "Diagram preview unavailable. Explore its saved elements below."; }
     }
     if (generation !== ticket) return;
     awaitingDiagrams = false;
     highlight(); restoreAnchor(); revealSelectedEvidence();
-  }
-  async function bindMermaidGraph(box, block, diagram, source, renderId, ticket) {
-    const parsed = await window.mermaid.mermaidAPI.getDiagramFromText(source);
-    if (generation !== ticket) return;
-    const graph = parsed.db.getData();
-    const nodes = diagram.ir.components ?? diagram.ir.states ?? diagram.ir.nodes ?? [];
-    const edges = diagram.ir.connections ?? diagram.ir.transitions ?? diagram.ir.flows ?? diagram.ir.edges ?? [];
-    const nodeIds = new Map();
-    if (diagram.family === "data-model") {
-      for (const [name, entity] of parsed.db.getEntities()) nodeIds.set(entity.id, `data-${name}`);
-    } else if (["domain", "call-flow"].includes(diagram.family)) {
-      nodes.forEach((node, index) => nodeIds.set(`item${index}`, node.id));
-    } else {
-      for (const node of graph.nodes) nodeIds.set(node.id, node.id);
-      if (diagram.family === "lifecycle") {
-        nodeIds.set("root_start", "lifecycle-initial");
-        nodeIds.set("root_end", "lifecycle-final");
-      }
-    }
-    for (const node of graph.nodes) {
-      const savedId = nodeIds.get(node.id);
-      if (!nodes.some(item => item.id === savedId)) { nodeIds.delete(node.id); continue; }
-      const element = box.querySelector(`[id="${CSS.escape(`${renderId}-${node.domId ?? node.id}`)}"]`);
-      if (element) bindElement(element, block.id, savedId);
-    }
-    // Match the parsed source relationships by both endpoint identities and
-    // exact caption, preserving occurrence order for parallel identical edges.
-    // A count mismatch is ambiguous and must fall back to the element list.
-    const signature = (from, to, label) => JSON.stringify([from, to, label ?? ""]);
-    const nativeGroups = new Map(), savedGroups = new Map();
-    const add = (groups, key, edge) => { if (!groups.has(key)) groups.set(key, []); groups.get(key).push(edge); };
-    for (const edge of graph.edges) {
-      const from = nodeIds.get(edge.start), to = nodeIds.get(edge.end);
-      if (!from || !to) continue;
-      const label = diagram.family === "data-model" ? edge.label || "relationship" : edge.label;
-      add(nativeGroups, signature(from, to, label), edge);
-    }
-    for (const edge of edges) {
-      const label = ["domain", "call-flow"].includes(diagram.family) ? edge.label ?? "calls" : edge.label;
-      add(savedGroups, signature(edge.from, edge.to, label), edge);
-    }
-    for (const [key, nativeEdges] of nativeGroups) {
-      const savedEdges = savedGroups.get(key);
-      if (savedEdges?.length !== nativeEdges.length) continue;
-      nativeEdges.forEach((edge, index) => {
-        const selector = `[data-id="${CSS.escape(edge.id)}"]`;
-        for (const element of box.querySelectorAll(`path${selector}, g.edgeLabel:has(${selector})`)) {
-          bindElement(element, block.id, savedEdges[index].id);
-        }
-      });
-    }
   }
   function bindElement(el, blockId, elementId) {
     const element = diagramFor(blockFor(blockId))?.elements.find(e => e.id === elementId);
@@ -445,21 +368,21 @@ function createBriefingReader(options) {
       el.classList.toggle("briefing-selected", current);
       el.querySelector(".briefing-card-title")?.setAttribute("aria-pressed", String(current));
     }
-    for (const frame of view.querySelectorAll("[data-briefing-sequence]")) syncSequence(frame);
+    for (const frame of view.querySelectorAll("[data-briefing-diagram]")) syncDiagram(frame);
   }
-  function syncSequence(frame) {
-    frame.contentWindow?.postMessage({ type: "diffcompass-briefing-sequence-select", elementId: frame.dataset.briefingSequence === selected?.blockId ? selected.elementId : null }, "*");
+  function syncDiagram(frame) {
+    frame.contentWindow?.postMessage({ type: "diffcompass-briefing-diagram-select", elementId: frame.dataset.briefingDiagram === selected?.blockId ? selected.elementId : null }, "*");
   }
   window.addEventListener("message", event => {
-    const frame = [...view.querySelectorAll("[data-briefing-sequence]")].find(frame => frame.contentWindow === event.source);
+    const frame = [...view.querySelectorAll("[data-briefing-diagram]")].find(frame => frame.contentWindow === event.source);
     if (!frame) return;
-    if (event.data?.type === "diffcompass-briefing-sequence-ready") { syncSequence(frame); return; }
+    if (event.data?.type === "diffcompass-briefing-diagram-ready") { syncDiagram(frame); return; }
     if (!active || !frame.getClientRects().length) return;
     if (event.data?.type === "diffcompass-map-scroll" && Number.isFinite(event.data.deltaY)) {
       userNavigation(); scroll.scrollBy({ top: Math.max(-2000, Math.min(2000, event.data.deltaY)), behavior: "instant" });
     }
-    if (event.data?.type !== "diffcompass-briefing-sequence-select") return;
-    const blockId = frame.dataset.briefingSequence, elementId = event.data.elementId;
+    if (event.data?.type !== "diffcompass-briefing-diagram-select") return;
+    const blockId = frame.dataset.briefingDiagram, elementId = event.data.elementId;
     if (!diagramFor(blockFor(blockId))?.elements.some(element => element.id === elementId)) return;
     if (selected?.blockId === blockId && selected.elementId === elementId) return;
     window.diffcompassMapPresentation?.suspend(frame);

@@ -437,18 +437,18 @@
   function installExternalInspector(svg, steps) {
     const controller = selectionController(steps.map(step => step.id), {
       selectDiagram: id => selectMessage(svg, steps, root.Archify, id),
-      mark: id => root.parent.postMessage({ type: 'diffcompass-briefing-sequence-select', elementId: id }, '*'),
+      mark: id => root.parent.postMessage({ type: 'diffcompass-briefing-diagram-select', elementId: id }, '*'),
       reveal() {},
     });
     const disconnect = connectArchifySelection(svg, steps, { ...controller, clearSelectionNotices() {} });
     function receive(event) {
-      if (event.source !== root.parent || event.data?.type !== 'diffcompass-briefing-sequence-select') return;
+      if (event.source !== root.parent || event.data?.type !== 'diffcompass-briefing-diagram-select') return;
       if (event.data.elementId === controller.selected) return;
       if (event.data.elementId === null) { controller.clear(); root.Archify.focus.clear({ updateUrl: false }); }
       else controller.select(event.data.elementId, 'host');
     }
     root.addEventListener('message', receive);
-    root.parent.postMessage({ type: 'diffcompass-briefing-sequence-ready' }, '*');
+    root.parent.postMessage({ type: 'diffcompass-briefing-diagram-ready' }, '*');
     root.addEventListener('pagehide', () => { disconnect(); root.removeEventListener('message', receive); }, { once: true });
   }
 
