@@ -73,7 +73,7 @@ test("basic overview follows tour phases with captured code and does not append 
 test("Markdown keeps implementation excerpts at their authored position in the story", () => {
   const doc = persisted.outline!.briefing!, markdown = briefingMarkdown(doc);
   const firstCode = markdown.indexOf("export function subtotal"), nextSection = markdown.indexOf("### Apply the discount once");
-  expect(firstCode).toBeGreaterThan(markdown.indexOf("### Keep the calculation reusable"));
+  expect(firstCode).toBeGreaterThan(markdown.indexOf("### From a cart total to a discounted receipt"));
   expect(firstCode).toBeLessThan(nextSection);
   const unavailable = structuredClone(doc);
   unavailable.evidence.find(e => e.id === "subtotal-body")!.available = false;

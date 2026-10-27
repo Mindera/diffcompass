@@ -6,6 +6,18 @@
 .briefing-block { margin: 16px 0; position: relative; }
 .briefing-prose p, .briefing-quotation { font-size: 15px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .briefing-prose p { margin: 0; }
+.briefing-outcome .briefing-heading h1 { font-size: clamp(28px, 2.6vw, 38px); max-width: 26ch; }
+.briefing-outcome .briefing-opening {
+  padding: 22px 24px;
+  margin-inline: -24px;
+  background: linear-gradient(135deg, var(--accent-soft, color-mix(in srgb, var(--accent) 10%, transparent)), transparent 75%);
+  border-top: 2px solid var(--accent);
+  border-radius: 0 0 8px 8px;
+}
+.briefing-outcome .briefing-lead p { font-size: 18px; line-height: 1.65; color: var(--text); }
+@media(max-width: 900px) {
+  .briefing-outcome .briefing-opening { margin-inline: -8px; padding: 18px 8px; }
+}
 .briefing-basis { font-size: 11px; color: var(--muted); }
 .briefing-prose > .briefing-basis { display: block; margin-bottom: 4px; }
 .briefing-block-actions { position: absolute; left: 100%; top: 0; padding-left: 8px; opacity: 0; }

@@ -71,6 +71,7 @@
       paneResizers.mount(workspace);
       const instance = { key, item, approach, workspace, view: workspace.querySelector(".briefing-view"), pane: workspace.querySelector(".lab-evidence"), scroll: workspace.querySelector(".lab-scroll") };
       instance.reader = createBriefingReader({
+        outcomeFirst: approach.id === "outcome",
         view: instance.view, outline: workspace.querySelector(".lab-outline"), pane: instance.pane, chips: workspace.querySelector(".lab-chips"),
         highlight: async groups => groups.map(g => ({ id: g.id, lines: data.highlighted[JSON.stringify([g.path, g.lines])] })),
         tokenHtml: token => `<span style="color:#${esc(token.dark)};${token.fontStyle & 1 ? "font-style:italic;" : ""}${token.fontStyle & 2 ? "font-weight:600;" : ""}">${esc(token.content)}</span>`,

@@ -38,8 +38,6 @@
 #reading-lab .briefing-canvas svg { max-height: none; }
 #reading-lab .briefing-source-label { font-size: 10px; }
 #reading-lab .briefing-canvas { padding: 20px 12px; }
-.lab-workspace[data-approach="outcome"] .briefing-section:first-of-type { padding: 22px 24px; margin-left: -24px; margin-right: -24px; background: linear-gradient(135deg, var(--accent-soft), transparent 75%); border-top: 2px solid var(--accent); border-radius: 0 0 8px 8px; }
-.lab-workspace[data-approach="outcome"] .briefing-section:first-of-type > .briefing-prose:first-of-type p { font-size: 18px; line-height: 1.65; color: var(--text); }
 .lab-workspace[data-approach="decisions"] .briefing-view { counter-reset: decision; }
 .lab-workspace[data-approach="decisions"] .briefing-section { border-top: 1px solid var(--border-hover); padding-top: 24px; }
 .lab-workspace[data-approach="decisions"] .briefing-section > h2::before { counter-increment: decision; content: "0" counter(decision); display: block; font: 11px ui-monospace, monospace; color: var(--accent); margin-bottom: 10px; letter-spacing: .1em; }
@@ -88,7 +86,6 @@
   .lab-workspace[hidden] { display: none; }
   .lab-workspace > .lab-outline, .lab-workspace > .lab-evidence { display: none; }
   .lab-scroll { height: 100%; }
-  .lab-workspace[data-approach="outcome"] .briefing-section:first-of-type { margin-inline: -8px; padding: 18px 8px; }
   .lab-scenario { padding: 14px; }
   .lab-scenario > header { align-items: start; flex-direction: column; }
   .lab-stages { grid-template-columns: 1fr; gap: 9px; }

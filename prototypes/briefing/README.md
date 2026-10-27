@@ -71,8 +71,11 @@ publication actions are omitted.
 Judge comprehension before visual preference: can a reader explain the intended
 outcome, trace the important behavior, locate the implementation evidence, and
 describe where the guarantee stops? Compare one approach across both examples
-before choosing a direction. The next step is to fold the strongest ideas into
-the shared reader and authoring guidance after feedback.
+before comparing visual treatments. Outcome first is now the chosen production
+direction: its opening treatment lives in the shared reader, and both new-tour
+and regeneration prompts request outcome titles and an early supporting diff.
+This lab keeps the other approaches for comparison; it does not add a variant
+switcher to production. Saved documents retain their text until regenerated.
 
 Validation:
 

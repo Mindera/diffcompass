@@ -45,6 +45,9 @@ function createBriefingReader(options) {
   new ResizeObserver(() => { if (scroll.clientWidth !== width) { width = scroll.clientWidth; restoreAnchor(); } }).observe(scroll);
   function render(value) {
     session = value; document = value?.outline?.briefing ?? null;
+    // The comparison lab can retain its other treatments; authored reviews and
+    // offline exports use the chosen outcome-first presentation by default.
+    view.classList.toggle("briefing-outcome", document?.mode === "authored" && options.outcomeFirst !== false);
     const identity = document ? `${document.id}:${Boolean(document.outdated)}` : value?.outline ? "legacy" : "empty";
     if (identity === rendered) { renderChips(); return; }
     rememberAnchor(); rendered = identity; const ticket = ++generation;
@@ -56,13 +59,17 @@ function createBriefingReader(options) {
       outline.innerHTML = '<p class="muted">Briefing</p>'; renderInspector(); return;
     }
     outline.innerHTML = `<div class="eyebrow">In this change</div><nav aria-label="Briefing sections">${document.sections.map(s => action(s.title, `data-briefing-section="${esc(s.id)}"`)).join("")}</nav><p class="briefing-version">${document.mode === "overview" ? "Basic overview · from saved tour" : "Authored walkthrough"}</p><button type="button" class="text-button" data-briefing-generate>Regenerate Briefing</button>${document.outdated ? '<p role="status" class="briefing-stale">Source or intent changed. This is the saved snapshot.</p>' : ''}`;
-    view.innerHTML = heading + document.sections.map(s => `<section id="briefing-section-${esc(s.id)}" class="briefing-section"><h2>${esc(s.title)}</h2>${s.blocks.map(blockHtml).join("")}</section>`).join("");
+    view.innerHTML = heading + document.sections.map((section, sectionIndex) => {
+      const opening = sectionIndex === 0;
+      const content = section.blocks.map((block, blockIndex) => blockHtml(block, opening && blockIndex === 0)).join("");
+      return `<section id="briefing-section-${esc(section.id)}" class="briefing-section${opening ? " briefing-opening" : ""}"><h2>${esc(section.title)}</h2>${content}</section>`;
+    }).join("");
     renderInspector(); renderChips(); restoreAnchor(); void highlightEvidence(view, document.evidence); void renderDiagrams(ticket);
   }
-  function blockHtml(b) {
+  function blockHtml(b, lead = false) {
     const attrs = `data-briefing-block="${esc(b.id)}"`;
     const ask = action("Ask", `data-briefing-ask="${esc(b.id)}" aria-label="Ask about ${b.kind === "prose" ? "this passage" : b.kind === "source" ? "this code excerpt" : `this ${b.kind}`}"`);
-    if (b.kind === "prose") return `<article class="briefing-block briefing-prose" ${attrs}>${b.basis === "inferred" ? '<span class="briefing-basis">Inference</span>' : ""}<p data-briefing-text>${esc(b.text)}</p><div class="briefing-block-actions">${ask}</div></article>`;
+    if (b.kind === "prose") return `<article class="briefing-block briefing-prose${lead ? " briefing-lead" : ""}" ${attrs}>${b.basis === "inferred" ? '<span class="briefing-basis">Inference</span>' : ""}<p data-briefing-text>${esc(b.text)}</p><div class="briefing-block-actions">${ask}</div></article>`;
     if (b.kind === "example") return `<article class="briefing-block briefing-example" ${attrs}><header class="briefing-excerpt-heading"><span class="briefing-basis">Illustrative example${b.language ? ` · ${esc(b.language)}` : ""}</span>${ask}</header><pre data-briefing-text><code>${esc(b.text)}</code></pre></article>`;
     if (b.kind === "source") {
       const e = document.evidence.find(e => e.id === b.evidenceId);

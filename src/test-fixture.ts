@@ -779,14 +779,15 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
     if (outline.stateDiagram) outline.stateDiagram.elementSources = [{ elementId: "calculated", anchors: [calculation] }, { elementId: "formatted", anchors: [presentation] }];
     if (outline.dataModel) outline.dataModel.elementSources = [{ elementId: "data-ITEM", anchors: [excerpt("src/cart.ts", 1, 4)] }, { elementId: "data-DISCOUNT", anchors: [excerpt("src/cart.ts", 6, 8)] }];
     outline.briefing = await buildBriefing(comparison, outline, briefingIntent({ pullRequest: persisted.pullRequest, reviewerTask: persisted.pullRequest?.reviewerTask }), {
-      title: "Discounted checkout, from calculation to receipt",
+      title: "Show the discounted total on the receipt",
       sections: [
-        { id: "intent", title: "Keep the calculation reusable", blocks: [
-          { id: "intent-text", kind: "prose", basis: "stated", text: "The linked issue asks for discounted receipt output: apply a fractional percentage and present the final total with two decimal places." },
-          { id: "behavior-text", kind: "prose", basis: "observed", text: "The implementation keeps arithmetic separate from display text. It first moves the existing price × quantity sum into subtotal, giving the discount calculation a reusable starting point:" },
+        { id: "intent", title: "From a cart total to a discounted receipt", blocks: [
+          { id: "intent-text", kind: "prose", basis: "observed", text: "Checkout previously returned an undiscounted number. It can now apply a fractional percentage and produce receipt text such as “Total: 18.00”." },
+          { id: "behavior-text", kind: "prose", basis: "observed", text: "Arithmetic stays separate from display text. The existing price × quantity sum moves into subtotal, giving the discount calculation a reusable starting point:" },
           { id: "subtotal-source", kind: "source", evidenceId: "subtotal-body" },
         ] },
         { id: "calculation", title: "Apply the discount once", blocks: [
+          { id: "requested-format", kind: "prose", basis: "stated", text: "The linked issue asks for a fractional discount and a final receipt amount with two decimal places." },
           { id: "calculation-text", kind: "prose", basis: "observed", text: "The public total function still returns a number. Without a discount, it returns the subtotal unchanged; with one, it subtracts a fraction of that amount. A percentage of 0.1 therefore means ten percent, not 0.1 percent." },
           { id: "total-source", kind: "source", evidenceId: "total-body" },
           { id: "calculation-result", kind: "prose", basis: "observed", text: "For two items priced at 10, subtotal produces 20 and a ten-percent discount reduces total to 18. No string formatting happens in this layer." },

@@ -24,6 +24,16 @@ try {
   await page.locator('#briefing-view [data-evidence-id="subtotal-body"] code span[style]').first().waitFor();
   await currentSection('intent');
   assert.equal(await page.locator('#briefing-outline [aria-current]').count(), 1);
+  assert.equal(await page.locator('#briefing-view h1').textContent(), 'Show the discounted total on the receipt');
+  const openingStyle = await page.locator('#briefing-section-intent').evaluate(section => ({
+    border: getComputedStyle(section).borderTopWidth,
+    background: getComputedStyle(section).backgroundImage,
+    leadSize: getComputedStyle(section.querySelector('.briefing-prose p')).fontSize,
+    bodySize: getComputedStyle(section.querySelectorAll('.briefing-prose p')[1]).fontSize,
+  }));
+  assert.equal(openingStyle.border, '2px');
+  assert.notEqual(openingStyle.background, 'none');
+  assert.ok(parseFloat(openingStyle.leadSize) > parseFloat(openingStyle.bodySize));
   assert.equal(await page.locator('#briefing-view .briefing-excerpt').count(), 3);
   const source = page.locator('#briefing-view [data-evidence-id="subtotal-body"]');
   assert.match(await source.textContent(), /export function subtotal/);
