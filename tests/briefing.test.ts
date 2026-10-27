@@ -1,3 +1,5 @@
+import { captureBriefingSequences, briefingSequenceHtml } from "../src/briefing-sequence.ts";
+import { createRequestHandler } from "../src/server.ts";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -177,10 +179,13 @@ test("explicit regeneration replaces only the Briefing and keeps tour progress a
   try {
     const oldId = session.outline!.briefing!.id, phases = structuredClone(session.outline!.phases), step = session.currentStepIndex;
     const reviewed = [...session.reviewedFiles], comments = structuredClone(session.comments);
+    const sequence = session.outline!.briefing!.diagrams.find(diagram => diagram.family === "sequence")!;
+    session.outline!.archifyArtifacts = [{ id: sequence.id, type: "sequence", ir: sequence.ir, html: "<html><head></head><body>renderer-only-payload</body></html>" } as import("../src/types.ts").ArchifyArtifact];
     const regeneration = session.regenerateBriefing();
     const event = (await session.bridge!.eventsAfter(0, 3000)).find(e => e.type === "agent.prompt");
     if (!event || event.type !== "agent.prompt") throw new Error("Missing regeneration prompt");
     expect(event.prompt).toContain("Return only the briefingProposal object itself");
+    expect(event.prompt).not.toContain("renderer-only-payload");
     expect(event.prompt).toContain("exact element IDs");
     await session.bridge!.respond(event.id, JSON.stringify({ title: "Refined narrative", sections: [{ id: "summary", title: "What changes", blocks: [{ id: "text", kind: "prose", text: "A focused revision of the reading document.", basis: "observed" }] }] }));
     await session.bridge!.ack(event.id); await regeneration;
@@ -188,5 +193,94 @@ test("explicit regeneration replaces only the Briefing and keeps tour progress a
     expect(session.outline!.briefing!.title).toBe("Refined narrative");
     expect(session.outline!.phases).toEqual(phases);
     expect(session.currentStepIndex).toBe(step); expect([...session.reviewedFiles]).toEqual(reviewed); expect(session.comments).toEqual(comments);
+  } finally { await session.dispose(); }
+});
+
+test("regeneration captures reviewed sequence repairs and diffs without rewriting the tour", async () => {
+  const saved = structuredClone(persisted);
+  saved.bridgeToken = "briefing-audit-bridge"; saved.bridgeSequence = 0;
+  saved.selection = { adapterId: "attached", modelId: "current-session" };
+  const stateFile = join(root, "audited-regenerate.json"); await savePersistedSession(stateFile, saved);
+  const session = await ReviewSession.create(fixture.repository, undefined, { stateFile, resume: true, agentAdapters: [] });
+  try {
+    const originalFlows = structuredClone(session.outline!.flows);
+    const flow = originalFlows[0]!;
+    const label = "Format amount to two decimals";
+    const repaired = { ...flow,
+      mermaid: flow.mermaid.replace("  R-->>UI: formatted total", `  R->>R: ${label}\n  R-->>UI: formatted total`),
+      messageSources: [
+        ...flow.messageSources!.filter(source => source.message < 4),
+        { ...flow.messageSources![2]!, message: 4, label },
+        { ...flow.messageSources![2]!, message: 5 },
+      ],
+    };
+    const proposal = { title: "Return a formatted receipt", sections: [{ id: "summary", title: "Calculate, then format", blocks: [
+      { id: "intro", kind: "prose", text: "The formatter presents the returned amount with two decimal places.", basis: "observed" },
+      { id: "sequence", kind: "diagram", diagramId: `sequence-${flow.id}` },
+    ] }] };
+    const regeneration = session.regenerateBriefing();
+    const event = (await session.bridge!.eventsAfter(0, 3000)).find(e => e.type === "agent.prompt");
+    if (!event || event.type !== "agent.prompt") throw new Error("Missing regeneration prompt");
+    await session.bridge!.respond(event.id, JSON.stringify(proposal)); await session.bridge!.ack(event.id);
+    const review = (await session.bridge!.eventsAfter(event.sequence, 3000)).find(e => e.type === "agent.prompt");
+    if (!review || review.type !== "agent.prompt") throw new Error("Missing sequence review");
+    expect(review.prompt).toContain("reviewing the causal completeness");
+    await session.bridge!.respond(review.id, JSON.stringify({ decisions: [{ flowId: flow.id, disposition: "revised", reason: "receipt.ts:5 formats the amount before returning it.", flow: repaired }], briefingProposal: proposal }));
+    await session.bridge!.ack(review.id); await regeneration;
+    const document = session.outline!.briefing!;
+    const diagram = document.diagrams.find(d => d.id === `sequence-${flow.id}`)!;
+    expect(diagram.ir.messages).toHaveLength(5);
+    const added = diagram.elements.find(element => element.label === label)!;
+    const evidence = document.evidence.find(e => e.id === added.evidenceIds[0])!;
+    expect(evidence.available).toBe(true);
+    expect(evidence.diff?.available).toBe(true);
+    expect(evidence.quote).toContain("amount.toFixed(2)");
+    expect(session.outline!.flows).toEqual(originalFlows);
+    expect((await loadPersistedSession(stateFile)).outline!.briefing!.diagrams.find(d => d.id === diagram.id)!.ir.messages).toHaveLength(5);
+  } finally { await session.dispose(); }
+});
+
+
+test("sequence viewers reuse matching Archify artifacts and remain pinned when the tour changes", async () => {
+  const document = structuredClone(persisted.outline!.briefing!);
+  const diagram = document.diagrams.find(d => d.family === "sequence")!;
+  const savedHtml = (): string | undefined => diagram.archifyHtml;
+  delete diagram.archifyHtml;
+  const artifact = { id: diagram.id, type: "sequence", ir: diagram.ir, html: "<html><head></head><body>saved viewer</body></html>" } as import("../src/types.ts").ArchifyArtifact;
+  let renders = 0;
+  const renderer = { async renderSequenceSnapshot() { renders++; return "replacement viewer"; } };
+  await captureBriefingSequences(document, [artifact], renderer);
+  expect(renders).toBe(0);
+  expect(savedHtml()).toBe(artifact.html);
+  const changed = { ...artifact, html: "new tour", ir: { ...artifact.ir, title: "Different diagram" } };
+  await captureBriefingSequences(document, [changed], renderer);
+  expect(savedHtml()).toBe(artifact.html);
+  delete diagram.archifyHtml;
+  await captureBriefingSequences(document, [changed], renderer);
+  expect(renders).toBe(1);
+  expect(savedHtml()).toBe("replacement viewer");
+  delete diagram.archifyHtml;
+  await captureBriefingSequences(document, [changed], { async renderSequenceSnapshot() { throw new Error("renderer unavailable"); } });
+  expect(savedHtml()).toBeUndefined();
+  expect(diagram.elements).toEqual(persisted.outline!.briefing!.diagrams.find(d => d.id === diagram.id)!.elements);
+});
+
+test("Briefing sequence route serves the saved viewer separately from snapshots and rejects retired documents", async () => {
+  const session = await ReviewSession.create(fixture.repository, undefined, { resume: true, stateFile: fixture.stateFile, agentAdapters: [] });
+  try {
+    const document = session.outline!.briefing!;
+    const diagram = document.diagrams.find(d => d.family === "sequence")!;
+    diagram.archifyHtml = "<html><head></head><body>saved viewer</body></html>";
+    const handler = createRequestHandler(session);
+    const url = `http://localhost/briefing-sequence/${document.id}/${diagram.id}`;
+    const response = await handler(new Request(url));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain("connect-src 'none'");
+    expect(await response.text()).toContain("saved viewer");
+    expect(session.snapshot().outline!.briefing!.diagrams.find(d => d.id === diagram.id)!.archifyHtml).toBeUndefined();
+    expect((await handler(new Request(url, { method: "HEAD" }))).status).toBe(200);
+    const retired = await handler(new Request(url.replace(document.id, "retired")));
+    expect(retired.status).toBe(404);
+    expect(briefingSequenceHtml(diagram)).toContain('data-sequence-external-inspector');
   } finally { await session.dispose(); }
 });

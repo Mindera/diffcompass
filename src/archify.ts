@@ -425,6 +425,14 @@ export class ArchifyRenderer {
     return existsSync(join(directory, "bin/archify.mjs")) ? directory : undefined;
   }
 
+  /** Render an already captured sequence IR using the same validation and viewer. */
+  async renderSequenceSnapshot(id: string, title: string, ir: Record<string, unknown>): Promise<string> {
+    const artifact = await this.renderCandidate(await this.cli(), {
+      id, title, type: "sequence", ir: ir as ArchifyDocument, evidence: [], affectedFiles: [],
+    });
+    return artifact.html;
+  }
+
   private async cli(): Promise<string> {
     if (!isAbsolute(this.directory)) throw new Error("DIFFCOMPASS_ARCHIFY_DIR must be an absolute path to an installed Archify skill.");
     const root = resolve(this.directory);

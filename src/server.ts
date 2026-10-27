@@ -6,6 +6,7 @@ import { timingSafeEqual } from "node:crypto";
 import { monacoAsset } from "./monaco-assets.ts";
 import { resolve } from "node:path";
 import { withArchifyEmbedAdapter } from "./archify-embed.ts";
+import { briefingSequenceHtml, BRIEFING_SEQUENCE_CSP } from "./briefing-sequence.ts";
 import { highlightedSequenceSources } from "./sequence-walkthrough-preview.ts";
 import { BRAND_FILES } from "./brand.ts";
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
@@ -203,6 +204,18 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         const comparison = session.comparison;
         const sources = edge ? await session.resolveArchifySequenceSources(id, edge) : session.archifySequenceSources(id);
         return json(await highlightedSequenceSources(sources, comparison));
+      }
+      if (["GET", "HEAD"].includes(request.method) && url.pathname.startsWith("/briefing-sequence/")) {
+        const [documentId, diagramId] = url.pathname.slice("/briefing-sequence/".length).split("/").map(decodeURIComponent);
+        const document = session.outline?.briefing;
+        const diagram = document?.id === documentId ? document.diagrams.find(item => item.id === diagramId) : undefined;
+        const html = diagram && briefingSequenceHtml(diagram);
+        if (!html) throw new HttpError(404, "Saved sequence viewer unavailable. Explore its messages below.");
+        return new Response(request.method === "HEAD" ? null : html, { headers: {
+          "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
+          "content-security-policy": BRIEFING_SEQUENCE_CSP + "; frame-ancestors 'self'",
+          "referrer-policy": "no-referrer", "x-content-type-options": "nosniff",
+        } });
       }
       if (request.method === "GET" && url.pathname.startsWith("/archify/")) {
         const id = decodeURIComponent(url.pathname.slice("/archify/".length));

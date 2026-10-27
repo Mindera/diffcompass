@@ -2,6 +2,45 @@ import { expect, test } from "bun:test";
 
 const app = await Bun.file(new URL("../public/app.js", import.meta.url)).text();
 
+test.each(["request-changes", "approve-with-comments"])("%s uses existing diff comments without asking for another note", (decision) => {
+  const source = app.slice(app.indexOf("function openReviewDecision("), app.indexOf("function expandFilesChangedByRefresh("));
+  const submitted: unknown[][] = [];
+  const open = new Function("state", "elements", "close", `${source}; return openReviewDecision;`)(
+    { session: { comments: [{ id: "comment-1", body: "Preserve selection." }] } },
+    {}, // No comment dialog should be accessed when feedback already exists.
+    (...args: unknown[]) => { submitted.push(args); },
+  );
+
+  open(decision);
+
+  expect(submitted).toEqual([[decision === "request-changes" ? "feedback" : "accepted", decision]]);
+});
+
+test.each(["request-changes", "approve-with-comments"])("%s asks for an overall note when the diff has no comments", (decision) => {
+  const source = app.slice(app.indexOf("function openReviewDecision("), app.indexOf("function expandFilesChangedByRefresh("));
+  let opened = false;
+  let focused = false;
+  const elements = {
+    "review-decision-dialog": { dataset: { decision: "" }, showModal() { opened = true; } },
+    "review-decision-eyebrow": { textContent: "" },
+    "review-decision-title": { textContent: "" },
+    "review-decision-description": { textContent: "" },
+    "submit-review-decision": { textContent: "" },
+    "review-decision-note": { value: "A previous draft", focus() { focused = true; } },
+  };
+  const open = new Function("state", "elements", "close", `${source}; return openReviewDecision;`)(
+    { session: { comments: [] } }, elements,
+    () => { throw new Error("A decision without feedback must ask for a note first"); },
+  );
+
+  open(decision);
+
+  expect(opened).toBe(true);
+  expect(focused).toBe(true);
+  expect(elements["review-decision-dialog"].dataset.decision).toBe(decision);
+  expect(elements["review-decision-note"].value).toBe("");
+});
+
 test.each(["request-changes", "approve-with-comments"])("%s submits the modal text as the overall note", (decision) => {
   const source = app.slice(app.indexOf('elements["review-decision-form"].addEventListener'), app.indexOf('elements["symbol-peek-open"]?.addEventListener'));
   let submit!: (event: { preventDefault(): void }) => void;

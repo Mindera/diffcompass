@@ -21,7 +21,7 @@ export function sequenceWalkthroughSteps(ir: Record<string, unknown>) {
   return steps;
 }
 
-export function sequenceWalkthroughScript(ir: Record<string, unknown>, offline = false): string {
+export function sequenceWalkthroughScript(ir: Record<string, unknown>, offline = false, externalInspector = false): string {
   const steps = JSON.stringify(sequenceWalkthroughSteps(ir)).replace(/</g, "\\u003c");
-  return `<style data-diffcompass-sequence-walkthrough>${styles}</style><script data-diffcompass-sequence-walkthrough>${resizeRuntime}\n${runtime}\n(function(){function install(){window.DiffCompassSequenceWalkthrough.installArchify(${steps},${offline});}if(document.readyState==='loading')window.addEventListener('load',install,{once:true});else install();}());</script>`;
+  return `<style data-diffcompass-sequence-walkthrough>${styles}</style><script data-diffcompass-sequence-walkthrough>${resizeRuntime}\n${runtime}\n(function(){function install(){window.DiffCompassSequenceWalkthrough.installArchify(${steps},${offline},${externalInspector});}if(document.readyState==='loading')window.addEventListener('load',install,{once:true});else install();}());</script>`;
 }

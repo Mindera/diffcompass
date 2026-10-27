@@ -56,6 +56,10 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
+      - if: matrix.group == 'briefing'
+        run: |
+          bun scripts/package-archify.ts "$RUNNER_TEMP/briefing-archify"
+          echo "DIFFCOMPASS_ARCHIFY_DIR=$RUNNER_TEMP/briefing-archify" >> "$GITHUB_ENV"
       - run: bun run test:monaco
         env:
           MONACO_CHECK_GROUP: ${{ matrix.group }}

@@ -58,3 +58,6 @@ html[data-diffcompass-embed="true"] .sequence-code-collapsed{grid-template-colum
 .sequence-code-collapsed .sequence-code-toggle{writing-mode:vertical-rl;margin:6px;min-height:90px}
 html[data-diffcompass-embed="true"] .sequence-walkthrough-stacked.sequence-code-collapsed{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 46px}
 .sequence-walkthrough-stacked.sequence-code-collapsed .sequence-code-toggle{writing-mode:horizontal-tb;min-height:32px;margin:6px 10px}
+
+/* Briefing supplies the code pane beside the story, with captured unified diffs. */
+html[data-sequence-external-inspector] .focus-chip{display:none!important}

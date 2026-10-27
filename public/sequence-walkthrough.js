@@ -397,11 +397,72 @@
     if (y !== panel.offsetTop) { panel.style.top = y + 'px'; panel.style.setProperty('--review-panel-y', y + 'px'); }
   }
 
-  function installArchify(steps, offline) {
+  // Both the Diagrams code pane and the Briefing inspector follow the same
+  // native relationship IDs, route state, and keyboard/click behavior.
+  function connectArchifySelection(svg, steps, controller) {
+    let routeOwned = false;
+    const sync = () => {
+      routeEmphasis(svg, steps);
+      if (svg.hasAttribute('data-route-active') || svg.hasAttribute('data-route-picking')) {
+        routeOwned = true;
+        const id = routeMessage(svg, steps);
+        if (id) controller.select(id, 'route'); else controller.clear();
+        return;
+      }
+      // A rejected click may show a notice while no message is selected.
+      // Ending Paths must dismiss it even when selection itself is unchanged.
+      if (routeOwned) controller.clearSelectionNotices();
+      const id = root.Archify.focus.relationship()?.id;
+      if (id) controller.select(id, 'diagram'); else if (routeOwned) controller.clear();
+      routeOwned = false;
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(svg, { attributes: true, attributeFilter: ['data-relationship-pin-active', 'data-route-active', 'data-route-picking', 'data-route-journey'] });
+    function directSelection(event) {
+      if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
+      const id = event.target.closest?.('[data-relationship-id]')?.getAttribute('data-relationship-id');
+      if (!id) return;
+      // Archify toggles an already pinned arrow off. A walkthrough activation
+      // selects/reveals it instead, using the same public relationship API.
+      queueMicrotask(() => {
+        controller.select(id, 'diagram-click');
+      });
+    }
+    svg.addEventListener('click', directSelection);
+    svg.addEventListener('keydown', directSelection);
+    sync();
+    return () => { observer.disconnect(); svg.removeEventListener('click', directSelection); svg.removeEventListener('keydown', directSelection); };
+  }
+
+  function installExternalInspector(svg, steps) {
+    const controller = selectionController(steps.map(step => step.id), {
+      selectDiagram: id => selectMessage(svg, steps, root.Archify, id),
+      mark: id => root.parent.postMessage({ type: 'diffcompass-briefing-sequence-select', elementId: id }, '*'),
+      reveal() {},
+    });
+    const disconnect = connectArchifySelection(svg, steps, { ...controller, clearSelectionNotices() {} });
+    function receive(event) {
+      if (event.source !== root.parent || event.data?.type !== 'diffcompass-briefing-sequence-select') return;
+      if (event.data.elementId === controller.selected) return;
+      if (event.data.elementId === null) { controller.clear(); root.Archify.focus.clear({ updateUrl: false }); }
+      else controller.select(event.data.elementId, 'host');
+    }
+    root.addEventListener('message', receive);
+    root.parent.postMessage({ type: 'diffcompass-briefing-sequence-ready' }, '*');
+    root.addEventListener('pagehide', () => { disconnect(); root.removeEventListener('message', receive); }, { once: true });
+  }
+
+  function installArchify(steps, offline, externalInspector = false) {
     const diagram = document.querySelector('.diagram-container');
     const svg = diagram?.querySelector('svg');
     const actions = root.diffcompassSequenceSourceActions;
-    if (!diagram || !svg || !actions || !root.Archify?.focus?.inspectRelationshipById) return;
+    if (!diagram || !svg || !root.Archify?.focus?.inspectRelationshipById) return;
+    if (externalInspector) {
+      document.documentElement.setAttribute('data-sequence-external-inspector', '');
+      installExternalInspector(svg, steps);
+      return;
+    }
+    if (!actions) return;
     const layout = document.createElement('div');
     layout.className = 'sequence-walkthrough';
     diagram.parentNode.insertBefore(layout, diagram);
@@ -460,43 +521,12 @@
       collapsed: () => pane.hidden,
       show(id) { setCollapsed(false); controller.show(id); },
     });
-    let routeOwned = false;
-    const sync = () => {
-      routeEmphasis(svg, steps);
-      if (svg.hasAttribute('data-route-active') || svg.hasAttribute('data-route-picking')) {
-        routeOwned = true;
-        const id = routeMessage(svg, steps);
-        if (id) controller.select(id, 'route'); else controller.clear();
-        return;
-      }
-      // A rejected click may show a notice while no message is selected.
-      // Ending Paths must dismiss it even when selection itself is unchanged.
-      if (routeOwned) controller.clearSelectionNotices();
-      const id = root.Archify.focus.relationship()?.id;
-      if (id) controller.select(id, 'diagram'); else if (routeOwned) controller.clear();
-      routeOwned = false;
-    };
-    const observer = new MutationObserver(sync);
-    observer.observe(svg, { attributes: true, attributeFilter: ['data-relationship-pin-active', 'data-route-active', 'data-route-picking', 'data-route-journey'] });
-    function directSelection(event) {
-      if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
-      const id = event.target.closest?.('[data-relationship-id]')?.getAttribute('data-relationship-id');
-      if (!id) return;
-      // Archify toggles an already pinned arrow off. A walkthrough activation
-      // selects/reveals it instead, using the same public relationship API.
-      queueMicrotask(() => {
-        controller.select(id, 'diagram-click');
-      });
-    }
-    svg.addEventListener('click', directSelection);
-    svg.addEventListener('keydown', directSelection);
+    const disconnect = connectArchifySelection(svg, steps, controller);
     const preload = preloadDefinitions(steps, { ...actions, offline });
     actions.onChange = (id, stopPreload) => { controller.refresh(id); if (stopPreload) preload.stop(); else preload.pump(); };
     actions.onReset = () => { controller.reset(); preload.reset(); };
     preload.pump();
-    // Restore existing selection without selecting/revealing an invented first arrow.
-    sync();
-    root.addEventListener('pagehide', () => { sourceCard?.dispose(); preload.stop(); observer.disconnect(); panelSize?.disconnect(); panelState.disconnect(); sizing.dispose(); svg.removeEventListener('click', directSelection); svg.removeEventListener('keydown', directSelection); controller.dispose(); }, { once: true });
+    root.addEventListener('pagehide', () => { sourceCard?.dispose(); preload.stop(); disconnect(); panelSize?.disconnect(); panelState.disconnect(); sizing.dispose(); controller.dispose(); }, { once: true });
   }
   root.DiffCompassSequenceWalkthrough = { selectionController, routeMessage, routeStep, selectMessage, routeEmphasis, preloadDefinitions, excerptGroups, boundPathPanel, mount, mountExcerpt, installArchify };
 })(typeof window === 'undefined' ? globalThis : window);

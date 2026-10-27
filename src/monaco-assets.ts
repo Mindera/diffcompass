@@ -30,7 +30,18 @@ import mobileActions from "../public/monaco/mobile-actions.mjs" with { type: "te
 import controller from "../public/monaco-controller.mjs" with { type: "text" };
 // @ts-expect-error Bun embeds this browser asset as text.
 import themes from "../public/monaco/themes.mjs" with { type: "text" };
+// @ts-expect-error Bun embeds the saved-excerpt renderer.
+import briefingCode from "../public/briefing-code.mjs" with { type: "text" };
+import briefingHtml from "../public/monaco/briefing.html" with { type: "text" };
+// @ts-expect-error Bun embeds the saved-excerpt renderer.
+import briefingScript from "../public/monaco/briefing.mjs" with { type: "text" };
+// @ts-expect-error Bun embeds the saved-excerpt styles.
+import briefingStyles from "../public/monaco/briefing.css" with { type: "text" };
 const files: Record<string, { body: string; type: string }> = {
+  "/briefing-code.mjs": { body: String(briefingCode), type: "text/javascript; charset=utf-8" },
+  "/monaco/briefing.html": { body: String(briefingHtml), type: "text/html; charset=utf-8" },
+  "/monaco/briefing.mjs": { body: String(briefingScript), type: "text/javascript; charset=utf-8" },
+  "/monaco/briefing.css": { body: String(briefingStyles), type: "text/css; charset=utf-8" },
   "/monaco/themes.mjs": { body: String(themes), type: "text/javascript; charset=utf-8" },
   "/monaco/bootstrap.mjs": { body: String(bootstrap), type: "text/javascript; charset=utf-8" },
   "/monaco/pen-scroll.mjs": { body: String(penScroll), type: "text/javascript; charset=utf-8" },
@@ -70,7 +81,7 @@ export async function monacoAsset(path: string): Promise<{ body: BodyInit; type:
     return { body: await themeData, type: "text/javascript; charset=utf-8" };
   }
   const embedded = files[path];
-  if (embedded) return { ...embedded, frame: path === "/monaco/index.html" };
+  if (embedded) return { ...embedded, frame: path === "/monaco/index.html" || path === "/monaco/briefing.html" };
   if (!path.startsWith("/vendor/vs/")) return null;
   const relative = path.slice("/vendor/".length);
   if (!/^[a-zA-Z0-9_@./-]+\.(js|css|ttf)$/.test(relative) || relative.split("/").includes("..")) return null;

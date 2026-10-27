@@ -1,0 +1,4 @@
+html, body { margin: 0; padding: 0; overflow: hidden; background: var(--syntax-background, #0b1017); color: #939eae; }
+.excerpt-gap { padding: 5px 12px; font: italic 11px/1.5 monospace; }
+.excerpt-editor { width: 100%; }
+.line-delete, .line-delete-selectable { user-select: text; }

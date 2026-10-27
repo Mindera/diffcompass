@@ -1,3 +1,4 @@
+import { captureBriefingSequences } from "./briefing-sequence.ts";
 import { buildBriefing, briefingFingerprint, briefingIntent, resolveBriefingQuestion, type BriefingQuestionRequest } from "./briefing.ts";
 import { captureBriefingDiffs } from "./briefing-diff.ts";
 import { discoverAgentAdapters } from "./adapters.ts";
@@ -887,7 +888,10 @@ export class ReviewSession {
     await session.selectComparisonView();
     await session.updateRevisionSummary(session.fullComparison).catch(() => undefined);
     if (session.outline && !session.outline.briefing) session.outline.briefing = await buildBriefing(session.comparison, session.outline, session.briefingIntent());
-    if (session.outline?.briefing) await captureBriefingDiffs(session.comparison, session.outline.briefing);
+    if (session.outline?.briefing) {
+      await captureBriefingDiffs(session.comparison, session.outline.briefing);
+      await captureBriefingSequences(session.outline.briefing, session.outline.archifyArtifacts);
+    }
     if (defaults.screenshots?.length) {
       if (!defaults.stateFile) throw new ReviewError("Screenshots require persisted review session storage.");
       session.screenshots.splice(0, session.screenshots.length, ...await importReviewScreenshots(defaults.screenshots, defaults.stateFile, session.screenshots));
@@ -1028,6 +1032,7 @@ export class ReviewSession {
     if (outline?.briefing) outline.briefing.outdated = Boolean(outline.briefing.outdated) || outline.briefing.fingerprint !== briefingFingerprint(this.comparison, this.briefingIntent());
     // HTML is served as a separately sandboxed local resource. Keeping it out
     // of routine JSON snapshots avoids repeatedly moving multi-megabyte HTML.
+    if (outline?.briefing) for (const diagram of outline.briefing.diagrams) delete diagram.archifyHtml;
     if (outline?.archifyArtifacts) {
       outline.archifyArtifacts = outline.archifyArtifacts.map(({ html: _html, comparison, ...artifact }) => ({
         ...artifact,
@@ -1787,7 +1792,7 @@ export class ReviewSession {
         const generated = await this.agent.regenerateBriefing(this.comparison, this.outline, base, intent);
         this.ensureComparisonCurrent(comparisonGeneration);
         if (this.revision !== before.revision) throw new ReviewError("The review changed. Regenerate Briefing against the latest snapshot.");
-        const document = await buildBriefing(this.comparison, this.outline, intent, generated.value);
+        const document = await buildBriefing(this.comparison, { ...this.outline, flows: generated.value.flows }, intent, generated.value.proposal);
         this.ensureComparisonCurrent(comparisonGeneration);
         this.ensureOpen();
         if (this.revision !== before.revision) throw new ReviewError("The review changed while validating Briefing evidence. Retry against the latest snapshot.");

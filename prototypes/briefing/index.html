@@ -3,34 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Briefing experiments · DiffCompass</title>
+  <title>Briefing · DiffCompass</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/lab.css">
   <script defer src="/mermaid.js"></script>
   <script defer src="/diagram-labels.js"></script>
   <script defer src="/reader.js"></script>
   <script defer src="/panes.js"></script>
-  <script defer src="/lab.js"></script>
+  <script type="module" src="/lab.js"></script>
 </head>
 <body id="reading-lab">
   <header class="lab-header">
-    <div class="lab-brand"><span class="lab-mark" aria-hidden="true">↗</span><div><strong>DiffCompass</strong><span>Briefing experiments</span></div></div>
+    <div class="lab-brand"><span class="lab-mark" aria-hidden="true">↗</span><div><strong>DiffCompass</strong><span>Briefing</span></div></div>
     <label class="lab-case-label">Change<select id="case-picker" aria-label="Change to explore"></select></label>
     <div id="case-source" class="lab-source"></div>
-    <button type="button" class="button secondary" id="notes-open">Comparison notes</button>
+    <label class="lab-renderer-label">Renderer<select id="diff-renderer" aria-label="Diff renderer"><option value="current">Shiki</option><option value="monaco">Monaco</option></select></label>
+    <button type="button" class="button secondary" id="notes-open">Reading notes</button>
   </header>
-  <nav id="approaches" class="lab-approaches" role="tablist" aria-label="Reading approach"></nav>
-  <div class="lab-caption"><p id="approach-description"></p><span id="case-description"></span></div>
-  <main id="lab-stage" aria-label="Briefing comparison"><p class="lab-loading" role="status">Loading captured changes…</p></main>
+  <main id="lab-stage" aria-label="Briefing"><p class="lab-loading" role="status">Loading captured changes…</p></main>
   <button id="mobile-evidence" class="button primary" type="button">Explore evidence</button>
   <dialog id="evidence-sheet" class="lab-sheet" aria-label="Source evidence"><button type="button" class="button secondary" id="evidence-close">Back to reading</button></dialog>
   <dialog id="notes-dialog" class="lab-notes" aria-labelledby="notes-title">
-    <header><div><span class="eyebrow">Compare understanding</span><h2 id="notes-title">Reading notes</h2></div><button id="notes-close" type="button" class="button secondary">Close</button></header>
-    <p id="comparison-question"></p>
+    <header><div><span class="eyebrow">Reading notes</span><h2 id="notes-title">Reading notes</h2></div><button id="notes-close" type="button" class="button secondary">Close</button></header>
     <label for="notes-text">What became clearer? What still needs explaining?</label>
-    <textarea id="notes-text" rows="7" placeholder="Your notes for this change and reading approach…"></textarea>
-    <p class="muted">Saved in this browser, separately for each change and approach.</p>
+    <textarea id="notes-text" rows="7" placeholder="Your notes for this change…"></textarea>
+    <p class="muted">Saved in this browser, separately for each change.</p>
     <footer><span id="notes-status" role="status"></span><button id="notes-download" type="button" class="button secondary">Download all notes</button></footer>
   </dialog>
+<script src="/map-presentation.js"></script>
 </body>
 </html>

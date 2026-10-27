@@ -1,4 +1,4 @@
-#reading-lab { --bg: var(--background); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); }
+#reading-lab { --bg: var(--background); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 .lab-header { display: flex; align-items: center; gap: 28px; padding: 18px 26px; background: var(--topbar); border-bottom: 1px solid var(--border); }
 .lab-brand { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .lab-brand > div { display: grid; gap: 4px; }
@@ -7,22 +7,18 @@
 .lab-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 24px; }
 .lab-case-label { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); }
 .lab-case-label select { min-width: 215px; padding: 9px 12px; border: 1px solid var(--border-hover); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; font-size: 13px; }
+.lab-renderer-label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.lab-renderer-label select { padding: 9px; background: var(--panel); color: var(--text); border: 1px solid var(--border-hover); border-radius: 6px; }
 .lab-source { margin-left: auto; display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
 .lab-source a { color: var(--text-soft); text-decoration: none; font-family: ui-monospace, monospace; }
 .lab-source a:hover { text-decoration: underline; }
-.lab-approaches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 14px 26px 0; background: var(--topbar); }
-.lab-approaches button { border: 1px solid transparent; border-radius: 8px; background: none; color: var(--muted); padding: 12px 14px; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.lab-approaches button > span { margin-right: 10px; font: 11px ui-monospace, monospace; opacity: .65; }
-.lab-approaches button:hover { background: var(--surface-hover); color: var(--text); }
-.lab-approaches button[aria-selected="true"] { color: var(--text); background: var(--accent-soft); border-color: var(--accent-border); }
-.lab-approaches button:focus-visible, #reading-lab button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.lab-caption { display: flex; justify-content: space-between; gap: 24px; padding: 12px 40px 16px; font-size: 12px; line-height: 1.5; background: var(--topbar); border-bottom: 1px solid var(--border); }
-.lab-caption p { margin: 0; color: var(--text-soft); }
-.lab-caption > span { color: var(--muted); font-size: 11px; max-width: 45%; }
+#reading-lab button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 #lab-stage { min-height: 0; min-width: 0; position: relative; }
 .lab-loading { padding: 48px; color: var(--muted); }
 .lab-workspace { position: relative; height: 100%; display: grid; grid-template-columns: var(--lab-outline-width, 210px) minmax(0, 1fr) var(--lab-evidence-width, 340px); }
 .lab-workspace[hidden] { display: none; }
+.lab-evidence-closed .lab-workspace { grid-template-columns: var(--lab-outline-width, 210px) minmax(0, 1fr) 40px; }
+.lab-evidence-closed .agent-resizer { display: none; }
 .lab-outline { border-right: 1px solid var(--border); background: var(--panel); min-height: 0; min-width: 0; }
 .lab-scroll { min-width: 0; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; }
 .lab-evidence { border-left: 1px solid var(--border); background: var(--panel); min-width: 0; }
@@ -37,28 +33,7 @@
 #reading-lab .briefing-excerpt pre { font-size: 12px; line-height: 1.75; }
 #reading-lab .briefing-canvas svg { max-height: none; }
 #reading-lab .briefing-source-label { font-size: 10px; }
-#reading-lab .briefing-canvas { padding: 20px 12px; }
-.lab-workspace[data-approach="decisions"] .briefing-view { counter-reset: decision; }
-.lab-workspace[data-approach="decisions"] .briefing-section { border-top: 1px solid var(--border-hover); padding-top: 24px; }
-.lab-workspace[data-approach="decisions"] .briefing-section > h2::before { counter-increment: decision; content: "0" counter(decision); display: block; font: 11px ui-monospace, monospace; color: var(--accent); margin-bottom: 10px; letter-spacing: .1em; }
-.lab-reasoning { border-left: 2px solid var(--accent-border); padding: 4px 0 4px 16px; }
-.lab-reasoning summary { cursor: pointer; font-size: 12px; color: var(--accent-strong); line-height: 1.6; }
-.lab-reasoning p { margin-top: 10px; }
-.lab-scenario { margin: 28px 0 36px; border: 1px solid var(--accent-border); border-radius: 10px; padding: 18px; background: var(--panel); }
-.lab-scenario > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.lab-scenario h2 { font-size: 15px; margin: 0; }
-.lab-scenario small { color: var(--muted); font-size: 10px; }
-.lab-routes { display: flex; flex-wrap: wrap; gap: 6px; }
-.lab-routes button { padding: 7px 10px; color: var(--text-soft); background: transparent; border: 1px solid var(--border); border-radius: 5px; font: inherit; font-size: 11px; cursor: pointer; }
-.lab-routes button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
-.lab-scenario p { font-size: 13px; line-height: 1.65; color: var(--text-soft); margin: 14px 0; }
-.lab-stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
-.lab-stages button { position: relative; display: grid; gap: 7px; text-align: left; border: 1px solid var(--border); border-radius: 6px; padding: 12px; color: var(--text); background: var(--background); font: inherit; font-size: 12px; line-height: 1.5; cursor: pointer; }
-.lab-stages button + button::before { content: "→"; position: absolute; left: -15px; top: 30px; color: var(--muted); }
-.lab-stages button > span { color: var(--accent); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.lab-stages button:hover { border-color: var(--accent); }
-.lab-scenario .lab-scenario-outcome { color: var(--text); margin-bottom: 0; }
-.lab-stage-caption { color: var(--muted); display: block; font-size: 10px; margin-top: 10px; }
+#reading-lab .briefing-canvas:not(:has(iframe)) { padding: 20px 12px; }
 .lab-notes, .lab-sheet { box-sizing: border-box; background: var(--panel); color: var(--text); border: 1px solid var(--border-hover); border-radius: 12px; padding: 24px; width: min(640px, calc(100vw - 24px)); }
 .lab-notes::backdrop, .lab-sheet::backdrop { background: rgba(0, 0, 0, .65); }
 .lab-notes > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
@@ -71,25 +46,16 @@
 .lab-sheet { height: 88dvh; max-height: 88dvh; padding: 12px 0 0; }
 .lab-sheet > button { margin: 0 16px 12px; }
 .lab-sheet .lab-evidence { height: calc(100% - 48px); border: 0; }
-@media (max-width: 1200px) { .lab-header { gap: 18px; } .lab-source { display: none; } .lab-header > button { margin-left: auto; } .lab-caption > span { display: none; } }
+@media (max-width: 1200px) { .lab-header { gap: 18px; } .lab-source { display: none; } .lab-header > button { margin-left: auto; } }
 @media (max-width: 900px) {
   .lab-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
   .lab-brand { margin-right: auto; }
   .lab-case-label { order: 3; width: 100%; }
   .lab-case-label select { flex: 1; min-width: 0; }
   .lab-header > button { font-size: 11px; }
-  .lab-approaches { padding: 8px 12px 0; gap: 4px; }
-  .lab-approaches button { padding: 10px 6px; text-align: center; font-size: 11px; line-height: 1.5; }
-  .lab-approaches button > span { display: block; margin: 0 0 3px; }
-  .lab-caption { padding: 10px 16px; font-size: 11px; }
   .lab-workspace { display: block; }
   .lab-workspace[hidden] { display: none; }
   .lab-workspace > .lab-outline, .lab-workspace > .lab-evidence { display: none; }
   .lab-scroll { height: 100%; }
-  .lab-scenario { padding: 14px; }
-  .lab-scenario > header { align-items: start; flex-direction: column; }
-  .lab-stages { grid-template-columns: 1fr; gap: 9px; }
-  .lab-stages button { grid-template-columns: 60px 1fr; align-items: center; }
-  .lab-stages button + button::before { content: none; }
   #mobile-evidence { display: block; position: fixed; right: 16px; bottom: 16px; z-index: 5; }
 }

@@ -59,6 +59,36 @@ try {
   await ready();
   const snapshot = await api("/api/session");
   const head = snapshot.pullRequest.headRefOid;
+  const ordinaryComment = snapshot.comments.find((comment: any) => !comment.suggestion);
+  assert.ok(ordinaryComment);
+  const decisionDialog = page.locator("#review-decision-dialog");
+  const reviewConfirmation = page.locator("#github-review-confirmation-dialog");
+  for (const button of ["approve-comments-button", "feedback-button"]) {
+    await page.locator(`#${button}`).click();
+    await reviewConfirmation.waitFor();
+    assert.equal(await decisionDialog.isVisible(), false, "Existing diff comments must bypass the extra note prompt");
+    assert.match(await page.locator("#github-review-confirmation-comments").textContent() ?? "", /1 selected inline comment/);
+    assert.deepEqual(await payloads(), [], "Skipping the note must still require publication confirmation");
+    await page.locator("#cancel-github-review-confirmation").click();
+  }
+  await api(`/api/comments/${ordinaryComment.id}`, undefined, "DELETE");
+  await page.reload(); await ready();
+  for (const button of ["approve-comments-button", "feedback-button"]) {
+    await page.locator(`#${button}`).click();
+    await decisionDialog.waitFor();
+    await page.locator("#submit-review-decision").click();
+    assert.equal(await decisionDialog.isVisible(), true, "Without inline comments an overall note is required");
+    assert.equal(await reviewConfirmation.isVisible(), false);
+    await page.locator("#review-decision-note").fill("Preserve selection and scroll position.");
+    await page.locator("#submit-review-decision").click();
+    await reviewConfirmation.waitFor();
+    assert.equal(await decisionDialog.isVisible(), false);
+    await page.locator("#cancel-github-review-confirmation").click();
+  }
+  assert.deepEqual(await payloads(), []);
+  await api("/api/comments", { path: ordinaryComment.path, side: ordinaryComment.side, line: ordinaryComment.line, body: ordinaryComment.body });
+  await page.reload(); await ready();
+  console.log("PASS review decisions: existing diff comments skip the note, empty reviews require a note, and GitHub publication always requires confirmation");
   await frame!.evaluate(() => {
     const { monaco, diffLab } = window as any;
     const editor = diffLab.views.get("src/cart.ts").editors.new;

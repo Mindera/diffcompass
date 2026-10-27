@@ -1,5 +1,6 @@
 import { refreshSequenceEvidence, sequenceEvidenceRevision, sequenceSourceSelection } from "/sequence-walkthrough-host.js";
 import { createMonacoRenderer } from "/monaco-controller.mjs";
+import { createBriefingCodeRenderer } from "/briefing-code.mjs";
 
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 const fragmentToken = fragment.get("token");
@@ -1694,6 +1695,7 @@ function currentDiffRenderOptions() {
 
 function syncDiffViewControls() {
   state.monacoRenderer?.sync();
+  if (typeof briefingReader !== "undefined") briefingReader?.syncDiffView();
   elements.diff.classList.toggle("wrap-code", state.diffWrap === "wrap");
   elements.diff.classList.toggle("show-diff-markers", state.showDiffMarkers);
   document.getElementById("show-diff-markers").checked = state.showDiffMarkers;
@@ -4895,8 +4897,17 @@ let briefingReader;
 let briefingSheetTrigger;
 function getBriefingReader() {
   return briefingReader ??= createBriefingReader({
+    createCodeRenderer: createBriefingCodeRenderer,
+    getDiffView: () => ({ layout: state.diffLayout, wrap: state.diffWrap }),
+    onDiffView: ({ layout, wrap }) => changeDiffView(layout, wrap),
     view: elements["briefing-view"], outline: elements["briefing-outline"], pane: elements["briefing-inspector"], chips: elements["briefing-context"],
     notify: toast,
+    sequenceUrl: async (document, diagram) => {
+      const url = `/briefing-sequence/${encodeURIComponent(document.id)}/${encodeURIComponent(diagram.id)}`;
+      const response = await fetch(url, { method: "HEAD" });
+      if (!response.ok) throw new Error("Saved sequence viewer unavailable.");
+      return url;
+    },
     highlight: async groups => (await api("/api/highlight", { method: "POST", body: JSON.stringify({ groups, theme: state.syntaxTheme }) })).groups,
     tokenHtml: syntaxTokenHtml,
     callFlowHtml: flow => `<div class="call-tree">${renderCallTree(flow, "changes")}</div>`,
@@ -4905,8 +4916,13 @@ function getBriefingReader() {
     onAsk: () => { if (state.activeThreadId) openConversation(null); state.questionsOpen = true; state.selectedLine = null; state.questionContextPaths.clear(); renderMessages(); elements["chat-input"].focus(); },
     openTools: () => {
       if (matchMedia("(max-width: 900px)").matches) openBriefingSheet();
-      else setPaneCollapsed("agent", false);
+      else setPaneCollapsed("agent", false, true);
     },
+    closeTools: () => {
+      if (matchMedia("(max-width: 900px)").matches) closeBriefingSheet();
+      else setPaneCollapsed("agent", true, true);
+    },
+    toolsCollapsed: () => !matchMedia("(max-width: 900px)").matches && state.agentPanelCollapsed,
     onChanges: async (evidence, comparisonId) => {
       const manifest = await api("/api/diff/sources");
       if (comparisonId !== manifest.comparisonId) { toast("This source belongs to a saved comparison. Its excerpt remains available here."); return; }
@@ -4933,6 +4949,7 @@ function openBriefingSheet() {
   if (sheet.open) return;
   briefingSheetTrigger = document.activeElement;
   sheet.appendChild(elements["agent-panel"]);
+  briefingReader?.syncTools();
   sheet.showModal();
 }
 function closeBriefingSheet() { if (elements["briefing-sheet"].open) elements["briefing-sheet"].close(); }
@@ -6674,12 +6691,16 @@ function requestCloseReview() {
 
 function openReviewDecision(decision) {
   const requestChanges = decision === "request-changes";
+  if (state.session.comments.length > 0) {
+    void close(requestChanges ? "feedback" : "accepted", decision);
+    return;
+  }
   elements["review-decision-dialog"].dataset.decision = decision;
   elements["review-decision-eyebrow"].textContent = requestChanges ? "Changes required" : "Non-blocking review";
   elements["review-decision-title"].textContent = requestChanges ? "Request changes" : "Approve with comments";
   elements["review-decision-description"].textContent = requestChanges
-    ? "Explain what must change before this review can be approved. Inline comments will be included too."
-    : "Leave an overall non-blocking note while approving this review. Inline comments will be included too.";
+    ? "Explain what must change before this review can be approved."
+    : "Leave an overall non-blocking note while approving this review.";
   elements["submit-review-decision"].textContent = requestChanges ? "Request changes" : "Approve with comments";
   elements["review-decision-note"].value = "";
   elements["review-decision-dialog"].showModal();

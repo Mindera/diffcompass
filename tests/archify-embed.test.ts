@@ -144,12 +144,12 @@ test("missing or malformed translation payloads remain intact", () => {
   }
 });
 
-function cameraRuntime() {
-  const embedded = withArchifyEmbedAdapter("<!doctype html><html><body><div class=\"diagram-container\"><svg></svg></div></body></html>");
+function cameraRuntime(briefingSequence = false) {
+  const embedded = withArchifyEmbedAdapter("<!doctype html><html><body><div class=\"diagram-container\"><svg></svg></div></body></html>", briefingSequence ? "sequence" : undefined, undefined, false, undefined, undefined, briefingSequence ? { ir: {}, externalInspector: true } : undefined);
   return /<script data-diffcompass-camera>([\s\S]+)<\/script>/.exec(embedded)?.[1] ?? "";
 }
 
-function interactiveHarness(dimensions: Partial<{ containerWidth: number; containerHeight: number; svgWidth: number; svgHeight: number }> = {}, panelId = "focus-chip", handleSelector = ".relationship-lens-head") {
+function interactiveHarness(dimensions: Partial<{ containerWidth: number; containerHeight: number; svgWidth: number; svgHeight: number; briefingSequence: boolean }> = {}, panelId = "focus-chip", handleSelector = ".relationship-lens-head") {
   const size = {
     containerWidth: dimensions.containerWidth ?? 1_000,
     containerHeight: dimensions.containerHeight ?? 600,
@@ -251,7 +251,7 @@ function interactiveHarness(dimensions: Partial<{ containerWidth: number; contai
   const documentValue = { readyState: "complete", querySelector: () => container, getElementById: (id: string) => id === panelId ? passport : null, addEventListener(type: string, listener: (event: Record<string, unknown>) => void) { documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]); } };
   let resize = () => {};
   const ResizeObserverValue = class { constructor(callback: () => void) { resize = callback; } observe() {} };
-  const runtime = new Function("window", "document", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "Archify", cameraRuntime());
+  const runtime = new Function("window", "document", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "Archify", cameraRuntime(dimensions.briefingSequence));
   runtime(windowValue, documentValue, ResizeObserverValue, (callback: () => void) => callback(), () => {}, (node: { testOverflowY?: string; testOverflowX?: string }) => ({ paddingLeft: "24px", paddingRight: "24px", paddingTop: "16px", paddingBottom: "72px", overflowY: node?.testOverflowY, overflowX: node?.testOverflowX }), windowValue.Archify);
   const fire = (type: string, event: Record<string, unknown>) => (listeners.get(type) ?? []).forEach((listener) => listener(event));
   const firePassport = (type: string, event: Record<string, unknown>) => (passportListeners.get(type) ?? []).forEach((listener) => listener(event));
@@ -318,6 +318,21 @@ test("the generated camera script fits tall and wide maps without magnifying a s
   expect(tall.view.state().scale).toBeCloseTo(512 / 2_400);
   expect(wide.view.state().scale).toBeCloseTo(952 / 2_400);
   expect(small.view.state().scale).toBe(1);
+});
+
+test("Briefing sequences fit on first display and resize until the reader moves the camera", () => {
+  const harness = interactiveHarness({ svgWidth: 2400, svgHeight: 1400, briefingSequence: true });
+  expect(harness.view.state().scale).toBeCloseTo(512 / 1400);
+  harness.container.clientWidth = 600;
+  harness.resize();
+  expect(harness.view.state().scale).toBeCloseTo(552 / 2400);
+  harness.click('[data-view="in"]');
+  const chosen = harness.view.state();
+  harness.container.clientWidth = 1000;
+  harness.resize();
+  expect(harness.view.state()).toEqual(chosen);
+  harness.click('[data-view="reset"]');
+  expect(harness.view.state().scale).toBeCloseTo(512 / 1400);
 });
 
 test("the generated camera script keeps its fixed viewport stable, pans a sub-100% overflowing map, and passes node clicks through", () => {

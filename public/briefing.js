@@ -1,8 +1,11 @@
 /* Saved narrative reader. Evidence selection never changes tour/review progress. */
+let briefingReaderId = 0;
 function createBriefingReader(options) {
   const { view, outline, pane, chips } = options;
+  const readerId = ++briefingReaderId;
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const syntaxCache = new Map();
+  const codeRenderer = options.createCodeRenderer?.();
   let document = null, session = null, rendered = null, active = false, inspection = null, selected = null, attachments = [], generation = 0, anchor = null;
   const scroll = view.parentElement;
   const blocks = () => document?.sections.flatMap(s => s.blocks) ?? [];
@@ -10,6 +13,47 @@ function createBriefingReader(options) {
   const diagramFor = block => document?.diagrams.find(d => d.id === block?.diagramId);
   const action = (label, attrs) => `<button type="button" class="text-button" ${attrs}>${esc(label)}</button>`;
   const readingStateKey = "diffcompass-briefing-reading-v1";
+  const widePreferenceKey = "diffcompass-briefing-wide";
+  const codeViewKey = () => `diffcompass-briefing-code-view-${matchMedia("(max-width: 900px)").matches ? "mobile" : "desktop"}`;
+  let codeView = { layout: "unified", wrap: "scroll" };
+  function syncDiffView(preferred = options.getDiffView?.()) {
+    if (!preferred) { try { preferred = JSON.parse(localStorage.getItem(codeViewKey()) ?? "null"); } catch { /* Use the current view. */ } }
+    const next = { layout: ["split", "unified"].includes(preferred?.layout) ? preferred.layout : codeView.layout, wrap: ["scroll", "wrap"].includes(preferred?.wrap) ? preferred.wrap : codeView.wrap };
+    const layoutChanged = next.layout !== codeView.layout;
+    codeView = next;
+    for (const root of [view, pane]) {
+      root.classList.toggle("briefing-split", codeView.layout === "split");
+      root.classList.toggle("briefing-wrap", codeView.wrap === "wrap");
+      if (layoutChanged && document) void highlightEvidence(root, root === pane && inspection?.frozen ? inspection.frozen.evidence : document.evidence);
+      if (codeView.wrap === "wrap") for (const code of root.querySelectorAll("pre.briefing-diff, .briefing-diff-column")) code.scrollLeft = 0;
+    }
+    for (const button of view.querySelectorAll("[data-briefing-layout]")) button.setAttribute("aria-pressed", String(button.dataset.briefingLayout === codeView.layout));
+    for (const button of view.querySelectorAll("[data-briefing-wrap]")) button.setAttribute("aria-pressed", String(button.dataset.briefingWrap === codeView.wrap));
+    codeRenderer?.setView(codeView);
+  }
+  let wide = false;
+  function restoreWidthPreference() {
+    try { wide = localStorage.getItem(widePreferenceKey) === "true"; }
+    catch { /* Keep the current width when storage is unavailable. */ }
+    syncWidth();
+  }
+  function syncWidth() {
+    view.classList.toggle("briefing-wide", wide);
+    const button = view.querySelector("[data-briefing-wide]");
+    button?.setAttribute("aria-pressed", String(wide));
+    if (button) button.title = wide ? "Use the standard reading width" : "Use a wider reading column";
+  }
+  function syncTools() {
+    const collapsed = Boolean(options.toolsCollapsed?.());
+    pane.classList.toggle("briefing-pane-collapsed", collapsed);
+    const button = pane.querySelector("[data-briefing-toggle-tools]");
+    if (!button) return;
+    button.textContent = collapsed ? "‹" : "›";
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} evidence pane`);
+    button.title = button.getAttribute("aria-label");
+  }
+  function openTools() { options.openTools?.(); syncTools(); }
   let saveTimer, restoreFrame, awaitingDiagrams = false, restoring = false;
   function savedReadingStates() {
     try {
@@ -74,7 +118,7 @@ function createBriefingReader(options) {
   function updateOutline() {
     if (!active || !view.getClientRects().length) return;
     const sections = [...view.querySelectorAll(".briefing-section")];
-    const top = scroll.getBoundingClientRect().top + 48;
+    const top = scroll.getBoundingClientRect().top + (view.querySelector(".briefing-reader-tools")?.offsetHeight ?? 0) + 48;
     let current = sections[0];
     for (const section of sections) { if (section.getBoundingClientRect().top <= top) current = section; }
     if (scroll.scrollTop > 0 && scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 2) current = sections.at(-1);
@@ -120,10 +164,15 @@ function createBriefingReader(options) {
     // offline exports use the chosen outcome-first presentation by default.
     view.classList.toggle("briefing-outcome", document?.mode === "authored" && options.outcomeFirst !== false);
     rendered = identity; const ticket = ++generation;
+    codeRenderer?.clear(view);
     awaitingDiagrams = Boolean(document);
     const repository = value?.pullRequest?.repository ?? value?.comparison.repositoryName ?? "";
     const branch = value?.pullRequest?.headRefName ?? value?.comparison.branch ?? "detached";
-    const heading = `<header class="briefing-heading"><div class="eyebrow">${esc(repository)} · ${esc(branch)} · Briefing</div><h1>${esc(document?.title ?? value?.outline?.title ?? "Understand this change")}</h1></header>`;
+    restoreWidthPreference();
+    syncDiffView();
+    const controls = (label, name, values, selected) => `<div class="briefing-code-controls" role="group" aria-label="${label}">${values.map(value => `<button type="button" class="briefing-layout-button" data-briefing-${name}="${value}" aria-pressed="${value === selected}">${value[0].toUpperCase() + value.slice(1)}</button>`).join("")}</div>`;
+    const tools = `<div class="briefing-reader-tools" role="group" aria-label="Briefing layout">${controls("Diff layout", "layout", ["split", "unified"], codeView.layout)}${controls("Long lines", "wrap", ["scroll", "wrap"], codeView.wrap)}<button type="button" class="briefing-layout-button" data-briefing-wide aria-pressed="${wide}" title="${wide ? "Use the standard reading width" : "Use a wider reading column"}">Wide briefing</button></div>`;
+    const heading = tools + `<header class="briefing-heading"><div class="eyebrow">${esc(repository)} · ${esc(branch)} · Briefing</div><h1>${esc(document?.title ?? value?.outline?.title ?? "Understand this change")}</h1></header>`;
     if (!document) {
       view.innerHTML = heading + `<p>${esc(value?.outline?.summary ?? "Prepare a walkthrough to explore the intent, behavior, and design of this change.")}</p><button type="button" class="button primary" data-briefing-generate>${value?.outline ? "Generate Briefing" : "Prepare walkthrough"}</button>`;
       outline.innerHTML = '<p class="muted">Briefing</p>'; renderInspector(); return;
@@ -134,7 +183,7 @@ function createBriefingReader(options) {
       const content = section.blocks.map((block, blockIndex) => blockHtml(block, opening && blockIndex === 0)).join("");
       return `<section id="briefing-section-${esc(section.id)}" class="briefing-section${opening ? " briefing-opening" : ""}"><h2>${esc(section.title)}</h2>${content}</section>`;
     }).join("");
-    renderInspector(); renderChips(); restoreAnchor(); void highlightEvidence(view, document.evidence); void renderDiagrams(ticket);
+    renderInspector(); renderChips(); restoreAnchor(); renderCode(view, document.evidence); void renderDiagrams(ticket);
   }
   function blockHtml(b, lead = false) {
     const attrs = `data-briefing-block="${esc(b.id)}"`;
@@ -143,7 +192,7 @@ function createBriefingReader(options) {
     if (b.kind === "example") return `<article class="briefing-block briefing-example" ${attrs}><header class="briefing-excerpt-heading"><span class="briefing-basis">Illustrative example${b.language ? ` · ${esc(b.language)}` : ""}</span>${ask}</header><pre data-briefing-text><code>${esc(b.text)}</code></pre></article>`;
     if (b.kind === "source") {
       const e = document.evidence.find(e => e.id === b.evidenceId);
-      return `<article class="briefing-block briefing-source briefing-excerpt" ${attrs} data-evidence-id="${esc(b.evidenceId)}"><header class="briefing-excerpt-heading"><span class="briefing-source-label">${e ? sourceLabel(e) : "Source unavailable"}</span>${action("Inspect", `data-briefing-inspect="${esc(b.id)}"`)}${ask}</header>${sourceCodeHtml(e)}</article>`;
+      return `<article class="briefing-block briefing-source briefing-excerpt" ${attrs} data-evidence-id="${esc(b.evidenceId)}"><header class="briefing-excerpt-heading"><span class="briefing-source-label">${e ? sourceLabel(e) : "Source unavailable"}</span>${ask}</header>${sourceCodeHtml(e)}</article>`;
     }
     const d = diagramFor(b);
     return `<figure class="briefing-block briefing-diagram" ${attrs}><figcaption><div><span class="eyebrow">${esc(d?.family)}${d?.outdated ? " · saved diagram, source changed" : ""}</span><strong>${esc(d?.title)}</strong></div>${action("Inspect", `data-briefing-inspect="${esc(b.id)}"`)}${ask}</figcaption><div class="briefing-canvas ${["architecture", "domain", "call-flow"].includes(d?.family) ? "architecture-node-skin" : ""}" aria-label="${esc(d?.title)}">Rendering diagram…</div><details class="briefing-elements"><summary>Explore ${d?.elements.length ?? 0} ${d?.family === "sequence" ? "messages" : "elements"}</summary><div>${(d?.elements ?? []).map(e => `<button type="button" data-briefing-element="${esc(e.id)}" data-block-id="${esc(b.id)}">${esc(e.label)}</button>`).join("")}</div></details></figure>`;
@@ -154,7 +203,21 @@ function createBriefingReader(options) {
       const d = diagramFor(b), box = view.querySelector(`[data-briefing-block="${CSS.escape(b.id)}"] .briefing-canvas`);
       if (!box || !d) continue;
       try {
-        if (d.family === "call-flow" && options.callFlowHtml) {
+        if (d.family === "sequence") {
+          const url = await options.sequenceUrl?.(document, d);
+          const html = url ? undefined : await options.sequenceHtml?.(document, d);
+          if (generation !== ticket) return;
+          if (!url && !html) throw new Error("Saved sequence viewer unavailable.");
+          const frame = window.document.createElement("iframe");
+          frame.className = "briefing-sequence-frame";
+          frame.dataset.briefingSequence = b.id;
+          frame.title = `Sequence: ${d.title}`;
+          frame.setAttribute("sandbox", "allow-scripts allow-downloads");
+          frame.referrerPolicy = "no-referrer";
+          if (url) frame.src = url;
+          else frame.srcdoc = html;
+          box.replaceChildren(frame);
+        } else if (d.family === "call-flow" && options.callFlowHtml) {
           box.innerHTML = options.callFlowHtml(d.ir);
           // The native map exposes exact node/edge IDs; no label matching.
           for (const el of box.querySelectorAll("[data-node-id], [data-edge-id]")) bindElement(el, b.id, el.dataset.nodeId ?? el.dataset.edgeId);
@@ -168,7 +231,7 @@ function createBriefingReader(options) {
             mermaid = `flowchart LR\n${nodes.map(c => `${ids.get(c.id)}["${label(c.label)}${c.change ? ` (${label(c.change)})` : ""}"]`).join("\n")}\n${edges.map(c => `${ids.get(c.from)} -->|"${label(c.label ?? "calls")}"| ${ids.get(c.to)}`).join("\n")}`;
           }
           if (!mermaid || !window.mermaid) throw new Error("Use the element list to explore this diagram.");
-          const renderId = `briefing-${ticket}-${b.id.replace(/[^a-zA-Z0-9]/g, "-")}`;
+          const renderId = `briefing-${readerId}-${ticket}-${b.id.replace(/[^a-zA-Z0-9]/g, "-")}`;
           const result = await window.mermaid.render(renderId, mermaid);
           if (generation !== ticket) return;
           if (window.ReviewDiagramLabels) window.ReviewDiagramLabels.mount(box, result.svg);
@@ -180,14 +243,9 @@ function createBriefingReader(options) {
             svg.style.minWidth = `${svg.viewBox.baseVal.width}px`;
             box.tabIndex = 0;
           }
-          if (d.family === "sequence") {
-            const messages = box.querySelectorAll(".messageText");
-            if (messages.length === d.elements.length) messages.forEach((el, i) => bindElement(el, b.id, d.elements[i].id));
-          } else {
-            // A binding failure keeps the rendered diagram and its exact-ID list.
-            try { await bindMermaidGraph(box, b, d, mermaid, renderId, ticket); }
-            catch { /* Unsupported renderer identities remain selectable in the list. */ }
-          }
+          // A binding failure keeps the rendered diagram and its exact-ID list.
+          try { await bindMermaidGraph(box, b, d, mermaid, renderId, ticket); }
+          catch { /* Unsupported renderer identities remain selectable in the list. */ }
         }
       } catch { box.textContent = "Diagram preview unavailable. Explore its saved elements below."; }
     }
@@ -268,10 +326,29 @@ function createBriefingReader(options) {
   }
   function codeRowsHtml(e, tokens) {
     if (e.kind !== "code") return e.quote.split("\n").map((line, i) => `<span class="briefing-code-line"><span class="briefing-line-number">${e.startLine + i}</span>${tokens?.[i] ? tokens[i].map(token => options.tokenHtml(token)).join("") : esc(line)}</span>`).join("");
+    const content = i => tokens?.[i] ? tokens[i].map(token => options.tokenHtml(token)).join("") : esc(e.diff.rows[i].content);
+    if (codeView.layout === "split") {
+      const pairs = [];
+      for (let i = 0; i < e.diff.rows.length;) {
+        const row = e.diff.rows[i];
+        if (row.kind === "context" || row.kind === "meta") { pairs.push([i, i]); i++; continue; }
+        const old = [], next = [];
+        while (i < e.diff.rows.length && !["context", "meta"].includes(e.diff.rows[i].kind)) {
+          (e.diff.rows[i].kind === "deletion" ? old : next).push(i++);
+        }
+        for (let n = 0; n < Math.max(old.length, next.length); n++) pairs.push([old[n], next[n]]);
+      }
+      const sideHtml = (i, side) => {
+        if (i === undefined) return '<span class="briefing-split-empty" aria-hidden="true"></span>';
+        const row = e.diff.rows[i];
+        if (row.kind === "meta") return `<span class="briefing-diff-note">${esc(row.content)}</span>`;
+        return `<span class="briefing-code-line briefing-${row.kind}" data-diff-kind="${row.kind}" data-old-line="${row.oldLine ?? ""}" data-new-line="${row.newLine ?? ""}"><span class="briefing-diff-number">${row[side === "old" ? "oldLine" : "newLine"] ?? ""}</span><span class="briefing-diff-sign">${row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " "}</span><span class="briefing-line-content">${content(i)}</span></span>`;
+      };
+      return `<span class="briefing-split-columns" style="--briefing-row-count:${pairs.length}">${["old", "new"].map((side, index) => `<span class="briefing-diff-column" data-diff-side="${side}" aria-label="${side === "old" ? "Before" : "After"} code">${pairs.map(pair => sideHtml(pair[index], side)).join("")}</span>`).join("")}</span>`;
+    }
     return e.diff.rows.map((row, i) => {
       if (row.kind === "meta") return `<span class="briefing-diff-note">${esc(row.content)}</span>`;
-      const content = tokens?.[i] ? tokens[i].map(token => options.tokenHtml(token)).join("") : esc(row.content);
-      return `<span class="briefing-code-line briefing-${row.kind}" data-diff-kind="${row.kind}" data-old-line="${row.oldLine ?? ""}" data-new-line="${row.newLine ?? ""}"><span class="briefing-diff-number" title="Before">${row.oldLine ?? ""}</span><span class="briefing-diff-number" title="After">${row.newLine ?? ""}</span><span class="briefing-diff-sign">${row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " "}</span><span class="briefing-line-content">${content}</span></span>`;
+      return `<span class="briefing-code-line briefing-${row.kind}" data-diff-kind="${row.kind}" data-old-line="${row.oldLine ?? ""}" data-new-line="${row.newLine ?? ""}"><span class="briefing-diff-number" title="Before">${row.oldLine ?? ""}</span><span class="briefing-diff-number" title="After">${row.newLine ?? ""}</span><span class="briefing-diff-sign">${row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " "}</span><span class="briefing-line-content">${content(i)}</span></span>`;
     }).join("");
   }
   function sourceCodeHtml(e) {
@@ -279,54 +356,67 @@ function createBriefingReader(options) {
     if (e.kind !== "code") return `<pre><code>${codeRowsHtml(e)}</code></pre>`;
     if (!e.diff?.available) return `<p class="muted">${esc(e.diff?.reason ?? "Diff unavailable in this saved Briefing. Regenerate the Briefing to capture it.")}</p>`;
     const added = e.diff.rows.filter(r => r.kind === "addition").length, removed = e.diff.rows.filter(r => r.kind === "deletion").length;
-    return `<div class="briefing-diff-summary"><span>Before → After</span><span>${added || removed ? `<span class="briefing-diff-added">+${added}</span> <span class="briefing-diff-removed">−${removed}</span>${e.diff.rows.some(r => r.content.startsWith("… ")) ? " shown" : ""}` : "Unchanged context"}</span></div><pre class="briefing-diff" aria-label="Before and after code diff"><code>${codeRowsHtml(e)}</code></pre>`;
+    return `<div class="briefing-diff-summary"><span>${added || removed ? `<span class="briefing-diff-added">+${added}</span> <span class="briefing-diff-removed">−${removed}</span>${e.diff.rows.some(r => r.content.startsWith("… ")) ? " shown" : ""}` : "Unchanged context"}</span></div><pre class="briefing-diff" aria-label="Before and after code diff"><code>${codeRowsHtml(e)}</code></pre>`;
   }
   function evidenceHtml(e) {
     if (!e) return '<p class="muted">No verified source binding is available for this element.</p>';
     return `<div class="briefing-source" data-evidence-id="${esc(e.id)}"><div class="briefing-source-label">${sourceLabel(e)}</div>${sourceCodeHtml(e)}${e.available ? action("Open in Changes", `data-briefing-source="${esc(e.id)}"`) : ""}</div>`;
   }
+  function inspectorHeader(eyebrow, title) {
+    const collapsed = Boolean(options.toolsCollapsed?.());
+    pane.classList.toggle("briefing-pane-collapsed", collapsed);
+    const label = `${collapsed ? "Expand" : "Collapse"} evidence pane`;
+    return `<header><div><span class="eyebrow">${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${options.closeTools ? `<button type="button" class="briefing-pane-toggle" data-briefing-toggle-tools aria-expanded="${!collapsed}" aria-label="${label}" title="${label}">${collapsed ? "‹" : "›"}</button>` : ""}</header>`;
+  }
   function renderInspector() {
-    if (!inspection) { pane.innerHTML = '<header><span class="eyebrow">Evidence</span><h2>Explore this change</h2></header><div class="briefing-evidence-scroll"><p class="muted">Inspect a passage, diagram, or source citation. Evidence stays here while you read.</p></div>'; return; }
+    codeRenderer?.clear(pane);
+    if (!inspection) { pane.innerHTML = inspectorHeader("Evidence", "Explore this change") + '<div class="briefing-evidence-scroll"><p class="muted">Inspect a passage, diagram, or source citation. Evidence stays here while you read.</p></div>'; return; }
     if (inspection.frozen) {
       const i = inspection.frozen;
-      pane.innerHTML = `<header><span class="eyebrow">Saved question context</span><h2>${esc(i.label)}</h2></header><div class="briefing-evidence-scroll"><p class="briefing-quotation">${esc(i.text)}</p>${i.evidence.map(evidenceHtml).join("")}</div>`; void highlightEvidence(); return;
+      pane.innerHTML = inspectorHeader("Saved question context", i.label) + `<div class="briefing-evidence-scroll"><p class="briefing-quotation">${esc(i.text)}</p>${i.evidence.map(evidenceHtml).join("")}</div>`; renderCode(); return;
     }
     const b = inspection.evidenceId ? { kind: "source", evidenceId: inspection.evidenceId } : blockFor(inspection.blockId);
     const d = diagramFor(b);
-    if (!b) { pane.innerHTML = '<p>This inspected item belongs to an earlier Briefing. Attached question context is retained.</p>'; return; }
+    if (!b) { pane.innerHTML = inspectorHeader("Evidence", "Saved inspection") + '<p>This inspected item belongs to an earlier Briefing. Attached question context is retained.</p>'; return; }
     const title = d?.title ?? (b.kind === "source" ? "Source citation" : "Selected passage");
     let content;
-    if (d) content = d.elements.map((e, index) => `<article class="briefing-evidence-card" data-evidence-element="${esc(e.id)}"><button class="briefing-card-title" type="button" data-briefing-element="${esc(e.id)}" data-block-id="${esc(b.id)}">${d.family === "sequence" ? `${index + 1}. ` : ""}${esc(e.label)}</button>${e.evidenceIds.length ? e.evidenceIds.map(id => evidenceHtml(document.evidence.find(e => e.id === id))).join("") : evidenceHtml(null)}${action(`Ask about ${d.family === "sequence" ? "message" : e.kind === "components" ? "component" : "element"}`, `data-briefing-ask="${esc(b.id)}" data-element-id="${esc(e.id)}"`)}</article>`).join("");
+    if (d) content = d.elements.map((e, index) => `<article class="briefing-evidence-card" data-evidence-element="${esc(e.id)}" data-block-id="${esc(b.id)}"><button class="briefing-card-title" type="button" data-briefing-element="${esc(e.id)}" data-block-id="${esc(b.id)}">${d.family === "sequence" ? `${index + 1}. ` : ""}${esc(e.label)}</button>${e.evidenceIds.length ? e.evidenceIds.map(id => evidenceHtml(document.evidence.find(e => e.id === id))).join("") : evidenceHtml(null)}${action(`Ask about ${d.family === "sequence" ? "message" : e.kind === "components" ? "component" : "element"}`, `data-briefing-ask="${esc(b.id)}" data-element-id="${esc(e.id)}"`)}</article>`).join("");
     else content = b.kind === "source" ? evidenceHtml(document.evidence.find(e => e.id === b.evidenceId)) : `${b.basis ? `<span class="briefing-basis">${esc({ stated: "Stated intent", observed: "Observed behavior", inferred: "Inference" }[b.basis])}</span>` : ""}<p class="briefing-quotation">${esc(inspection.quote ?? b.text)}</p>${action("Ask about passage", `data-briefing-ask="${esc(b.id)}"` )}`;
-    pane.innerHTML = `<header><span class="eyebrow">${esc(d?.family ?? "Evidence")}</span><h2>${esc(title)}</h2></header><div class="briefing-evidence-scroll">${content}<details class="briefing-review-details"><summary>Review details</summary><p>${esc(session.comparison.repositoryName)} · ${esc(session.comparison.branch)}<br>Saved ${esc(document.createdAt)}${document.outdated ? " · outdated source or intent" : ""}</p></details></div>`;
-    highlight(); void highlightEvidence();
+    pane.innerHTML = inspectorHeader(d?.family ?? "Evidence", title) + `<div class="briefing-evidence-scroll">${content}<details class="briefing-review-details"><summary>Review details</summary><p>${esc(session.comparison.repositoryName)} · ${esc(session.comparison.branch)}<br>Saved ${esc(document.createdAt)}${document.outdated ? " · outdated source or intent" : ""}</p></details></div>`;
+    highlight(); renderCode();
+  }
+  function renderCode(root = pane, evidence = inspection?.frozen?.evidence ?? document?.evidence ?? []) {
+    void highlightEvidence(root, evidence);
+    codeRenderer?.sync(root, evidence);
   }
   async function highlightEvidence(root = pane, evidence = inspection?.frozen?.evidence ?? document?.evidence ?? []) {
-    if (!options.highlight) return;
     const captured = document;
     const sources = evidence.filter(e => e.available && (e.kind !== "code" || e.diff?.available));
     const key = e => `${e.blob}:${e.path}:${e.side}:${e.startLine}:${e.endLine}:${JSON.stringify(e.diff ?? null)}`;
     const targets = sources.flatMap(e => [...root.querySelectorAll(`[data-evidence-id="${CSS.escape(e.id)}"] code`)].map(code => ({ e, code })));
     const needed = sources.filter(e => targets.some(target => target.e === e) && !syntaxCache.has(key(e)));
-    if (needed.length) {
+    if (needed.length && options.highlight) {
       try { const groups = await options.highlight(needed.map(e => ({ id: e.id, path: e.path, lines: sourceLines(e) })));
         for (const group of groups) { const source = needed.find(e => e.id === group.id); if (source) syntaxCache.set(key(source), group.lines); }
       } catch { return; }
     }
     if (captured !== document) return;
     for (const { e, code } of targets) {
-      const tokens = syntaxCache.get(key(e)); if (!tokens || !code.isConnected) continue;
+      const tokens = syntaxCache.get(key(e)); if (!code.isConnected) continue;
       code.innerHTML = codeRowsHtml(e, tokens);
     }
     // Token spans can change wrapped row heights after the maps have rendered.
     if (root === view) restoreAnchor();
   }
-  function inspect(blockId, elementId, quote) {
+  function inspect(blockId, elementId, { quote, reveal = true } = {}) {
     const same = inspection?.blockId === blockId && !inspection.frozen;
     inspection = { blockId, elementId, quote }; selected = elementId ? { blockId, elementId } : null;
     if (!same || !elementId) renderInspector();
-    highlight(); options.openTools?.();
-    revealSelectedEvidence(); saveReadingState();
+    highlight(); openTools();
+    // Diagram selections reveal their evidence; clicks inside the evidence pane
+    // only change selection, leaving the card at the reader's scroll position.
+    if (reveal) revealSelectedEvidence();
+    saveReadingState();
   }
   function revealSelectedEvidence() {
     if (!selected) return;
@@ -345,14 +435,37 @@ function createBriefingReader(options) {
     inspection = { evidenceId };
     selected = null;
     renderInspector();
-    options.openTools?.();
+    openTools();
     saveReadingState();
   }
   function highlight() {
     for (const el of view.querySelectorAll("[data-briefing-element]")) { const current = el.dataset.blockId === selected?.blockId && el.dataset.briefingElement === selected?.elementId; el.classList.toggle("briefing-selected", current); el.setAttribute("aria-pressed", String(current)); }
-    for (const el of pane.querySelectorAll("[data-evidence-element]")) el.classList.toggle("briefing-selected", el.dataset.evidenceElement === selected?.elementId);
+    for (const el of pane.querySelectorAll("[data-evidence-element]")) {
+      const current = el.dataset.evidenceElement === selected?.elementId;
+      el.classList.toggle("briefing-selected", current);
+      el.querySelector(".briefing-card-title")?.setAttribute("aria-pressed", String(current));
+    }
+    for (const frame of view.querySelectorAll("[data-briefing-sequence]")) syncSequence(frame);
   }
-  function attach(blockId, elementId, quote) {
+  function syncSequence(frame) {
+    frame.contentWindow?.postMessage({ type: "diffcompass-briefing-sequence-select", elementId: frame.dataset.briefingSequence === selected?.blockId ? selected.elementId : null }, "*");
+  }
+  window.addEventListener("message", event => {
+    const frame = [...view.querySelectorAll("[data-briefing-sequence]")].find(frame => frame.contentWindow === event.source);
+    if (!frame) return;
+    if (event.data?.type === "diffcompass-briefing-sequence-ready") { syncSequence(frame); return; }
+    if (!active || !frame.getClientRects().length) return;
+    if (event.data?.type === "diffcompass-map-scroll" && Number.isFinite(event.data.deltaY)) {
+      userNavigation(); scroll.scrollBy({ top: Math.max(-2000, Math.min(2000, event.data.deltaY)), behavior: "instant" });
+    }
+    if (event.data?.type !== "diffcompass-briefing-sequence-select") return;
+    const blockId = frame.dataset.briefingSequence, elementId = event.data.elementId;
+    if (!diagramFor(blockFor(blockId))?.elements.some(element => element.id === elementId)) return;
+    if (selected?.blockId === blockId && selected.elementId === elementId) return;
+    window.diffcompassMapPresentation?.suspend(frame);
+    inspect(blockId, elementId);
+  });
+  function attach(blockId, elementId, { quote, reveal = true } = {}) {
     const b = blockFor(blockId), d = diagramFor(b), e = d?.elements.find(e => e.id === elementId);
     if (!b) return;
     const key = JSON.stringify([document.id, blockId, elementId, quote]);
@@ -360,7 +473,11 @@ function createBriefingReader(options) {
       if (attachments.length >= 8) return options.notify?.("Attach at most eight items to a question.");
       attachments.push({ key, documentId: document.id, blockId, ...(elementId ? { elementId } : {}), ...(quote ? { quote } : {}), label: e?.label ?? d?.title ?? quote?.slice(0, 80) ?? b.text?.slice(0, 80) ?? "Source citation", snapshot: { label: e?.label ?? d?.title ?? "Passage", text: quote ?? b.text ?? e?.label ?? d?.title ?? "", evidence: document.evidence.filter(source => (e?.evidenceIds ?? (b.kind === "source" ? [b.evidenceId] : [])).includes(source.id)) } });
     }
-    inspect(blockId, elementId, quote); options.onAsk?.(); renderChips();
+    // Inline code already shows its evidence. Asking attaches that excerpt
+    // without replacing the inspector with a duplicate of it.
+    if (b.kind === "source") openTools();
+    else inspect(blockId, elementId, { quote, reveal });
+    options.onAsk?.(); renderChips();
   }
   function renderChips() {
     const frozen = options.getThreadContext?.();
@@ -369,16 +486,42 @@ function createBriefingReader(options) {
     chips.innerHTML = items.length ? `<span class="eyebrow">Question context${frozen ? " · saved" : ""}</span><div class="briefing-chip-list">${items.map((a, i) => `<span class="briefing-chip">${action(a.label, `data-briefing-chip="${i}"`)}${!frozen ? `<button type="button" data-briefing-remove="${i}" aria-label="Remove ${esc(a.label)}">×</button>` : ""}</span>`).join("")}</div>` : '<span class="muted">No Briefing items attached. Use Ask beside a passage or element.</span>';
   }
   function click(event) {
-    const el = event.target.closest("[data-briefing-element]") ?? event.target.closest("button"); if (!el) return;
+    const el = event.target.closest("[data-briefing-element]") ?? event.target.closest("button");
+    if (!el) {
+      // Leave code selection, links and embedded editors to their own controls.
+      if (event.target.closest("pre, code, iframe, .briefing-code-slot, a, input, select, textarea, [contenteditable]")) return;
+      if (window.getSelection()?.toString()) return;
+      const card = event.target.closest(".briefing-evidence-card");
+      if (card) return inspect(card.dataset.blockId, card.dataset.evidenceElement, { reveal: false });
+      return;
+    }
     if (el.hasAttribute("data-briefing-generate")) return void options.onGenerate?.();
-    if (el.dataset.briefingSection) { userNavigation(); const target = view.querySelector(`#briefing-section-${CSS.escape(el.dataset.briefingSection)}`); if (target) scroll.scrollTop += target.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 24; return; }
-    if (el.dataset.briefingElement) { event.stopPropagation(); return inspect(el.dataset.blockId, el.dataset.briefingElement); }
+    if (el.dataset.briefingLayout || el.dataset.briefingWrap) {
+      rememberAnchor();
+      const next = { layout: el.dataset.briefingLayout ?? codeView.layout, wrap: el.dataset.briefingWrap ?? codeView.wrap };
+      if (options.onDiffView) { options.onDiffView(next); syncDiffView(); }
+      else { try { localStorage.setItem(codeViewKey(), JSON.stringify(next)); } catch { /* Keep the view for this reader. */ } syncDiffView(next); }
+      restoreAnchor(); return;
+    }
+    if (el.hasAttribute("data-briefing-wide")) {
+      rememberAnchor(); wide = !wide; syncWidth();
+      try { localStorage.setItem(widePreferenceKey, String(wide)); } catch { /* Keep the choice for this reader. */ }
+      restoreAnchor(); return;
+    }
+    if (el.hasAttribute("data-briefing-toggle-tools")) {
+      if (options.toolsCollapsed?.()) openTools();
+      else { options.closeTools?.(); syncTools(); }
+      if (pane.getClientRects().length) el.focus({ preventScroll: true });
+      return;
+    }
+    if (el.dataset.briefingSection) { userNavigation(); const target = view.querySelector(`#briefing-section-${CSS.escape(el.dataset.briefingSection)}`); if (target) scroll.scrollTop += target.getBoundingClientRect().top - scroll.getBoundingClientRect().top - (view.querySelector(".briefing-reader-tools")?.offsetHeight ?? 0) - 24; return; }
+    if (el.dataset.briefingElement) { event.stopPropagation(); return inspect(el.dataset.blockId, el.dataset.briefingElement, { reveal: !pane.contains(el) }); }
     if (el.dataset.briefingInspect) return inspect(el.dataset.briefingInspect);
     if (el.dataset.briefingAsk) {
       const selection = window.getSelection(), text = selection?.toString();
       const block = view.querySelector(`[data-briefing-block="${CSS.escape(el.dataset.briefingAsk)}"]`);
       const quote = text && block?.contains(selection.anchorNode) && block?.contains(selection.focusNode) && (blockFor(el.dataset.briefingAsk)?.text ?? "").includes(text) ? text : undefined;
-      return attach(el.dataset.briefingAsk, el.dataset.elementId, quote);
+      return attach(el.dataset.briefingAsk, el.dataset.elementId, { quote, reveal: !pane.contains(el) });
     }
     if (el.dataset.briefingSource) {
       const e = document?.evidence.find(e => e.id === el.dataset.briefingSource) ?? inspection?.frozen?.evidence.find(e => e.id === el.dataset.briefingSource);
@@ -387,16 +530,17 @@ function createBriefingReader(options) {
     if (el.hasAttribute("data-briefing-remove")) { attachments.splice(Number(el.dataset.briefingRemove), 1); renderChips(); return; }
     if (el.hasAttribute("data-briefing-chip")) {
       const i = Number(el.dataset.briefingChip), frozen = options.getThreadContext?.();
-      inspection = { frozen: frozen?.items[i] ?? attachments[i]?.snapshot }; renderInspector(); options.openTools?.();
+      inspection = { frozen: frozen?.items[i] ?? attachments[i]?.snapshot }; renderInspector(); openTools();
     }
   }
   [view, outline, pane, chips].forEach(el => el.addEventListener("click", click));
   return {
-    render, renderChips, rememberAnchor, restoreAnchor, inspectEvidence,
+    render, renderChips, rememberAnchor, restoreAnchor, inspectEvidence, syncTools, syncDiffView,
     setActive(value) {
       if (active && !value) { rememberAnchor(); saveReadingState(); }
       active = value;
-      if (active) { restoreAnchor(); revealSelectedEvidence(); }
+      codeRenderer?.setActive(active);
+      if (active) { restoreWidthPreference(); syncDiffView(); syncTools(); restoreAnchor(); revealSelectedEvidence(); }
     },
     context() {
       if (!attachments.length || !document) return undefined;
