@@ -276,4 +276,9 @@ try {
   console.error(error.stack); console.error('PAGE_ERRORS',errors); process.exitCode=1;
   try { await page?.screenshot({path:'/tmp/dc-discussions-failure.png',timeout:5000}); }
   catch(diagnosticError) { console.error('Failure screenshot unavailable:',diagnosticError.message); }
-} finally { await browser.close(); }
+} finally {
+  // Session polling can still be inside route.fetch() after the assertions.
+  // Drain those handlers before disposing the browser's request context.
+  try { await page.unrouteAll({ behavior: 'wait' }); }
+  finally { await browser.close(); }
+}
