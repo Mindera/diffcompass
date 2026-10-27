@@ -9,16 +9,66 @@ function createBriefingReader(options) {
   const blockFor = id => blocks().find(b => b.id === id);
   const diagramFor = block => document?.diagrams.find(d => d.id === block?.diagramId);
   const action = (label, attrs) => `<button type="button" class="text-button" ${attrs}>${esc(label)}</button>`;
+  const readingStateKey = "diffcompass-briefing-reading-v1";
+  let saveTimer, restoreFrame, awaitingDiagrams = false, restoring = false;
+  function savedReadingStates() {
+    try {
+      const text = localStorage.getItem(readingStateKey);
+      const values = text && text.length < 50000 ? JSON.parse(text) : [];
+      return Array.isArray(values) ? values.filter(value => value && typeof value.id === "string").slice(-20) : [];
+    } catch { return []; }
+  }
+  function saveReadingState() {
+    clearTimeout(saveTimer);
+    if (!document) return;
+    // Persist only navigation identities, never source, quotations, or drafts.
+    const target = inspection?.evidenceId ? { evidenceId: inspection.evidenceId }
+      : inspection?.blockId ? { blockId: inspection.blockId, elementId: inspection.elementId } : null;
+    const states = savedReadingStates().filter(value => value.id !== document.id);
+    states.push({ id: document.id, fingerprint: document.fingerprint, anchor, inspection: target });
+    try { localStorage.setItem(readingStateKey, JSON.stringify(states.slice(-20))); }
+    catch { /* A disabled or full storage must not interrupt reading. */ }
+  }
+  function restoreReadingState() {
+    anchor = { top: true };
+    inspection = selected = null;
+    if (!document) return;
+    const saved = savedReadingStates().find(value => value.id === document.id && value.fingerprint === document.fingerprint);
+    if (!saved) return;
+    if (saved.anchor?.top === true) anchor = { top: true };
+    else if (blockFor(saved.anchor?.id) && Number.isFinite(saved.anchor.offset) && Math.abs(saved.anchor.offset) < 100000) {
+      anchor = { id: saved.anchor.id, offset: saved.anchor.offset };
+    }
+    const target = saved.inspection;
+    if (target?.evidenceId && document.evidence.some(e => e.id === target.evidenceId)) inspection = { evidenceId: target.evidenceId };
+    else if (target?.blockId && blockFor(target.blockId)) {
+      const elementId = diagramFor(blockFor(target.blockId))?.elements.find(e => e.id === target.elementId)?.id;
+      inspection = { blockId: target.blockId, ...(elementId ? { elementId } : {}) };
+      if (elementId) selected = { blockId: target.blockId, elementId };
+    }
+  }
   function rememberAnchor() {
     if (!active || !view.getClientRects().length) return;
+    if (scroll.scrollTop === 0) { anchor = { top: true }; return; }
     const top = scroll.getBoundingClientRect().top;
     const block = [...view.querySelectorAll("[data-briefing-block]")].find(el => el.getBoundingClientRect().bottom > top + 12);
     if (block) anchor = { id: block.dataset.briefingBlock, offset: block.getBoundingClientRect().top - top };
   }
   function restoreAnchor() {
-    if (!active || !view.getClientRects().length) return;
-    const block = anchor && view.querySelector(`[data-briefing-block="${CSS.escape(anchor.id)}"]`);
-    if (block) scroll.scrollTop += block.getBoundingClientRect().top - scroll.getBoundingClientRect().top - anchor.offset;
+    if (!active || awaitingDiagrams || !view.getClientRects().length) return;
+    const block = anchor?.id && view.querySelector(`[data-briefing-block="${CSS.escape(anchor.id)}"]`);
+    const top = anchor?.top ? 0 : block
+      ? scroll.scrollTop + block.getBoundingClientRect().top - scroll.getBoundingClientRect().top - anchor.offset
+      : scroll.scrollTop;
+    // Stop any native smooth scroll left by the previous tab before restoring.
+    restoring = true;
+    cancelAnimationFrame(restoreFrame);
+    scroll.scrollTo({ top, behavior: "instant" });
+    // Tab layout and its scroll events settle on the next animation frame.
+    // Those events must not overwrite the bookmark we are restoring.
+    restoreFrame = requestAnimationFrame(() => {
+      restoreFrame = requestAnimationFrame(() => { restoring = false; });
+    });
     updateOutline();
   }
   function updateOutline() {
@@ -40,17 +90,37 @@ function createBriefingReader(options) {
       }
     }
   }
-  scroll.addEventListener("scroll", () => { rememberAnchor(); updateOutline(); }, { passive: true });
+  scroll.addEventListener("scroll", () => {
+    if (awaitingDiagrams || restoring) { updateOutline(); return; }
+    rememberAnchor(); updateOutline();
+    if (active) { clearTimeout(saveTimer); saveTimer = setTimeout(saveReadingState, 150); }
+  }, { passive: true });
+  // User navigation takes precedence over a pending restore while maps render.
+  function userNavigation() {
+    awaitingDiagrams = restoring = false;
+    cancelAnimationFrame(restoreFrame);
+  }
+  scroll.addEventListener("wheel", userNavigation, { passive: true });
+  scroll.addEventListener("pointerdown", userNavigation, { passive: true });
+  scroll.addEventListener("keydown", event => {
+    if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) userNavigation();
+  });
+  window.addEventListener("pagehide", saveReadingState);
   let width = scroll.clientWidth;
   new ResizeObserver(() => { if (scroll.clientWidth !== width) { width = scroll.clientWidth; restoreAnchor(); } }).observe(scroll);
   function render(value) {
-    session = value; document = value?.outline?.briefing ?? null;
+    const nextDocument = value?.outline?.briefing ?? null;
+    const identity = nextDocument ? `${nextDocument.id}:${Boolean(nextDocument.outdated)}` : value?.outline ? "legacy" : "empty";
+    if (identity === rendered) { session = value; document = nextDocument; renderChips(); return; }
+    rememberAnchor(); saveReadingState();
+    const sameDocument = document?.id === nextDocument?.id && document?.fingerprint === nextDocument?.fingerprint;
+    session = value; document = nextDocument;
+    if (!sameDocument) restoreReadingState();
     // The comparison lab can retain its other treatments; authored reviews and
     // offline exports use the chosen outcome-first presentation by default.
     view.classList.toggle("briefing-outcome", document?.mode === "authored" && options.outcomeFirst !== false);
-    const identity = document ? `${document.id}:${Boolean(document.outdated)}` : value?.outline ? "legacy" : "empty";
-    if (identity === rendered) { renderChips(); return; }
-    rememberAnchor(); rendered = identity; const ticket = ++generation;
+    rendered = identity; const ticket = ++generation;
+    awaitingDiagrams = Boolean(document);
     const repository = value?.pullRequest?.repository ?? value?.comparison.repositoryName ?? "";
     const branch = value?.pullRequest?.headRefName ?? value?.comparison.branch ?? "detached";
     const heading = `<header class="briefing-heading"><div class="eyebrow">${esc(repository)} · ${esc(branch)} · Briefing</div><h1>${esc(document?.title ?? value?.outline?.title ?? "Understand this change")}</h1></header>`;
@@ -106,32 +176,76 @@ function createBriefingReader(options) {
           if (d.family === "sequence") {
             const messages = box.querySelectorAll(".messageText");
             if (messages.length === d.elements.length) messages.forEach((el, i) => bindElement(el, b.id, d.elements[i].id));
-          } else if (["domain", "call-flow"].includes(d.family)) {
-            const nodes = d.ir.components ?? d.ir.nodes;
-            for (const el of box.querySelectorAll("g.node")) {
-              const native = el.dataset.id ?? (el.id.startsWith(`${renderId}-flowchart-`) ? /^(.+)-\d+$/.exec(el.id.slice(`${renderId}-flowchart-`.length))?.[1] : undefined);
-              const index = /^item(\d+)$/.exec(native ?? "")?.[1];
-              if (index !== undefined && nodes[Number(index)]) bindElement(el, b.id, nodes[Number(index)].id);
-            }
-          } else if (d.family === "architecture") {
-            // Mermaid retains the declared node ID in data-id or flowchart-{ID}-{ordinal}.
-            for (const el of box.querySelectorAll("g.node")) {
-              const native = el.dataset.id ?? (el.id.startsWith(`${renderId}-flowchart-`) ? /^(.+)-\d+$/.exec(el.id.slice(`${renderId}-flowchart-`.length))?.[1] : undefined);
-              const exact = d.elements.find(e => e.id === native);
-              if (exact) bindElement(el, b.id, exact.id);
-            }
+          } else {
+            // A binding failure keeps the rendered diagram and its exact-ID list.
+            try { await bindMermaidGraph(box, b, d, mermaid, renderId, ticket); }
+            catch { /* Unsupported renderer identities remain selectable in the list. */ }
           }
-          // Other renderers keep an accessible exact-ID element list. No guessed SVG links.
         }
       } catch { box.textContent = "Diagram preview unavailable. Explore its saved elements below."; }
     }
-    highlight(); restoreAnchor();
+    if (generation !== ticket) return;
+    awaitingDiagrams = false;
+    highlight(); restoreAnchor(); revealSelectedEvidence();
+  }
+  async function bindMermaidGraph(box, block, diagram, source, renderId, ticket) {
+    const parsed = await window.mermaid.mermaidAPI.getDiagramFromText(source);
+    if (generation !== ticket) return;
+    const graph = parsed.db.getData();
+    const nodes = diagram.ir.components ?? diagram.ir.states ?? diagram.ir.nodes ?? [];
+    const edges = diagram.ir.connections ?? diagram.ir.transitions ?? diagram.ir.flows ?? diagram.ir.edges ?? [];
+    const nodeIds = new Map();
+    if (diagram.family === "data-model") {
+      for (const [name, entity] of parsed.db.getEntities()) nodeIds.set(entity.id, `data-${name}`);
+    } else if (["domain", "call-flow"].includes(diagram.family)) {
+      nodes.forEach((node, index) => nodeIds.set(`item${index}`, node.id));
+    } else {
+      for (const node of graph.nodes) nodeIds.set(node.id, node.id);
+      if (diagram.family === "lifecycle") {
+        nodeIds.set("root_start", "lifecycle-initial");
+        nodeIds.set("root_end", "lifecycle-final");
+      }
+    }
+    for (const node of graph.nodes) {
+      const savedId = nodeIds.get(node.id);
+      if (!nodes.some(item => item.id === savedId)) { nodeIds.delete(node.id); continue; }
+      const element = box.querySelector(`[id="${CSS.escape(`${renderId}-${node.domId ?? node.id}`)}"]`);
+      if (element) bindElement(element, block.id, savedId);
+    }
+    // Match the parsed source relationships by both endpoint identities and
+    // exact caption, preserving occurrence order for parallel identical edges.
+    // A count mismatch is ambiguous and must fall back to the element list.
+    const signature = (from, to, label) => JSON.stringify([from, to, label ?? ""]);
+    const nativeGroups = new Map(), savedGroups = new Map();
+    const add = (groups, key, edge) => { if (!groups.has(key)) groups.set(key, []); groups.get(key).push(edge); };
+    for (const edge of graph.edges) {
+      const from = nodeIds.get(edge.start), to = nodeIds.get(edge.end);
+      if (!from || !to) continue;
+      const label = diagram.family === "data-model" ? edge.label || "relationship" : edge.label;
+      add(nativeGroups, signature(from, to, label), edge);
+    }
+    for (const edge of edges) {
+      const label = ["domain", "call-flow"].includes(diagram.family) ? edge.label ?? "calls" : edge.label;
+      add(savedGroups, signature(edge.from, edge.to, label), edge);
+    }
+    for (const [key, nativeEdges] of nativeGroups) {
+      const savedEdges = savedGroups.get(key);
+      if (savedEdges?.length !== nativeEdges.length) continue;
+      nativeEdges.forEach((edge, index) => {
+        const selector = `[data-id="${CSS.escape(edge.id)}"]`;
+        for (const element of box.querySelectorAll(`path${selector}, g.edgeLabel:has(${selector})`)) {
+          bindElement(element, block.id, savedEdges[index].id);
+        }
+      });
+    }
   }
   function bindElement(el, blockId, elementId) {
-    if (!diagramFor(blockFor(blockId))?.elements.some(e => e.id === elementId)) return;
+    const element = diagramFor(blockFor(blockId))?.elements.find(e => e.id === elementId);
+    if (!element) return;
     el.closest("svg")?.removeAttribute("aria-hidden");
     el.dataset.briefingElement = elementId; el.dataset.blockId = blockId;
     el.setAttribute("tabindex", "0"); el.setAttribute("role", "button");
+    el.setAttribute("aria-label", element.label);
     el.addEventListener("keydown", event => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); event.stopPropagation(); inspect(blockId, elementId); } });
   }
   function sourceLabel(e) {
@@ -197,16 +311,21 @@ function createBriefingReader(options) {
       const tokens = syntaxCache.get(key(e)); if (!tokens || !code.isConnected) continue;
       code.innerHTML = codeRowsHtml(e, tokens);
     }
+    // Token spans can change wrapped row heights after the maps have rendered.
+    if (root === view) restoreAnchor();
   }
   function inspect(blockId, elementId, quote) {
     const same = inspection?.blockId === blockId && !inspection.frozen;
     inspection = { blockId, elementId, quote }; selected = elementId ? { blockId, elementId } : null;
     if (!same || !elementId) renderInspector();
     highlight(); options.openTools?.();
-    if (elementId) {
-      const card = pane.querySelector(`[data-evidence-element="${CSS.escape(elementId)}"]`), container = pane.querySelector(".briefing-evidence-scroll");
-      if (card && container) container.scrollTop += card.getBoundingClientRect().top - container.getBoundingClientRect().top - 12;
-    }
+    revealSelectedEvidence(); saveReadingState();
+  }
+  function revealSelectedEvidence() {
+    if (!selected) return;
+    const card = pane.querySelector(`[data-evidence-element="${CSS.escape(selected.elementId)}"]`);
+    const container = pane.querySelector(".briefing-evidence-scroll");
+    if (card && container) container.scrollTop += card.getBoundingClientRect().top - container.getBoundingClientRect().top - 12;
   }
   function inspectEvidence(evidenceId) {
     if (!document?.evidence.some(e => e.id === evidenceId)) return;
@@ -214,6 +333,7 @@ function createBriefingReader(options) {
     selected = null;
     renderInspector();
     options.openTools?.();
+    saveReadingState();
   }
   function highlight() {
     for (const el of view.querySelectorAll("[data-briefing-element]")) { const current = el.dataset.blockId === selected?.blockId && el.dataset.briefingElement === selected?.elementId; el.classList.toggle("briefing-selected", current); el.setAttribute("aria-pressed", String(current)); }
@@ -238,7 +358,7 @@ function createBriefingReader(options) {
   function click(event) {
     const el = event.target.closest("[data-briefing-element]") ?? event.target.closest("button"); if (!el) return;
     if (el.hasAttribute("data-briefing-generate")) return void options.onGenerate?.();
-    if (el.dataset.briefingSection) { const target = view.querySelector(`#briefing-section-${CSS.escape(el.dataset.briefingSection)}`); if (target) scroll.scrollTop += target.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 24; return; }
+    if (el.dataset.briefingSection) { userNavigation(); const target = view.querySelector(`#briefing-section-${CSS.escape(el.dataset.briefingSection)}`); if (target) scroll.scrollTop += target.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 24; return; }
     if (el.dataset.briefingElement) { event.stopPropagation(); return inspect(el.dataset.blockId, el.dataset.briefingElement); }
     if (el.dataset.briefingInspect) return inspect(el.dataset.briefingInspect);
     if (el.dataset.briefingAsk) {
@@ -260,7 +380,11 @@ function createBriefingReader(options) {
   [view, outline, pane, chips].forEach(el => el.addEventListener("click", click));
   return {
     render, renderChips, rememberAnchor, restoreAnchor, inspectEvidence,
-    setActive(value) { active = value; if (active) restoreAnchor(); },
+    setActive(value) {
+      if (active && !value) { rememberAnchor(); saveReadingState(); }
+      active = value;
+      if (active) { restoreAnchor(); revealSelectedEvidence(); }
+    },
     context() {
       if (!attachments.length || !document) return undefined;
       if (attachments.some(a => a.documentId !== document.id)) throw new Error("Attached context belongs to an earlier Briefing. Remove it before starting a new question; existing conversations retain their saved context.");

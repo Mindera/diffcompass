@@ -39,7 +39,7 @@ try {
       sawDeletion ||= await workspace.locator('.briefing-excerpt [data-diff-kind="deletion"]').count() > 0;
       for (const diagram of await workspace.locator(".briefing-diagram").all()) {
         await diagram.locator("svg").waitFor();
-        for (const element of await diagram.locator("svg [data-briefing-element]").all()) {
+        for (const element of await diagram.locator("svg [data-briefing-element]").filter({ visible: true }).all()) {
           const id = await element.getAttribute("data-briefing-element");
           await element.click();
           await workspace.locator(`.lab-evidence [data-evidence-element="${id}"] code`).first().waitFor();

@@ -3,9 +3,10 @@
 [Back to the README](../README.md) · [Usage and configuration](usage.md)
 
 DiffCompass connects changed code, diagrams, questions, and review evidence in a
-local browser workspace. This catalogue covers the 16 released features from the
-interactive guide, available in v2.1.0 and later, plus one clearly marked research
-prototype. See the [roadmap](../ROADMAP.md) for release history and delivery details.
+local browser workspace. This catalogue covers the outcome-first Briefing added
+in v2.2.0, the 16 features from the interactive guide available in v2.1.0 and
+later, and one clearly marked research prototype. See the
+[roadmap](../ROADMAP.md) for release history and delivery details.
 
 ## Open the interactive HTML catalogue
 
@@ -26,13 +27,27 @@ earlier branding. The [screenshots below](#screenshots) show the current interfa
 
 | Review task | Features |
 | --- | --- |
-| Understand the change | [Guided walkthrough](#guided-walkthrough), [architecture maps](#architecture-maps), [sequence diagrams and code steps](#sequence-diagrams-and-code-steps), [call flows](#call-flows), [explore impact](#explore-impact), [lifecycle diagrams](#lifecycle-diagrams), [dry runs](#dry-runs) |
+| Understand the change | [Narrative Briefing](#narrative-briefing), [guided walkthrough](#guided-walkthrough), [architecture maps](#architecture-maps), [sequence diagrams and code steps](#sequence-diagrams-and-code-steps), [call flows](#call-flows), [explore impact](#explore-impact), [lifecycle diagrams](#lifecycle-diagrams), [dry runs](#dry-runs) |
 | Inspect the source | [Diff and source navigation](#diff-and-source-navigation), [Symbol Peek](#symbol-peek), [What changed](#what-changed), [optional Monaco renderer](#optional-monaco-renderer) |
 | Discuss and decide | [Contextual conversations](#contextual-conversations), [findings and dispositions](#findings-and-dispositions) |
 | Revisit and share | [Revision-aware review](#revision-aware-review), [offline review exports](#offline-review-exports), [GitHub suggestions](#github-suggestions) |
 | Research | [Language assistance](#language-assistance-research) |
 
 ## Understand the change
+
+### Narrative Briefing
+
+Understand the outcome, intent, and design through prose, focused diffs, and diagrams.
+
+**Where:** Briefing.
+
+- Start with a title that explains the concrete change, then follow how it works.
+- Inspect diagram elements and their captured evidence without advancing the tour.
+- Resize the outline and evidence panes; return to the same saved reading position.
+- Attach passages or diagram elements to questions and export the saved story.
+
+Inferred rationale is labelled. Saved documents retain their text until regenerated.
+See the [Briefing guide](../README.md#narrative-briefing) for evidence and snapshot limits.
 
 ### Guided walkthrough
 

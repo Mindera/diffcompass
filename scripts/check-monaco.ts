@@ -22,7 +22,7 @@ try {
 } finally { clearTimeout(timeout); child.kill(); await child.exited; }
 }
 const groups = {
-  briefing: { samplePr: false, scripts: ["briefing"] },
+  briefing: { samplePr: false, scripts: ["briefing", "briefing-diagrams"] },
   local: { samplePr: false, scripts: ["monaco-foundation", "monaco-scroll", "file-header", "monaco-edits", "monaco-edits-syntax", "monaco-themes", "monaco-semantic", "monaco-mount", "monaco-paged-draft"] },
   navigation: { samplePr: true, scripts: ["monaco-phase", "monaco-phase-scroll", "monaco-upward-tour", "monaco-reviewed-scroll", "monaco-sticky", "monaco-file-explorer"] },
   discussions: { samplePr: true, scripts: ["renderer-comments", "monaco-context", "monaco-edits", "monaco-edits-syntax", "monaco-discussions"] },

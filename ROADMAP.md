@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.1.5, including the v2.1.0 feature baseline
+Canonical delivery state for v2.2.0, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -11,11 +11,27 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.1.5](https://github.com/Mindera/diffcompass/releases/tag/v2.1.5).
+Latest release: [v2.2.0](https://github.com/Mindera/diffcompass/releases/tag/v2.2.0).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.2.0
+
+- Add a persistent, outcome-first Briefing alongside Changes. Titles explain the
+  concrete outcome; prose, captured code diffs, and diagrams follow one story.
+- Keep all implementation excerpts as before-and-after diffs, including diagram
+  evidence, questions, and offline exports. Invalid source bindings remain explicit.
+- Inspect messages, components, states, entities, relationships, calls, and domain
+  concepts through one evidence pane. Diagram and card selection work in both
+  directions, with an element-list fallback for ambiguous renderer identities.
+- Track the section in view, resize both side panes from their inner edges, and
+  remember reading position and inspected evidence for the same saved document.
+- Preserve captured question context through regeneration and provide a mobile
+  evidence sheet, legacy-session overview, and standalone HTML/Markdown exports.
+- Show repository and branch context in the briefing, document GitHub as the
+  officially supported pull-request provider, and fix upward Monaco tour scrolling.
 
 ## Released in v2.1.5
 

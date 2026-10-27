@@ -4,7 +4,8 @@ import { pathToFileURL } from 'node:url';
 const [playwrightPath, url] = process.argv.slice(2);
 const { chromium } = await import(pathToFileURL(playwrightPath).href);
 const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'chrome', headless: true });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, reducedMotion: 'reduce' });
+const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, reducedMotion: 'reduce' });
+const page = await context.newPage();
 page.setDefaultTimeout(20000);
 const errors = []; page.on('pageerror', error => errors.push(error.message));
 const currentSection = id => page.waitForFunction(id => document.querySelector('#briefing-outline [aria-current="location"]')?.dataset.briefingSection === id, id);
@@ -101,12 +102,47 @@ try {
     assert.equal((await panel.boundingBox()).width, before + Math.abs(delta));
   }
   const savedWidths = await page.locator('#workspace').evaluate(el => [el.style.getPropertyValue('--file-panel-width'), el.style.getPropertyValue('--agent-panel-width')]);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const savedPosition = await page.locator('#diff-panel').evaluate(scroll => {
+    const top = scroll.getBoundingClientRect().top;
+    const block = [...scroll.querySelectorAll('[data-briefing-block]')].find(el => el.getBoundingClientRect().bottom > top + 12);
+    return { id: block.dataset.briefingBlock, offset: block.getBoundingClientRect().top - top };
+  });
   await page.locator('#diff-tab').click();
   assert.equal(await page.locator('#file-panel-collapse').getAttribute('aria-expanded'), 'false');
   await page.reload();
   await page.locator('#briefing-tab').click();
   await page.locator('#briefing-view .briefing-canvas svg').waitFor();
   assert.deepEqual(await page.locator('#workspace').evaluate(el => [el.style.getPropertyValue('--file-panel-width'), el.style.getPropertyValue('--agent-panel-width')]), savedWidths);
+  try { await page.waitForFunction(({ id, offset }) => {
+    const scroll = document.getElementById('diff-panel');
+    const block = scroll.querySelector(`[data-briefing-block="${id}"]`);
+    return Math.abs(block.getBoundingClientRect().top - scroll.getBoundingClientRect().top - offset) < 2;
+  }, savedPosition); } catch (error) {
+    console.error('Reload bookmark', savedPosition, await page.evaluate(id => ({
+      top: document.getElementById('diff-panel').scrollTop,
+      offset: document.querySelector(`[data-briefing-block="${id}"]`).getBoundingClientRect().top - document.getElementById('diff-panel').getBoundingClientRect().top,
+      saved: localStorage.getItem('diffcompass-briefing-reading-v1'),
+    }), savedPosition.id));
+    throw error;
+  }
+  await page.locator('#briefing-view .briefing-canvas [data-briefing-element="receipt"][aria-pressed="true"]').waitFor();
+  assert.match(await page.locator('#briefing-inspector [data-evidence-element="receipt"] code').textContent(), /export function receipt/);
+  // A bookmark from another snapshot must never restore its selection or position.
+  await page.evaluate(() => {
+    const key = 'diffcompass-briefing-reading-v1';
+    const values = JSON.parse(localStorage.getItem(key));
+    values.forEach(value => { value.fingerprint = 'different-snapshot'; });
+    localStorage.setItem(key, JSON.stringify(values));
+    // A new tab reads storage without this page's pagehide saving it again.
+  });
+  const freshPage = await page.context().newPage();
+  await freshPage.goto(url);
+  await freshPage.locator('#briefing-tab').click();
+  await freshPage.locator('#briefing-view .briefing-canvas svg g[data-briefing-element]').first().waitFor();
+  await freshPage.waitForFunction(() => document.getElementById('diff-panel').scrollTop === 0);
+  assert.equal(await freshPage.locator('#briefing-view [aria-pressed="true"]').count(), 0);
+  await freshPage.close();
   await page.setViewportSize({ width: 1200, height: 1000 });
   await page.locator('#agent-resizer').focus(); await page.keyboard.press('End');
   assert.ok(await page.locator('#workspace').evaluate(el => el.scrollWidth <= el.clientWidth), 'Visible Briefing outline counts towards the evidence pane width limit');
