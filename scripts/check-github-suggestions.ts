@@ -89,14 +89,16 @@ try {
   await api("/api/comments", { path: ordinaryComment.path, side: ordinaryComment.side, line: ordinaryComment.line, body: ordinaryComment.body });
   await page.reload(); await ready();
   console.log("PASS review decisions: existing diff comments skip the note, empty reviews require a note, and GitHub publication always requires confirmation");
+  // A computed diff can precede the initial tour's focus restoration. Reveal
+  // through the host so navigation and layout finish before selecting code.
+  await page.evaluate(path => (window as any).diffCompassProductionHost.reveal(path, "new", 16), path);
   await frame!.evaluate(() => {
     const { monaco, diffLab } = window as any;
     const editor = diffLab.views.get("src/cart.ts").editors.new;
     editor.setSelection(new monaco.Range(16, 1, 17, editor.getModel().getLineMaxColumn(17)));
     editor.focus();
   });
-  await frame!.locator(".editor.modified .view-line").filter({ hasText: "return amount" }).first().evaluate(node => node.scrollIntoView({ block: "center" }));
-  await page.keyboard.press("Shift+F10");
+  await frame!.locator(".editor.modified textarea.inputarea").press("Shift+F10");
   await page.waitForTimeout(150); // Monaco suppresses menu mouse-up during its first 100ms.
   await frame!.getByRole("menuitem", { name: "Suggest edit", exact: true }).click();
   await frame!.locator("form.review-suggestion").waitFor();
