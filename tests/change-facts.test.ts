@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { CHANGE_FACTS_ENGINE, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type SymbolFact } from "../src/change-facts.ts";
+import { CHANGE_FACTS_ENGINE, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact } from "../src/change-facts.ts";
 import { diffSourceIdentity } from "../src/diff-sources.ts";
 import type { GitComparison } from "../src/types.ts";
 import { capturedText, historicalComparison, repositoryComparison } from "./comparison-fixtures.ts";
@@ -35,6 +35,34 @@ async function addedFileFacts(path: string, text: string): Promise<FileChangeFac
 function expectChangedLinesPerFile({ comparison, facts }: { comparison: GitComparison; facts: ChangeFacts }): void {
   expect(facts.files.map((file) => file.path)).toEqual(comparison.files.map((file) => file.path));
   for (const [i, file] of facts.files.entries()) expect(file.changedLines).toBe(comparison.files[i]!.additions + comparison.files[i]!.deletions);
+}
+
+function factRangesOf(file: FileChangeFacts): LineRange[] {
+  return file.symbols.flatMap((symbol) => [
+    ...(symbol.before ? [{ side: "old" as const, startLine: symbol.before.startLine, endLine: symbol.before.endLine }] : []),
+    ...(symbol.after ? [{ side: "new" as const, startLine: symbol.after.startLine, endLine: symbol.after.endLine }] : []),
+  ]);
+}
+
+function inRanges(ranges: LineRange[], side: LineSide, line: number): boolean {
+  return ranges.some((range) => range.side === side && range.startLine <= line && line <= range.endLine);
+}
+
+function changedLinesOf(comparison: GitComparison, path: string): Array<{ side: LineSide; line: number }> {
+  const file = comparison.files.find((entry) => entry.path === path)!;
+  return file.hunks.flatMap((hunk) => hunk.rows.flatMap((row): Array<{ side: LineSide; line: number }> => row.kind === "deletion" && row.oldLine !== null ? [{ side: "old" as const, line: row.oldLine }] : row.kind === "addition" && row.newLine !== null ? [{ side: "new" as const, line: row.newLine }] : []));
+}
+
+function expectFilePartition(comparison: GitComparison, file: FileChangeFacts): void {
+  const changed = changedLinesOf(comparison, file.path);
+  if (file.completeness.state === "unsupported") { expect(file.unattributed).toEqual([]); return; }
+  const facts = factRangesOf(file);
+  for (const { side, line } of changed) expect([inRanges(facts, side, line), inRanges(file.unattributed, side, line)].filter(Boolean)).toHaveLength(1);
+  for (const range of file.unattributed) for (let line = range.startLine; line <= range.endLine; line++) expect(changed.some((entry) => entry.side === range.side && entry.line === line)).toBe(true);
+}
+
+function expectPartition({ comparison, facts }: { comparison: GitComparison; facts: ChangeFacts }): void {
+  for (const file of facts.files) expectFilePartition(comparison, file);
 }
 
 test("every changed file of 8f84166..740bada has facts in comparison order with its changed-line count", async () => {
@@ -138,3 +166,37 @@ test("a file the grammar cannot parse is skipped as a parse error", async () => 
   const file = await addedFileFacts("broken.ts", "export function (\n");
   expect(file.completeness).toMatchObject({ state: "skipped", reason: "parse-error" });
 }, 30_000);
+
+test("every changed line of 8f84166..740bada is inside a fact range or unattributed", async () => {
+  expectPartition(await revision);
+}, 30_000);
+
+test("every changed line of 57bf907..27b7e44 is inside a fact range or unattributed", async () => {
+  expectPartition(await suggestions);
+}, 30_000);
+
+test("a skipped file lists every changed line as unattributed", async () => {
+  const { comparison, facts } = await suggestions;
+  const types = fileFacts(facts, "src/types.ts");
+  expect(types.completeness.state).toBe("skipped");
+  const changed = changedLinesOf(comparison, "src/types.ts");
+  expect(changed.length).toBeGreaterThan(0);
+  for (const { side, line } of changed) expect(inRanges(types.unattributed, side, line)).toBe(true);
+}, 30_000);
+
+test("a destructured binding and an anonymous default export are unattributed", async () => {
+  const { comparison, cleanup } = await repositoryComparison(
+    { "settings.ts": "export const settings = { alpha: 1, beta: 2 };\n" },
+    { "settings.ts": "export const settings = { alpha: 1, beta: 2 };\nexport const { alpha, beta } = settings;\nexport default function () {\n  return alpha + beta;\n}\n" },
+  );
+  cleanups.push(cleanup);
+  const facts = await loadChangeFacts(comparison);
+  const file = fileFacts(facts, "settings.ts");
+  expect(file.unattributed).toEqual([{ side: "new", startLine: 2, endLine: 5 }]);
+  expectPartition({ comparison, facts });
+}, 30_000);
+
+test("lineRanges sorts, dedupes and merges consecutive lines", () => {
+  expect(lineRanges("new", [5, 3, 4, 9, 9])).toEqual([{ side: "new", startLine: 3, endLine: 5 }, { side: "new", startLine: 9, endLine: 9 }]);
+  expect(lineRanges("old", [])).toEqual([]);
+});

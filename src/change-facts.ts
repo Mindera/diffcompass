@@ -14,7 +14,7 @@ export type FileCompleteness =
   | { state: "skipped"; reason: SkipReason; message: string }
   | { state: "unsupported"; message: string };
 export interface SymbolFact { analysis: "tree-sitter declaration diff"; name: string; kind: string; change: Array<"added" | "removed" | "signature" | "body">; before?: SemanticAnchor; after?: SemanticAnchor; ambiguous?: true }
-export interface FileChangeFacts { path: string; oldPath: string | null; newPath: string | null; language: SyntaxLanguage | null; completeness: FileCompleteness; changedLines: number; symbols: SymbolFact[] }
+export interface FileChangeFacts { path: string; oldPath: string | null; newPath: string | null; language: SyntaxLanguage | null; completeness: FileCompleteness; changedLines: number; symbols: SymbolFact[]; unattributed: LineRange[] }
 export interface ChangeFacts { engine: string; comparisonId: string; files: FileChangeFacts[] }
 
 const unsupported: FileCompleteness = { state: "unsupported", message: NO_CHANGE_FACTS_MESSAGE };
@@ -28,6 +28,37 @@ function fileLanguage(file: DiffFile): SyntaxLanguage | undefined {
 
 function changedLines(file: DiffFile): number {
   return file.hunks.reduce((total, hunk) => total + hunk.rows.filter((row) => row.kind === "addition" || row.kind === "deletion").length, 0);
+}
+
+export function lineRanges(side: LineSide, lines: Iterable<number>): LineRange[] {
+  const ranges: LineRange[] = [];
+  for (const line of [...new Set(lines)].sort((a, b) => a - b)) {
+    const last = ranges.at(-1);
+    if (last && line === last.endLine + 1) last.endLine = line;
+    else ranges.push({ side, startLine: line, endLine: line });
+  }
+  return ranges;
+}
+
+function changedLineNumbers(file: DiffFile, side: LineSide): number[] {
+  return file.hunks.flatMap((hunk) => hunk.rows.flatMap((row) => {
+    const line = side === "old" ? (row.kind === "deletion" ? row.oldLine : null) : (row.kind === "addition" ? row.newLine : null);
+    return line === null ? [] : [line];
+  }));
+}
+
+function factRanges(facts: Pick<FileChangeFacts, "symbols">): LineRange[] {
+  return facts.symbols.flatMap((symbol) => [
+    ...(symbol.before ? [{ side: "old" as const, startLine: symbol.before.startLine, endLine: symbol.before.endLine }] : []),
+    ...(symbol.after ? [{ side: "new" as const, startLine: symbol.after.startLine, endLine: symbol.after.endLine }] : []),
+  ]);
+}
+
+function unattributedRanges(file: DiffFile, facts: Pick<FileChangeFacts, "completeness" | "symbols">): LineRange[] {
+  if (facts.completeness.state === "unsupported") return [];
+  const ranges = facts.completeness.state === "skipped" ? [] : factRanges(facts);
+  const uncovered = (side: LineSide) => changedLineNumbers(file, side).filter((line) => !ranges.some((range) => range.side === side && range.startLine <= line && line <= range.endLine));
+  return [...lineRanges("old", uncovered("old")), ...lineRanges("new", uncovered("new"))];
 }
 
 function symbolFacts(summary: SemanticSummary): SymbolFact[] {
@@ -52,7 +83,9 @@ function summaryFacts(summary: SemanticSummary, language: SyntaxLanguage): Pick<
   }
 }
 
-async function fileFacts(comparison: GitComparison, file: DiffFile): Promise<FileChangeFacts> {
+type AnalysedFacts = Omit<FileChangeFacts, "unattributed">;
+
+async function analysedFileFacts(comparison: GitComparison, file: DiffFile): Promise<AnalysedFacts> {
   const identity = { path: file.path, oldPath: file.oldPath, newPath: file.newPath, changedLines: changedLines(file) };
   const language = fileLanguage(file);
   if (!language) return { ...identity, language: null, completeness: unsupported, symbols: [] };
@@ -67,6 +100,11 @@ async function fileFacts(comparison: GitComparison, file: DiffFile): Promise<Fil
   }
   const summary = await analyseSemanticSources(file, before, after, { beforeTree: comparison.mergeBase, afterTree: comparison.sourceTree });
   return { ...identity, ...summaryFacts(summary, language) };
+}
+
+async function fileFacts(comparison: GitComparison, file: DiffFile): Promise<FileChangeFacts> {
+  const facts = await analysedFileFacts(comparison, file);
+  return { ...facts, unattributed: unattributedRanges(file, facts) };
 }
 
 export async function loadChangeFacts(comparison: GitComparison): Promise<ChangeFacts> {
