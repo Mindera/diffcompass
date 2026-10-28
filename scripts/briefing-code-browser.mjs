@@ -7,6 +7,7 @@ const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'c
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, reducedMotion: 'reduce' });
 page.setDefaultTimeout(25000);
 const errors = []; page.on('pageerror', error => errors.push(error.message));
+let release;
 const reader = page.locator('#briefing-view');
 const source = reader.locator('[data-evidence-id="subtotal-body"]');
 const frames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -59,7 +60,6 @@ try {
   assert.equal(await reader.locator('[data-briefing-wrap="scroll"]').getAttribute('aria-pressed'), 'true');
   console.log('PASS Shiki: shared layout/wrap preferences, exact sides, aligned wrapped rows, horizontal scrolling');
 
-  let release;
   const loading = new Promise(resolve => { release = resolve; });
   await page.route('**/monaco/briefing.html?*', async route => { await loading; await route.continue(); });
   await renderer('monaco');
@@ -130,4 +130,10 @@ try {
   assert.match(await source.locator('.briefing-code-notice').textContent(), /Monaco is unavailable/);
   assert.deepEqual(errors, []);
   console.log('PASS explicit Shiki selection and reported load-failure fallback');
-} finally { await browser.close(); }
+} finally {
+  // A session poll may still be inside route.fetch() after the last assertion.
+  // Release delayed loads and drain handlers before disposing their request context.
+  release?.();
+  try { await page.unrouteAll({ behavior: 'wait' }); }
+  finally { await browser.close(); }
+}
