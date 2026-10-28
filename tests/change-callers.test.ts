@@ -289,6 +289,18 @@ test.skipIf(process.platform === "win32")("skips CodeGraph when the index marks 
   }
 }, 30_000);
 
+test.skipIf(process.platform === "win32")("skips CodeGraph when a tracked attributes file naming a filter is deleted on disk", async () => {
+  const fixture = await codeGraphFixture({}, { ...HEAD_FILES, ".gitattributes": "*.bin filter=lfs diff=lfs merge=lfs -text\n" });
+  try {
+    await rm(join(fixture.root, ".gitattributes"));
+    const facts = await load(fixture);
+    expect(facts.callerCoverage.codegraph).toEqual(skipped("This repository uses Git content filters, so the working tree cannot be compared without writing to it."));
+    expect((await fixture.calls()).some((call) => call.startsWith("status"))).toBe(false);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
 test.skipIf(process.platform === "win32")("runs no repository hook while comparing the working tree", async () => {
   const fixture = await codeGraphFixture();
   try {

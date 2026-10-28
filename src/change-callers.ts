@@ -178,17 +178,18 @@ async function gitText(root: string, args: string[], env?: Record<string, string
 type GateGit = (args: string[], env?: Record<string, string>) => Promise<string>;
 
 async function hasContentFilters(root: string, git: GateGit): Promise<boolean> {
+  const tracked = new Set<string>();
   const listed = new Set<string>();
-  for (const args of [["--cached", "--others", "--exclude-standard"], ["--others", "--ignored", "--exclude-standard"]]) {
-    for (const path of (await git(["ls-files", "-z", ...args, "--", ":(glob)**/.gitattributes"])).split("\0")) if (path) listed.add(path);
+  for (const [args, isTracked] of [[["--cached"], true], [["--others", "--exclude-standard"], false], [["--others", "--ignored", "--exclude-standard"], false]] as const) {
+    for (const path of (await git(["ls-files", "-z", ...args, "--", ":(glob)**/.gitattributes"])).split("\0")) if (path) { listed.add(path); if (isTracked) tracked.add(path); }
   }
-  const files = [...listed].map((path) => join(root, path));
-  files.push((await git(["rev-parse", "--path-format=absolute", "--git-path", "info/attributes"])).trim());
-  for (const file of files) {
-    const text = await readFile(file, "utf8").catch(() => "");
-    if (text.includes("filter=")) return true;
+  for (const path of listed) {
+    const text = await readFile(join(root, path), "utf8").catch(() => null);
+    const content = text ?? (tracked.has(path) ? await git(["cat-file", "blob", `:${path}`]) : "");
+    if (content.includes("filter=")) return true;
   }
-  return false;
+  const info = (await git(["rev-parse", "--path-format=absolute", "--git-path", "info/attributes"])).trim();
+  return (await readFile(info, "utf8").catch(() => "")).includes("filter=");
 }
 
 async function workingTreeId(git: GateGit, temporary: string): Promise<{ tree: string } | { reason: string }> {
