@@ -30,6 +30,16 @@ test("stops at the file limit after scanning the preferred files first", async (
   expect(scan.coverage.message.endsWith("stopped at the file limit.")).toBe(true);
 }, 30_000);
 
+test("parses the preferred files first when the file limit leaves room for one", async () => {
+  const comparison = await historicalComparison("8f84166", "740bada");
+  const options = { names: new Set(["revisionSummary"]), limits: { ...wide, files: 1 } };
+  const unordered = await scanCapturedTree(comparison, "new", options);
+  expect((unordered.callSites.get("revisionSummary") ?? []).some((site) => site.path === "src/session.ts")).toBe(false);
+  const scan = await scanCapturedTree(comparison, "new", { ...options, first: ["src/session.ts"] });
+  expect(scan.coverage.scannedFiles).toBe(1);
+  expect((scan.callSites.get("revisionSummary") ?? []).some((site) => site.path === "src/session.ts")).toBe(true);
+}, 30_000);
+
 test("stops at the time and byte limits before parsing", async () => {
   const comparison = await historicalComparison("8f84166", "740bada");
   const timed = await scanCapturedTree(comparison, "new", { names, limits: { ...wide, millis: 0 } });
