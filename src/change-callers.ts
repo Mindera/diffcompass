@@ -12,6 +12,8 @@ export interface TreeScan { coverage: ScanCoverage; callSites: Map<string, CallS
 const BATCH = 100;
 const CLOCK_INTERVAL = 1_000;
 const LIMIT_WORDS = { files: "file", bytes: "byte", time: "time" } as const;
+// 4x the largest full scan measured 2026-10-28: FPR 1c7a5614 710 files 1825718 bytes 630 ms; mindera-people 17158a06 44 files 115727 bytes 64 ms; diffcompass 27b7e44 187 files 2145546 bytes 880 ms.
+export const CALLER_SCAN_LIMITS: ScanLimits = { files: 3000, bytes: 9437184, millis: 5000 };
 
 interface Frame { node: Node; index: number; pushed: boolean }
 

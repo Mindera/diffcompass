@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { scanCapturedTree } from "../src/change-callers.ts";
+import { CALLER_SCAN_LIMITS, scanCapturedTree } from "../src/change-callers.ts";
 import { capturedText, historicalComparison, repositoryComparison } from "./comparison-fixtures.ts";
 
 const wide = { files: 10_000, bytes: 64 * 1024 * 1024, millis: 60_000 };
@@ -70,4 +70,12 @@ test("reads callers from the captured tree, never the checkout", async () => {
   } finally {
     await fixture.cleanup();
   }
+}, 30_000);
+
+test("the default limits cover a full scan of this repository's own tree", async () => {
+  const comparison = await historicalComparison("27b7e44", "27b7e44");
+  const scan = await scanCapturedTree(comparison, "new", { names: new Set(["timingProbe"]), limits: { ...CALLER_SCAN_LIMITS, millis: Infinity } });
+  const { totalFiles, scannedFiles, skippedFiles } = scan.coverage;
+  expect(scan.coverage.stoppedBy).toBeUndefined();
+  expect(scannedFiles + skippedFiles).toBe(totalFiles);
 }, 30_000);
