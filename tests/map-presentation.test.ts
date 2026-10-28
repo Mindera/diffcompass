@@ -73,7 +73,7 @@ test("presentation expands the same iframe, validates the sender, and restores l
   expect(open).toBe(false);
   listeners.message!({ data, source: frame.contentWindow });
   expect(open).toBe(true);
-  expect(frame.style.cssText).toContain('width:100vw!important;height:100dvh!important');
+  expect(frame.style.cssText).toContain('width:var(--map-present-width,100vw)!important;height:var(--map-present-height,100dvh)!important');
   expect(sibling.inert).toBe(true);
   listeners.keydown!({ key: 'Escape', preventDefault() {}, stopImmediatePropagation() {} });
   expect(open).toBe(false);

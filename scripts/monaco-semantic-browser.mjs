@@ -126,6 +126,10 @@ try {
     if (path === "broken.ts") {
       await panel(path).getByRole("alert").waitFor();
       await page.unroute("**/api/diff/semantic?path=broken.ts");
+      // Selecting the file starts an asynchronous editor mount and reveal.
+      // Finish that navigation before testing a rerender during a pointer click:
+      // late editor sizing can otherwise move Retry between down and up.
+      await page.evaluate(path => diffCompassProductionHost.reveal(path), path);
       // Reproduce a background render between pointer-down and click. Replacing
       // the unchanged panel here swallows the click and leaves the error visible.
       const retry = panel(path).getByRole("button", { name: "Try again", exact: true });
@@ -178,4 +182,8 @@ try {
   console.error(await page.evaluate(() => ({ notice: document.querySelector(".monaco-review-notice")?.textContent, renderer: document.querySelector("#diff-renderer")?.value, toasts: [...document.querySelectorAll(".toast")].map(node => node.textContent) })));
   await page.screenshot({ path: "/tmp/dc-monaco-what-changed-failure.png" });
   throw error;
-} finally { releasePoll?.(); await browser.close(); }
+} finally {
+  releasePoll?.();
+  try { await page.unrouteAll({ behavior: "wait" }); }
+  finally { await browser.close(); }
+}

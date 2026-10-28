@@ -43,8 +43,10 @@ function createBriefingReader(options) {
     button?.setAttribute("aria-pressed", String(wide));
     if (button) button.title = wide ? "Use the standard reading width" : "Use a wider reading column";
   }
+  const presentation = () => window.diffcompassMapPresentation;
+  const toolsCollapsed = () => presentation()?.paneCollapsed(pane) ?? Boolean(options.toolsCollapsed?.());
   function syncTools() {
-    const collapsed = Boolean(options.toolsCollapsed?.());
+    const collapsed = toolsCollapsed();
     pane.classList.toggle("briefing-pane-collapsed", collapsed);
     const button = pane.querySelector("[data-briefing-toggle-tools]");
     if (!button) return;
@@ -53,7 +55,12 @@ function createBriefingReader(options) {
     button.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} evidence pane`);
     button.title = button.getAttribute("aria-label");
   }
-  function openTools() { options.openTools?.(); syncTools(); }
+  function openTools() {
+    if (presentation()?.paneCollapsed(pane) !== undefined) presentation().setPaneCollapsed(pane, false);
+    else options.openTools?.();
+    syncTools();
+  }
+  pane.addEventListener('diffcompass-map-pane-change', syncTools);
   let saveTimer, restoreFrame, awaitingDiagrams = false, restoring = false;
   function savedReadingStates() {
     try {
@@ -287,7 +294,7 @@ function createBriefingReader(options) {
     return `<div class="briefing-source" data-evidence-id="${esc(e.id)}"><div class="briefing-source-label">${sourceLabel(e)}</div>${sourceCodeHtml(e)}${e.available ? action("Open in Changes", `data-briefing-source="${esc(e.id)}"`) : ""}</div>`;
   }
   function inspectorHeader(eyebrow, title) {
-    const collapsed = Boolean(options.toolsCollapsed?.());
+    const collapsed = toolsCollapsed();
     pane.classList.toggle("briefing-pane-collapsed", collapsed);
     const label = `${collapsed ? "Expand" : "Collapse"} evidence pane`;
     return `<header><div><span class="eyebrow">${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${options.closeTools ? `<button type="button" class="briefing-pane-toggle" data-briefing-toggle-tools aria-expanded="${!collapsed}" aria-label="${label}" title="${label}">${collapsed ? "‹" : "›"}</button>` : ""}</header>`;
@@ -390,13 +397,14 @@ function createBriefingReader(options) {
     if (event.data?.type !== "diffcompass-briefing-diagram-select") return;
     const blockId = frame.dataset.briefingDiagram, elementId = event.data.elementId;
     if (!diagramFor(blockFor(blockId))?.elements.some(element => element.id === elementId)) return;
-    if (selected?.blockId === blockId && selected.elementId === elementId) return;
-    window.diffcompassMapPresentation?.suspend(frame);
+    presentation()?.showPane(frame, pane);
+    if (selected?.blockId === blockId && selected.elementId === elementId) { openTools(); return; }
     inspect(blockId, elementId);
   });
   function attach(blockId, elementId, { quote, reveal = true } = {}) {
     const b = blockFor(blockId), d = diagramFor(b), e = d?.elements.find(e => e.id === elementId);
     if (!b) return;
+    presentation()?.closePane(pane);
     const key = JSON.stringify([document.id, blockId, elementId, quote]);
     if (!attachments.some(a => a.key === key)) {
       if (attachments.length >= 8) return options.notify?.("Attach at most eight items to a question.");
@@ -439,7 +447,8 @@ function createBriefingReader(options) {
       restoreAnchor(); return;
     }
     if (el.hasAttribute("data-briefing-toggle-tools")) {
-      if (options.toolsCollapsed?.()) openTools();
+      if (toolsCollapsed()) openTools();
+      else if (presentation()?.paneCollapsed(pane) !== undefined) presentation().setPaneCollapsed(pane, true);
       else { options.closeTools?.(); syncTools(); }
       if (pane.getClientRects().length) el.focus({ preventScroll: true });
       return;
@@ -455,6 +464,7 @@ function createBriefingReader(options) {
     }
     if (el.dataset.briefingSource) {
       const e = document?.evidence.find(e => e.id === el.dataset.briefingSource) ?? inspection?.frozen?.evidence.find(e => e.id === el.dataset.briefingSource);
+      presentation()?.closePane(pane);
       if (e) Promise.resolve(options.onChanges?.(e, document?.comparisonId)).catch(error => options.notify?.(error.message)); return;
     }
     if (el.hasAttribute("data-briefing-remove")) { attachments.splice(Number(el.dataset.briefingRemove), 1); renderChips(); return; }
@@ -467,7 +477,7 @@ function createBriefingReader(options) {
   return {
     render, renderChips, rememberAnchor, restoreAnchor, inspectEvidence, syncTools, syncDiffView,
     setActive(value) {
-      if (active && !value) { rememberAnchor(); saveReadingState(); }
+      if (active && !value) { presentation()?.closePane(pane); rememberAnchor(); saveReadingState(); }
       active = value;
       codeRenderer?.setActive(active);
       if (active) { restoreWidthPreference(); syncDiffView(); syncTools(); restoreAnchor(); revealSelectedEvidence(); }

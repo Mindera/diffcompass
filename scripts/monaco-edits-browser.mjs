@@ -27,6 +27,11 @@ async function file(expectedContent) {
 }
 const draftValue = () => frame.evaluate(() => monaco.editor.getModels().find(model => model.uri.scheme === 'inmemory' && model.uri.authority === 'review-suggestion')?.getValue());
 async function open(line = 17, endLine = line) {
+  // A ready model can still have tour navigation waiting on another file.
+  // Complete the explicit source jump before selecting code and opening a menu,
+  // so that a late tour focus cannot replace the selection or dismiss the menu.
+  await page.evaluate(({ path, line }) => diffCompassProductionHost.reveal(path, 'new', line), { path, line });
+  await file();
   await frame.evaluate(({line,endLine}) => {
     const editor = diffLab.views.get('src/cart.ts').editors.new;
     editor.setSelection(new monaco.Range(line, 4, endLine, editor.getModel().getLineMaxColumn(endLine)));
@@ -63,9 +68,6 @@ try {
   for(const layout of ['split','unified']) {
     await page.locator(`[data-diff-layout="${layout}"]`).click();
     await frame.waitForFunction(layout=>document.getElementById('layout').value===layout,layout);
-    // Menu positioning uses the iframe viewport: let the requested layout
-    // and the outer card finish resizing before opening a native menu.
-    await page.waitForTimeout(250);
     await open(16,17);
     await page.waitForTimeout(400);
     await page.screenshot({path:`/tmp/dc-edits-composer-${layout}.png`});
