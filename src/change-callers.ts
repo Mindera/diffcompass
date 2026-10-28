@@ -175,13 +175,15 @@ async function gitText(root: string, args: string[], env?: Record<string, string
   return (await runProcess(["git", ...args], root, [0], { timeoutMs: GATE_TIMEOUT_MS, env })).stdout;
 }
 
-async function hasContentFilters(root: string): Promise<boolean> {
+type GateGit = (args: string[], env?: Record<string, string>) => Promise<string>;
+
+async function hasContentFilters(root: string, git: GateGit): Promise<boolean> {
   const listed = new Set<string>();
   for (const args of [["--cached", "--others", "--exclude-standard"], ["--others", "--ignored", "--exclude-standard"]]) {
-    for (const path of (await gitText(root, ["ls-files", "-z", ...args, "--", ":(glob)**/.gitattributes"])).split("\0")) if (path) listed.add(path);
+    for (const path of (await git(["ls-files", "-z", ...args, "--", ":(glob)**/.gitattributes"])).split("\0")) if (path) listed.add(path);
   }
   const files = [...listed].map((path) => join(root, path));
-  files.push((await gitText(root, ["rev-parse", "--path-format=absolute", "--git-path", "info/attributes"])).trim());
+  files.push((await git(["rev-parse", "--path-format=absolute", "--git-path", "info/attributes"])).trim());
   for (const file of files) {
     const text = await readFile(file, "utf8").catch(() => "");
     if (text.includes("filter=")) return true;
@@ -189,22 +191,30 @@ async function hasContentFilters(root: string): Promise<boolean> {
   return false;
 }
 
-async function workingTreeId(root: string): Promise<{ tree: string } | { reason: string }> {
+async function workingTreeId(git: GateGit, temporary: string): Promise<{ tree: string } | { reason: string }> {
+  await mkdir(join(temporary, "objects"));
+  const noAttributes = join(temporary, "no-attributes");
+  await writeFile(noAttributes, "");
+  const indexFile = join(temporary, "index");
+  const objects = (await git(["rev-parse", "--path-format=absolute", "--git-path", "objects"])).trim();
+  const source = (await git(["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim();
+  const env = { GIT_INDEX_FILE: indexFile, GIT_OBJECT_DIRECTORY: join(temporary, "objects"), GIT_ALTERNATE_OBJECT_DIRECTORIES: objects, GIT_ATTR_NOSYSTEM: "1" };
+  if (await Bun.file(source).exists()) await copyFile(source, indexFile);
+  else await git(["read-tree", "HEAD"], env);
+  const entries = (await git(["ls-files", "-v", "-z"], env)).split("\0").filter(Boolean);
+  if (entries.some((entry) => /^[a-zS]/.test(entry))) return { reason: "The index marks files as unchanged or outside the worktree, so their working copies cannot be compared." };
+  await git(["-c", `core.attributesFile=${noAttributes}`, "add", "-A", "--", "."], env);
+  return { tree: (await git(["write-tree"], env)).trim() };
+}
+
+async function comparedTree(root: string): Promise<{ tree: string } | { reason: string }> {
   const temporary = await mkdtemp(join(tmpdir(), "diffcompass-gate-"));
   try {
-    await mkdir(join(temporary, "objects"));
-    const noAttributes = join(temporary, "no-attributes");
-    await writeFile(noAttributes, "");
-    const indexFile = join(temporary, "index");
-    const objects = (await gitText(root, ["rev-parse", "--path-format=absolute", "--git-path", "objects"])).trim();
-    const source = (await gitText(root, ["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim();
-    const env = { GIT_INDEX_FILE: indexFile, GIT_OBJECT_DIRECTORY: join(temporary, "objects"), GIT_ALTERNATE_OBJECT_DIRECTORIES: objects, GIT_ATTR_NOSYSTEM: "1" };
-    if (await Bun.file(source).exists()) await copyFile(source, indexFile);
-    else await gitText(root, ["read-tree", "HEAD"], env);
-    const entries = (await gitText(root, ["ls-files", "-v", "-z"], env)).split("\0").filter(Boolean);
-    if (entries.some((entry) => /^[a-zS]/.test(entry))) return { reason: "The index marks files as unchanged or outside the worktree, so their working copies cannot be compared." };
-    await gitText(root, ["-c", `core.attributesFile=${noAttributes}`, "-c", "core.fsmonitor=false", "add", "-A", "--", "."], env);
-    return { tree: (await gitText(root, ["write-tree"], env)).trim() };
+    const hooks = join(temporary, "hooks");
+    await mkdir(hooks);
+    const git: GateGit = (args, env) => gitText(root, ["-c", `core.hooksPath=${hooks}`, "-c", "core.fsmonitor=false", ...args], env);
+    if (await hasContentFilters(root, git)) return { reason: FILTER_REASON };
+    return await workingTreeId(git, temporary);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
@@ -219,8 +229,7 @@ export async function codeGraphGate(comparison: GitComparison, executable: strin
   if (!comparison.sourceTree) return skip("This review has no captured head tree.");
   let tree: string;
   try {
-    if (await hasContentFilters(root)) return skip(FILTER_REASON);
-    const id = await workingTreeId(root);
+    const id = await comparedTree(root);
     if ("reason" in id) return skip(id.reason);
     tree = id.tree;
   } catch (error) {

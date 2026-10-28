@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { CALLER_SCAN_LIMITS, CODEGRAPH_LABEL, NAME_MATCH_LABEL, scanCapturedTree } from "../src/change-callers.ts";
 import { loadChangeFacts } from "../src/change-facts.ts";
 import { runProcess } from "../src/process.ts";
@@ -289,7 +289,23 @@ test.skipIf(process.platform === "win32")("skips CodeGraph when the index marks 
   }
 }, 30_000);
 
-const definitionAt = (startLine: number, id: string, caller: string) => ({
+test.skipIf(process.platform === "win32")("runs no repository hook while comparing the working tree", async () => {
+  const fixture = await codeGraphFixture();
+  try {
+    const marker = join(dirname(fixture.executable), "hook-ran");
+    const hook = join(fixture.root, ".git", "hooks", "post-index-change");
+    await mkdir(dirname(hook), { recursive: true });
+    await writeFile(hook, `#!/bin/sh\necho ran >> "${marker}"\n`);
+    await chmod(hook, 0o700);
+    const facts = await load(fixture);
+    expect(await Bun.file(marker).exists()).toBe(false);
+    expect(facts.callerCoverage.codegraph?.state).toBe("used");
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
+const definitionAt =(startLine: number, id: string, caller: string) => ({
   definition: { name: "ping", kind: "function", filePath: "a.ts", startLine, id },
   callers: [{ id: `function:${caller}`, name: caller, filePath: "b.ts", startLine: 1 }],
   edges: [{ source: `function:${caller}`, target: id, kind: "calls", line: 2 }],
