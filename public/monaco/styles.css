@@ -40,8 +40,8 @@
 .line-delete-selectable:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
 .review-change-gutter{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:3}
 .review-change-gutter::before{content:"";position:absolute;inset:0 auto 0 0;width:16px;background-image:var(--review-row-colors,none)}
-/* Native source-row geometry paints each margin once, behind its numbers,
-   markers and tour decorations. Alignment/card spacers stay uncoloured. */
+/* Unified source-row colours are projected behind its numbers and markers.
+   Split gutters and alignment/card spacers keep the neutral code surface. */
 .review-number-gutter-editor>.overflow-guard>.margin :is(.gutter-insert,.gutter-delete,.inline-deleted-margin-view-zone,.inline-added-margin-view-zone){background-color:transparent}
 .review-diff-sign{position:absolute;width:12px;display:flex;align-items:center;justify-content:center;font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
 .review-diff-sign.added{color:#8acb9b}.review-diff-sign.removed{color:#f08d99}

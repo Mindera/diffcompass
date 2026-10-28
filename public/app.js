@@ -122,6 +122,7 @@ const state = {
   issueAssessmentExcerptRequestId: 0,
   reviewerTaskReturnTarget: null,
   pullRequestReturn: null,
+  briefingSourceReturn: false,
   githubSnapshotRefreshing: false,
   dryRunFlowId: null,
   dryRunFlowKind: null,
@@ -141,7 +142,7 @@ const state = {
 
 const elements = Object.fromEntries(
   [
-    "briefing-tab", "briefing-view", "briefing-outline", "briefing-inspector", "briefing-context", "briefing-sheet", "briefing-sheet-close", "briefing-mobile-tools",
+    "briefing-tab", "briefing-view", "briefing-outline", "briefing-inspector", "briefing-context", "briefing-sheet", "briefing-sheet-close", "briefing-mobile-tools", "briefing-source-return",
     "tour-intro-eyebrow",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "review-overview", "tour-overview", "tour-mode-toggle", "tour-intro-return", "current-step-return", "pull-request-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "dry-runs-view", "dry-runs", "dry-runs-tab", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tour-filter-note", "tree-mode", "comparison-view", "revision-summary", "revision-history", "checkpoint-history", "filter-summary",
     "settings-menu", "prefetch-steps", "show-tour-briefing", "briefing-options", "briefing-architecture", "briefing-needs-attention", "briefing-review-effort", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "github-review-confirmation-dialog", "github-review-confirmation-form", "github-review-confirmation-title", "github-review-confirmation-description", "github-review-confirmation-action", "github-review-confirmation-pull-request", "github-review-confirmation-revision", "github-review-confirmation-comments", "github-review-confirmation-local-only-option", "github-review-confirmation-local-only", "github-review-confirmation-note", "cancel-github-review-confirmation", "submit-github-review-confirmation", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings", "include-dry-runs",
@@ -4801,6 +4802,7 @@ function renderMapsNavigation() {
 }
 
 function renderActiveTab() {
+  if (state.activeTab !== "diff") state.briefingSourceReturn = false;
   for (const tabName of ["briefing", "diff", "call-flows", "structural-blast-radius", "archify", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
     elements[`${tabName}-view`].classList.toggle("hidden", !active);
@@ -4810,6 +4812,7 @@ function renderActiveTab() {
   }
   syncBriefingLayout();
   updatePullRequestReturnVisibility();
+  updateBriefingSourceReturnVisibility();
   renderMapsNavigation();
   state.monacoRenderer?.updateMobileActions();
   scheduleCurrentStepReturnUpdate();
@@ -4898,6 +4901,8 @@ function getBriefingReader() {
     toolsCollapsed: () => !matchMedia("(max-width: 900px)").matches && state.agentPanelCollapsed,
     onTour: beginPreparedTour,
     onChanges: async (evidence, comparisonId) => {
+      if (state.busy) return;
+      if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before opening this source.");
       const manifest = await api("/api/diff/sources");
       if (comparisonId !== manifest.comparisonId) { toast("This source belongs to a saved comparison. Its excerpt remains available here."); return; }
       if (!state.session.comparison.files.some(f => f.path === evidence.path || f.oldPath === evidence.path)) { toast("This supporting source is outside the changed files. Its captured excerpt is shown here."); return; }
@@ -4905,8 +4910,15 @@ function getBriefingReader() {
       const captured = await api(`/api/diff/sources?${new URLSearchParams({ path, comparisonId: manifest.comparisonId })}`);
       if (!captured.available || captured.blobs[evidence.side] !== evidence.blob) { toast("This excerpt belongs to an earlier source snapshot. Its saved code remains in the inspector."); return; }
       closeBriefingSheet();
+      state.briefingSourceReturn = true;
+      state.structuralGraphReturn = state.sequenceSourceReturn = state.pullRequestReturn = null;
       activateReviewTab("diff");
-      void showChangedFile(path, evidence.startLine, evidence.side);
+      // Source inspection can cross phase boundaries without advancing the tour.
+      if (state.tourMode) await toggleTourMode();
+      else await ensureReviewDiffs();
+      // Let the tab's remembered scroll settle before revealing the source.
+      await new Promise(requestAnimationFrame);
+      await showChangedFile(path, evidence.startLine, evidence.side);
     },
     onGenerate: async () => {
       if (state.busy || !reviewIsOpen()) return;
@@ -4999,6 +5011,7 @@ function updateStructuralGraphReturnVisibility() {
 function updateCurrentStepReturnVisibility() {
   updateSequenceSourceReturnVisibility();
   updateStructuralGraphReturnVisibility();
+  updateBriefingSourceReturnVisibility();
   currentStepReturnFrame = null;
   const button = elements["current-step-return"];
   if (!state.session || !state.tourMode || state.activeTab !== "diff" || !currentStep()) {
@@ -5034,6 +5047,16 @@ function updateCurrentStepReturnVisibility() {
 function scheduleCurrentStepReturnUpdate() {
   if (currentStepReturnFrame !== null) return;
   currentStepReturnFrame = window.requestAnimationFrame(updateCurrentStepReturnVisibility);
+}
+
+function updateBriefingSourceReturnVisibility() {
+  const button = elements["briefing-source-return"];
+  const visible = state.briefingSourceReturn && state.activeTab === "diff";
+  button.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const bounds = elements["diff-panel"].getBoundingClientRect();
+  button.style.right = `${Math.max(12, window.innerWidth - bounds.right + 14)}px`;
+  button.style.bottom = `${Math.max(58, window.innerHeight - Math.min(window.innerHeight, bounds.bottom) + 58)}px`;
 }
 
 function renderTourAnnotation() {
@@ -5836,6 +5859,7 @@ async function toggleTourMode() {
   if (!state.session.outline || state.busy) return;
   if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before leaving the tour.");
   state.tourMode = !state.tourMode;
+  if (state.tourMode) state.briefingSourceReturn = false;
   state.fileRequestId += 1;
   state.phaseDiffLoadKey = null;
   state.phaseDiffLoadPromise = null;
@@ -8263,6 +8287,10 @@ elements["comment-list"].addEventListener("change", async (event) => {
 elements["update-button"].addEventListener("click", installUpdate);
 elements["current-step-return"].addEventListener("click", () => void focusCurrentStep());
 elements["pull-request-return"].addEventListener("click", returnToPullRequest);
+elements["briefing-source-return"].addEventListener("click", () => {
+  activateReviewTab("briefing");
+  elements["briefing-tab"].focus({ preventScroll: true });
+});
 setFilePanelOpen(false);
 renderFocusMode();
 

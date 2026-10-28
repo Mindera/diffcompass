@@ -1618,6 +1618,10 @@ export class ReviewSession {
           await validateDryRunPlanSourceAnchors(generated.value.dryRunPlans ?? [], (path) => loadRepositoryFile(this.comparison, path));
           await this.refreshArchifyArtifacts(generated.value, before.outline);
           generated.value.briefing = await buildBriefing(this.comparison, generated.value, this.briefingIntent());
+          const linked = await this.agent.bindBriefingSources(this.comparison, generated.value.briefing);
+          this.ensureComparisonCurrent(comparisonGeneration);
+          generated.value.briefing = linked.value;
+          receipts.push(...linked.receipts);
           delete generated.value.briefingProposal;
           this.outline = generated.value;
           this.currentStepIndex = 0;
@@ -1793,12 +1797,13 @@ export class ReviewSession {
         this.ensureComparisonCurrent(comparisonGeneration);
         if (this.revision !== before.revision) throw new ReviewError("The review changed. Regenerate Briefing against the latest snapshot.");
         const document = await buildBriefing(this.comparison, { ...this.outline, flows: generated.value.flows }, intent, generated.value.proposal);
+        const linked = await this.agent.bindBriefingSources(this.comparison, document);
         this.ensureComparisonCurrent(comparisonGeneration);
         this.ensureOpen();
         if (this.revision !== before.revision) throw new ReviewError("The review changed while validating Briefing evidence. Retry against the latest snapshot.");
-        this.outline.briefing = document;
+        this.outline.briefing = linked.value;
         this.revision += 1; operationRevision = this.revision;
-        await this.persistAgentResult(generated.receipts);
+        await this.persistAgentResult([...generated.receipts, ...linked.receipts]);
         return this.snapshot();
       } catch (error) { this.restoreMutableState(before, terminalEpoch, operationRevision); throw error; }
     });

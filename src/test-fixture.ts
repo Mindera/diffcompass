@@ -8,10 +8,10 @@ import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { loadComparison } from "./git.ts";
 import { comparisonFingerprint, dryRunFlowFingerprint } from "./dry-runs.ts";
-import { ArchifyRenderer } from "./archify.ts";
+import { archifyCandidates, ArchifyRenderer } from "./archify.ts";
 import type { GitComparison, PersistedReviewSession } from "./types.ts";
 
-const FIXTURE_SCHEMA = 6;
+const FIXTURE_SCHEMA = 7;
 const FIXTURE_DIRECTORY = "diffcompass-test-fixture-v2";
 const FIXTURE_TIME = "2026-08-13T10:00:00.000Z";
 
@@ -776,6 +776,15 @@ export async function prepareTestFixture(options: { root?: string; reset?: boole
     for (const diagram of [outline.architecture, outline.behaviorArchitecture]) if (diagram) diagram.elementSources = [
       { elementId: "cart", anchors: [calculation] }, { elementId: "receipt", anchors: [presentation] },
     ];
+    // Bind the actual call using the renderer's relationship ID. The external
+    // caller is deliberately absent from this sample and has no source anchor.
+    for (const candidate of archifyCandidates(outline)) {
+      const diagram = candidate.id === "architecture-journey" ? outline.architecture : candidate.id === "architecture-behavior" ? outline.behaviorArchitecture : undefined;
+      if (!diagram) continue;
+      const connections = candidate.ir.connections as Array<{ id: string; from: string; to: string }>;
+      const call = connections.find(connection => connection.from === "receipt" && connection.to === "cart");
+      if (call) diagram.elementSources!.push({ elementId: call.id, anchors: [excerpt("src/receipt.ts", 4, 4)] });
+    }
     if (outline.stateDiagram) outline.stateDiagram.elementSources = [{ elementId: "calculated", anchors: [calculation] }, { elementId: "formatted", anchors: [presentation] }];
     if (outline.dataModel) outline.dataModel.elementSources = [{ elementId: "data-ITEM", anchors: [excerpt("src/cart.ts", 1, 4)] }, { elementId: "data-DISCOUNT", anchors: [excerpt("src/cart.ts", 6, 8)] }];
     outline.briefing = await buildBriefing(comparison, outline, briefingIntent({ pullRequest: persisted.pullRequest, reviewerTask: persisted.pullRequest?.reviewerTask }), {

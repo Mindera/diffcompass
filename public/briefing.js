@@ -282,8 +282,8 @@ function createBriefingReader(options) {
     const added = e.diff.rows.filter(r => r.kind === "addition").length, removed = e.diff.rows.filter(r => r.kind === "deletion").length;
     return `<div class="briefing-diff-summary"><span>${added || removed ? `<span class="briefing-diff-added">+${added}</span> <span class="briefing-diff-removed">−${removed}</span>${e.diff.rows.some(r => r.content.startsWith("… ")) ? " shown" : ""}` : "Unchanged context"}</span></div><pre class="briefing-diff" aria-label="Before and after code diff"><code>${codeRowsHtml(e)}</code></pre>`;
   }
-  function evidenceHtml(e) {
-    if (!e) return '<p class="muted">No verified source binding is available for this element.</p>';
+  function evidenceHtml(e, reason) {
+    if (!e) return `<p class="muted">${esc(reason ?? "No verified source binding is available for this element.")}</p>`;
     return `<div class="briefing-source" data-evidence-id="${esc(e.id)}"><div class="briefing-source-label">${sourceLabel(e)}</div>${sourceCodeHtml(e)}${e.available ? action("Open in Changes", `data-briefing-source="${esc(e.id)}"`) : ""}</div>`;
   }
   function inspectorHeader(eyebrow, title) {
@@ -291,6 +291,11 @@ function createBriefingReader(options) {
     pane.classList.toggle("briefing-pane-collapsed", collapsed);
     const label = `${collapsed ? "Expand" : "Collapse"} evidence pane`;
     return `<header><div><span class="eyebrow">${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${options.closeTools ? `<button type="button" class="briefing-pane-toggle" data-briefing-toggle-tools aria-expanded="${!collapsed}" aria-label="${label}" title="${label}">${collapsed ? "‹" : "›"}</button>` : ""}</header>`;
+  }
+  function diagramEvidenceHtml(element) {
+    if (!element.evidenceIds.length) return evidenceHtml(null, element.sourceReview?.reason);
+    const sources = element.evidenceIds.map(id => evidenceHtml(document.evidence.find(e => e.id === id))).join("");
+    return sources + (element.sourceReview?.status === "limit" ? evidenceHtml(null, element.sourceReview.reason) : "");
   }
   function renderInspector() {
     codeRenderer?.clear(pane);
@@ -304,7 +309,7 @@ function createBriefingReader(options) {
     if (!b) { pane.innerHTML = inspectorHeader("Evidence", "Saved inspection") + '<p>This inspected item belongs to an earlier Briefing. Attached question context is retained.</p>'; return; }
     const title = d?.title ?? (b.kind === "source" ? "Source citation" : "Selected passage");
     let content;
-    if (d) content = d.elements.map((e, index) => `<article class="briefing-evidence-card" data-evidence-element="${esc(e.id)}" data-block-id="${esc(b.id)}"><button class="briefing-card-title" type="button" data-briefing-element="${esc(e.id)}" data-block-id="${esc(b.id)}">${d.family === "sequence" ? `${index + 1}. ` : ""}${esc(e.label)}</button>${e.evidenceIds.length ? e.evidenceIds.map(id => evidenceHtml(document.evidence.find(e => e.id === id))).join("") : evidenceHtml(null)}${action(`Ask about ${d.family === "sequence" ? "message" : e.kind === "components" ? "component" : "element"}`, `data-briefing-ask="${esc(b.id)}" data-element-id="${esc(e.id)}"`)}</article>`).join("");
+    if (d) content = d.elements.map((e, index) => `<article class="briefing-evidence-card" data-evidence-element="${esc(e.id)}" data-block-id="${esc(b.id)}"><button class="briefing-card-title" type="button" data-briefing-element="${esc(e.id)}" data-block-id="${esc(b.id)}">${d.family === "sequence" ? `${index + 1}. ` : ""}${esc(e.label)}</button>${diagramEvidenceHtml(e)}${action(`Ask about ${d.family === "sequence" ? "message" : e.kind === "components" ? "component" : "element"}`, `data-briefing-ask="${esc(b.id)}" data-element-id="${esc(e.id)}"`)}</article>`).join("");
     else content = b.kind === "source" ? evidenceHtml(document.evidence.find(e => e.id === b.evidenceId)) : `${b.basis ? `<span class="briefing-basis">${esc({ stated: "Stated intent", observed: "Observed behavior", inferred: "Inference" }[b.basis])}</span>` : ""}<p class="briefing-quotation">${esc(inspection.quote ?? b.text)}</p>${action("Ask about passage", `data-briefing-ask="${esc(b.id)}"` )}`;
     pane.innerHTML = inspectorHeader(d?.family ?? "Evidence", title) + `<div class="briefing-evidence-scroll">${content}<details class="briefing-review-details"><summary>Review details</summary><p>${esc(session.comparison.repositoryName)} · ${esc(session.comparison.branch)}<br>Saved ${esc(document.createdAt)}${document.outdated ? " · outdated source or intent" : ""}</p></details></div>`;
     highlight(); renderCode();

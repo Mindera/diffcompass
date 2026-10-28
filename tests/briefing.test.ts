@@ -31,6 +31,19 @@ test("saved Briefing covers six diagram families and validates component evidenc
   expect(source.startLine).toBe(3);
   expect(source.endLine).toBe(6);
   expect(source.quote).toContain("export function receipt");
+  for (const diagramId of ["architecture-journey", "architecture-behavior"]) {
+    const diagram = doc.diagrams.find(d => d.id === diagramId)!;
+    const connections = diagram.ir.connections as Array<{ id: string; from: string; to: string }>;
+    const call = connections.find(connection => connection.from === "receipt" && connection.to === "cart")!;
+    const binding = diagram.elements.find(element => element.id === call.id)!;
+    const callSource = doc.evidence.find(e => e.id === binding.evidenceIds[0])!;
+    expect(callSource.available).toBe(true);
+    expect(callSource.path).toBe("src/receipt.ts");
+    expect(callSource.startLine).toBe(4);
+    expect(callSource.quote).toBe("  const amount = total(items, discount);");
+    const externalCall = connections.find(connection => connection.to === "receipt")!;
+    expect(diagram.elements.find(element => element.id === externalCall.id)!.evidenceIds).toHaveLength(0);
+  }
   const flow = doc.diagrams.find(d => d.family === "sequence")!;
   expect(flow.elements).toHaveLength(4);
   expect(flow.elements[0]!.evidenceIds).toHaveLength(0);
@@ -226,10 +239,18 @@ test("regeneration captures reviewed sequence repairs and diffs without rewritin
     if (!review || review.type !== "agent.prompt") throw new Error("Missing sequence review");
     expect(review.prompt).toContain("reviewing the causal completeness");
     await session.bridge!.respond(review.id, JSON.stringify({ decisions: [{ flowId: flow.id, disposition: "revised", reason: "receipt.ts:5 formats the amount before returning it.", flow: repaired }], briefingProposal: proposal }));
-    await session.bridge!.ack(review.id); await regeneration;
+    await session.bridge!.ack(review.id);
+    const linking = (await session.bridge!.eventsAfter(review.sequence, 3000)).find(e => e.type === "agent.prompt");
+    if (!linking || linking.type !== "agent.prompt") throw new Error("Missing sequence source linking");
+    expect(linking.prompt).toContain("attaching inspected source");
+    const ids = JSON.parse(linking.prompt.match(/Requested element IDs: (\[[^\n]*\])/u)![1]!) as string[];
+    expect(ids).toHaveLength(1);
+    await session.bridge!.respond(linking.id, JSON.stringify({ decisions: ids.map(elementId => ({ elementId, status: "external", reason: "The checkout caller is outside this sample; its request implementation is not captured." })) }));
+    await session.bridge!.ack(linking.id); await regeneration;
     const document = session.outline!.briefing!;
     const diagram = document.diagrams.find(d => d.id === `sequence-${flow.id}`)!;
     expect(diagram.ir.messages).toHaveLength(5);
+    expect(diagram.elements[0]!.sourceReview?.status).toBe("external");
     const added = diagram.elements.find(element => element.label === label)!;
     const evidence = document.evidence.find(e => e.id === added.evidenceIds[0])!;
     expect(evidence.available).toBe(true);

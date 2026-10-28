@@ -21,6 +21,11 @@ try {
   const headers = { 'x-diffcompass-token': new URLSearchParams(new URL(url).hash.slice(1)).get('token') };
   const snapshot = await (await page.request.get(new URL('/api/session', url).href, { headers })).json();
   const document = snapshot.outline.briefing;
+  // Exercise persisted inspection explanations in both the live and offline reader.
+  const unbound = document.diagrams.find(d => d.id === 'architecture-journey').elements.filter(e => !e.evidenceIds.length);
+  assert.ok(unbound.length >= 2);
+  unbound[0].sourceReview = { status: 'external', reason: 'The caller belongs to <external checkout>; its implementation is not in this repository.' };
+  unbound[1].sourceReview = { status: 'unavailable', reason: 'The captured sample does not include the caller that requests this receipt.' };
   // Two parallel relationships and identically labelled nodes must retain their
   // distinct identities. These are synthetic bindings to the fixture's diffs.
   const parallel = {
@@ -35,6 +40,7 @@ try {
     })),
   };
   document.diagrams.push(parallel);
+  parallel.elements[0].sourceReview = { status: 'limit', reason: 'Supporting source was found, but this Briefing reached its limit of 40 saved excerpts.' };
   document.sections = document.diagrams.map((diagram, index) => ({
     id: `section-${index}`, title: diagram.title,
     blocks: [{ id: `map-${index}`, kind: 'diagram', diagramId: diagram.id }],
@@ -101,7 +107,11 @@ try {
             }))), evidence.diff.rows.filter(row => row.kind !== 'meta').map(({ kind, content }) => ({ kind, content })));
           }
         }
-      } else assert.match(await card.textContent(), /No verified source binding/);
+      } else if (!message.sourceReview) assert.match(await card.textContent(), /No verified source binding/);
+      if (message.sourceReview && (!message.evidenceIds.length || message.sourceReview.status === 'limit')) {
+        assert.ok((await card.textContent()).includes(message.sourceReview.reason), 'The saved inspection reason is shown verbatim as text');
+        assert.equal(await card.locator('external').count(), 0, 'Source inspection reasons are escaped');
+      }
       await card.locator('.briefing-card-title').click();
       await frame.waitForFunction(focusMatches, message.id);
       assert.deepEqual(await frame.evaluate(() => window.Archify.view.state()), camera, 'Evidence inspection preserves the camera');

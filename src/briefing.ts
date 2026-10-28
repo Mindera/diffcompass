@@ -11,7 +11,7 @@ import type { ArchifyArtifact, GitComparison, TourOutline, TourAnchor, SequenceS
 export type BriefingFamily = "sequence" | "architecture" | "lifecycle" | "data-model" | "call-flow" | "domain";
 export interface ElementSource { elementId: string; anchors: SequenceSourceAnchor[] }
 export interface BriefingEvidence extends SequenceSourceAnchor { id: string; kind: "code" | "document"; blob?: string; available: boolean; reason?: string; diff?: BriefingDiff }
-export interface BriefingElement { id: string; label: string; kind: string; evidenceIds: string[] }
+export interface BriefingElement { id: string; label: string; kind: string; evidenceIds: string[]; sourceReview?: { status: "bound" | "external" | "unavailable" | "limit"; reason: string } }
 export interface BriefingDiagram { id: string; title: string; family: BriefingFamily; outdated?: boolean; mermaid?: string; archifyHtml?: string; nodeRoles?: ArchifyArtifact["nodeRoles"]; domainDetails?: ArchifyArtifact["domainDetails"]; ir: Record<string, unknown>; elements: BriefingElement[] }
 export type NarrativeBlock =
   | { id: string; kind: "prose"; text: string; basis?: "stated" | "observed" | "inferred" }
@@ -55,7 +55,7 @@ export function validBriefingProposal(v: unknown): v is BriefingProposal {
   if (v.diagramSources !== undefined && (!Array.isArray(v.diagramSources) || v.diagramSources.length > 40 || !v.diagramSources.every((binding: any) => record(binding) && id(binding.diagramId) && id(binding.elementId) && Array.isArray(binding.anchors) && binding.anchors.length <= 8 && binding.anchors.every(validAnchor)))) return false;
   return v.evidence === undefined || (Array.isArray(v.evidence) && v.evidence.length <= 40 && v.evidence.every(e => record(e) && id(e.id) && validAnchor(e)) && new Set(v.evidence.map(e => e.id)).size === v.evidence.length);
 }
-function validAnchor(a: unknown): a is SequenceSourceAnchor {
+export function validAnchor(a: unknown): a is SequenceSourceAnchor {
   return record(a) && str(a.path, 4096) && !a.path.startsWith("/") && !/[\\\x00-\x1f:]/.test(a.path) && a.path.split("/").every((p: string) => p && p !== "." && p !== "..") && ["old", "new"].includes(a.side) && Number.isSafeInteger(a.startLine) && a.startLine > 0 && Number.isSafeInteger(a.endLine) && a.endLine >= a.startLine && a.endLine - a.startLine < 30 && str(a.quote, 8000);
 }
 export function validBriefingDocument(value: unknown): value is BriefingDocument {
@@ -72,6 +72,7 @@ export function validBriefingDocument(value: unknown): value is BriefingDocument
     diagrams.add(d.id); const elements = new Set<string>();
     for (const e of d.elements) {
       if (!record(e) || !id(e.id) || elements.has(e.id) || !str(e.label, 8000) || !str(e.kind) || !Array.isArray(e.evidenceIds) || e.evidenceIds.length > 8 || !e.evidenceIds.every((key: string) => evidence.has(key))) return false;
+      if (e.sourceReview !== undefined && (!record(e.sourceReview) || !["bound", "external", "unavailable", "limit"].includes(e.sourceReview.status) || !str(e.sourceReview.reason, 2000))) return false;
       elements.add(e.id);
     }
   }
@@ -227,6 +228,7 @@ export function resolveBriefingQuestion(document: BriefingDocument | undefined, 
       if (!str(input.quote, 8000) || !text.includes(input.quote)) throw new ReviewError("The quotation must match the saved passage exactly.");
       text = input.quote;
     }
+    if (element?.sourceReview) text += `\nSource inspection (${element.sourceReview.status}): ${element.sourceReview.reason}`;
     const evidenceIds = element?.evidenceIds ?? (block.kind === "source" ? [block.evidenceId] : []);
     const sources = document.evidence.filter(e => evidenceIds.includes(e.id));
     if (block.kind === "source") text = sources.map(e => `${e.path}:${e.startLine}\n${briefingEvidenceText(e)}`).join("\n");

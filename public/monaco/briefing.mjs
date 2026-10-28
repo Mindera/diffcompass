@@ -57,7 +57,7 @@ async function start() {
       fontSize: 12, lineHeight: 20, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
       minimap: { enabled: false }, renderOverviewRuler: false, overviewRulerLanes: 0,
       scrollBeyondLastLine: false, folding: false,
-      glyphMargin: false, lineDecorationsWidth: 8, lineNumbersMinChars: numberWidth, renderLineHighlight: "none",
+      glyphMargin: false, lineDecorationsWidth: 24, lineNumbersMinChars: numberWidth, renderLineHighlight: "none",
       hideUnchangedRegions: { enabled: false }, renderIndicators: true, renderMarginRevertIcon: false,
       scrollbar: { vertical: "hidden", horizontal: "auto", alwaysConsumeMouseWheel: false },
       contextmenu: false, padding: { top: 8, bottom: 8 }, automaticLayout: false,

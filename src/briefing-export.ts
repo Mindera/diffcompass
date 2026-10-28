@@ -26,7 +26,7 @@ export function briefingMarkdown(document?: BriefingDocument): string {
       if (b.kind === "diagram") {
         const d = document.diagrams.find(d => d.id === b.diagramId); if (!d) continue;
         lines.push(`**${escape(d.title)}** (${d.family})`, "", d.mermaid ? fence(d.mermaid, "mermaid") : "", "");
-        for (const e of d.elements) lines.push(`- ${escape(e.label)} (${escape(e.kind)}): ${e.evidenceIds.length ? e.evidenceIds.map(id => `[evidence](#briefing-evidence-${id})`).join(", ") : "no verified source binding"}`);
+        for (const e of d.elements) lines.push(`- ${escape(e.label)} (${escape(e.kind)}): ${e.evidenceIds.length ? e.evidenceIds.map(id => `[evidence](#briefing-evidence-${id})`).join(", ") : escape(e.sourceReview?.reason ?? "no verified source binding")}${e.evidenceIds.length && e.sourceReview?.status === "limit" ? ` — ${escape(e.sourceReview.reason)}` : ""}`);
         lines.push("");
       }
     }

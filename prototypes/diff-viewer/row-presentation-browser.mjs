@@ -21,14 +21,14 @@ async function inspect(page,requireBoth=true){
     if(node.closest(".monaco-editor")!==dom||!rect.width||rect.height<1||rect.top<bounds.top||rect.bottom>bounds.bottom)continue;
     const y=(rect.top+rect.bottom)/2,color=norm(getComputedStyle(node.matches(".view-line")?node.parentElement:node).backgroundColor);
     for(const target of unified?["old","new"]:[side]){
-     const margin=diffLab.editors[target].getDomNode().querySelector(":scope > .overflow-guard > .margin");
-     paint.push({side,target,color,actual:at(margin.style.backgroundImage,y-margin.getBoundingClientRect().top)});
+     const margin=diffLab.editors[target].getDomNode().querySelector(":scope > .overflow-guard > .margin:not(.textAreaCover)");
+     paint.push({side,target,color,expected:unified?color:"transparent",actual:at(margin.style.backgroundImage,y-margin.getBoundingClientRect().top)});
     }
    }
   }
   const cards=[...root.querySelectorAll(".review-zone")].filter(node=>{const r=node.getBoundingClientRect();return r.height&&r.top>=bounds.top&&r.bottom<=bounds.bottom;}).map(node=>{
    const y=node.getBoundingClientRect().top+node.getBoundingClientRect().height/2;
-   return Object.values(diffLab.editors).map(editor=>{const margin=editor.getDomNode().querySelector(":scope > .overflow-guard > .margin");return at(margin.style.backgroundImage,y-margin.getBoundingClientRect().top);});
+   return Object.values(diffLab.editors).map(editor=>{const margin=editor.getDomNode().querySelector(":scope > .overflow-guard > .margin:not(.textAreaCover)");return at(margin.style.backgroundImage,y-margin.getBoundingClientRect().top);});
   });
   const markers=[...root.querySelectorAll(".review-badge:not([hidden])")].map(node=>{const r=node.getBoundingClientRect();return !r.width||!r.height||r.top<bounds.top||r.bottom>bounds.bottom||document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest(".review-badge")===node;});
   const headers=[...document.querySelectorAll("[data-file-toggle]")].map(toggle=>{
@@ -39,7 +39,7 @@ async function inspect(page,requireBoth=true){
   return {paint,cards,markers,headers,clearance:list.getBoundingClientRect().right-section.getBoundingClientRect().right};
  });
  check(result.headers.length&&result.headers.every(Boolean),"Git totals before status/path");
- check(result.paint.length&&result.paint.every(p=>p.color===p.actual&&p.color!=="transparent"),"Source-row gutter colors: "+JSON.stringify(result.paint));
+ check(result.paint.length&&result.paint.every(p=>p.expected===p.actual&&p.color!=="transparent"),"Unified source-row colours and neutral Split gutters: "+JSON.stringify(result.paint));
  if(requireBoth)check(new Set(result.paint.map(p=>p.side)).size===2,"Both added and removed source painted");
  check(result.cards.flat().every(c=>c==="transparent"),"Comment/card gap not painted as changed code: "+JSON.stringify(result.cards));
  check(result.markers.every(Boolean),"Gutter markers not intercepted");
@@ -60,7 +60,7 @@ try{
   }
  }
  const mutations=await lab.evaluate(()=>new Promise(resolve=>{
-  let count=0;const observers=Object.values(diffLab.editors).map(e=>{const observer=new MutationObserver(records=>count+=records.length);observer.observe(e.getDomNode().querySelector(":scope > .overflow-guard > .margin"),{attributes:true,attributeFilter:["style"]});return observer;});
+  let count=0;const observers=Object.values(diffLab.editors).map(e=>{const observer=new MutationObserver(records=>count+=records.length);observer.observe(e.getDomNode().querySelector(":scope > .overflow-guard > .margin:not(.textAreaCover)"),{attributes:true,attributeFilter:["style"]});return observer;});
   setTimeout(()=>{observers.forEach(o=>o.disconnect());resolve(count);},350);
  }));
  check(mutations<5,"No gutter-paint mutation feedback loop: "+mutations);pass("Gutter painting settles without observer feedback");

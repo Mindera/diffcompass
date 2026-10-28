@@ -483,11 +483,13 @@ function renderChangeGutter() {
   const rows = activeLayout === "unified"
     ? sourceRows(editors.new, ".cdr.line-insert, .line-delete-selectable > .view-line")
     : null;
-  for (const [side, editor] of Object.entries(editors)) {
-    const margin = editor.getDomNode().querySelector(":scope > .overflow-guard > .margin");
+  for (const editor of Object.values(editors)) {
+    // Monaco also gives its hidden textarea cover the `margin` class. Paint
+    // only the visible number gutter, and clear unified colours in Split.
+    const margin = editor.getDomNode().querySelector(":scope > .overflow-guard > .margin:not(.textAreaCover)");
     if (!margin) continue;
     const rect = margin.getBoundingClientRect();
-    const paint = gutterRowGradient(rows || sourceRows(editor, side === "old" ? ".cdr.line-delete" : ".cdr.line-insert"), rect.top, rect.height);
+    const paint = rows ? gutterRowGradient(rows, rect.top, rect.height) : "none";
     // Change only when geometry changes; this subtree is mutation-observed.
     if (margin.style.backgroundImage !== paint) margin.style.backgroundImage = paint;
   }
