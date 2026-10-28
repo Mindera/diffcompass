@@ -168,9 +168,15 @@ function typeScriptTestName(node: Node, title: string): string {
   return [...names, title].join(" > ");
 }
 
+function annotationName(annotation: Node): string | undefined {
+  const userType = (parent: Node | null | undefined) => parent?.children.find((child) => child?.type === "user_type");
+  const type = userType(annotation) ?? userType(annotation.children.find((child) => child?.type === "constructor_invocation"));
+  return type?.children.filter((part) => part?.type === "type_identifier").at(-1)?.text;
+}
+
 function isKotlinTest(node: Node): boolean {
   const modifiers = node.children.find((child) => child?.type === "modifiers");
-  return !!modifiers?.children.some((annotation) => annotation?.type === "annotation" && annotation.children.some((type) => type?.type === "user_type" && type.children.filter((part) => part?.type === "type_identifier").at(-1)?.text === "Test"));
+  return !!modifiers?.children.some((annotation) => annotation?.type === "annotation" && annotationName(annotation) === "Test");
 }
 
 function kotlinTestName(node: Node): string | null {

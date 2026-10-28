@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { CHANGE_FACTS_ENGINE, isTestPath, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact } from "../src/change-facts.ts";
+import { CHANGE_FACTS_ENGINE, isTestPath, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact, type TestFact } from "../src/change-facts.ts";
 import { diffSourceIdentity } from "../src/diff-sources.ts";
 import { languageParser } from "../src/semantic-diff.ts";
 import { parseWithin } from "../src/syntax-nodes.ts";
@@ -297,6 +297,12 @@ test("a Kotlin test function lists as a test fact and its production sibling doe
   expect(test.tests).toEqual([{ analysis: "tree-sitter test names", name: "CartTest > adds totals", side: "new", startLine: 6, endLine: 9, changed: true }]);
   expect(fileFacts(facts, mainPath).tests).toEqual([]);
   expectPartition({ comparison, facts });
+}, 30_000);
+
+test("a Kotlin test annotated with arguments, empty parentheses or a qualified name lists as a test fact", async () => {
+  const file = await addedFileFacts("app/src/test/kotlin/demo/CartTest.kt", "package demo\n\nimport org.junit.Test\n\nclass CartTest {\n    @Test()\n    fun empty() {}\n\n    @Test(expected = IllegalArgumentException::class)\n    fun rejects() {}\n\n    @org.junit.Test\n    fun qualified() {}\n\n    @Test\n    fun bare() {}\n}\n");
+  const fact = (name: string, startLine: number): TestFact => ({ analysis: "tree-sitter test names", name: `CartTest > ${name}`, side: "new", startLine, endLine: startLine + 1, changed: true });
+  expect(file.tests).toEqual([fact("empty", 6), fact("rejects", 9), fact("qualified", 12), fact("bare", 15)]);
 }, 30_000);
 
 test("a path is a test path only by its own language's rule", () => {
