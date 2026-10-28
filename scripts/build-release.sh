@@ -32,6 +32,7 @@ for entry in "${targets[@]}"; do
   bun scripts/package-monaco.ts "$package_root/share/diffcompass/monaco"
   cp scripts/install.sh scripts/install.ps1 "$package_root/share/diffcompass/"
   cp README.md "$package_root/README.md"
+  cp LICENSE.md "$package_root/LICENSE.md"
   if [[ "$platform" == windows-* ]]; then
     (cd "$release_root" && zip -qr "diffcompass-v${version}-${platform}.zip" "$(basename "$package_root")")
   else
