@@ -155,8 +155,7 @@ function namedCall(node: Node, callees: string[]): boolean {
 
 function literalTitle(call: Node): string | null {
   const argument = call.childForFieldName("arguments")?.namedChild(0);
-  if (argument?.type === "string") return argument.children.find((child) => child?.type === "string_fragment")?.text ?? "";
-  if (argument?.type === "template_string" && !argument.children.some((child) => child?.type === "template_substitution")) return argument.text.slice(1, -1);
+  if (argument?.type === "string" || (argument?.type === "template_string" && !argument.children.some((child) => child?.type === "template_substitution"))) return argument.text.slice(1, -1);
   return null;
 }
 

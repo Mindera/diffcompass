@@ -324,6 +324,11 @@ test("nested describe names prefix a test name and describe itself gives no fact
   expect(file.tests.map((fact) => fact.name)).toEqual(["cart > totals > adds", "cart > totals > skipped", "cart > plain"]);
 }, 30_000);
 
+test("escaped describe and test titles keep their whole raw text", async () => {
+  const file = await addedFileFacts("src/cart.test.ts", "describe(\"it\\'s a group\", () => {\n  it('doesn\\'t crash', () => {});\n  test('a', () => {});\n  test(\"say \\\"hi\\\"\", () => {});\n  test(\"\", () => {});\n});\n");
+  expect(file.tests.map((fact) => fact.name)).toEqual(["it\\'s a group > doesn\\'t crash", "it\\'s a group > a", "it\\'s a group > say \\\"hi\\\"", "it\\'s a group > "]);
+}, 30_000);
+
 test("test facts beyond the limit mark the file truncated", async () => {
   const text = Array.from({ length: 505 }, (_, i) => `test("t${i}", () => {});`).join("\n") + "\n";
   const file = await addedFileFacts("many.test.ts", text);
