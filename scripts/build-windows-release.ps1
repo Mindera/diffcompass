@@ -18,6 +18,7 @@ if ($LASTEXITCODE -ne 0) { throw "Archify packaging failed." }
 if ($LASTEXITCODE -ne 0) { throw "Monaco packaging failed." }
 Copy-Item scripts/install.sh, scripts/install.ps1 (Join-Path $PackageRoot "share\diffcompass")
 Copy-Item README.md $PackageRoot
+Copy-Item LICENSE.md $PackageRoot
 
 $Archive = Join-Path $ReleaseRoot "$PackageName.zip"
 Compress-Archive -Path $PackageRoot -DestinationPath $Archive
