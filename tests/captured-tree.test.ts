@@ -25,6 +25,14 @@ test("reads captured blobs through one process", async () => {
   expect(blobs.get(gitFile.oid)).toBe(await capturedText(comparison, "new", "src/git.ts"));
 }, 30_000);
 
+test("reports a timed-out blob read as a timeout every time", async () => {
+  const comparison = await historicalComparison("8f84166", "740bada");
+  const oids = (await listCapturedTree(comparison, "new")).map((entry) => entry.oid);
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await expect(readCapturedBlobs(comparison, oids, 1)).rejects.toThrow(/^Reading captured blobs timed out\.$/);
+  }
+}, 30_000);
+
 test("maps binary and missing blobs to null", async () => {
   const fixture = await repositoryComparison({}, {});
   try {

@@ -2,7 +2,7 @@ import { copyFile, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Node, Parser } from "web-tree-sitter";
-import { listCapturedTree, readCapturedBlobs, type CapturedTreeEntry } from "./captured-tree.ts";
+import { CAPTURED_BLOBS_TIMEOUT, listCapturedTree, readCapturedBlobs, type CapturedTreeEntry } from "./captured-tree.ts";
 import { declarationParts, languageParser, SEMANTIC_LIMITS, supportedLanguage, type SyntaxLanguage } from "./semantic-diff.ts";
 import { calledName, parseWithin } from "./syntax-nodes.ts";
 import type { FileChangeFacts } from "./change-facts.ts";
@@ -123,7 +123,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
         const remaining = Math.max(1, Math.min(30_000, Math.ceil(limits.millis - (performance.now() - start))));
         try { texts = await readCapturedBlobs(comparison, batch.filter((item) => item.size <= SEMANTIC_LIMITS.bytes).map((item) => item.oid), remaining); }
         catch (error) {
-          if (error instanceof Error && error.message === "Reading captured blobs timed out.") { stoppedBy = "time"; break; }
+          if (error instanceof Error && error.message === CAPTURED_BLOBS_TIMEOUT) { stoppedBy = "time"; break; }
           throw error;
         }
       }

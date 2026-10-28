@@ -1,6 +1,8 @@
 import { runProcess } from "./process.ts";
 import type { GitComparison } from "./types.ts";
 
+export const CAPTURED_BLOBS_TIMEOUT = "Reading captured blobs timed out.";
+
 export interface CapturedTreeEntry { path: string; mode: string; oid: string; size: number }
 
 export async function listCapturedTree(comparison: GitComparison, side: "old" | "new"): Promise<CapturedTreeEntry[]> {
@@ -29,14 +31,19 @@ export async function readCapturedBlobs(comparison: GitComparison, oids: readonl
   let exitCode: number;
   try {
     const collected = new Response(process.stdout).arrayBuffer();
+    collected.catch(() => {});
     process.stdin.write(`${unique.join("\n")}\n`);
     await process.stdin.end();
     bytes = new Uint8Array(await collected);
     exitCode = await process.exited;
+  } catch (error) {
+    if (timedOut) throw new Error(CAPTURED_BLOBS_TIMEOUT);
+    throw error;
   } finally {
     clearTimeout(timer);
+    if (process.exitCode === null) process.kill();
   }
-  if (timedOut) throw new Error("Reading captured blobs timed out.");
+  if (timedOut) throw new Error(CAPTURED_BLOBS_TIMEOUT);
   if (exitCode !== 0) throw new Error(`git cat-file exited with ${exitCode}.`);
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let position = 0;
