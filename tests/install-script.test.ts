@@ -78,25 +78,29 @@ async function release(tag: string, defect?: Defect) {
   await writeFile(join(directory, "checksums.txt"), `${listedHash}  ./${listed}\n`);
 }
 
+function harnessEnv(env: Record<string, string> = {}) {
+  return {
+    PATH: `${join(root, "bin")}:${process.env.PATH}`,
+    TMPDIR: process.env.TMPDIR ?? "/tmp",
+    HOME: root,
+    DIFFCOMPASS_INSTALL_ROOT: join(root, "install"),
+    DIFFCOMPASS_BIN_ROOT: join(root, "links"),
+    DIFFCOMPASS_CODEX_SKILL_ROOT: join(root, "skills", "codex"),
+    DIFFCOMPASS_CLAUDE_SKILL_ROOT: join(root, "skills", "claude"),
+    DIFFCOMPASS_GEMINI_SKILL_ROOT: join(root, "skills", "gemini"),
+    DIFFCOMPASS_COPILOT_SKILL_ROOT: join(root, "skills", "copilot"),
+    FAKE_RELEASES: join(root, "releases"),
+    FAKE_CURL_LOG: join(root, "curl.log"),
+    FAKE_GH_LOG: join(root, "gh.log"),
+    FAKE_LATEST_URL: "https://github.com/Mindera/diffcompass/releases/tag/v9.9.9",
+    ...env,
+  };
+}
+
 async function run(args: string[], env: Record<string, string> = {}) {
   const child = Bun.spawn(["bash", "scripts/install.sh", "--minimal", ...args], {
     cwd: repositoryRoot,
-    env: {
-      PATH: `${join(root, "bin")}:${process.env.PATH}`,
-      TMPDIR: process.env.TMPDIR ?? "/tmp",
-      HOME: root,
-      DIFFCOMPASS_INSTALL_ROOT: join(root, "install"),
-      DIFFCOMPASS_BIN_ROOT: join(root, "links"),
-      DIFFCOMPASS_CODEX_SKILL_ROOT: join(root, "skills", "codex"),
-      DIFFCOMPASS_CLAUDE_SKILL_ROOT: join(root, "skills", "claude"),
-      DIFFCOMPASS_GEMINI_SKILL_ROOT: join(root, "skills", "gemini"),
-      DIFFCOMPASS_COPILOT_SKILL_ROOT: join(root, "skills", "copilot"),
-      FAKE_RELEASES: join(root, "releases"),
-      FAKE_CURL_LOG: join(root, "curl.log"),
-      FAKE_GH_LOG: join(root, "gh.log"),
-      FAKE_LATEST_URL: "https://github.com/Mindera/diffcompass/releases/tag/v9.9.9",
-      ...env,
-    },
+    env: harnessEnv(env),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -275,3 +279,60 @@ test("the installer never calls gh and says nothing about private access", async
   expect(text).not.toMatch(/(^|[\s;&|(])gh\s/m);
   expect(text).not.toMatch(/private/i);
 });
+
+async function pipeToBash(script: string) {
+  const installRoot = join(root, "truncated-install");
+  const child = Bun.spawn(["bash", "-s", "--", "--bogus"], {
+    cwd: repositoryRoot,
+    env: harnessEnv({ DIFFCOMPASS_INSTALL_ROOT: installRoot }),
+    stdin: new Blob([script]),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  const curlLog = await readFile(join(root, "curl.log"), "utf8").catch(() => "");
+  return { stdout, stderr, curlLog, installed: await exists(installRoot) };
+}
+
+async function expectInert(script: string) {
+  const result = await pipeToBash(script);
+  expect(result.stdout).not.toContain("Unknown installer option");
+  expect(result.stderr).not.toContain("Unknown installer option");
+  expect(result.installed).toBe(false);
+  expect(result.curlLog).toBe("");
+}
+
+async function installerLines() {
+  const text = await readFile(join(repositoryRoot, "scripts", "install.sh"), "utf8");
+  const lines = text.split("\n");
+  const last = lines.findLastIndex((line) => line.trim() !== "");
+  return { text, lines, last };
+}
+
+skipOnWindows("the whole installer piped to bash acts on its arguments", async () => {
+  await stageReleases();
+  const { text } = await installerLines();
+  const result = await pipeToBash(text);
+  expect(result.stderr).toContain("Unknown installer option: --bogus");
+}, 20000);
+
+skipOnWindows("the first half of the installer piped to bash runs nothing", async () => {
+  await stageReleases();
+  const { lines } = await installerLines();
+  await expectInert(lines.slice(0, Math.floor(lines.length / 2)).join("\n") + "\n");
+}, 20000);
+
+skipOnWindows("every line but the last piped to bash runs nothing", async () => {
+  await stageReleases();
+  const { lines, last } = await installerLines();
+  await expectInert(lines.slice(0, last).join("\n") + "\n");
+}, 20000);
+
+skipOnWindows("the last line cut at every character piped to bash runs nothing", async () => {
+  await stageReleases();
+  const { lines, last } = await installerLines();
+  const head = lines.slice(0, last).join("\n") + "\n";
+  for (let cut = 0; cut < lines[last].length; cut++) {
+    await expectInert(head + lines[last].slice(0, cut));
+  }
+}, 60000);
