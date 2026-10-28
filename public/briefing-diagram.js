@@ -14,11 +14,12 @@ window.installBriefingDiagram = function (elements) {
       selected = id;
       window.parent.postMessage({ type: 'diffcompass-briefing-diagram-select', elementId: id }, '*');
     }
-    function select(id) {
+    function select(id, notify = true) {
       if (nodes.has(id)) focus.set(id, { toggle: false, updateUrl: false });
       else if (edges.has(id)) focus.inspectRelationshipById(id, { toggle: false, updateUrl: false });
       else return;
-      publish(id);
+      if (notify) publish(id);
+      else selected = id;
     }
     function sync() {
       const relationship = focus.relationship()?.id;
@@ -38,8 +39,10 @@ window.installBriefingDiagram = function (elements) {
       if (event.source !== window.parent || event.data?.type !== 'diffcompass-briefing-diagram-select') return;
       const id = event.data.elementId;
       if (id === selected) return;
-      if (id === null) { focus.clear({ updateUrl: false }); publish(null); }
-      else select(id);
+      // Host commands acknowledge its selection. Echoing them can replay stale
+      // selections when user clicks and iframe messages cross in flight.
+      if (id === null) { focus.clear({ updateUrl: false }); selected = null; }
+      else select(id, false);
     }
     svg.addEventListener('click', directSelection);
     svg.addEventListener('keydown', directSelection);

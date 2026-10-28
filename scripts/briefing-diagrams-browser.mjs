@@ -58,6 +58,7 @@ try {
     await map.scrollIntoViewIfNeeded();
     const element = await map.locator('iframe[data-briefing-diagram]').elementHandle();
     const frame = await element.contentFrame();
+    const blockId = await element.getAttribute('data-briefing-diagram');
     await frame.waitForFunction(() => window.Archify?.view?.state?.().mode === 'review');
     assert.equal(await frame.locator('.sequence-code-pane').count(), 0, 'The Briefing supplies its existing diff pane');
     await frame.waitForFunction(() => {
@@ -86,7 +87,7 @@ try {
     for (const message of diagram.elements) {
       const target = frame.locator(`[${isNode(message) ? 'data-node-id' : 'data-relationship-id'}="${message.id}"]`).first();
       await target.focus(); await target.press('Enter');
-      const card = inspector.locator(`[data-evidence-element="${message.id}"].briefing-selected`);
+      const card = inspector.locator(`[data-block-id="${blockId}"][data-evidence-element="${message.id}"].briefing-selected`);
       await card.waitFor();
       if (message.evidenceIds.length) {
         for (const id of message.evidenceIds) {
@@ -94,6 +95,7 @@ try {
           const source = card.locator(`[data-evidence-id="${id}"]`);
           await source.waitFor();
           if (evidence.diff?.available) {
+            await source.locator('[data-diff-kind]').first().waitFor();
             assert.deepEqual(await source.locator('[data-diff-kind]').evaluateAll(rows => rows.map(row => ({
               kind: row.dataset.diffKind, content: row.querySelector('.briefing-line-content').textContent,
             }))), evidence.diff.rows.filter(row => row.kind !== 'meta').map(({ kind, content }) => ({ kind, content })));
@@ -107,7 +109,7 @@ try {
     // Selecting a different message from the pane syncs the arrow without the
     // iframe's focus message scrolling the clicked card back to the top.
     const message = diagram.elements[0];
-    const card = inspector.locator(`[data-evidence-element="${message.id}"]`);
+    const card = inspector.locator(`[data-block-id="${blockId}"][data-evidence-element="${message.id}"]`);
     await card.evaluate(el => {
       const scroll = el.closest('.briefing-evidence-scroll');
       scroll.scrollTop += el.getBoundingClientRect().top - scroll.getBoundingClientRect().top - scroll.clientHeight / 2;

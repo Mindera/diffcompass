@@ -150,7 +150,9 @@ try {
   await page.getByRole('button', { name: 'Collapse evidence pane', exact: true }).click();
   await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('g[data-node-id="cart"]').click();
   await page.locator('#agent-panel').waitFor({ state: 'visible' });
-  assert.equal(await cartCard.locator('.briefing-card-title').getAttribute('aria-pressed'), 'true', 'A diagram click reopens the matching evidence');
+  // Native diagram selection crosses the iframe postMessage boundary.
+  await cartCard.locator('.briefing-card-title[aria-pressed="true"]').waitFor();
+  await page.getByRole('button', { name: 'Collapse evidence pane', exact: true }).waitFor();
   await receiptTitle.click();
 
   console.log('CHECK Briefing pane resizing after collapsing the Changes file tree');
