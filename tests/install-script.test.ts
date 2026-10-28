@@ -22,8 +22,12 @@ appendFileSync(process.env.FAKE_CURL_LOG, JSON.stringify(args) + "\\n");
 const url = args.find((argument) => argument.startsWith("https://")) ?? "";
 const target = args[args.indexOf("--output") + 1];
 const prefix = ${JSON.stringify(`${releaseBase}/`)};
+if (url === ${JSON.stringify(latestUrl)} && process.env.FAKE_LATEST_FAIL === "1") {
+  console.error("curl: (22) The requested URL returned error: 404");
+  process.exit(22);
+}
 if (url === ${JSON.stringify(latestUrl)} && args.includes("--write-out")) {
-  process.stdout.write(process.env.FAKE_LATEST_URL ?? "");
+  process.stdout.write(args.includes("--location") ? (process.env.FAKE_LATEST_URL ?? "") : url);
   process.exit(0);
 }
 if (url.startsWith(prefix) && target) {
@@ -236,7 +240,23 @@ skipOnWindows("a failed download or checksum leaves the current install and comm
     expect(await readlink(join(root, "install", "current"))).toBe(join(root, "install", "9.9.8"));
     expect(await readlink(join(root, "links", "diffcompass"))).toBe(join(root, "install", "current", "bin", "diffcompass"));
     expect(await exists(join(root, "install", tag.replace(/^v/, "")))).toBe(false);
+    const command = Bun.spawn([join(root, "links", "diffcompass")], { stdout: "pipe", stderr: "pipe" });
+    const [output, commandCode] = await Promise.all([new Response(command.stdout).text(), command.exited]);
+    expect(output).toBe("9.9.8\n");
+    expect(commandCode).toBe(0);
   }
+  await expectNoGh();
+}, 20000);
+
+skipOnWindows("a failed latest lookup aborts without installing", async () => {
+  await stageReleases();
+  const first = await run(["--version", "v9.9.8"]);
+  expect(first.code).toBe(0);
+  const result = await run([], { FAKE_LATEST_FAIL: "1" });
+  expect(result.code).not.toBe(0);
+  expect(requestedUrls(result.curl.slice(first.curl.length))).toEqual([latestUrl]);
+  expect(await readlink(join(root, "install", "current"))).toBe(join(root, "install", "9.9.8"));
+  expect(await exists(join(root, "install", "9.9.9"))).toBe(false);
   await expectNoGh();
 }, 20000);
 
