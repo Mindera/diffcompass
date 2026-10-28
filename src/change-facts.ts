@@ -1,5 +1,5 @@
 import { capturedComparisonSource, validateCapturedFileDiff } from "./comparison-source.ts";
-import { callerDeclarations, CALLER_SCAN_LIMITS, nameMatchedCallers, scanCapturedTree, searchedNames, type CallerCoverage, type CallerFact, type ScanLimits } from "./change-callers.ts";
+import { callerDeclarations, CALLER_SCAN_LIMITS, codeGraphCallers, nameMatchedCallers, scanCapturedTree, searchedNames, type CallerCoverage, type CallerFact, type ScanLimits } from "./change-callers.ts";
 import { diffSourceIdentity } from "./diff-sources.ts";
 import { analyseSemanticSources, languageParser, SEMANTIC_ENGINE, SEMANTIC_LIMITS, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
 import { calledName, enclosingName, parseWithin } from "./syntax-nodes.ts";
@@ -237,13 +237,13 @@ async function fileFacts(comparison: GitComparison, file: DiffFile): Promise<Fil
   return { ...facts, unattributed: unattributedRanges(file, facts) };
 }
 
-export async function loadChangeFacts(comparison: GitComparison, options: { scanLimits?: ScanLimits } = {}): Promise<ChangeFacts> {
+export async function loadChangeFacts(comparison: GitComparison, options: { scanLimits?: ScanLimits; codegraph?: string | null } = {}): Promise<ChangeFacts> {
   const files: FileChangeFacts[] = [];
   for (const file of comparison.files) files.push(await fileFacts(comparison, file));
   const declarations = callerDeclarations(files);
   const { names, total } = searchedNames(declarations);
   let callers: CallerFact[] = [];
-  const callerCoverage: CallerCoverage = { nameMatch: null, names: { searched: names.size, total } };
+  const callerCoverage: CallerCoverage = { nameMatch: null, names: { searched: names.size, total }, codegraph: { state: "skipped", declarations: 0, queried: 0 } };
   if (names.size) {
     try {
       const first = files.flatMap((file) => (file.newPath ? [file.newPath] : []));
@@ -254,5 +254,9 @@ export async function loadChangeFacts(comparison: GitComparison, options: { scan
       callerCoverage.error = error instanceof Error ? error.message : String(error);
     }
   }
+  const executable = options.codegraph === undefined ? Bun.which("codegraph") : options.codegraph;
+  const codegraph = await codeGraphCallers(comparison, declarations, executable);
+  callers = [...callers, ...codegraph.facts];
+  callerCoverage.codegraph = codegraph.coverage;
   return { engine: CHANGE_FACTS_ENGINE, comparisonId: diffSourceIdentity(comparison), files, callers, callerCoverage };
 }
