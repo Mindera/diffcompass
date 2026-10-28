@@ -1,7 +1,9 @@
 import { capturedComparisonSource, validateCapturedFileDiff } from "./comparison-source.ts";
 import { diffSourceIdentity } from "./diff-sources.ts";
-import { analyseSemanticSources, SEMANTIC_ENGINE, SEMANTIC_LIMITS, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
+import { analyseSemanticSources, languageParser, SEMANTIC_ENGINE, SEMANTIC_LIMITS, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
+import { calledName, enclosingName, parseWithin } from "./syntax-nodes.ts";
 import type { DiffFile, GitComparison } from "./types.ts";
+import type { Node, Parser, Tree } from "web-tree-sitter";
 
 export const CHANGE_FACTS_ENGINE = `${SEMANTIC_ENGINE} / change facts 1`;
 export const NO_CHANGE_FACTS_MESSAGE = "No change facts: DiffCompass derives change facts from TypeScript, TSX and Kotlin files only.";
@@ -10,11 +12,13 @@ export interface LineRange { side: LineSide; startLine: number; endLine: number 
 export type SkipReason = "generated" | "oversized" | "unreadable" | "parse-error" | "time-limit" | "analysis-limit" | "unavailable";
 export type FileCompleteness =
   | { state: "complete" }
-  | { state: "truncated"; lists: Array<{ list: "symbols"; shown: number; total: number }> }
+  | { state: "truncated"; lists: Array<{ list: "symbols" | "calls"; shown: number; total: number }> }
   | { state: "skipped"; reason: SkipReason; message: string }
   | { state: "unsupported"; message: string };
 export interface SymbolFact { analysis: "tree-sitter declaration diff"; name: string; kind: string; change: Array<"added" | "removed" | "signature" | "body">; before?: SemanticAnchor; after?: SemanticAnchor; ambiguous?: true }
-export interface FileChangeFacts { path: string; oldPath: string | null; newPath: string | null; language: SyntaxLanguage | null; completeness: FileCompleteness; changedLines: number; symbols: SymbolFact[]; unattributed: LineRange[] }
+export interface CallFact { analysis: "tree-sitter call sites"; name: string; change: "removed" | "added"; side: LineSide; line: number; enclosing: string | null }
+export const CHANGE_FACT_LIMITS = { calls: 1_000 } as const;
+export interface FileChangeFacts { path: string; oldPath: string | null; newPath: string | null; language: SyntaxLanguage | null; completeness: FileCompleteness; changedLines: number; symbols: SymbolFact[]; calls: CallFact[]; unattributed: LineRange[] }
 export interface ChangeFacts { engine: string; comparisonId: string; files: FileChangeFacts[] }
 
 const unsupported: FileCompleteness = { state: "unsupported", message: NO_CHANGE_FACTS_MESSAGE };
@@ -47,14 +51,17 @@ function changedLineNumbers(file: DiffFile, side: LineSide): number[] {
   }));
 }
 
-function factRanges(facts: Pick<FileChangeFacts, "symbols">): LineRange[] {
-  return facts.symbols.flatMap((symbol) => [
-    ...(symbol.before ? [{ side: "old" as const, startLine: symbol.before.startLine, endLine: symbol.before.endLine }] : []),
-    ...(symbol.after ? [{ side: "new" as const, startLine: symbol.after.startLine, endLine: symbol.after.endLine }] : []),
-  ]);
+function factRanges(facts: Pick<FileChangeFacts, "symbols" | "calls">): LineRange[] {
+  return [
+    ...facts.symbols.flatMap((symbol) => [
+      ...(symbol.before ? [{ side: "old" as const, startLine: symbol.before.startLine, endLine: symbol.before.endLine }] : []),
+      ...(symbol.after ? [{ side: "new" as const, startLine: symbol.after.startLine, endLine: symbol.after.endLine }] : []),
+    ]),
+    ...facts.calls.map((call) => ({ side: call.side, startLine: call.line, endLine: call.line })),
+  ];
 }
 
-function unattributedRanges(file: DiffFile, facts: Pick<FileChangeFacts, "completeness" | "symbols">): LineRange[] {
+function unattributedRanges(file: DiffFile, facts: Pick<FileChangeFacts, "completeness" | "symbols" | "calls">): LineRange[] {
   if (facts.completeness.state === "unsupported") return [];
   const ranges = facts.completeness.state === "skipped" ? [] : factRanges(facts);
   const uncovered = (side: LineSide) => changedLineNumbers(file, side).filter((line) => !ranges.some((range) => range.side === side && range.startLine <= line && line <= range.endLine));
@@ -88,7 +95,7 @@ type AnalysedFacts = Omit<FileChangeFacts, "unattributed">;
 async function analysedFileFacts(comparison: GitComparison, file: DiffFile): Promise<AnalysedFacts> {
   const identity = { path: file.path, oldPath: file.oldPath, newPath: file.newPath, changedLines: changedLines(file) };
   const language = fileLanguage(file);
-  if (!language) return { ...identity, language: null, completeness: unsupported, symbols: [] };
+  if (!language) return { ...identity, language: null, completeness: unsupported, symbols: [], calls: [] };
   let before: string, after: string;
   try {
     before = await capturedComparisonSource(comparison, file.path, "old", SEMANTIC_LIMITS.bytes);
@@ -96,10 +103,49 @@ async function analysedFileFacts(comparison: GitComparison, file: DiffFile): Pro
     await validateCapturedFileDiff(comparison, file.path);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Captured source is unavailable.";
-    return { ...identity, language, completeness: { state: "skipped", reason: /limit/.test(message) ? "oversized" : "unreadable", message }, symbols: [] };
+    return { ...identity, language, completeness: { state: "skipped", reason: /limit/.test(message) ? "oversized" : "unreadable", message }, symbols: [], calls: [] };
   }
   const summary = await analyseSemanticSources(file, before, after, { beforeTree: comparison.mergeBase, afterTree: comparison.sourceTree });
-  return { ...identity, ...summaryFacts(summary, language) };
+  const facts = summaryFacts(summary, language);
+  if (summary.status !== "analysed") return { ...identity, ...facts, calls: [] };
+  const calls = await callFacts(file, language, before, after);
+  if (!calls) return { ...identity, language, completeness: { state: "skipped", reason: "time-limit", message: "Parser time limit reached; use the text diff." }, symbols: [], calls: [] };
+  const shown = calls.slice(0, CHANGE_FACT_LIMITS.calls);
+  const lists = [...(facts.completeness.state === "truncated" ? facts.completeness.lists : []), ...(calls.length > shown.length ? [{ list: "calls" as const, shown: shown.length, total: calls.length }] : [])];
+  return { ...identity, ...facts, completeness: lists.length ? { state: "truncated", lists } : facts.completeness, calls: shown };
+}
+
+function callsIn(tree: Tree, language: SyntaxLanguage, side: LineSide, changed: Set<number>): CallFact[] {
+  const calls: Array<CallFact & { column: number }> = [];
+  const stack: Node[] = [tree.rootNode];
+  while (stack.length) {
+    const node = stack.pop()!;
+    const name = calledName(node, language);
+    const line = name ? name.startPosition.row + 1 : 0;
+    if (name && changed.has(line)) calls.push({ analysis: "tree-sitter call sites", name: name.text, change: side === "old" ? "removed" : "added", side, line, enclosing: enclosingName(node, language), column: name.startPosition.column });
+    for (let i = node.childCount - 1; i >= 0; i--) stack.push(node.child(i)!);
+  }
+  return calls.sort((a, b) => a.line - b.line || a.column - b.column).map(({ column, ...call }) => call);
+}
+
+async function callFacts(file: DiffFile, language: SyntaxLanguage, before: string, after: string): Promise<CallFact[] | null> {
+  let parser: Parser | undefined;
+  const trees: Tree[] = [];
+  try {
+    parser = await languageParser(language);
+    for (const source of [before, after]) {
+      const tree = parseWithin(parser, source, SEMANTIC_LIMITS.parseMicros);
+      if (!tree) return null;
+      trees.push(tree);
+    }
+    return [
+      ...callsIn(trees[0]!, language, "old", new Set(changedLineNumbers(file, "old"))),
+      ...callsIn(trees[1]!, language, "new", new Set(changedLineNumbers(file, "new"))),
+    ];
+  } finally {
+    for (const tree of trees) tree.delete();
+    parser?.delete();
+  }
 }
 
 async function fileFacts(comparison: GitComparison, file: DiffFile): Promise<FileChangeFacts> {

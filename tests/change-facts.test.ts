@@ -1,6 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { CHANGE_FACTS_ENGINE, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact } from "../src/change-facts.ts";
 import { diffSourceIdentity } from "../src/diff-sources.ts";
+import { languageParser } from "../src/semantic-diff.ts";
+import { parseWithin } from "../src/syntax-nodes.ts";
 import type { GitComparison } from "../src/types.ts";
 import { capturedText, historicalComparison, repositoryComparison } from "./comparison-fixtures.ts";
 
@@ -38,10 +40,32 @@ function expectChangedLinesPerFile({ comparison, facts }: { comparison: GitCompa
 }
 
 function factRangesOf(file: FileChangeFacts): LineRange[] {
-  return file.symbols.flatMap((symbol) => [
-    ...(symbol.before ? [{ side: "old" as const, startLine: symbol.before.startLine, endLine: symbol.before.endLine }] : []),
-    ...(symbol.after ? [{ side: "new" as const, startLine: symbol.after.startLine, endLine: symbol.after.endLine }] : []),
-  ]);
+  return [
+    ...file.symbols.flatMap((symbol) => [
+      ...(symbol.before ? [{ side: "old" as const, startLine: symbol.before.startLine, endLine: symbol.before.endLine }] : []),
+      ...(symbol.after ? [{ side: "new" as const, startLine: symbol.after.startLine, endLine: symbol.after.endLine }] : []),
+    ]),
+    ...file.calls.map((call) => ({ side: call.side, startLine: call.line, endLine: call.line })),
+  ];
+}
+
+async function repositoryFacts(before: Record<string, string>, after: Record<string, string>, path: string): Promise<FileChangeFacts> {
+  const { comparison, cleanup } = await repositoryComparison(before, after);
+  cleanups.push(cleanup);
+  return fileFacts(await loadChangeFacts(comparison), path);
+}
+
+async function expectCallsOnChangedLines({ comparison, facts }: { comparison: GitComparison; facts: ChangeFacts }): Promise<void> {
+  for (const file of facts.files) {
+    if (file.calls.length === 0) continue;
+    const changed = changedLinesOf(comparison, file.path);
+    const head = (await capturedText(comparison, "new", file.path)).split("\n");
+    for (const call of file.calls) {
+      expect(call.change).toBe(call.side === "old" ? "removed" : "added");
+      expect(changed.some((entry) => entry.side === call.side && entry.line === call.line)).toBe(true);
+      if (call.change === "added") expect(head[call.line - 1]).toContain(call.name);
+    }
+  }
 }
 
 function inRanges(ranges: LineRange[], side: LineSide, line: number): boolean {
@@ -199,4 +223,55 @@ test("a destructured binding and an anonymous default export are unattributed", 
 test("lineRanges sorts, dedupes and merges consecutive lines", () => {
   expect(lineRanges("new", [5, 3, 4, 9, 9])).toEqual([{ side: "new", startLine: 3, endLine: 5 }, { side: "new", startLine: 9, endLine: 9 }]);
   expect(lineRanges("old", [])).toEqual([]);
+});
+
+test("an edited call line is reported once as removed and once as added", async () => {
+  const file = await repositoryFacts({ "run.ts": "export function run() {\n  save(1);\n}\n" }, { "run.ts": "export function run() {\n  save(2);\n}\n" }, "run.ts");
+  expect(file.calls).toEqual([
+    { analysis: "tree-sitter call sites", name: "save", change: "removed", side: "old", line: 2, enclosing: "run" },
+    { analysis: "tree-sitter call sites", name: "save", change: "added", side: "new", line: 2, enclosing: "run" },
+  ]);
+}, 30_000);
+
+test("inserting a callback above an unchanged one reports no call change for the unchanged one", async () => {
+  const file = await repositoryFacts({ "list.ts": 'items.forEach(() => {\n  log("a");\n});\n' }, { "list.ts": 'items.map(() => {\n  track("b");\n});\nitems.forEach(() => {\n  log("a");\n});\n' }, "list.ts");
+  expect(file.calls.every((call) => call.change === "added")).toBe(true);
+  expect(file.calls.map((call) => call.name).sort()).toEqual(["map", "track"]);
+}, 30_000);
+
+test("a Kotlin constructor call and its chained call are added calls in their enclosing function", async () => {
+  const path = "src/main/kotlin/demo/Main.kt";
+  const file = await repositoryFacts({ [path]: "package demo\n\nfun main() {\n    greet()\n}\n" }, { [path]: "package demo\n\nfun main() {\n    greet()\n    Receipt().total()\n}\n" }, path);
+  expect(file.calls.map(({ name, change, side, line, enclosing }) => ({ name, change, side, line, enclosing }))).toEqual([
+    { name: "Receipt", change: "added", side: "new", line: 5, enclosing: "main" },
+    { name: "total", change: "added", side: "new", line: 5, enclosing: "main" },
+  ]);
+}, 30_000);
+
+test("removed and added calls of 8f84166..740bada sit on changed lines", async () => {
+  await expectCallsOnChangedLines(await revision);
+}, 30_000);
+
+test("removed and added calls of 57bf907..27b7e44 sit on changed lines", async () => {
+  await expectCallsOnChangedLines(await suggestions);
+}, 30_000);
+
+test("calls beyond the limit mark the file truncated", async () => {
+  const text = Array.from({ length: 1_005 }, (_, i) => `call${i}();`).join("\n") + "\n";
+  const file = await addedFileFacts("calls.ts", text);
+  expect(file.calls).toHaveLength(1_000);
+  expect(file.completeness).toEqual({ state: "truncated", lists: [{ list: "calls", shown: 1_000, total: 1_005 }] });
+}, 30_000);
+
+test("a cancelled parse leaves a reused parser parsing the next source from scratch", async () => {
+  const parser = await languageParser("typescript");
+  try {
+    expect(parseWithin(parser, "call();\n".repeat(25_000), 0)).toBeNull();
+    const tree = parseWithin(parser, "save();", 150_000);
+    expect(tree).not.toBeNull();
+    try {
+      expect(tree!.rootNode.endIndex).toBe(7);
+      expect(tree!.rootNode.namedChildCount).toBe(1);
+    } finally { tree!.delete(); }
+  } finally { parser.delete(); }
 });
