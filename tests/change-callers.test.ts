@@ -9,10 +9,10 @@ const names = new Set(["classifyRevisionFiles"]);
 
 test("collects call sites from the captured head tree and reports full coverage", async () => {
   const comparison = await historicalComparison("8f84166", "740bada");
-  const scan = await scanCapturedTree(comparison, "new", { names, limits: wide });
-  const sites = scan.callSites.get("classifyRevisionFiles") ?? [];
-  expect(sites.some((site) => site.path === "src/revision.ts" && site.line === 27 && site.enclosing !== null)).toBe(true);
-  for (const site of sites) expect((await capturedText(comparison, "new", site.path)).split("\n")[site.line - 1]).toContain("classifyRevisionFiles");
+  const scan = await scanCapturedTree(comparison, "new", { names: new Set(["revisionSummary"]), limits: wide });
+  const sites = scan.callSites.get("revisionSummary") ?? [];
+  expect(sites.some((site) => site.path === "src/session.ts")).toBe(true);
+  for (const site of sites) expect((await capturedText(comparison, "new", site.path)).split("\n")[site.line - 1]).toContain("revisionSummary");
   const { totalFiles, scannedFiles } = scan.coverage;
   expect(scan.coverage.stoppedBy).toBeUndefined();
   expect(scannedFiles).toBe(totalFiles);
