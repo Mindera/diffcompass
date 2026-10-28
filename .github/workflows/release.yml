@@ -44,3 +44,92 @@ jobs:
             dist/release/install.sh
             dist/release/install.ps1
             dist/release/checksums.txt
+  verify-published:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.ref_name }}
+      RELEASES: https://github.com/${{ github.repository }}/releases
+    steps:
+      - name: Install this release from its own script
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          root="$RUNNER_TEMP/tagged"
+          curl --fail --location --silent --show-error "$RELEASES/download/$TAG/install.sh" --output "$RUNNER_TEMP/install-tagged.sh"
+          DIFFCOMPASS_INSTALL_ROOT="$root/install" DIFFCOMPASS_BIN_ROOT="$root/bin" \
+          DIFFCOMPASS_CODEX_SKILL_ROOT="$root/codex" DIFFCOMPASS_CLAUDE_SKILL_ROOT="$root/claude" \
+          DIFFCOMPASS_GEMINI_SKILL_ROOT="$root/gemini" DIFFCOMPASS_COPILOT_SKILL_ROOT="$root/copilot" \
+            bash "$RUNNER_TEMP/install-tagged.sh" --version "$TAG"
+          installed="$("$root/bin/diffcompass" --version)"
+          [[ "$installed" == "${TAG#v}" ]] || { echo "Installed $installed from the $TAG script; expected ${TAG#v}." >&2; exit 1; }
+      - name: Install the latest release from the published link
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          root="$RUNNER_TEMP/latest"
+          curl --fail --location --silent --show-error "$RELEASES/latest/download/install.sh" --output "$RUNNER_TEMP/install-latest.sh"
+          DIFFCOMPASS_INSTALL_ROOT="$root/install" DIFFCOMPASS_BIN_ROOT="$root/bin" \
+          DIFFCOMPASS_CODEX_SKILL_ROOT="$root/codex" DIFFCOMPASS_CLAUDE_SKILL_ROOT="$root/claude" \
+          DIFFCOMPASS_GEMINI_SKILL_ROOT="$root/gemini" DIFFCOMPASS_COPILOT_SKILL_ROOT="$root/copilot" \
+            bash "$RUNNER_TEMP/install-latest.sh"
+          latest_url="$(curl --fail --location --silent --show-error --head --output /dev/null --write-out '%{url_effective}' "$RELEASES/latest")"
+          expected="${latest_url##*/releases/tag/v}"
+          installed="$("$root/bin/diffcompass" --version)"
+          [[ "$installed" == "$expected" ]] || { echo "Installed $installed from the latest link; releases/latest names $expected." >&2; exit 1; }
+      - name: Install this release from its own script
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $Root = Join-Path $env:RUNNER_TEMP "tagged"
+          $env:DIFFCOMPASS_INSTALL_ROOT = Join-Path $Root "install"
+          $env:DIFFCOMPASS_BIN_ROOT = Join-Path $Root "bin"
+          $env:DIFFCOMPASS_CODEX_SKILL_ROOT = Join-Path $Root "codex"
+          $env:DIFFCOMPASS_CLAUDE_SKILL_ROOT = Join-Path $Root "claude"
+          $env:DIFFCOMPASS_GEMINI_SKILL_ROOT = Join-Path $Root "gemini"
+          $env:DIFFCOMPASS_COPILOT_SKILL_ROOT = Join-Path $Root "copilot"
+          $env:DIFFCOMPASS_NO_PATH_UPDATE = "1"
+          $Script = Join-Path $env:RUNNER_TEMP "install-tagged.ps1"
+          Invoke-WebRequest -UseBasicParsing -Uri "$env:RELEASES/download/$env:TAG/install.ps1" -OutFile $Script
+          & $Script -Version $env:TAG
+          $Expected = $env:TAG -replace '^v', ''
+          $Installed = (& (Join-Path $env:DIFFCOMPASS_BIN_ROOT "diffcompass.cmd") --version | Out-String).Trim()
+          if ($Installed -ne $Expected) { throw "Installed $Installed from the $env:TAG script; expected $Expected." }
+      - name: Install the latest release from the published link
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $Root = Join-Path $env:RUNNER_TEMP "latest"
+          $env:DIFFCOMPASS_INSTALL_ROOT = Join-Path $Root "install"
+          $env:DIFFCOMPASS_BIN_ROOT = Join-Path $Root "bin"
+          $env:DIFFCOMPASS_CODEX_SKILL_ROOT = Join-Path $Root "codex"
+          $env:DIFFCOMPASS_CLAUDE_SKILL_ROOT = Join-Path $Root "claude"
+          $env:DIFFCOMPASS_GEMINI_SKILL_ROOT = Join-Path $Root "gemini"
+          $env:DIFFCOMPASS_COPILOT_SKILL_ROOT = Join-Path $Root "copilot"
+          $env:DIFFCOMPASS_NO_PATH_UPDATE = "1"
+          $Script = Join-Path $env:RUNNER_TEMP "install-latest.ps1"
+          Invoke-WebRequest -UseBasicParsing -Uri "$env:RELEASES/latest/download/install.ps1" -OutFile $Script
+          & $Script
+          $Expected = "$((Invoke-WebRequest -UseBasicParsing -Method Head -Uri "$env:RELEASES/latest").BaseResponse.ResponseUri)" -replace '^.*/releases/tag/v', ''
+          $Installed = (& (Join-Path $env:DIFFCOMPASS_BIN_ROOT "diffcompass.cmd") --version | Out-String).Trim()
+          if ($Installed -ne $Expected) { throw "Installed $Installed from the latest link; releases/latest names $Expected." }
+      - name: Run the documented PowerShell one-liner
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $Base = Join-Path $env:RUNNER_TEMP "one-liner"
+          $env:DIFFCOMPASS_INSTALL_ROOT = Join-Path $Base "install"
+          $env:DIFFCOMPASS_BIN_ROOT = Join-Path $Base "bin"
+          $env:DIFFCOMPASS_CODEX_SKILL_ROOT = Join-Path $Base "codex"
+          $env:DIFFCOMPASS_CLAUDE_SKILL_ROOT = Join-Path $Base "claude"
+          $env:DIFFCOMPASS_GEMINI_SKILL_ROOT = Join-Path $Base "gemini"
+          $env:DIFFCOMPASS_COPILOT_SKILL_ROOT = Join-Path $Base "copilot"
+          $env:DIFFCOMPASS_NO_PATH_UPDATE = "1"
+          irm "$env:RELEASES/latest/download/install.ps1" | iex
+          $Expected = "$((Invoke-WebRequest -UseBasicParsing -Method Head -Uri "$env:RELEASES/latest").BaseResponse.ResponseUri)" -replace '^.*/releases/tag/v', ''
+          $Installed = (& (Join-Path $env:DIFFCOMPASS_BIN_ROOT "diffcompass.cmd") --version | Out-String).Trim()
+          if ($Installed -ne $Expected) { throw "Installed $Installed from the one-liner; releases/latest names $Expected." }
