@@ -46,6 +46,7 @@ function factRangesOf(file: FileChangeFacts): LineRange[] {
       ...(symbol.after ? [{ side: "new" as const, startLine: symbol.after.startLine, endLine: symbol.after.endLine }] : []),
     ]),
     ...file.calls.map((call) => ({ side: call.side, startLine: call.line, endLine: call.line })),
+    ...file.tests.map((fact) => ({ side: fact.side, startLine: fact.startLine, endLine: fact.endLine })),
   ];
 }
 
@@ -261,6 +262,53 @@ test("calls beyond the limit mark the file truncated", async () => {
   const file = await addedFileFacts("calls.ts", text);
   expect(file.calls).toHaveLength(1_000);
   expect(file.completeness).toEqual({ state: "truncated", lists: [{ list: "calls", shown: 1_000, total: 1_005 }] });
+}, 30_000);
+
+test("the added tests/revision-aware.test.ts lists test names that exist at head", async () => {
+  const { comparison, facts } = await revision;
+  const file = fileFacts(facts, "tests/revision-aware.test.ts");
+  expect(file.tests.length).toBeGreaterThan(0);
+  const head = (await capturedText(comparison, "new", "tests/revision-aware.test.ts")).split("\n");
+  for (const fact of file.tests) {
+    expect(fact.analysis).toBe("tree-sitter test names");
+    expect(fact.side).toBe("new");
+    expect(fact.changed).toBe(true);
+    expect(head[fact.startLine - 1]).toContain(fact.name.split(" > ").at(-1)!);
+  }
+}, 30_000);
+
+test("a modified test file marks each test by whether a changed row lies in its range", async () => {
+  const { comparison, facts } = await suggestions;
+  const file = fileFacts(facts, "tests/ui.test.ts");
+  const changed = changedLinesOf(comparison, "tests/ui.test.ts");
+  expect(file.tests.length).toBeGreaterThan(0);
+  for (const fact of file.tests) expect(fact.changed).toBe(changed.some((entry) => entry.side === fact.side && fact.startLine <= entry.line && entry.line <= fact.endLine));
+}, 30_000);
+
+test("a Kotlin test function lists as a test fact and its production sibling does not", async () => {
+  const testPath = "app/src/test/kotlin/demo/CartTest.kt", mainPath = "app/src/main/kotlin/demo/Cart.kt";
+  const { comparison, cleanup } = await repositoryComparison({}, {
+    [testPath]: "package demo\n\nimport kotlin.test.Test\n\nclass CartTest {\n    @Test\n    fun `adds totals`() {\n        check(1 == 1)\n    }\n}\n",
+    [mainPath]: "package demo\n\nclass Cart\n",
+  });
+  cleanups.push(cleanup);
+  const facts = await loadChangeFacts(comparison);
+  const test = fileFacts(facts, testPath);
+  expect(test.tests).toEqual([{ analysis: "tree-sitter test names", name: "CartTest > adds totals", side: "new", startLine: 6, endLine: 9, changed: true }]);
+  expect(fileFacts(facts, mainPath).tests).toEqual([]);
+  expectPartition({ comparison, facts });
+}, 30_000);
+
+test("nested describe names prefix a test name and describe itself gives no fact", async () => {
+  const file = await addedFileFacts("src/cart.test.ts", 'describe("cart", () => {\n  describe("totals", () => {\n    it("adds", () => {});\n    test.skip("skipped", () => {});\n  });\n  test(`plain`, () => {});\n  it(`with ${x}`, () => {});\n});\n');
+  expect(file.tests.map((fact) => fact.name)).toEqual(["cart > totals > adds", "cart > totals > skipped", "cart > plain"]);
+}, 30_000);
+
+test("test facts beyond the limit mark the file truncated", async () => {
+  const text = Array.from({ length: 505 }, (_, i) => `test("t${i}", () => {});`).join("\n") + "\n";
+  const file = await addedFileFacts("many.test.ts", text);
+  expect(file.tests).toHaveLength(500);
+  expect(file.completeness).toEqual({ state: "truncated", lists: [{ list: "tests", shown: 500, total: 505 }] });
 }, 30_000);
 
 test("a cancelled parse leaves a reused parser parsing the next source from scratch", async () => {
