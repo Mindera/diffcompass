@@ -346,5 +346,14 @@ test("the PowerShell installer is plain ASCII, never calls gh and takes -Version
   expect(text).not.toMatch(/private/i);
   expect(text).toContain("PositionalBinding = $false");
   expect(text).toContain("[string]$Version");
+  expect(text).toContain('$ProgressPreference = "SilentlyContinue"');
+  expect(text).toContain("Set-StrictMode -Off");
+  expect(text).toContain("[Net.SecurityProtocolType]::Tls12");
+  const lines = text.split("\n").map((line) => line.trim());
+  const paramEnd = lines.indexOf(")");
+  expect(paramEnd).toBeGreaterThan(lines.indexOf("param("));
+  const body = lines.slice(paramEnd + 1).filter(Boolean);
+  expect(body[0]).toBe("& {");
+  expect(body.at(-1)).toBe("}");
   expect(await readFile(join(repositoryRoot, "scripts", "smoke-install.ps1"), "utf8")).toContain("function Invoke-WebRequest");
 });
