@@ -5,7 +5,7 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "..");
 
 type WorkflowStep = { uses?: string; with?: Record<string, unknown>; shell?: string; run?: string };
-type WorkflowJob = { needs?: string | string[]; strategy?: { matrix?: { os?: string[] } }; steps?: WorkflowStep[] };
+type WorkflowJob = { needs?: string | string[]; permissions?: unknown; strategy?: { matrix?: { os?: string[] } }; steps?: WorkflowStep[] };
 type Workflow = { jobs: Record<string, WorkflowJob> };
 
 async function readWorkflow(name: string): Promise<Workflow> {
@@ -40,6 +40,7 @@ test("a final job installs the published release on all three platforms", async 
   const job = workflow.jobs["verify-published"];
   expect(job).toBeDefined();
   expect([job.needs].flat()).toEqual(["release"]);
+  expect(job.permissions).toEqual({});
   expect(job.strategy?.matrix?.os).toEqual(["ubuntu-latest", "macos-latest", "windows-latest"]);
   const steps = job.steps ?? [];
   for (const step of steps) {

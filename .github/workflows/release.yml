@@ -46,6 +46,7 @@ jobs:
             dist/release/checksums.txt
   verify-published:
     needs: release
+    permissions: {}
     strategy:
       fail-fast: false
       matrix:
