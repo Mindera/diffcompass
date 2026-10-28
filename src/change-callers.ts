@@ -243,8 +243,10 @@ function codeGraphFact(declaration: CallerDeclaration, output: string, repositor
   let parsed: any;
   try { parsed = JSON.parse(output); } catch { return null; }
   const definitions: any[] = Array.isArray(parsed?.definitions) ? parsed.definitions : [];
-  const match = definitions.find((entry) => entry?.definition?.filePath === declaration.path && Number.isInteger(entry.definition.startLine) && entry.definition.startLine >= declaration.startLine && entry.definition.startLine <= declaration.endLine);
-  if (!match) return null;
+  const inRange = definitions.filter((entry) => entry?.definition?.filePath === declaration.path && Number.isInteger(entry.definition.startLine) && entry.definition.startLine >= declaration.startLine && entry.definition.startLine <= declaration.endLine);
+  const candidates = inRange.length > 1 ? inRange.filter((entry) => entry.definition.startLine === declaration.startLine) : inRange;
+  if (candidates.length !== 1) return null;
+  const match = candidates[0];
   const known = new Map<string, any>();
   for (const caller of Array.isArray(match.callers) ? match.callers : []) if (caller && typeof caller.id === "string") known.set(caller.id, caller);
   const name = simpleName(declaration.name);

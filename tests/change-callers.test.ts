@@ -288,3 +288,38 @@ test.skipIf(process.platform === "win32")("skips CodeGraph when the index marks 
     await fixture.cleanup();
   }
 }, 30_000);
+
+const definitionAt = (startLine: number, id: string, caller: string) => ({
+  definition: { name: "ping", kind: "function", filePath: "a.ts", startLine, id },
+  callers: [{ id: `function:${caller}`, name: caller, filePath: "b.ts", startLine: 1 }],
+  edges: [{ source: `function:${caller}`, target: id, kind: "calls", line: 2 }],
+  total: 1, limit: 50, truncated: false,
+});
+
+test.skipIf(process.platform === "win32")("adds nothing when several CodeGraph definitions fit one declaration equally", async () => {
+  const files = { ...HEAD_FILES, "a.ts": "export class A { ping() {} } export class B { ping() {} }\n" };
+  const answer = { symbol: "ping", definitions: [definitionAt(1, "method:a", "first"), definitionAt(1, "method:b", "second")], total: 2 };
+  const fixture = await codeGraphFixture({ callers: answer }, files);
+  try {
+    const facts = await load(fixture);
+    const pings = facts.callers.filter((caller) => caller.declaration.name.endsWith("ping"));
+    expect(pings.length).toBeGreaterThan(0);
+    expect(pings.some((fact) => fact.provider === "codegraph")).toBe(false);
+    expect(facts.callerCoverage.codegraph?.state).toBe("used");
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
+test.skipIf(process.platform === "win32")("picks the CodeGraph definition starting on the declaration's own line when several lie inside it", async () => {
+  const files = { ...HEAD_FILES, "a.ts": "export function ping() {\n  return 1;\n}\n" };
+  const answer = { symbol: "ping", definitions: [definitionAt(2, "function:inner", "inner"), definitionAt(1, "function:outer", "outer")], total: 2 };
+  const fixture = await codeGraphFixture({ callers: answer }, files);
+  try {
+    const codegraph = pingFacts(await load(fixture)).filter((fact) => fact.provider === "codegraph");
+    expect(codegraph).toHaveLength(1);
+    expect(codegraph[0].callers.map((site) => site.enclosing)).toEqual(["outer"]);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
