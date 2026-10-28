@@ -335,6 +335,32 @@ test("escaped describe and test titles keep their whole raw text", async () => {
   expect(file.tests.map((fact) => fact.name)).toEqual(["it\\'s a group > doesn\\'t crash", "it\\'s a group > a", "it\\'s a group > say \\\"hi\\\"", "it\\'s a group > "]);
 }, 30_000);
 
+test("a deleted test file lists its removed calls and its tests on the old side", async () => {
+  const { comparison, cleanup } = await repositoryComparison({ "old.test.ts": "test(\"first\", () => {\n  save(1);\n});\ntest(\"second\", () => {});\n" }, { "old.test.ts": null });
+  cleanups.push(cleanup);
+  const facts = await loadChangeFacts(comparison);
+  const file = fileFacts(facts, "old.test.ts");
+  expect(file).toMatchObject({ oldPath: "old.test.ts", newPath: null, language: "typescript", completeness: { state: "complete" }, unattributed: [] });
+  expect(file.calls.map((call) => call.name)).toContain("save");
+  for (const call of file.calls) expect(call).toMatchObject({ change: "removed", side: "old" });
+  expect(file.tests.map(({ name, side, changed }) => ({ name, side, changed }))).toEqual([{ name: "first", side: "old", changed: true }, { name: "second", side: "old", changed: true }]);
+  expectPartition({ comparison, facts });
+}, 30_000);
+
+test("a renamed file with an edited call lists the removed call at its old line and the added call at its new line", async () => {
+  const unchanged = Array.from({ length: 10 }, (_, i) => `export const keep${i} = ${i};`).join("\n") + "\n";
+  const { comparison, cleanup } = await repositoryComparison({ "a.ts": "// cart\nexport function run() {\n  save(1);\n}\n" + unchanged }, { "a.ts": null, "b.ts": "export function run() {\n  save(2);\n}\n" + unchanged });
+  cleanups.push(cleanup);
+  const facts = await loadChangeFacts(comparison);
+  const file = fileFacts(facts, "b.ts");
+  expect(file).toMatchObject({ oldPath: "a.ts", newPath: "b.ts", language: "typescript", completeness: { state: "complete" } });
+  expect(file.calls).toEqual([
+    { analysis: "tree-sitter call sites", name: "save", change: "removed", side: "old", line: 3, enclosing: "run" },
+    { analysis: "tree-sitter call sites", name: "save", change: "added", side: "new", line: 2, enclosing: "run" },
+  ]);
+  expectPartition({ comparison, facts });
+}, 30_000);
+
 test("test facts beyond the limit mark the file truncated", async () => {
   const text = Array.from({ length: 505 }, (_, i) => `test("t${i}", () => {});`).join("\n") + "\n";
   const file = await addedFileFacts("many.test.ts", text);
