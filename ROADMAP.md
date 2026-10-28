@@ -5,8 +5,7 @@ and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
-dated checks, failures and assumptions. [Review branches](REVIEW_BRANCHES.md)
-identifies the remaining scope; [release history](docs/roadmap-history.md)
+dated checks, failures and assumptions. [Release history](docs/roadmap-history.md)
 retains earlier milestones.
 
 ## Released baseline
