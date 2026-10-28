@@ -60,6 +60,50 @@ try {
   await page.locator('[data-diff-layout="unified"]').click();
   await page.locator('#briefing-tab').click();
 
+  async function exercisePresentation(map, inspector, diagram) {
+    await map.scrollIntoViewIfNeeded();
+    const element = await map.locator('iframe[data-briefing-diagram]').elementHandle();
+    const frame = await element.contentFrame();
+    await frame.waitForFunction(() => window.Archify?.view?.state?.().mode === 'review');
+    const parent = await inspector.evaluate(el => el.parentElement.id);
+    const inertBefore = await page.locator('[inert]').count();
+    await frame.evaluate(() => { window.presentationProbe = {}; });
+    const originalWindow = await frame.evaluateHandle(() => window.presentationProbe);
+    await frame.locator('#btn-present').click();
+    await frame.waitForFunction(() => Archify.presentation.active());
+    const message = diagram.elements.find(item => item.evidenceIds.length);
+    const node = ['components', 'states', 'nodes'].includes(message.kind);
+    const target = frame.locator(`[${node ? 'data-node-id' : 'data-relationship-id'}="${message.id}"]`).first();
+    await target.focus(); await target.press('Enter');
+    const card = inspector.locator(`[data-evidence-element="${message.id}"].briefing-selected`);
+    await card.waitFor();
+    await page.waitForFunction(node => node.hasAttribute('data-map-present-pane'), await inspector.elementHandle());
+    assert.equal(await frame.evaluate(() => Archify.presentation.active()), true, 'Inspecting code keeps the diagram in Present mode');
+    const mapBounds = await element.boundingBox(), codeBounds = await inspector.boundingBox();
+    assert.equal(Math.round(mapBounds.x), 0);
+    assert.equal(Math.round(mapBounds.y), 0);
+    if (page.viewportSize().width > 900) {
+      assert.ok(mapBounds.width > 400 && codeBounds.width >= 280);
+      assert.ok(Math.abs(mapBounds.x + mapBounds.width - codeBounds.x) <= 1, 'Code sits beside the expanded map');
+    } else {
+      assert.ok(Math.abs(mapBounds.y + mapBounds.height - codeBounds.y) <= 1, 'Code sits below the map on narrow screens');
+    }
+    assert.equal(await inspector.evaluate(el => Boolean(el.closest('[inert]'))), false, 'Presented code remains interactive');
+    await card.locator('.briefing-card-title').click();
+    await inspector.getByRole('button', { name: 'Collapse evidence pane', exact: true }).click();
+    await inspector.getByRole('button', { name: 'Expand evidence pane', exact: true }).click();
+    if (diagram.family === 'architecture') await page.screenshot({ path: `/tmp/diffcompass-briefing-present-${page.url().startsWith('file:') ? 'offline' : 'live'}-${page.viewportSize().width}.png` });
+    if (page.viewportSize().width > 900) await frame.locator('#btn-present').click();
+    else await inspector.getByRole('button', { name: 'Collapse evidence pane', exact: true }).press('Escape');
+    await frame.waitForFunction(() => !Archify.presentation.active());
+    assert.equal(await inspector.evaluate(el => el.parentElement.id), parent, 'Presentation retains the existing code pane');
+    assert.equal(await page.locator('[data-map-present-pane], [data-map-present-split]').count(), 0);
+    assert.equal(await element.evaluate(el => el.isConnected), true, 'The diagram iframe survives presentation');
+    assert.equal(await frame.evaluate(original => original === window.presentationProbe, originalWindow), true, 'Presentation does not reload the diagram');
+    await originalWindow.dispose();
+    assert.equal(await page.locator('[inert]').count(), inertBefore, 'Exit restores the workspace controls');
+  }
+
   async function exerciseArchify(map, inspector, diagram) {
     await map.scrollIntoViewIfNeeded();
     const element = await map.locator('iframe[data-briefing-diagram]').elementHandle();
@@ -134,8 +178,12 @@ try {
     console.log(`PASS Archify ${diagram.family}: fitted initial overview, native element selection, captured diffs, camera and scroll retained`);
   }
   async function exercise(reader, inspector, nativeCallFlow) {
+    const architecture = document.diagrams.find(diagram => diagram.id === 'architecture-journey');
+    const architectureMap = reader.locator(`[data-briefing-block="map-${document.diagrams.indexOf(architecture)}"] .briefing-canvas`);
+    await exercisePresentation(architectureMap, inspector, architecture);
     for (const [index, diagram] of document.diagrams.entries()) {
       const map = reader.locator(`[data-briefing-block="map-${index}"] .briefing-canvas`);
+      if (diagram.family === 'sequence') await exercisePresentation(map, inspector, diagram);
       if (diagram.family !== 'call-flow') {
         await exerciseArchify(map, inspector, diagram);
         continue;
@@ -174,6 +222,9 @@ try {
     await original.waitForFunction(() => window.Archify.focus.relationship() === null && window.Archify.focus.active() === null);
     assert.match(await inspector.locator('[data-evidence-element="second"] code').textContent(), /export function receipt/);
     assert.equal(await reader.locator('.briefing-canvas [data-briefing-element="root_start"]').count(), 0, 'Uncaptured pseudostates do not acquire evidence');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await exercisePresentation(architectureMap, inspector, architecture);
+    await page.setViewportSize({ width: 1600, height: 1000 });
   }
   await exercise(page.locator('#briefing-view'), page.locator('#briefing-inspector'), true);
   await page.locator('[data-briefing-block="map-1"] .briefing-canvas').scrollIntoViewIfNeeded();

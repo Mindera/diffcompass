@@ -65,6 +65,18 @@
 .briefing-inspector > header { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .briefing-inspector > header > div { flex: 1; min-width: 0; }
 .briefing-inspector h2 { font-size: 17px; margin: 6px 0 0; line-height: 1.4; }
+/* Present keeps the original diagram and evidence iframe documents mounted. */
+[data-map-present-split], [data-map-present-pane] { --present-evidence-size: clamp(320px, 40vw, 640px); }
+[data-map-present-split="collapsed"], [data-map-present-pane="collapsed"] { --present-evidence-size: 40px; }
+iframe[data-map-present-split] { --map-present-width: calc(100vw - var(--present-evidence-size)); }
+.briefing-inspector[data-map-present-pane] { position: fixed !important; inset: 0 0 0 auto !important; box-sizing: border-box; width: var(--present-evidence-size) !important; height: 100dvh !important; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-left: 1px solid var(--border); border-radius: 0; display: flex !important; background: var(--panel); color: var(--text); z-index: 2147483647; }
+@media(max-width: 900px) {
+  [data-map-present-split], [data-map-present-pane] { --present-evidence-size: 45dvh; }
+  [data-map-present-split="collapsed"], [data-map-present-pane="collapsed"] { --present-evidence-size: 40px; }
+  iframe[data-map-present-split] { --map-present-width: 100vw; --map-present-height: calc(100dvh - var(--present-evidence-size)); }
+  .briefing-inspector[data-map-present-pane] { inset: auto 0 0 !important; width: 100vw !important; height: var(--present-evidence-size) !important; border-left: 0; border-top: 1px solid var(--border); }
+  .briefing-mode.workspace > #agent-panel:has([data-map-present-pane]) { display: flex !important; position: fixed; inset: 0; }
+}
 .briefing-evidence-scroll { padding: 16px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
 .briefing-evidence-card { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; padding: 12px; scroll-margin: 12px; cursor: pointer; }
 .briefing-evidence-card.briefing-selected { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
