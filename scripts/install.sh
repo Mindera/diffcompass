@@ -11,13 +11,30 @@ gemini_skill_root="${DIFFCOMPASS_GEMINI_SKILL_ROOT:-$HOME/.gemini/skills}"
 copilot_skill_root="${DIFFCOMPASS_COPILOT_SKILL_ROOT:-${COPILOT_HOME:-$HOME/.copilot}/skills}"
 minimal="${DIFFCOMPASS_MINIMAL:-0}"
 
-for argument in "$@"; do
-  case "$argument" in
-    --minimal|--binary-only) minimal=1 ;;
-    --no-minimal) minimal=0 ;;
-    *) echo "Unknown installer option: $argument" >&2; exit 1 ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --minimal|--binary-only) minimal=1; shift ;;
+    --no-minimal) minimal=0; shift ;;
+    --version)
+      if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+        echo "--version requires a value, such as --version v2.3.0." >&2
+        exit 1
+      fi
+      version="$2"
+      shift 2
+      ;;
+    *) echo "Unknown installer option: $1" >&2; exit 1 ;;
   esac
 done
+
+version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+if [[ "$version" != "latest" ]]; then
+  version="v${version#v}"
+  if [[ ! "$version" =~ $version_pattern ]]; then
+    echo "Unsupported DiffCompass version: $version. Use vX.Y.Z." >&2
+    exit 1
+  fi
+fi
 
 case "$(uname -s)" in
   Darwin) os="darwin" ;;
