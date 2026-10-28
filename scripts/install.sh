@@ -57,17 +57,12 @@ if [[ -n "${DIFFCOMPASS_ARCHIVE:-}" ]]; then
   checksum_source="$(dirname "$DIFFCOMPASS_ARCHIVE")/checksums.txt"
   [[ -f "$checksum_source" ]] || { echo "checksums.txt must be beside the local release archive." >&2; exit 1; }
   cp "$checksum_source" "$temporary/checksums.txt"
-elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  if [[ "$version" == "latest" ]]; then
-    gh release download --repo "$repository" --pattern "$pattern" --pattern checksums.txt --dir "$temporary"
-  else
-    gh release download "$version" --repo "$repository" --pattern "$pattern" --pattern checksums.txt --dir "$temporary"
-  fi
 else
+  command -v curl >/dev/null 2>&1 || { echo "curl is required to download DiffCompass." >&2; exit 1; }
   if [[ "$version" == "latest" ]]; then
-    echo "Installing the latest release without GitHub CLI requires an explicit version." >&2
-    echo "Install and authenticate gh, or run DIFFCOMPASS_VERSION=vX.Y.Z $0" >&2
-    exit 1
+    latest_url="$(curl --fail --location --silent --show-error --head --output /dev/null --write-out '%{url_effective}' "https://github.com/$repository/releases/latest")"
+    version="${latest_url##*/releases/tag/}"
+    [[ "$latest_url" == */releases/tag/* && "$version" =~ $version_pattern ]] || { echo "Could not resolve the latest DiffCompass release from $latest_url." >&2; exit 1; }
   fi
   release_url="https://github.com/$repository/releases/download/$version"
   archive_name="diffcompass-${version}-${os}-${arch}.tar.gz"
