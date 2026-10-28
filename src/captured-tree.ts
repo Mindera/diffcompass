@@ -3,12 +3,14 @@ import type { GitComparison } from "./types.ts";
 
 export const CAPTURED_BLOBS_TIMEOUT = "Reading captured blobs timed out.";
 
+const NO_LAZY_FETCH_ENV = { GIT_NO_LAZY_FETCH: "1" };
+
 export interface CapturedTreeEntry { path: string; mode: string; oid: string; size: number }
 
 export async function listCapturedTree(comparison: GitComparison, side: "old" | "new"): Promise<CapturedTreeEntry[]> {
   const treeish = side === "old" ? comparison.mergeBase : comparison.sourceTree;
   if (!treeish || !/^[a-f0-9]{40,64}$/.test(treeish)) throw new Error("Captured tree is unavailable.");
-  const output = (await runProcess(["git", "ls-tree", "-r", "-z", "-l", treeish], comparison.repositoryRoot, [0], { timeoutMs: 30_000 })).stdout;
+  const output = (await runProcess(["git", "ls-tree", "-r", "-z", "-l", treeish], comparison.repositoryRoot, [0], { timeoutMs: 30_000, env: NO_LAZY_FETCH_ENV })).stdout;
   const entries: CapturedTreeEntry[] = [];
   for (const record of output.split("\0")) {
     const tab = record.indexOf("\t");
@@ -24,7 +26,7 @@ export async function readCapturedBlobs(comparison: GitComparison, oids: readonl
   const unique = [...new Set(oids)];
   const result = new Map<string, string | null>();
   if (!unique.length) return result;
-  const process = Bun.spawn(["git", "cat-file", "--batch"], { cwd: comparison.repositoryRoot, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+  const process = Bun.spawn(["git", "cat-file", "--batch"], { cwd: comparison.repositoryRoot, env: { ...globalThis.process.env, ...NO_LAZY_FETCH_ENV }, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; process.kill(); }, timeoutMs);
   let bytes: Uint8Array;

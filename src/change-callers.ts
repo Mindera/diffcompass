@@ -113,7 +113,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
     let loadedUntil = 0;
     for (let index = 0; index < ordered.length; index++) {
       const entry = ordered[index];
-      if (entry.size > SEMANTIC_LIMITS.bytes) { skippedFiles++; continue; }
+      if (!Number.isFinite(entry.size) || entry.size > SEMANTIC_LIMITS.bytes) { skippedFiles++; continue; }
       if (timeUp()) { stoppedBy = "time"; break; }
       if (scannedFiles >= limits.files) { stoppedBy = "files"; break; }
       if (scannedBytes + entry.size > limits.bytes) { stoppedBy = "bytes"; break; }
@@ -121,7 +121,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
         const batch = ordered.slice(index, index + BATCH);
         loadedUntil = index + batch.length;
         const remaining = Math.max(1, Math.min(30_000, Math.ceil(limits.millis - (performance.now() - start))));
-        try { texts = await readCapturedBlobs(comparison, batch.filter((item) => item.size <= SEMANTIC_LIMITS.bytes).map((item) => item.oid), remaining); }
+        try { texts = await readCapturedBlobs(comparison, batch.filter((item) => Number.isFinite(item.size) && item.size <= SEMANTIC_LIMITS.bytes).map((item) => item.oid), remaining); }
         catch (error) {
           if (error instanceof Error && error.message === CAPTURED_BLOBS_TIMEOUT) { stoppedBy = "time"; break; }
           throw error;

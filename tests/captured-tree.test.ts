@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
-import { writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listCapturedTree, readCapturedBlobs } from "../src/captured-tree.ts";
+import { scanCapturedTree } from "../src/change-callers.ts";
 import { runProcess } from "../src/process.ts";
 import { capturedText, historicalComparison, repositoryComparison } from "./comparison-fixtures.ts";
 
@@ -30,6 +32,35 @@ test("reports a timed-out blob read as a timeout every time", async () => {
   const oids = (await listCapturedTree(comparison, "new")).map((entry) => entry.oid);
   for (let attempt = 0; attempt < 20; attempt++) {
     await expect(readCapturedBlobs(comparison, oids, 1)).rejects.toThrow(/^Reading captured blobs timed out\.$/);
+  }
+}, 30_000);
+
+async function objectCounts(root: string): Promise<string[]> {
+  const output = (await runProcess(["git", "count-objects", "-v"], root)).stdout;
+  return output.split("\n").filter((line) => /^(count|in-pack|packs):/.test(line));
+}
+
+test("never fetches missing blobs from a promisor remote", async () => {
+  const fixture = await repositoryComparison({}, { "a.ts": "export function ping() {}\nping();\n" });
+  const parent = await mkdtemp(join(tmpdir(), "diffcompass-partial-"));
+  try {
+    await runProcess(["git", "config", "uploadpack.allowFilter", "true"], fixture.root);
+    const clone = join(parent, "clone");
+    await runProcess(["git", "clone", "--filter=blob:none", "--no-checkout", `file://${fixture.root}`, clone], parent);
+    const comparison = { ...fixture.comparison, repositoryRoot: clone };
+    const before = await objectCounts(clone);
+    const entries = await listCapturedTree(comparison, "new");
+    const entry = entries.find((item) => item.path === "a.ts")!;
+    const blobs = await readCapturedBlobs(comparison, [entry.oid]);
+    const scan = await scanCapturedTree(comparison, "new", { names: new Set(["ping"]), limits: { files: 100, bytes: 1_000_000, millis: 30_000 } });
+    expect(blobs.get(entry.oid)).toBeNull();
+    expect(scan.coverage.skippedFiles).toBe(1);
+    expect(scan.coverage.scannedFiles).toBe(0);
+    expect(scan.coverage.scannedBytes).toBe(0);
+    expect(await objectCounts(clone)).toEqual(before);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+    await fixture.cleanup();
   }
 }, 30_000);
 
