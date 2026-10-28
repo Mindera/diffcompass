@@ -198,7 +198,7 @@ This section is the current-status overlay. **Everything under the historical
 then-current branch names, uncommitted states, assumptions, failures, fixture
 ports and test counts. Those records are preserved verbatim where they enumerate
 assumptions; they are not claims that today's main lacks the later merged work.
-[Review branches](REVIEW_BRANCHES.md) is the concise entry point and
+Review branches is the concise entry point and
 [ROADMAP](ROADMAP.md) is the canonical delivery index.
 
 ### Fresh delivery facts
@@ -369,12 +369,12 @@ status on 2026-10-04. The current section above now governs delivery and behavio
 The preserved descriptions, peer checks and **all 65 peer plus 17 documentation
 assumptions** remain historical evidence; their commit/workflow statements refer
 to the original handoffs. They do not authorize using the frozen snapshot as a
-merge candidate. [Review branches](REVIEW_BRANCHES.md) is the short reviewer
+merge candidate. Review branches is the short reviewer
 entry point, not a second feature roadmap.
 
 - Local `main` remains `716edb8` in the clean checkout
-  `/Users/ricardo.costeira/.herdr/worktrees/diffcompass/main`.
-- The original `/Users/ricardo.costeira/Documents/diffcompass` checkout is frozen
+  `<worktrees>/diffcompass/main`.
+- The original `<documents>/diffcompass` checkout is frozen
   on `wip/research-snapshot-20261004` at `39206b4`. It preserves the combined
   evidence and running fixtures; **do not edit or merge it**.
 - `review/pre-research-fixes` at `8262d97` is the **unreviewed** common base. It
@@ -395,7 +395,7 @@ entry point, not a second feature roadmap.
   `review/diff-viewer-prototype` separately owns the viewer/language experiments.
   No production Monaco migration is approved; scope-folding arrows remain
   dropped and inline unchanged-region controls retained.
-- Worktrees are under `/Users/ricardo.costeira/.herdr/worktrees/diffcompass/`,
+- Worktrees are under `<worktrees>/diffcompass/`,
   with suffixes `pre-research-fixes`, `sequence-code`, `decision-log`,
   `syntax-diff`, `research-docs` and `diff-viewer-prototype`. Each agent writes
   only its own worktree. No push, merge, release or DiffCompass installation is
@@ -497,7 +497,7 @@ pre-commit base HEAD and `commit.log` identifies the final extraction.
 - `node --check public/decision-log.js`,
   `node --check scripts/check-decision-log-browser.mjs`, `git diff --check`,
   `git diff --cached --check`: passed.
-- `node /tmp/diffcompass-decision-log-isolation/browser-check.mjs /Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs /tmp/diffcompass-decision-log-fixture-isolated-20261004/session.json`:
+- `node /tmp/diffcompass-decision-log-isolation/browser-check.mjs <npx-cache>/node_modules/playwright/index.mjs /tmp/diffcompass-decision-log-fixture-isolated-20261004/session.json`:
   **18 checks passed, zero page errors**, fresh ephemeral Chrome (`browser.log`).
   Coverage includes empty/create/correct/remove, keyboard/cancel/focus, source
   navigation, reload/disk/other-client persistence, retained/replaced evidence,
@@ -755,7 +755,7 @@ Artifacts below are under `/tmp/diffcompass-syntax-isolated-checks/`:
   `node --check scripts/semantic-diff-browser.mjs`, `git diff --check`: passed.
 - `bun run /tmp/diffcompass-syntax-isolated-checks/fixture.ts`: new fixture 47643,
   root `/tmp/diffcompass-syntax-isolated-fixture-47643`; old 47633 unchanged.
-- `PLAYWRIGHT_MODULE=file:///Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node /tmp/diffcompass-syntax-isolated-checks/browser.mjs`:
+- `PLAYWRIGHT_MODULE=file://<npx-cache>/node_modules/playwright/index.mjs node /tmp/diffcompass-syntax-isolated-checks/browser.mjs`:
   **11/11** isolated Chrome checks passed, including keyboard, retained text diff,
   captured Before/After, unified old identity, Kotlin, Retry, parse/unsupported
   fallback, 390px bounds and no page errors (`browser.log`). Peer inspected
@@ -929,7 +929,7 @@ The user is open to Kotlin-only support; a JVM-only project provider is one
 possible optional capability, not a reason to make Android/KMP diffs unreadable.
 
 The isolated provider probe (`prototypes/language-support/README.md` on the
-[prototype branch](REVIEW_BRANCHES.md)) found real
+prototype branch) found real
 ambiguity in kmp-lsp v0.26.0: wrong-platform and wrong-receiver targets, missed
 overloads, and a prose reference. Final fixture: 9 passes / 7 failures across two
 cold runs. This does not rule out lightweight Kotlin support; it rules out
@@ -1727,7 +1727,7 @@ Prototype behaviour discussed before implementation:
 
 User approved an isolated Monaco prototype and requested the current renderer
 beside it. Implemented under `prototypes/diff-viewer` on the separate
-[prototype branch](REVIEW_BRANCHES.md),
+prototype branch,
 with a dedicated pinned dependency, disposable Git review, the actual current
 renderer in one pane, and identical before/after source models in the other.
 Comments and questions use the real API; only agent answers are explicitly
@@ -1941,7 +1941,7 @@ rerun, and the documentation agent did not rerun either test command.
 **Decision-log peer, final isolated Chrome run:**
 
 ```sh
-node scripts/check-decision-log-browser.mjs /Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs /tmp/diffcompass-decision-log-fixture/session.json
+node scripts/check-decision-log-browser.mjs <npx-cache>/node_modules/playwright/index.mjs /tmp/diffcompass-decision-log-fixture/session.json
 ```
 
 Reported result: **18 checks passed, zero page errors**. Coverage includes
@@ -1977,7 +1977,7 @@ commands follow. These remain peer-attributed results, not a documentation-agent
 rerun or a full-repository, cross-platform or release check.
 
 **Semantic peer, exact final commands** (repository commands run from
-`/Users/ricardo.costeira/Documents/diffcompass`):
+`<documents>/diffcompass`):
 
 ```sh
 bun test tests/semantic-diff.test.ts tests/semantic-diff-source.test.ts tests/ui-semantic-diff.test.ts > /tmp/diffcompass-semantic-dedicated-tests.log 2>&1
@@ -2014,7 +2014,7 @@ Fixture and isolated-browser commands:
 
 ```sh
 bun run scripts/semantic-diff-fixture.ts
-PLAYWRIGHT_MODULE=file:///Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node scripts/semantic-diff-browser.mjs
+PLAYWRIGHT_MODULE=file://<npx-cache>/node_modules/playwright/index.mjs node scripts/semantic-diff-browser.mjs
 ```
 
 The fixture remains on loopback port 47633; no other fixture was stopped. The
@@ -2111,16 +2111,16 @@ integrated-tree rerun.
 **Final browser environment and commands:** peer used Playwright 1.63.0 and
 Chrome 154.0.8037.97 with ephemeral isolated profiles, without installation.
 The fixture on port 47631 reads the installed renderer from
-`/Users/ricardo.costeira/.local/share/diffcompass/2.0.0/share/diffcompass/archify`
+`<home>/.local/share/diffcompass/2.0.0/share/diffcompass/archify`
 through `DIFFCOMPASS_ARCHIFY_DIR`; installed files were not edited. The commands
 below use the existing Playwright module. `<authenticated-fixture-url>` means
 the fixture's printed tokenized URL; its token is deliberately not copied here.
 
 ```sh
-PLAYWRIGHT_MODULE=file:///Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node scripts/sequence-walkthrough-browser.mjs '<authenticated-fixture-url>'
-PLAYWRIGHT_MODULE=file:///Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node scripts/sequence-framing-browser.mjs '<authenticated-fixture-url>'
-PLAYWRIGHT_MODULE=file:///Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node scripts/sequence-pointer-browser.mjs '<authenticated-fixture-url>'
-SEQUENCE_POINTER_PLAIN=1 PLAYWRIGHT_MODULE=file:///Users/ricardo.costeira/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node scripts/sequence-pointer-browser.mjs '<authenticated-fixture-url>'
+PLAYWRIGHT_MODULE=file://<npx-cache>/node_modules/playwright/index.mjs node scripts/sequence-walkthrough-browser.mjs '<authenticated-fixture-url>'
+PLAYWRIGHT_MODULE=file://<npx-cache>/node_modules/playwright/index.mjs node scripts/sequence-framing-browser.mjs '<authenticated-fixture-url>'
+PLAYWRIGHT_MODULE=file://<npx-cache>/node_modules/playwright/index.mjs node scripts/sequence-pointer-browser.mjs '<authenticated-fixture-url>'
+SEQUENCE_POINTER_PLAIN=1 PLAYWRIGHT_MODULE=file://<npx-cache>/node_modules/playwright/index.mjs node scripts/sequence-pointer-browser.mjs '<authenticated-fixture-url>'
 ```
 
 The main walkthrough run passed **8 groups with zero page errors**: real arrow

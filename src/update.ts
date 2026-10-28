@@ -1,9 +1,9 @@
 import packageJson from "../package.json" with { type: "json" };
 import { ReviewError } from "./errors.ts";
 import { runLifecycleCommand } from "./install-lifecycle.ts";
-import { runProcess } from "./process.ts";
 
 const RELEASE_REPOSITORY = "Mindera/diffcompass";
+const RELEASES_LATEST_URL = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
 const CHECK_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export interface UpdateStatus {
@@ -16,6 +16,17 @@ export interface UpdateStatus {
 export interface UpdateService {
   status(force?: boolean): Promise<UpdateStatus>;
   install(): Promise<UpdateStatus>;
+}
+
+export type ReleaseFetch = (url: string, init: RequestInit) => Promise<Pick<Response, "ok" | "url">>;
+
+export async function latestReleaseTag(fetcher: ReleaseFetch = fetch): Promise<string> {
+  const response = await fetcher(RELEASES_LATEST_URL, { method: "HEAD", redirect: "follow", signal: AbortSignal.timeout(10_000) });
+  const tag = response.ok && response.url
+    ? /\/releases\/tag\/(v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/.exec(new URL(response.url).pathname)?.[1]
+    : undefined;
+  if (!tag) throw new Error(`Unexpected latest-release location: ${response.url}`);
+  return tag;
 }
 
 type Version = [number, number, number];
@@ -39,16 +50,12 @@ export function createUpdateService(options: {
   currentVersion?: string;
   now?: () => number;
   latestVersion?: () => Promise<string>;
+  fetch?: ReleaseFetch;
   update?: () => Promise<void>;
 } = {}): UpdateService {
   const currentVersion = options.currentVersion ?? packageJson.version;
   const now = options.now ?? Date.now;
-  const latestVersion = options.latestVersion ?? (async () => (await runProcess(
-    ["gh", "api", `repos/${RELEASE_REPOSITORY}/releases/latest`, "--jq", ".tag_name"],
-    process.cwd(),
-    [0],
-    { timeoutMs: 10_000 },
-  )).stdout.trim());
+  const latestVersion = options.latestVersion ?? (() => latestReleaseTag(options.fetch ?? fetch));
   const update = options.update ?? (async () => {
     await runLifecycleCommand("update", []);
   });

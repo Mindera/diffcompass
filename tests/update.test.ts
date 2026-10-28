@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createUpdateService, isNewerVersion } from "../src/update.ts";
+import { createUpdateService, isNewerVersion, type ReleaseFetch } from "../src/update.ts";
 
 test("compares stable release versions numerically", () => {
   expect(isNewerVersion("v1.0.10", "1.0.9")).toBe(true);
@@ -40,4 +40,29 @@ test("turns discovery failures into a bounded user-facing error", async () => {
   const service = createUpdateService({ latestVersion: async () => { throw new Error("sensitive command output"); } });
   await expect(service.status()).rejects.toThrow("Could not check for DiffCompass updates.");
   await expect(service.status()).rejects.not.toThrow("sensitive command output");
+});
+
+test("reads the latest release tag from the releases/latest redirect", async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const fetch: ReleaseFetch = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, url: "https://github.com/Mindera/diffcompass/releases/tag/v2.3.0" };
+  };
+  const service = createUpdateService({ currentVersion: "2.2.4", fetch });
+
+  expect(await service.status()).toEqual({ currentVersion: "2.2.4", latestVersion: "2.3.0", updateAvailable: true });
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.url).toBe("https://github.com/Mindera/diffcompass/releases/latest");
+  expect(calls[0]!.init.method).toBe("HEAD");
+  expect(calls[0]!.init.redirect).toBe("follow");
+});
+
+test("rejects a release check that does not land on a tag page or is not ok", async () => {
+  for (const response of [
+    { ok: true, url: "https://github.com/Mindera/diffcompass/releases" },
+    { ok: false, url: "https://github.com/Mindera/diffcompass/releases/tag/v2.3.0" },
+  ]) {
+    const service = createUpdateService({ currentVersion: "2.2.4", fetch: async () => response });
+    await expect(service.status()).rejects.toThrow("Could not check for DiffCompass updates.");
+  }
 });

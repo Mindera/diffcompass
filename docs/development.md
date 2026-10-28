@@ -188,7 +188,10 @@ bun run build:release
 ```
 
 Pushing a matching `v*` tag runs the full suite, builds all six platform
-archives, publishes checksums, and creates a GitHub Release.
+archives, and creates a GitHub Release carrying them with `install.sh`,
+`install.ps1` and `checksums.txt`. A final job then installs that release on
+Linux, macOS and Windows, once from the tag's own scripts and once from the
+`releases/latest` link.
 
 See [ROADMAP.md](../ROADMAP.md) for released scope, cancelled work,
 prototypes and remaining gaps. Automated unit/integration and
