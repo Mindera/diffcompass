@@ -41,9 +41,10 @@ for entry in "${targets[@]}"; do
   rm -rf "$package_root"
 done
 rm -rf "$archify_stage"
+cp scripts/install.sh scripts/install.ps1 "$release_root/"
 
 (
   cd "$release_root"
-  shasum -a 256 ./*.tar.gz ./*.zip > checksums.txt
+  shasum -a 256 ./*.tar.gz ./*.zip ./install.sh ./install.ps1 > checksums.txt
 )
 echo "Release artifacts are in $release_root"
