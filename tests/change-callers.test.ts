@@ -166,6 +166,15 @@ async function codeGraphFixture(state: { status?: unknown; callers?: unknown; ch
   return { ...fixture, executable, calls, cleanup };
 }
 
+async function untouchedRepository(root: string): Promise<() => Promise<void>> {
+  const status = await gitIn(root, "status", "--porcelain");
+  const index = await readFile(join(root, ".git", "index"));
+  return async () => {
+    expect((await readFile(join(root, ".git", "index"))).equals(index)).toBe(true);
+    expect(await gitIn(root, "status", "--porcelain")).toBe(status);
+  };
+}
+
 const load = (fixture: { comparison: Parameters<typeof loadChangeFacts>[0]; executable: string }, codegraph: string | null = fixture.executable) => loadChangeFacts(fixture.comparison, { scanLimits: wide, codegraph });
 const pingFacts = (facts: Awaited<ReturnType<typeof loadChangeFacts>>) => facts.callers.filter((caller) => caller.declaration.name === "ping");
 const skipped = (reason: string) => expect.objectContaining({ state: "skipped", reason });
@@ -173,7 +182,9 @@ const skipped = (reason: string) => expect.objectContaining({ state: "skipped", 
 test.skipIf(process.platform === "win32")("adds CodeGraph callers beside the name-matched ones when the index is current", async () => {
   const fixture = await codeGraphFixture();
   try {
+    const untouched = await untouchedRepository(fixture.root);
     const facts = await load(fixture);
+    await untouched();
     const [nameMatch, codegraph] = pingFacts(facts);
     expect(pingFacts(facts)).toHaveLength(2);
     expect(nameMatch.provider).toBe("name-match");
@@ -246,9 +257,11 @@ test.skipIf(process.platform === "win32")("skips CodeGraph when the working tree
     await writeFile(join(fixture.root, "a.ts"), "export function ping() { return 1; }\n");
     const count = async () => (await gitIn(fixture.root, "count-objects", "-v")).split("\n").find((line) => line.startsWith("count:"));
     const before = await count();
+    const untouched = await untouchedRepository(fixture.root);
     const facts = await load(fixture);
     expect(facts.callerCoverage.codegraph).toEqual(skipped("The working tree differs from the captured head tree, so the index may describe unreviewed code."));
     expect(await count()).toBe(before);
+    await untouched();
     expect((await fixture.calls()).some((line) => line.startsWith("status"))).toBe(false);
   } finally {
     await fixture.cleanup();
