@@ -20,56 +20,16 @@ the downloaded catalogue includes its images and works offline.
 
 ## Install
 
-### Install with your agent
+Release binaries support macOS, Linux and Windows on Intel/AMD and ARM; Bun is not
+required. The installer downloads the
+[latest release](https://github.com/Mindera/diffcompass/releases/latest), verifies
+its checksum, and installs the bundled skill for Codex, Claude Code, Gemini CLI and
+GitHub Copilot CLI. Restart your agent afterwards so it discovers the skill.
 
-Copy this prompt into your coding agent:
-
-```text
-Install the latest released DiffCompass for this machine and agent from the
-private repository https://github.com/Mindera/diffcompass.
-
-1. Detect my OS and shell. Check for Git and GitHub CLI (gh), and install any
-   missing prerequisites using the appropriate package manager.
-2. Check gh authentication and access to Mindera/diffcompass. Guide me through
-   signing in if needed. If access is denied, tell me to request access from a
-   Mindera GitHub administrator before continuing. Never ask me to paste tokens.
-3. Read the repository's current README using authenticated gh access and follow
-   its release-installer instructions for my platform. Install the binary and
-   bundled agent skills, including this agent's skill. Use the full installation,
-   not minimal mode; no source build or Bun installation is needed. Preserve
-   existing custom skills and explain any installation conflicts.
-4. Ensure diffcompass is on PATH in this terminal and future terminals. Make only
-   the necessary shell configuration changes, without duplicating entries.
-5. Run diffcompass --version and diffcompass doctor. Verify the bundled skill is
-   installed and the updater is set up to use Mindera/diffcompass with my gh login.
-   Resolve setup problems and report any remaining limitations.
-6. Tell me the installed version, how to run diffcompass update, and whether I
-   need a new terminal or to restart my agent to load the skill.
-```
-
-### Manual installation
-
-You need Git, [GitHub CLI (`gh`)](https://cli.github.com/), and a GitHub account
-with access to the private **[Mindera/diffcompass](https://github.com/Mindera/diffcompass)**
-repository. For agent-powered reviews, also install and sign in to Codex,
-Claude Code, Gemini CLI, or GitHub Copilot CLI. Release binaries support macOS,
-Linux, and Windows on Intel/AMD and ARM; Bun is not required.
-
-Authenticate and check repository access first:
+### macOS and Linux
 
 ```sh
-gh auth login
-gh repo view Mindera/diffcompass
-```
-
-If access is denied, request repository access from a Mindera GitHub administrator
-and authorize your GitHub CLI credentials for the organization if prompted.
-
-#### macOS and Linux
-
-```sh
-set -o pipefail
-gh api -H "Accept: application/vnd.github.raw+json" repos/Mindera/diffcompass/contents/scripts/install.sh | bash
+curl -fsSL https://github.com/Mindera/diffcompass/releases/latest/download/install.sh | bash
 ```
 
 The command is installed to `~/.local/bin` by default. If that directory is not
@@ -80,29 +40,76 @@ already on your PATH, add this to your shell startup file (`~/.zshrc` or
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-#### Windows PowerShell
+### Windows PowerShell
 
 ```powershell
-$Installer = gh api -H "Accept: application/vnd.github.raw+json" repos/Mindera/diffcompass/contents/scripts/install.ps1
-if ($LASTEXITCODE -ne 0) { throw "Could not download the DiffCompass installer." }
-& ([scriptblock]::Create(($Installer | Out-String)))
+irm https://github.com/Mindera/diffcompass/releases/latest/download/install.ps1 | iex
 ```
 
-The installer adds its command directory to your user PATH. Open a new terminal
-after installation.
+### Windows Command Prompt
 
-#### Check the installation
+```bat
+powershell -c "irm https://github.com/Mindera/diffcompass/releases/latest/download/install.ps1 | iex"
+```
+
+On Windows the installer adds its command directory to your user PATH. Open a new
+terminal after installation.
+
+### Check the installation
 
 ```sh
 diffcompass --version
 diffcompass doctor
 ```
 
-The installer downloads the [latest release](https://github.com/Mindera/diffcompass/releases/latest),
-verifies its checksum, and installs the bundled skill for Codex, Claude Code,
-Gemini CLI, and GitHub Copilot CLI. Restart your agent to discover the skill.
-For a binary-only installation, use `bash -s -- --minimal` in the macOS/Linux
-install command, or pass `-Minimal` to the PowerShell script block.
+### Install a specific version or the binary only
+
+Write the version with or without the leading `v`. On macOS and Linux:
+
+```sh
+curl -fsSL https://github.com/Mindera/diffcompass/releases/latest/download/install.sh | bash -s -- --version vX.Y.Z
+curl -fsSL https://github.com/Mindera/diffcompass/releases/latest/download/install.sh | bash -s -- --minimal
+```
+
+In PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/Mindera/diffcompass/releases/latest/download/install.ps1))) -Version vX.Y.Z
+& ([scriptblock]::Create((irm https://github.com/Mindera/diffcompass/releases/latest/download/install.ps1))) -Minimal
+```
+
+`--minimal` and `-Minimal` install the command without the agent skills. Each
+release also lists `install.sh` and `install.ps1` in its `checksums.txt`, so you
+can verify a downloaded script before running it.
+
+### Requirements
+
+| Requirement | Needed for |
+| --- | --- |
+| Git | Every review. |
+| [GitHub CLI (`gh`)](https://cli.github.com/) | Optional. Needed only to review GitHub pull requests. |
+| Codex, Claude Code, Gemini CLI or GitHub Copilot CLI | Agent-led reviews: install and sign in to one of them. |
+
+### Install with your agent
+
+Copy this prompt into your coding agent:
+
+```text
+Install the latest DiffCompass release on this machine.
+
+1. Detect my OS and shell, then run the matching command:
+   macOS or Linux:
+   curl -fsSL https://github.com/Mindera/diffcompass/releases/latest/download/install.sh | bash
+   Windows PowerShell:
+   irm https://github.com/Mindera/diffcompass/releases/latest/download/install.ps1 | iex
+   Windows Command Prompt:
+   powershell -c "irm https://github.com/Mindera/diffcompass/releases/latest/download/install.ps1 | iex"
+2. Make sure diffcompass is on PATH in this terminal and future terminals. Change
+   only the shell configuration that needs it, without duplicating entries.
+3. Run diffcompass --version and diffcompass doctor, and fix any setup problem
+   they report. Tell me the installed version and whether I need a new terminal
+   or to restart my agent to load the skill.
+```
 
 ## Update
 
@@ -113,16 +120,18 @@ diffcompass update
 diffcompass --version
 ```
 
-Use the lowercase command **`diffcompass`**. Updates reuse the bundled installer
-and your authenticated `gh` account to download the latest release. Keep `gh` on
-PATH and signed in to an account with access to `Mindera/diffcompass`. No clone or
-Bun installation is needed. Saved reviews are preserved, and binary-only installs
-stay binary-only.
+Use the lowercase command **`diffcompass`**. Updates reuse the bundled installer to
+download the latest release and verify its checksum. No clone, Bun installation or
+GitHub CLI is needed. Saved reviews are preserved, and binary-only installs stay
+binary-only.
+
+Installs at v2.2.4 or earlier need a signed-in GitHub CLI (`gh`) for one last
+`diffcompass update`; without it, re-run the install command above, or run
+`diffcompass update --version vX.Y.Z` with the latest version.
 
 If the command is missing, check PATH or run the installer above. If a download
-fails, check `gh auth status` and `gh repo view Mindera/diffcompass`.
-Development installs made with Bun should use the release installer once to get
-this setup.
+fails, check that this machine can reach `https://github.com`. Development installs
+made with Bun should use the release installer once to get this setup.
 
 | Task | Command |
 | --- | --- |
