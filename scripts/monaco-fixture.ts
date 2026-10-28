@@ -23,6 +23,13 @@ if (resumeFile) {
   fixture = { repository: saved.repositoryRoot, stateFile: resumeFile };
 } else {
   const extraFiles: Record<string, { before: string; after: string }> = {};
+  const wrappingTable = (revision: string) => [
+    "# Wrapping", "", "| Decision | Notes |", "| --- | --- |",
+    `| Unchanged | ${"Long Markdown table rows must wrap in both source panes. ".repeat(8)}|`,
+    `| Updated | ${`${revision} decision details remain readable without horizontal scrolling. `.repeat(10)}|`,
+    "", "End of decisions.", "",
+  ].join("\n");
+  extraFiles["docs/wrapping.md"] = { before: wrappingTable("Previous"), after: wrappingTable("Revised") };
   if (samplePr || beforeTour) extraFiles[contextFixtureFile.path] = contextFixtureFile;
   for (let i = 0; i < 12; i++) extraFiles[`src/lazy-${i}.ts`] = { before: "// Unchanged context\n".repeat(80) + "export const value = 1;\n", after: "// Unchanged context\n".repeat(80) + "export const value = 2;\n" };
   extraFiles["src/whitespace.py"] = { before: "if ready:\n    run()\n", after: "if ready:\n        run()\n" };

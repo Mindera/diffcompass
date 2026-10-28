@@ -1440,7 +1440,10 @@ return {
     $("editor").classList.toggle("review-split", activeLayout === "split");
     deletedSelection.reset(); currentAnchor = null; currentSourceRange = null;
     selectionError = ""; updateFileTools();
-    diff.updateOptions({ renderSideBySide: activeLayout === "split" });
+    // Monaco 0.55.1 forces the hidden Before editor's second wrap override off
+    // in Unified, but does not reset it on return to Split. Let diffWordWrap
+    // control both panes again; Monaco still disables the hidden Unified pane.
+    diff.updateOptions({ renderSideBySide: activeLayout === "split", wordWrapOverride2: "inherit" });
     updateNumberGutter(); drawAnnotations();
   },
   wrap(value) { diff.updateOptions({ wordWrap: value, diffWordWrap: value }); },
