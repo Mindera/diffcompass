@@ -305,7 +305,7 @@ async function expectInert(script: string) {
 async function installerLines() {
   const text = await readFile(join(repositoryRoot, "scripts", "install.sh"), "utf8");
   const lines = text.split("\n");
-  const last = lines.findLastIndex((line) => line.trim() !== "");
+  const last = lines.map((line) => line.trim() !== "").lastIndexOf(true);
   return { text, lines, last };
 }
 
