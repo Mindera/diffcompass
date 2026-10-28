@@ -41,6 +41,11 @@ jobs:
       - run: bun run verify
       - run: bun run build:release
       - run: ./scripts/smoke-install.sh
+      - name: Install the new archive with the v2.2.4 installer
+        run: |
+          git fetch --depth=1 origin tag v2.2.4
+          git show v2.2.4:scripts/install.sh > "$RUNNER_TEMP/install-v2.2.4.sh"
+          ./scripts/smoke-old-installer.sh "$RUNNER_TEMP/install-v2.2.4.sh"
   monaco:
     needs: changes
     if: needs.changes.outputs.browser == 'true'

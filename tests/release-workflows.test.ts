@@ -54,3 +54,13 @@ test("a final job installs the published release on all three platforms", async 
   expect(powershell.some((run) => run.includes("latest/download/install.ps1"))).toBe(true);
   expect(powershell.some((run) => run.includes("| iex"))).toBe(true);
 });
+
+test("CI installs the new archive with the v2.2.4 installer right after the smoke install", async () => {
+  const workflow = await readWorkflow("ci.yml");
+  const steps = workflow.jobs.foundation?.steps ?? [];
+  const index = steps.findIndex((step) => step.run === "./scripts/smoke-install.sh");
+  expect(index).toBeGreaterThanOrEqual(0);
+  const run = steps[index + 1]?.run ?? "";
+  expect(run).toContain("git fetch --depth=1 origin tag v2.2.4");
+  expect(run).toContain("./scripts/smoke-old-installer.sh");
+});
