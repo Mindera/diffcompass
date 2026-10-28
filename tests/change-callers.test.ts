@@ -221,7 +221,7 @@ test.skipIf(process.platform === "win32")("skips CodeGraph when the index has pe
   const changing = await codeGraphFixture({ changeAfterCallers: true });
   try {
     const facts = await load(changing);
-    expect(facts.callerCoverage.codegraph).toEqual(skipped("The index or the working tree changed during the query."));
+    expect(facts.callerCoverage.codegraph).toEqual({ state: "skipped", reason: "The index or the working tree changed during the query.", declarations: 1, queried: 1 });
     expect(pingFacts(facts).map((fact) => fact.provider)).toEqual(["name-match"]);
   } finally {
     await changing.cleanup();

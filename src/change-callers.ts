@@ -273,7 +273,7 @@ function codeGraphFact(declaration: CallerDeclaration, output: string, repositor
 
 export async function codeGraphCallers(comparison: GitComparison, declarations: readonly CallerDeclaration[], executable: string | null): Promise<{ facts: CallerFact[]; coverage: CodeGraphCoverage }> {
   const eligible = declarations.filter((declaration) => declaration.side === "new").slice(0, MAX_QUERIED_DECLARATIONS);
-  const skipped = (reason: string): { facts: CallerFact[]; coverage: CodeGraphCoverage } => ({ facts: [], coverage: { state: "skipped", reason, declarations: eligible.length, queried: 0 } });
+  const skipped = (reason: string, ran = 0): { facts: CallerFact[]; coverage: CodeGraphCoverage } => ({ facts: [], coverage: { state: "skipped", reason, declarations: eligible.length, queried: ran } });
   if (executable && !eligible.length) return skipped("No changed declarations to look up.");
   const gate = await codeGraphGate(comparison, executable);
   if (!gate.usable) return skipped(gate.reason);
@@ -295,7 +295,7 @@ export async function codeGraphCallers(comparison: GitComparison, declarations: 
   };
   await Promise.all(Array.from({ length: Math.min(QUERY_CONCURRENCY, eligible.length) }, worker));
   const again = await codeGraphGate(comparison, executable);
-  if (!again.usable || again.reading !== gate.reading) return skipped("The index or the working tree changed during the query.");
+  if (!again.usable || again.reading !== gate.reading) return skipped("The index or the working tree changed during the query.", queried);
   return {
     facts: [...results.entries()].sort((a, b) => a[0] - b[0]).map(([, fact]) => fact),
     coverage: { state: "used", declarations: eligible.length, queried, ...(gate.indexedFiles !== undefined ? { indexedFiles: gate.indexedFiles } : {}) },
