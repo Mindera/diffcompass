@@ -17,6 +17,8 @@
 .briefing-heading h1 { font-size: clamp(28px, 3vw, 42px); line-height: 1.18; letter-spacing: -.03em; max-width: 24ch; margin: 14px 0; }
 .briefing-section { margin: 36px 0; scroll-margin-top: 24px; }
 .briefing-section h2 { font-size: 21px; margin: 0 0 14px; letter-spacing: -.02em; }
+.briefing-tour { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); }
+.briefing-tour p { margin: 0 0 16px; color: var(--muted); font-size: 15px; line-height: 1.7; }
 .briefing-block { margin: 16px 0; position: relative; }
 .briefing-prose p, .briefing-quotation { font-size: 15px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .briefing-prose p { margin: 0; }

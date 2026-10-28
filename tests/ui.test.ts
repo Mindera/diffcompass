@@ -1145,7 +1145,7 @@ test("agent-launched tours introduce the change before navigating to the first s
   expect(app).toContain('state.session.pullRequest?.title ?? outline?.title ?? `${state.session.comparison.repositoryName} review briefing`');
   expect(app).toContain('if (state.activeTab !== "briefing" && state.session.outline && state.focusedStepId === null && !state.tourIntroPending)');
   expect(app).toContain('state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null');
-  expect(app).toContain('if (!state.tourIntroPending) await focusCurrentStep()');
+  expect(app).toContain('if (state.activeTab !== "briefing" && !state.tourIntroPending) await focusCurrentStep()');
   expect(app).toContain('activateReviewTab("briefing")');
   expect(app).toContain('state.session.preferences?.showBriefing === false');
   expect(app).toContain('state.tourIntroPending = false');

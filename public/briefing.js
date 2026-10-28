@@ -154,7 +154,8 @@ function createBriefingReader(options) {
   new ResizeObserver(() => { if (scroll.clientWidth !== width) { width = scroll.clientWidth; restoreAnchor(); } }).observe(scroll);
   function render(value) {
     const nextDocument = value?.outline?.briefing ?? null;
-    const identity = nextDocument ? `${nextDocument.id}:${Boolean(nextDocument.outdated)}` : value?.outline ? "legacy" : "empty";
+    const hasTour = Boolean(options.onTour && value?.outline?.phases?.some(phase => phase.steps.length));
+    const identity = `${nextDocument ? `${nextDocument.id}:${Boolean(nextDocument.outdated)}` : value?.outline ? "legacy" : "empty"}:${hasTour}`;
     if (identity === rendered) { session = value; document = nextDocument; renderChips(); return; }
     rememberAnchor(); saveReadingState();
     const sameDocument = document?.id === nextDocument?.id && document?.fingerprint === nextDocument?.fingerprint;
@@ -182,7 +183,7 @@ function createBriefingReader(options) {
       const opening = sectionIndex === 0;
       const content = section.blocks.map((block, blockIndex) => blockHtml(block, opening && blockIndex === 0)).join("");
       return `<section id="briefing-section-${esc(section.id)}" class="briefing-section${opening ? " briefing-opening" : ""}"><h2>${esc(section.title)}</h2>${content}</section>`;
-    }).join("");
+    }).join("") + (hasTour ? '<footer class="briefing-tour"><p>Continue to the Changes tab for a guided tour of the code.</p><button type="button" class="button secondary" data-briefing-tour>Tour the code →</button></footer>' : "");
     renderInspector(); renderChips(); restoreAnchor(); renderCode(view, document.evidence); void renderDiagrams(ticket);
   }
   function blockHtml(b, lead = false) {
@@ -419,6 +420,7 @@ function createBriefingReader(options) {
       return;
     }
     if (el.hasAttribute("data-briefing-generate")) return void options.onGenerate?.();
+    if (el.hasAttribute("data-briefing-tour")) return void Promise.resolve(options.onTour?.()).catch(error => options.notify?.(error.message));
     if (el.dataset.briefingLayout || el.dataset.briefingWrap) {
       rememberAnchor();
       const next = { layout: el.dataset.briefingLayout ?? codeView.layout, wrap: el.dataset.briefingWrap ?? codeView.wrap };

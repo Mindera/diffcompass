@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.2.2, including the v2.1.0 feature baseline
+Canonical delivery state for v2.2.3, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -11,11 +11,18 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.2.2](https://github.com/Mindera/diffcompass/releases/tag/v2.2.2).
+Latest release: [v2.2.3](https://github.com/Mindera/diffcompass/releases/tag/v2.2.3).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.2.3
+
+- Open saved and newly prepared Briefings in their own tab by default, while
+  respecting the automatic Briefing preference.
+- End the Briefing with a code-tour action when a tour is available. Open Changes
+  at the current stop, including after exiting a tour, without resetting progress.
 
 ## Released in v2.2.2
 

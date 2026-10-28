@@ -3555,7 +3555,10 @@ function renderTourIntroDiagrams() {
 }
 
 function maybeShowTourIntro() {
-  if (!state.tourIntroPending || state.tourIntroShown || (state.session.preferences?.showBriefing === false && !launchTourIntro)) return;
+  if (state.tourIntroShown) return;
+  if (state.session.preferences?.showBriefing === false && !launchTourIntro) { state.tourIntroPending = false; return; }
+  if (!state.tourIntroPending && !state.session.outline?.briefing) return;
+  state.tourIntroPending = false;
   state.tourIntroShown = true;
   activateReviewTab("briefing");
 }
@@ -4893,6 +4896,7 @@ function getBriefingReader() {
       else setPaneCollapsed("agent", true, true);
     },
     toolsCollapsed: () => !matchMedia("(max-width: 900px)").matches && state.agentPanelCollapsed,
+    onTour: beginPreparedTour,
     onChanges: async (evidence, comparisonId) => {
       const manifest = await api("/api/diff/sources");
       if (comparisonId !== manifest.comparisonId) { toast("This source belongs to a saved comparison. Its excerpt remains available here."); return; }
@@ -5717,25 +5721,26 @@ function renderSession() {
 }
 
 async function beginPreparedTour() {
-  if (state.tourStarted) {
-    state.tourIntroPending = false;
-    state.tourIntroReturn = false;
-    elements["tour-intro-dialog"].close();
-    renderReviewOverview();
-    return;
-  }
+  if (state.busy) return;
+  if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before returning to the tour.");
   if (!state.session.outline) {
     elements["tour-intro-dialog"].close();
     void startTour();
     return;
   }
+  if (!currentStep()) return;
   state.tourIntroPending = false;
   state.tourIntroReturn = false;
   state.tourStarted = true;
-  state.tourMode = true;
   elements["tour-intro-dialog"].close();
-  renderReviewOverview();
-  await focusCurrentStep();
+  closeBriefingSheet();
+  if (!state.tourMode) await toggleTourMode();
+  else {
+    activateReviewTab("diff");
+    renderReviewOverview();
+    await focusCurrentStep();
+  }
+  elements["diff-tab"].focus({ preventScroll: true });
 }
 
 async function startTour() {
@@ -5766,7 +5771,7 @@ async function startTour() {
     state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null;
     renderSession();
     elements["tour-scroll"].scrollTop = 0;
-    if (!state.tourIntroPending) await focusCurrentStep();
+    if (state.activeTab !== "briefing" && !state.tourIntroPending) await focusCurrentStep();
   } catch (error) {
     toast(error.message);
   } finally {
