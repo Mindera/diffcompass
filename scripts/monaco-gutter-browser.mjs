@@ -23,6 +23,10 @@ try {
         && [...margin.querySelectorAll('.gutter-insert,.gutter-delete,.inline-deleted-margin-view-zone,.inline-added-margin-view-zone')]
           .every(node => getComputedStyle(node).backgroundColor === 'rgba(0, 0, 0, 0)'));
     });
+    // Split gutters settle on the layout click; badges re-measure only after
+    // Monaco's next render, which a busy runner can delay past this read.
+    if (expectVisibleMarkers) await frame.waitForFunction(() => diffLab.views.get('src/cart.ts').root.querySelector('.review-badge:not([hidden])'))
+      .catch(error => { if (error.name !== 'TimeoutError') throw error; });
     const decoration = await frame.evaluate(() => {
       const root = diffLab.views.get('src/cart.ts').root;
       return {
