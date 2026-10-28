@@ -28,11 +28,12 @@ and simulated PR/issue context without calling GitHub. Later explanations begin
 unprepared so prepare-ahead behavior can be tested. Use
 `bun run fixture --prepare-only` when only the files and state are needed.
 
-For experimental Briefing narratives over larger historical changes, run
-`bun run fixture:briefing-experiments`. The comparison page has four reading
-approaches for GitHub suggestion publication and revision-aware checkpoints.
-See the [experiment guide](../prototypes/briefing/README.md) for pinned revisions,
-comparison notes, and browser validation.
+For outcome-first Briefings over larger historical changes, run
+`bun run fixture:briefing-experiments`. The preview uses the production reader
+and displays the chosen outcome-first story for each example. It can load
+portable DiffCompass history or private cases from a Git-ignored local module.
+See the [preview guide](../prototypes/briefing/README.md) for pinned revisions,
+reading notes, renderer setup, and browser validation.
 
 ## Verify and release
 

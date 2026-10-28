@@ -3,9 +3,9 @@
 [Back to the README](../README.md) · [Usage and configuration](usage.md)
 
 DiffCompass connects changed code, diagrams, questions, and review evidence in a
-local browser workspace. This catalogue covers the outcome-first Briefing added
-in v2.2.0, the 16 features from the interactive guide available in v2.1.0 and
-later, and one clearly marked research prototype. See the
+local browser workspace. This catalogue covers the Briefing and shared-renderer
+updates through v2.2.2, the 16 features from the interactive guide available in
+v2.1.0 and later, and one clearly marked research prototype. See the
 [roadmap](../ROADMAP.md) for release history and delivery details.
 
 ## Open the interactive HTML catalogue
@@ -43,7 +43,10 @@ Understand the outcome, intent, and design through prose, focused diffs, and dia
 
 - Start with a title that explains the concrete change, then follow how it works.
 - Inspect diagram elements and their captured evidence without advancing the tour.
-- Resize the outline and evidence panes; return to the same saved reading position.
+- Use the same Archify map viewers as Diagrams, including in offline HTML exports.
+- Share Shiki/Monaco, split/unified and scroll/wrap preferences with Changes.
+- Resize the side panes, collapse or expand evidence, and choose a wider reading column.
+- Return to the same saved reading position and inspect evidence without moving a clicked card.
 - Attach passages or diagram elements to questions and export the saved story.
 
 Inferred rationale is labelled. Saved documents retain their text until regenerated.

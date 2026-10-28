@@ -1,11 +1,11 @@
-# Briefing reading experiments
+# Briefing preview
 
 Run `bun run fixture:briefing-experiments` and open the printed URL. The default
-port is 47561; pass `--port 0` for an available port. These experiments live on
-`experiment/briefing-reading-paths`, based on the accepted reader at `76a45d6`.
-The narrative experiments live here; code diff rendering is shared with the
-production reader, inspector, and exports. Each code citation shows the captured
-before-and-after change, with additions, deletions, and unchanged context.
+port is 47561; pass `--port 0` for an available port. The preview displays the
+chosen outcome-first narrative for each example, using the production reader,
+code diff controls and evidence inspector. There is no reading-variant switcher.
+Each code citation shows the captured change, including additions, deletions
+and unchanged context.
 
 To use examples from other local repositories, create
 `prototypes/briefing/local/cases.ts` exporting
@@ -36,20 +36,18 @@ it does not change the working tree, create checkpoints, invoke an agent, or
 call GitHub. Source quotes are validated through the production Briefing builder,
 and highlighting and diagrams use the existing local dependencies.
 
-Each change has four reading approaches:
+Sequences, architecture, lifecycle, data-model and domain maps use the shared
+Archify viewers; call flows use the native call tree. To render Archify diagrams
+from a source checkout, package the pinned renderer and set its path:
 
-- **Current approach:** the accepted reader layout with an implementation-ordered
-  narrative for this historical change. This is the control, not a claim that its
-  newly written prose was part of the earlier accepted checkout example.
-- **Outcome first:** begin with the human need and observable result, then explain
-  the architecture and code that support it. Test whether readers retain the
-  purpose while moving into implementation detail.
-- **Follow a scenario:** show a concrete path and its failure branches. Selecting
-  a stage opens its captured code in the evidence pane. Scenarios are authored
-  illustrations derived from source, not recorded runtime executions.
-- **Design decisions:** organize around responsibility, identity, and confidence.
-  Optional disclosures explain tradeoffs as explicit inference, separate from
-  documented intent and observed implementation.
+```sh
+bun scripts/package-archify.ts /tmp/diffcompass-preview-archify
+DIFFCOMPASS_ARCHIFY_DIR=/tmp/diffcompass-preview-archify bun run fixture:briefing-experiments --builtin
+```
+
+A missing renderer leaves an explicit element list with the saved evidence.
+There is no Mermaid fallback in Briefing. Saved viewers and their code bindings
+are also included in offline HTML exports.
 
 The prose covers these particular revisions. It does not claim to describe the
 latest behavior. In particular, marker reconciliation is not an unconditional
@@ -62,28 +60,32 @@ that pane. Focus an edge and use the arrow keys, Home, or End to resize by keybo
 Widths are shared across examples and remembered in this browser. Smaller windows
 temporarily limit them to keep the story readable; mobile uses the evidence sheet.
 
-The version switcher retains each reading position. URLs identify the example
-and approach and work with Back/Forward. **Comparison notes** saves text per
-example and approach in this browser; download the notes to share them. This
-prototype focuses on reading and source inspection, so agent-question and
-publication actions are omitted.
+The example picker retains each reading position. URLs use `#case=<id>` and work
+with Back/Forward. **Reading notes** saves text per example in this browser;
+download the notes to share them. The preview focuses on reading and source
+inspection, so agent-question and publication actions are omitted.
+
+Use the shared Shiki/Monaco selector and Split/Unified, Scroll/Wrap and Wide
+briefing controls to inspect the story. Evidence cards preserve their position
+when clicked; the pane's arrow collapses and expands it. New tours and explicit
+regeneration request outcome titles and an early supporting diff. Saved documents
+retain their prose until regenerated. Legacy case modules may still contain
+other drafts; the preview displays only `documents.outcome`.
 
 Judge comprehension before visual preference: can a reader explain the intended
-outcome, trace the important behavior, locate the implementation evidence, and
-describe where the guarantee stops? Compare one approach across both examples
-before comparing visual treatments. Outcome first is now the chosen production
-direction: its opening treatment lives in the shared reader, and both new-tour
-and regeneration prompts request outcome titles and an early supporting diff.
-This lab keeps the other approaches for comparison; it does not add a variant
-switcher to production. Saved documents retain their text until regenerated.
+outcome, trace the important behavior, locate its implementation evidence, and
+describe where the guarantee stops? The portable examples are authored fixtures;
+passing their browser checks is not an evaluation of agent-generated narratives.
 
 Validation:
 
 ```sh
 bunx tsc --noEmit -p prototypes/briefing/tsconfig.json
-bun run test:briefing-experiments
+DIFFCOMPASS_ARCHIFY_DIR=/tmp/diffcompass-preview-archify bun run test:briefing-experiments --builtin
 ```
 
 The browser check uses Chrome locally or Playwright Chromium in CI. It exercises
-all eight stories, each scenario's source bindings, scrolling, local notes,
-keyboard navigation, and mobile evidence sheets without external requests.
+each selected outcome-first story, exact diagram/code bindings, renderer controls,
+scrolling, pane resizing, local notes, keyboard navigation, and mobile evidence
+sheets without external requests. Pass `--cases /absolute/path/cases.ts` instead
+of `--builtin` to check a trusted local case module.
