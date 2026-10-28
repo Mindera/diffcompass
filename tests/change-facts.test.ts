@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { CHANGE_FACTS_ENGINE, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact } from "../src/change-facts.ts";
+import { CHANGE_FACTS_ENGINE, isTestPath, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact } from "../src/change-facts.ts";
 import { diffSourceIdentity } from "../src/diff-sources.ts";
 import { languageParser } from "../src/semantic-diff.ts";
 import { parseWithin } from "../src/syntax-nodes.ts";
@@ -298,6 +298,26 @@ test("a Kotlin test function lists as a test fact and its production sibling doe
   expect(fileFacts(facts, mainPath).tests).toEqual([]);
   expectPartition({ comparison, facts });
 }, 30_000);
+
+test("a path is a test path only by its own language's rule", () => {
+  const expected = {
+    "src/foo.test.ts": true,
+    "src/cart.spec.tsx": true,
+    "src/cart.test.mts": true,
+    "a/__tests__/x.ts": true,
+    "web/src/test/helpers.ts": false,
+    "src/app.ts": false,
+    "app/src/test/kotlin/demo/CartTest.kt": true,
+    "app/src/androidTest/kotlin/A.kt": true,
+    "src/FooTests.kt": true,
+    "app/src/test/kotlin/build.kts": true,
+    "app/__tests__/FooBar.kt": false,
+    "app/src/main/kotlin/demo/Cart.kt": false,
+    "src/test/readme.md": false,
+    "__tests__/a.js": false,
+  };
+  expect(Object.fromEntries(Object.keys(expected).map((path) => [path, isTestPath(path)]))).toEqual(expected);
+});
 
 test("nested describe names prefix a test name and describe itself gives no fact", async () => {
   const file = await addedFileFacts("src/cart.test.ts", 'describe("cart", () => {\n  describe("totals", () => {\n    it("adds", () => {});\n    test.skip("skipped", () => {});\n  });\n  test(`plain`, () => {});\n  it(`with ${x}`, () => {});\n});\n');

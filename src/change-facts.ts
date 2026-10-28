@@ -34,8 +34,9 @@ function fileLanguage(file: DiffFile): SyntaxLanguage | undefined {
 }
 
 export function isTestPath(path: string): boolean {
-  if (TS_TEST_PATH.test(path) || path.split("/").includes("__tests__")) return true;
-  return KOTLIN_TEST_DIRECTORY.test(path) || /Tests?\.kt$/.test(path);
+  const language = supportedLanguage(path);
+  if (language === "kotlin") return KOTLIN_TEST_DIRECTORY.test(path) || /Tests?\.kt$/.test(path);
+  return language !== undefined && (TS_TEST_PATH.test(path) || path.split("/").includes("__tests__"));
 }
 
 function changedLines(file: DiffFile): number {
