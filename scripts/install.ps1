@@ -1,13 +1,19 @@
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
   [switch]$Minimal,
   [switch]$BinaryOnly,
-  [switch]$NoMinimal
+  [switch]$NoMinimal,
+  [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
 $Repository = "Mindera/diffcompass"
-$Version = if ($env:DIFFCOMPASS_VERSION) { $env:DIFFCOMPASS_VERSION } else { "latest" }
+if (-not $Version) { $Version = if ($env:DIFFCOMPASS_VERSION) { $env:DIFFCOMPASS_VERSION } else { "latest" } }
+$VersionPattern = '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$'
+if ($Version -ne "latest") {
+  $Version = "v" + ($Version -replace '^v', '')
+  if ($Version -notmatch $VersionPattern) { throw "Unsupported DiffCompass version: $Version. Use vX.Y.Z." }
+}
 $LocalAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $HOME "AppData\Local" }
 $InstallRoot = if ($env:DIFFCOMPASS_INSTALL_ROOT) { $env:DIFFCOMPASS_INSTALL_ROOT } else { Join-Path $LocalAppData "diffcompass" }
 $BinRoot = if ($env:DIFFCOMPASS_BIN_ROOT) { $env:DIFFCOMPASS_BIN_ROOT } else { Join-Path $InstallRoot "bin" }
@@ -21,16 +27,6 @@ $Pattern = "diffcompass-v*-windows-$Architecture.zip"
 $Temporary = Join-Path ([System.IO.Path]::GetTempPath()) ("diffcompass-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Temporary | Out-Null
 
-function Test-GhAuthentication {
-  if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { return $false }
-  $PreviousErrorAction = $ErrorActionPreference
-  $ErrorActionPreference = "SilentlyContinue"
-  & gh auth status *> $null
-  $Authenticated = $LASTEXITCODE -eq 0
-  $ErrorActionPreference = $PreviousErrorAction
-  return $Authenticated
-}
-
 try {
   if ($env:DIFFCOMPASS_ARCHIVE) {
     if (-not (Test-Path -LiteralPath $env:DIFFCOMPASS_ARCHIVE -PathType Leaf)) { throw "Local release archive not found: $env:DIFFCOMPASS_ARCHIVE" }
@@ -38,18 +34,17 @@ try {
     $ChecksumSource = Join-Path (Split-Path $env:DIFFCOMPASS_ARCHIVE) "checksums.txt"
     if (-not (Test-Path -LiteralPath $ChecksumSource -PathType Leaf)) { throw "checksums.txt must be beside the local release archive." }
     Copy-Item -LiteralPath $ChecksumSource -Destination (Join-Path $Temporary "checksums.txt")
-  } elseif (Test-GhAuthentication) {
-    $Arguments = @("release", "download")
-    if ($Version -ne "latest") { $Arguments += $Version }
-    $Arguments += @("--repo", $Repository, "--pattern", $Pattern, "--pattern", "checksums.txt", "--dir", $Temporary)
-    & gh @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "GitHub CLI could not download the release." }
   } else {
-    if ($Version -eq "latest") { throw "Installing the latest private release requires authenticated GitHub CLI, or set DIFFCOMPASS_VERSION=vX.Y.Z." }
+    if ($Version -eq "latest") {
+      $Latest = Invoke-WebRequest -UseBasicParsing -Method Head -Uri "https://github.com/$Repository/releases/latest"
+      $LatestUri = if ($Latest.BaseResponse.ResponseUri) { $Latest.BaseResponse.ResponseUri } else { $Latest.BaseResponse.RequestMessage.RequestUri }
+      $Version = "$LatestUri" -replace '^.*/releases/tag/', ''
+      if ("$LatestUri" -notmatch '/releases/tag/' -or $Version -notmatch $VersionPattern) { throw "Could not resolve the latest DiffCompass release from $LatestUri." }
+    }
     $ArchiveName = "diffcompass-$Version-windows-$Architecture.zip"
     $ReleaseUrl = "https://github.com/$Repository/releases/download/$Version"
-    Invoke-WebRequest -UseBasicParsing "$ReleaseUrl/$ArchiveName" -OutFile (Join-Path $Temporary $ArchiveName)
-    Invoke-WebRequest -UseBasicParsing "$ReleaseUrl/checksums.txt" -OutFile (Join-Path $Temporary "checksums.txt")
+    Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseUrl/$ArchiveName" -OutFile (Join-Path $Temporary $ArchiveName)
+    Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseUrl/checksums.txt" -OutFile (Join-Path $Temporary "checksums.txt")
   }
 
   $Archive = Get-ChildItem -LiteralPath $Temporary -Filter $Pattern | Select-Object -First 1

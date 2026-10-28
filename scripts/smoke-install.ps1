@@ -40,6 +40,76 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Windows uninstall command failed." }
   for ($Attempt = 0; $Attempt -lt 50 -and (Test-Path $env:DIFFCOMPASS_INSTALL_ROOT); $Attempt += 1) { Start-Sleep -Milliseconds 100 }
   if (Test-Path $env:DIFFCOMPASS_INSTALL_ROOT) { throw "Deferred Windows uninstall did not remove the managed install root." }
+
+  Remove-Item Env:DIFFCOMPASS_ARCHIVE
+  $PackageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+  $Tag = "v$PackageVersion"
+  $StandInReleases = Join-Path $Root "releases"
+  $StandInLog = Join-Path $Root "requests.log"
+  $ArchiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Archive.FullName).Hash.ToLowerInvariant()
+  foreach ($Release in @($Tag, "v0.0.1", "v0.0.2", "v0.0.3")) { New-Item -ItemType Directory -Force -Path (Join-Path $StandInReleases $Release) | Out-Null }
+  Copy-Item -LiteralPath $Archive.FullName, (Join-Path $Archive.DirectoryName "checksums.txt") -Destination (Join-Path $StandInReleases $Tag)
+  Copy-Item -LiteralPath $Archive.FullName -Destination (Join-Path $StandInReleases "v0.0.1\diffcompass-v0.0.1-windows-x64.zip")
+  Set-Content -Encoding ASCII (Join-Path $StandInReleases "v0.0.1\checksums.txt") (("0" * 64) + "  diffcompass-v0.0.1-windows-x64.zip")
+  Copy-Item -LiteralPath $Archive.FullName -Destination (Join-Path $StandInReleases "v0.0.2\diffcompass-v0.0.2-windows-x64.zip")
+  Set-Content -Encoding ASCII (Join-Path $StandInReleases "v0.0.2\checksums.txt") "$ArchiveHash  diffcompass-v0.0.2-windows-arm64.zip"
+  Set-Content -Encoding ASCII (Join-Path $StandInReleases "v0.0.3\checksums.txt") "$ArchiveHash  diffcompass-v0.0.3-windows-x64.zip"
+
+  function Invoke-WebRequest {
+    param([string]$Uri, [string]$OutFile, [string]$Method, [switch]$UseBasicParsing)
+    Add-Content -LiteralPath $StandInLog -Value $Uri
+    if ($Uri -eq "https://github.com/Mindera/diffcompass/releases/latest") {
+      return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = [uri]"https://github.com/Mindera/diffcompass/releases/tag/$Tag" } }
+    }
+    if ($Uri -match '^https://github\.com/Mindera/diffcompass/releases/download/([^/]+)/([^/]+)$') {
+      $Source = Join-Path (Join-Path $StandInReleases $Matches[1]) $Matches[2]
+      if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) { throw "The remote server returned an error: (404) Not Found." }
+      Copy-Item -LiteralPath $Source -Destination $OutFile
+      return
+    }
+    throw "Unexpected request: $Uri"
+  }
+
+  $env:DIFFCOMPASS_INSTALL_ROOT = Join-Path $Root "stand-in\install"
+  $env:DIFFCOMPASS_BIN_ROOT = Join-Path $Root "stand-in\bin"
+  $env:DIFFCOMPASS_CODEX_SKILL_ROOT = Join-Path $Root "stand-in\codex\skills"
+  $env:DIFFCOMPASS_CLAUDE_SKILL_ROOT = Join-Path $Root "stand-in\claude\skills"
+  $env:DIFFCOMPASS_GEMINI_SKILL_ROOT = Join-Path $Root "stand-in\gemini\skills"
+  $env:DIFFCOMPASS_COPILOT_SKILL_ROOT = Join-Path $Root "stand-in\copilot\skills"
+  $CurrentVersion = Join-Path $env:DIFFCOMPASS_INSTALL_ROOT "current-version"
+  $Download = "https://github.com/Mindera/diffcompass/releases/download/$Tag"
+  $TagRequests = @("$Download/diffcompass-$Tag-windows-x64.zip", "$Download/checksums.txt")
+  $LatestRequests = @("https://github.com/Mindera/diffcompass/releases/latest") + $TagRequests
+
+  function Confirm-StandInInstall([scriptblock]$Install, [string[]]$Requests) {
+    Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $StandInLog
+    & $Install
+    $Requested = @(Get-Content -LiteralPath $StandInLog)
+    if (($Requested -join " ") -ne ($Requests -join " ")) { throw "The installer requested $($Requested -join ', ') instead of $($Requests -join ', ')." }
+    if ((Get-Content -Raw -LiteralPath $CurrentVersion).Trim() -ne $PackageVersion) { throw "The stand-in install did not leave DiffCompass $PackageVersion current." }
+  }
+
+  Confirm-StandInInstall { & scripts/install.ps1 -Minimal } $LatestRequests
+  Confirm-StandInInstall { & scripts/install.ps1 -Minimal -Version $Tag } $TagRequests
+  Confirm-StandInInstall { & scripts/install.ps1 -Minimal -Version $PackageVersion } $TagRequests
+  $env:DIFFCOMPASS_VERSION = $PackageVersion
+  try { Confirm-StandInInstall { & scripts/install.ps1 -Minimal } $TagRequests } finally { Remove-Item Env:DIFFCOMPASS_VERSION }
+  Confirm-StandInInstall { & { Invoke-Expression (Get-Content -Raw scripts/install.ps1) } } $LatestRequests
+
+  $StandInLauncher = Join-Path $env:DIFFCOMPASS_BIN_ROOT "diffcompass.cmd"
+  $StandInLauncherHash = (Get-FileHash -LiteralPath $StandInLauncher).Hash
+  $BrokenReleases = [ordered]@{ "v0.0.1" = "Checksum verification failed"; "v0.0.2" = "No checksum found"; "v0.0.3" = "404" }
+  foreach ($BrokenTag in $BrokenReleases.Keys) {
+    $Failure = ""
+    try { & scripts/install.ps1 -Minimal -Version $BrokenTag } catch { $Failure = $_.Exception.Message }
+    if (-not $Failure.Contains($BrokenReleases[$BrokenTag])) { throw "Installing $BrokenTag failed with '$Failure' instead of '$($BrokenReleases[$BrokenTag])'." }
+    if ((Get-Content -Raw -LiteralPath $CurrentVersion).Trim() -ne $PackageVersion) { throw "A failed install of $BrokenTag changed the current version." }
+    if ((Get-FileHash -LiteralPath $StandInLauncher).Hash -ne $StandInLauncherHash) { throw "A failed install of $BrokenTag changed the launcher." }
+    foreach ($BrokenVersion in @("0.0.1", "0.0.2", "0.0.3")) {
+      if (Test-Path -LiteralPath (Join-Path $env:DIFFCOMPASS_INSTALL_ROOT $BrokenVersion)) { throw "A failed install of $BrokenTag left $BrokenVersion in the install root." }
+    }
+  }
+  Remove-Item Function:\Invoke-WebRequest
 } finally {
   Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Root
 }

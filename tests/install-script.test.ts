@@ -336,3 +336,15 @@ skipOnWindows("the last line cut at every character piped to bash runs nothing",
     await expectInert(head + lines[last].slice(0, cut));
   }
 }, 60000);
+
+test("the PowerShell installer is plain ASCII, never calls gh and takes -Version by name only", async () => {
+  const bytes = await readFile(join(repositoryRoot, "scripts", "install.ps1"));
+  expect([...bytes.subarray(0, 3)]).not.toEqual([0xef, 0xbb, 0xbf]);
+  expect(bytes.findIndex((byte) => byte >= 0x80)).toBe(-1);
+  const text = bytes.toString("utf8");
+  expect(text).not.toMatch(/(^|[\s;&|(])gh\s/m);
+  expect(text).not.toMatch(/private/i);
+  expect(text).toContain("PositionalBinding = $false");
+  expect(text).toContain("[string]$Version");
+  expect(await readFile(join(repositoryRoot, "scripts", "smoke-install.ps1"), "utf8")).toContain("function Invoke-WebRequest");
+});
