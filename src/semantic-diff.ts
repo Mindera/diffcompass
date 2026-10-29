@@ -15,13 +15,15 @@ import type { DiffFile, GitComparison, TourAnchor } from "./types.ts";
 export const SEMANTIC_ENGINE = "tree-sitter 0.25.10 / grammars 0.1.13 / summary 4";
 export const SEMANTIC_LIMITS = { bytes: 256_000, lines: 10_000, declarations: 1_000, changes: 200, nodes: 100_000, depth: 200, parseMicros: 150_000, cachedFiles: 32, requests: 4 } as const;
 export const SEMANTIC_NOTICE = "Syntax evidence only: changes or unchanged syntax do not prove behaviour, equivalence, or runtime impact. Names are matched within this file; overload ambiguity is retained. Imports, expressions and unsupported declarations may need the text diff. Display labels are shortened; open source for exact text.";
-type SyntaxLanguage = "typescript" | "tsx" | "kotlin";
+export const SYNTAX_LANGUAGES = [{ id: "typescript", extensions: [".ts", ".mts", ".cts"] }, { id: "tsx", extensions: [".tsx"] }, { id: "kotlin", extensions: [".kt", ".kts"] }] as const;
+export type SyntaxLanguage = (typeof SYNTAX_LANGUAGES)[number]["id"];
 export interface SemanticAnchor extends TourAnchor { signature: string }
 interface SyntaxInput { name: string; optional: boolean; defaulted?: boolean }
 export interface SemanticChange { name: string; kind: string; scope?: "local" | "member" | "top-level"; categories: Array<"added" | "removed" | "signature" | "body">; before?: SemanticAnchor; after?: SemanticAnchor; ambiguous?: boolean; inputs?: { added: SyntaxInput[]; removed: SyntaxInput[] } }
 export interface SemanticSummary {
   path: string;
   status: "analysed" | "unsupported" | "parse-error" | "unavailable" | "limited" | "generated";
+  limit?: "size" | "time" | "complexity";
   language?: SyntaxLanguage;
   engine: string;
   beforeTree: string;
@@ -39,7 +41,7 @@ const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const assets = { typescript: typescriptWasm, tsx: tsxWasm, kotlin: kotlinWasm };
 let initialized: Promise<void> | undefined;
 const languages = new Map<SyntaxLanguage, Promise<Language>>();
-async function languageParser(language: SyntaxLanguage): Promise<Parser> {
+export async function languageParser(language: SyntaxLanguage): Promise<Parser> {
   initialized ??= Bun.file(runtimeWasm).arrayBuffer().then((bytes) => Parser.init({ wasmBinary: new Uint8Array(bytes) })).catch((error) => { initialized = undefined; throw error; });
   await initialized;
   if (!languages.has(language)) languages.set(language, Bun.file(assets[language]).arrayBuffer().then((bytes) => Language.load(new Uint8Array(bytes))).catch((error) => { languages.delete(language); throw error; }));
@@ -47,19 +49,17 @@ async function languageParser(language: SyntaxLanguage): Promise<Parser> {
   parser.setLanguage(await languages.get(language)!);
   return parser;
 }
-function supportedLanguage(path: string | null): SyntaxLanguage | undefined {
+export function supportedLanguage(path: string | null): SyntaxLanguage | undefined {
   if (!path) return undefined;
-  if (/\.(?:ts|mts|cts)$/i.test(path)) return "typescript";
-  if (/\.tsx$/i.test(path)) return "tsx";
-  if (/\.(?:kt|kts)$/i.test(path)) return "kotlin";
-  return undefined;
+  const lower = path.toLowerCase();
+  return SYNTAX_LANGUAGES.find((language) => language.extensions.some((extension) => lower.endsWith(extension)))?.id;
 }
 const comment = (node: Node) => /^(?:comment|line_comment|multiline_comment|block_comment|shebang_line)$/.test(node.type);
 const children = (node: Node, named = false): Node[] => (named ? node.namedChildren : node.children).filter((child): child is Node => child !== null);
 const tsDeclarations = new Set(["function_declaration", "generator_function_declaration", "function_signature", "class_declaration", "abstract_class_declaration", "interface_declaration", "type_alias_declaration", "enum_declaration", "method_definition", "method_signature", "abstract_method_signature", "public_field_definition", "property_signature", "variable_declarator", "internal_module"]);
 const ktDeclarations = new Set(["function_declaration", "class_declaration", "object_declaration", "companion_object", "property_declaration", "type_alias"]);
 
-function declarationParts(node: Node, language: SyntaxLanguage): { name: Node; bodies: Node[] } | undefined {
+export function declarationParts(node: Node, language: SyntaxLanguage): { name: Node; bodies: Node[] } | undefined {
   if (language !== "kotlin") {
     if (!tsDeclarations.has(node.type)) return;
     const name = node.childForFieldName("name");
@@ -228,7 +228,7 @@ export async function analyseSemanticSources(file: DiffFile, before: string, aft
   const language = newLanguage ?? oldLanguage;
   if (!language || (file.oldPath && !oldLanguage) || (file.newPath && !newLanguage) || (oldLanguage && newLanguage && oldLanguage !== newLanguage)) return { ...base, status: "unsupported", message: "Syntax summary supports TypeScript (.ts/.mts/.cts), TSX and Kotlin (.kt/.kts). Unsupported or different before/after languages retain the text diff." };
   base.language = language;
-  if ([before, after].some((source) => Buffer.byteLength(source) > SEMANTIC_LIMITS.bytes || source.split("\n").length > SEMANTIC_LIMITS.lines)) return { ...base, status: "limited", message: "Syntax analysis is limited to 256,000 bytes and 10,000 lines per version. Use the text diff." };
+  if ([before, after].some((source) => Buffer.byteLength(source) > SEMANTIC_LIMITS.bytes || source.split("\n").length > SEMANTIC_LIMITS.lines)) return { ...base, status: "limited", limit: "size", message: "Syntax analysis is limited to 256,000 bytes and 10,000 lines per version. Use the text diff." };
   if ([file.oldPath, file.newPath].some((path) => path && /(?:^|\/)(?:generated|__generated__)(?:\/|$)|\.generated\./i.test(path)) || [before, after].some((source) => /(?:@generated|code generated.*do not edit|auto-generated)/i.test(source.slice(0, 2048)))) return { ...base, status: "generated", message: "Generated-file marker detected; syntax summary skipped. Inspect the text diff or generator source." };
   base.beforeHash = hash(before); base.afterHash = hash(after);
   let parser: Parser | undefined;
@@ -238,7 +238,7 @@ export async function analyseSemanticSources(file: DiffFile, before: string, aft
     for (const [index, source] of [before, after].entries()) {
       const deadline = performance.now() + SEMANTIC_LIMITS.parseMicros / 1000;
       const tree = parser.parse(source, null, { progressCallback: () => performance.now() > deadline });
-      if (!tree) return { ...base, status: "limited", message: "Parser time limit reached; use the text diff." };
+      if (!tree) return { ...base, status: "limited", limit: "time", message: "Parser time limit reached; use the text diff." };
       trees.push(tree);
       if (tree.rootNode.hasError) {
         const errors = tree.rootNode.descendantsOfType("ERROR");
@@ -252,7 +252,8 @@ export async function analyseSemanticSources(file: DiffFile, before: string, aft
     return { ...base, message: message + (changes.length > SEMANTIC_LIMITS.changes ? ` Showing the first ${SEMANTIC_LIMITS.changes}.` : ""), changes: changes.slice(0, SEMANTIC_LIMITS.changes), totalChanges: changes.length };
   } catch (error) {
     const message = error instanceof Error ? error.message : "parser failed";
-    return { ...base, status: /limit/.test(message) ? "limited" : "unavailable", message: `Syntax analysis unavailable: ${message}. Text diff remains available.` };
+    const limited = /limit/.test(message);
+    return { ...base, status: limited ? "limited" : "unavailable", ...(limited ? { limit: "complexity" as const } : {}), message: `Syntax analysis unavailable: ${message}. Text diff remains available.` };
   } finally { trees.forEach((tree) => tree.delete()); parser?.delete(); }
 }
 
@@ -301,7 +302,7 @@ async function computeSemanticDiff(comparison: GitComparison, path: string): Pro
       result = await analyseSemanticSources(captured.files[0]!, before, after, identities);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Captured source unavailable.";
-      result = { ...result, beforeHash: undefined, afterHash: undefined, status: /limit/.test(detail) ? "limited" : "unavailable", message: detail + " Text diff remains available.", changes: [] };
+      result = { ...result, beforeHash: undefined, afterHash: undefined, status: /limit/.test(detail) ? "limited" : "unavailable", ...(/limit/.test(detail) ? { limit: "size" as const } : {}), message: detail + " Text diff remains available.", changes: [] };
     }
   }
   // Failures are retryable; no poisoned parser/source cache.
