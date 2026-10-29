@@ -37,7 +37,8 @@ export function briefingCoverage(comparison: GitComparison, document: BriefingDo
     if (evidence.kind === "document") {
       const file = comparison.files.find(f => (evidence.side === "new" ? f.newPath : f.oldPath) === evidence.path);
       if (!file) continue;
-      for (let line = evidence.startLine; line <= evidence.endLine; line++) { mark(shown, `${file.path}\0${evidence.side}`, line); mark(cited, `${file.path}\0${evidence.side}`, line); }
+      const key = `${file.path}\0${evidence.side}`;
+      for (let line = evidence.startLine; line <= evidence.endLine; line++) { mark(shown, key, line); mark(cited, key, line); }
       continue;
     }
     if (evidence.diff === undefined) { evidenceWithoutDiff++; continue; }

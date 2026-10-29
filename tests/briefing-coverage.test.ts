@@ -157,6 +157,54 @@ test("a document excerpt cites exactly its lines and never expands", async () =>
   } finally { await fixture.cleanup(); }
 }, 30_000);
 
+test("a document excerpt in a replacement cites only its line and leaves the other side unexplained", async () => {
+  const fixture = await repositoryComparison({ "notes.md": "# Notes\nalpha\nend\n" }, { "notes.md": "# Notes\nbeta\ngamma\nend\n" });
+  try {
+    const quoted = (await capturedText(fixture.comparison, "new", "notes.md")).split("\n")[1]!;
+    const doc = await buildBriefing(fixture.comparison, outline, "", {
+      title: "t", sections: [{ id: "s", title: "s", blocks: [{ id: "b", kind: "source", evidenceId: "d1" }] }],
+      evidence: [{ id: "d1", path: "notes.md", side: "new", startLine: 2, endLine: 2, quote: quoted }],
+    });
+    expect(doc.evidence[0]!.kind).toBe("document");
+    expect(doc.evidence[0]!.available).toBe(true);
+    const coverage = briefingCoverage(fixture.comparison, doc);
+    const hunk = coverage.hunks[0]!;
+    expect(hunk.state).toBe("partly-explained");
+    expect(hunk.cited).toEqual([{ side: "new", startLine: 2, endLine: 2 }]);
+    expect(hunk.expanded).toEqual([]);
+    expect(hunk.unexplained).toEqual([{ side: "old", startLine: 2, endLine: 2 }, { side: "new", startLine: 3, endLine: 3 }]);
+    expect(coverage.evidenceWithoutDiff).toBe(0);
+  } finally { await fixture.cleanup(); }
+}, 30_000);
+
+test("document excerpts on both sides of a renamed file explain its replacement by path", async () => {
+  const body = Array.from({ length: 20 }, (_, i) => `line ${i}`);
+  const before = ["# Old", ...body, "tail old", "end"].join("\n") + "\n";
+  const after = ["# Old", ...body, "tail new", "end"].join("\n") + "\n";
+  const fixture = await repositoryComparison({ "old-notes.md": before }, { "old-notes.md": null, "new-notes.md": after });
+  try {
+    const file = fixture.comparison.files[0]!;
+    expect(fixture.comparison.files).toHaveLength(1);
+    expect(file.oldPath).toBe("old-notes.md");
+    expect(file.newPath).toBe("new-notes.md");
+    const oldLine = before.split("\n").indexOf("tail old") + 1, newLine = after.split("\n").indexOf("tail new") + 1;
+    const oldQuote = (await capturedText(fixture.comparison, "old", "old-notes.md")).split("\n")[oldLine - 1]!;
+    const newQuote = (await capturedText(fixture.comparison, "new", "new-notes.md")).split("\n")[newLine - 1]!;
+    const doc = await buildBriefing(fixture.comparison, outline, "", {
+      title: "t", sections: [{ id: "s", title: "s", blocks: [{ id: "b0", kind: "source", evidenceId: "d0" }, { id: "b1", kind: "source", evidenceId: "d1" }] }],
+      evidence: [
+        { id: "d0", path: "old-notes.md", side: "old", startLine: oldLine, endLine: oldLine, quote: oldQuote },
+        { id: "d1", path: "new-notes.md", side: "new", startLine: newLine, endLine: newLine, quote: newQuote },
+      ],
+    });
+    expect(doc.evidence.every(e => e.kind === "document" && e.available)).toBe(true);
+    const hunk = briefingCoverage(fixture.comparison, doc).hunks.find(h => h.path === file.path)!;
+    expect(hunk.state).toBe("explained");
+    expect(hunk.cited).toEqual([{ side: "old", startLine: oldLine, endLine: oldLine }, { side: "new", startLine: newLine, endLine: newLine }]);
+    expect(hunk.expanded).toEqual([]);
+  } finally { await fixture.cleanup(); }
+}, 30_000);
+
 test("over 8f84166..740bada every changed line is counted exactly once", async () => {
   const history = await historicalComparison("8f84166", "740bada");
   const rowsOf = (path: string) => history.files.find(f => f.path === path)!.hunks.flatMap(h => h.rows);
@@ -168,8 +216,13 @@ test("over 8f84166..740bada every changed line is counted exactly once", async (
   const doc = await buildBriefing(history, outline, "", {
     title: "t", sections: [{ id: "s", title: "s", blocks: evidence.map((e, i) => ({ id: `b${i}`, kind: "source" as const, evidenceId: e.id })) }], evidence,
   });
+  expect(doc.evidence.every(e => e.available && e.kind === "code" && e.diff?.available)).toBe(true);
   const coverage = briefingCoverage(history, doc);
   expect(coverage.state).toBe("measured");
+  const gitFile = history.files.find(f => f.path === "src/git.ts")!;
+  const gitHunk = coverage.hunks.find(h => h.path === "src/git.ts" && gitFile.hunks[h.hunk]!.rows.some(r => r.kind === "addition" && r.newLine === afterDeletion.newLine))!;
+  expect(lines(gitHunk.cited, "new")).toContain(afterDeletion.newLine!);
+  expect(gitHunk.expanded.length).toBeGreaterThan(0);
   const changed = history.files.flatMap(f => f.hunks.flatMap(h => h.rows)).filter(r => r.kind === "addition" || r.kind === "deletion").length;
   expect(coverage.totals.changedLines).toBe(changed);
   for (const hunk of coverage.hunks) {
