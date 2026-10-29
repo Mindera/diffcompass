@@ -27,7 +27,7 @@ export const inDomainScope = (path: string, scope: string) => !scope || path.sta
 
 /** Read bounded repository documents from the reviewed snapshot, never symlink targets. */
 export async function loadDomainDocuments(comparison: GitComparison): Promise<DomainDocument[]> {
-  const paths = comparison.repositoryFiles.filter(path => safePath(path) && /(^|\/)CONTEXT(?:-MAP)?\.md$/.test(path)).sort();
+  const paths = comparison.repositoryFiles.filter(path => safePath(path) && /(^|\/)(?:CONTEXT(?:-MAP)?|GLOSSARY)\.md$/.test(path)).sort();
   const selected = new Set(paths.filter(path => comparison.files.some(file => inDomainScope(file.path, posix.dirname(path) === "." ? "" : posix.dirname(path)))));
   const result: DomainDocument[] = [];
   let remaining = 100_000;
@@ -99,8 +99,10 @@ export function validateDomainModels(value: unknown, documents: DomainDocument[]
     for (const binding of model.bindings) {
       const concept = model.concepts.find(item => item.id === binding.conceptId)!;
       const scope = docs.get(concept.source.path)!.scope;
-      const nearest = documents.filter(item => item.path.endsWith("/CONTEXT.md") || item.path === "CONTEXT.md").filter(item => inDomainScope(binding.sourcePath,item.scope)).sort((a,b) => b.scope.length-a.scope.length)[0];
-      if (!comparison.repositoryFiles.includes(binding.sourcePath) || !comparison.files.some(file => file.path === binding.sourcePath) || !inDomainScope(binding.sourcePath,scope) || (nearest && nearest.path !== concept.source.path)) throw new Error("Domain bindings must use the changed source file's nearest glossary.");
+      const owning = documents.filter(item => /(^|\/)(?:CONTEXT|GLOSSARY)\.md$/.test(item.path) && inDomainScope(binding.sourcePath,item.scope));
+      const deepest = Math.max(...owning.map(item => item.scope.length));
+      const nearest = owning.filter(item => item.scope.length === deepest);
+      if (!comparison.repositoryFiles.includes(binding.sourcePath) || !comparison.files.some(file => file.path === binding.sourcePath) || !inDomainScope(binding.sourcePath,scope) || (nearest.length && !nearest.some(item => item.path === concept.source.path))) throw new Error("Domain bindings must use the changed source file's nearest glossary.");
     }
     return structuredClone(model);
   });
