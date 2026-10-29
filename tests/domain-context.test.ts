@@ -90,6 +90,7 @@ test("a CONTEXT.md and a GLOSSARY.md in one folder are equally near", () => {
   for (const concept of glossary.concepts) concept.source.path = "GLOSSARY.md";
   for (const edge of glossary.relationships) edge.source.path = "GLOSSARY.md";
   expect(validateDomainModels([glossary],both,comparison)).toEqual([glossary]);
+  expect(domainPrompt(both)).toContain("CONTEXT.md and GLOSSARY.md in one folder give two models");
 });
 test("a nested GLOSSARY.md takes precedence over the root CONTEXT.md", () => {
   expect(() => validateDomainModels([domainFixtureModel],[...docs,{path:"src/GLOSSARY.md",scope:"src",text:"# Different vocabulary"}],comparison)).toThrow("nearest glossary");
