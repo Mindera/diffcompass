@@ -98,7 +98,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
   const listing = await listCapturedTree(comparison, side);
   const candidates = listing.filter((entry) => supportedLanguage(entry.path));
   const javaFiles = listing.filter((entry) => entry.path.endsWith(".java")).length;
-    const packages: KotlinPackageIndex["packages"] = new Map();
+  const packages: KotlinPackageIndex["packages"] = new Map();
   const kotlinCandidates = candidates.filter((entry) => supportedLanguage(entry.path) === "kotlin").length;
   const unindexed: string[] = [];
   let kotlinIndexed = 0;
