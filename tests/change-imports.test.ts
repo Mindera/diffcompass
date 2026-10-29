@@ -240,3 +240,31 @@ test("a package holding an unparseable file leaves its names unresolved while ot
   expect(targets.new["com.acme.billing.Receipt"]).toEqual(reason);
   expect(targets.new["kotlinx.coroutines.flow.Flow"]).toEqual({ kind: "external", name: "kotlinx.coroutines.flow.Flow" });
 }, 30_000);
+
+const DEMO_USE = "package demo\n\nimport demo.Color\nimport kotlinx.coroutines.flow.Flow\n\nval first = Color.RED\n";
+
+async function demoTargets(extra: Record<string, string>): Promise<Record<string, ImportTarget>> {
+  const before = { "demo/Color.kt": "package demo\n\nenum class Color { RED }\n", "demo/Use.kt": "package demo\n\nval first = 1\n" };
+  return (await kotlinTargets(before, { "demo/Use.kt": DEMO_USE, ...extra }, undefined, "demo/Use.kt")).new;
+}
+
+test("an unparsed Kotlin file without a package line joins the default package when its first node is clean", async () => {
+  const targets = await demoTargets({ "build/Tasks.kt": "import java.io.File\n\nval x = 1\n\nfun broken( {\n" });
+  expect(targets["demo.Color"]).toEqual({ kind: "file", path: "demo/Color.kt" });
+  expect(targets["kotlinx.coroutines.flow.Flow"]).toEqual({ kind: "external", name: "kotlinx.coroutines.flow.Flow" });
+}, 30_000);
+
+test("an unparsed Kotlin file whose first node is an error names itself as unplaced", async () => {
+  const targets = await demoTargets({ "build/Tasks.kt": "pakage build ( {\n\nclass X\n" });
+  const reason = unresolved("package index incomplete: no package known for build/Tasks.kt");
+  expect(targets["demo.Color"]).toEqual(reason);
+  expect(targets["kotlinx.coroutines.flow.Flow"]).toEqual(reason);
+}, 30_000);
+
+test("unplaced Kotlin files are counted after the first one named", async () => {
+  const targets = await demoTargets({
+    "build/Tasks.kt": "@file:JvmName(\"Tasks\")\npackage com.acme.( {\n\nclass X\n",
+    "build/More.kt": "// lead\n) build\n\nclass X\n",
+  });
+  expect(targets["demo.Color"]).toMatchObject({ kind: "unresolved", reason: expect.stringMatching(/^package index incomplete: no package known for build\/(?:Tasks|More)\.kt and 1 more file$/) });
+}, 30_000);

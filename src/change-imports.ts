@@ -155,7 +155,11 @@ const JAVA_REASON = "may be a Java declaration: the captured tree holds Java fil
 
 function kotlinNamedTarget(segments: readonly string[], specifier: string, scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles">): ImportTarget {
   const { kotlin: index, coverage, javaFiles } = scan;
-  if (!index.complete) return unresolved(`package index incomplete: ${coverage.message}`);
+  if (!index.complete) {
+    if (coverage.stoppedBy || !index.unindexed.length) return unresolved(`package index incomplete: ${coverage.message}`);
+    const more = index.unindexed.length - 1;
+    return unresolved(`package index incomplete: no package known for ${index.unindexed[0]}${more > 0 ? ` and ${more} more file${more === 1 ? "" : "s"}` : ""}`);
+  }
   for (let k = segments.length - 1; k >= 1; k--) {
     const name = segments.slice(0, k).join(".");
     const entry = index.packages.get(name);
