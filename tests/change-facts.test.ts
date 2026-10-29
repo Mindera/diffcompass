@@ -47,6 +47,7 @@ function factRangesOf(file: FileChangeFacts): LineRange[] {
     ]),
     ...file.calls.map((call) => ({ side: call.side, startLine: call.line, endLine: call.line })),
     ...file.tests.map((fact) => ({ side: fact.side, startLine: fact.startLine, endLine: fact.endLine })),
+    ...file.imports.map((fact) => ({ side: fact.side, startLine: fact.startLine, endLine: fact.endLine })),
   ];
 }
 

@@ -12,7 +12,8 @@ import type { GitComparison } from "./types.ts";
 export interface ScanLimits { files: number; bytes: number; millis: number }
 export interface CallSite { name: string; path: string; line: number; enclosing: string | null }
 export interface ScanCoverage { side: "old" | "new"; totalFiles: number; scannedFiles: number; scannedBytes: number; skippedFiles: number; parseErrorFiles: number; stoppedBy?: "files" | "bytes" | "time"; message: string }
-export interface TreeScan { coverage: ScanCoverage; callSites: Map<string, CallSite[]> }
+export interface KotlinPackageIndex { complete: boolean; unindexed: string[]; packages: Map<string, { files: string[]; names: Map<string, string[]>; namesComplete: boolean }> }
+export interface TreeScan { coverage: ScanCoverage; callSites: Map<string, CallSite[]>; kotlin: KotlinPackageIndex; javaFiles: number }
 
 const BATCH = 100;
 const CLOCK_INTERVAL = 1_000;
@@ -34,7 +35,7 @@ export function simpleName(name: string): string {
   return name.slice(name.lastIndexOf(".") + 1);
 }
 
-export function callerDeclarations(files: readonly FileChangeFacts[]): CallerDeclaration[] {
+export function callerDeclarations(files: readonly Pick<FileChangeFacts, "completeness" | "symbols">[]): CallerDeclaration[] {
   const declarations: CallerDeclaration[] = [];
   for (const file of files) {
     if (file.completeness.state !== "complete" && file.completeness.state !== "truncated") continue;
@@ -61,10 +62,46 @@ export function nameMatchedCallers(declarations: readonly CallerDeclaration[], s
 
 interface Frame { node: Node; index: number; pushed: boolean }
 
+const KOTLIN_PRELUDE = new Set(["shebang_line", "line_comment", "multiline_comment", "file_annotation"]);
+
+function cleanAnchor(root: Node): boolean {
+  for (let i = 0; i < root.namedChildCount; i++) {
+    const child = root.namedChild(i)!;
+    if (KOTLIN_PRELUDE.has(child.type)) { if (child.hasError) return false; continue; }
+    return child.type !== "ERROR" && !child.hasError;
+  }
+  return false;
+}
+
+function kotlinPackage(root: Node): { name: string; names: string[] } | null {
+  let name: string | null = root.hasError ? null : "";
+  let headed = false;
+  const names: string[] = [];
+  for (let i = 0; i < root.namedChildCount; i++) {
+    const child = root.namedChild(i)!;
+    if (child.type === "package_header") {
+      headed = true;
+      const identifier = child.hasError ? null : child.namedChildren.find((part) => part?.type === "identifier");
+      name = identifier ? identifier.namedChildren.filter((part) => part?.type === "simple_identifier").map((part) => part!.text.replace(/`/g, "")).join(".") : null;
+      continue;
+    }
+    const parts = child.hasError ? undefined : declarationParts(child, "kotlin");
+    if (parts) names.push(parts.name.text.replace(/^`|`$/g, ""));
+  }
+  if (name === null && !headed && cleanAnchor(root)) name = "";
+  return name === null ? null : { name, names };
+}
+
 export async function scanCapturedTree(comparison: GitComparison, side: "old" | "new", options: { names: ReadonlySet<string>; limits: ScanLimits; first?: readonly string[] }): Promise<TreeScan> {
   const start = performance.now();
   const { names, limits } = options;
-  const candidates = (await listCapturedTree(comparison, side)).filter((entry) => supportedLanguage(entry.path));
+  const listing = await listCapturedTree(comparison, side);
+  const candidates = listing.filter((entry) => supportedLanguage(entry.path));
+  const javaFiles = listing.filter((entry) => entry.path.endsWith(".java")).length;
+  const packages: KotlinPackageIndex["packages"] = new Map();
+  const kotlinCandidates = candidates.filter((entry) => supportedLanguage(entry.path) === "kotlin").length;
+  const unindexed: string[] = [];
+  let kotlinIndexed = 0;
   const byPath = new Map(candidates.map((entry) => [entry.path, entry]));
   const ordered: CapturedTreeEntry[] = [];
   const placed = new Set<string>();
@@ -113,7 +150,8 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
     let loadedUntil = 0;
     for (let index = 0; index < ordered.length; index++) {
       const entry = ordered[index];
-      if (!Number.isFinite(entry.size) || entry.size > SEMANTIC_LIMITS.bytes) { skippedFiles++; continue; }
+      const isKotlin = supportedLanguage(entry.path) === "kotlin";
+      if (!Number.isFinite(entry.size) || entry.size > SEMANTIC_LIMITS.bytes) { skippedFiles++; if (isKotlin) unindexed.push(entry.path); continue; }
       if (timeUp()) { stoppedBy = "time"; break; }
       if (scannedFiles >= limits.files) { stoppedBy = "files"; break; }
       if (scannedBytes + entry.size > limits.bytes) { stoppedBy = "bytes"; break; }
@@ -128,16 +166,31 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
         }
       }
       const text = texts.get(entry.oid);
-      if (text === null || text === undefined) { skippedFiles++; continue; }
+      if (text === null || text === undefined) { skippedFiles++; if (isKotlin) unindexed.push(entry.path); continue; }
       const language = supportedLanguage(entry.path)!;
       let parser = parsers.get(language);
       if (!parser) { parser = await languageParser(language); parsers.set(language, parser); }
       const tree = parseWithin(parser, text, SEMANTIC_LIMITS.parseMicros);
-      if (!tree) { skippedFiles++; continue; }
+      if (!tree) { skippedFiles++; if (isKotlin) unindexed.push(entry.path); continue; }
       try {
         const found = walk(tree.rootNode, language, entry.path);
         if (!found) { stoppedBy = "time"; break; }
         if (tree.rootNode.hasError) parseErrorFiles++;
+        if (language === "kotlin") {
+          const declared = kotlinPackage(tree.rootNode);
+          if (!declared) unindexed.push(entry.path);
+          else {
+            kotlinIndexed++;
+            let bucket = packages.get(declared.name);
+            if (!bucket) { bucket = { files: [], names: new Map(), namesComplete: true }; packages.set(declared.name, bucket); }
+            bucket.files.push(entry.path);
+            if (tree.rootNode.hasError) bucket.namesComplete = false;
+            for (const name of new Set(declared.names)) {
+              const list = bucket.names.get(name);
+              if (list) list.push(entry.path); else bucket.names.set(name, [entry.path]);
+            }
+          }
+        }
         for (const site of found) {
           const list = callSites.get(site.name);
           if (list) list.push(site); else callSites.set(site.name, [site]);
@@ -154,7 +207,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
 
   const base = `Scanned ${scannedFiles} of ${candidates.length} files`;
   const message = stoppedBy ? `${base}; stopped at the ${LIMIT_WORDS[stoppedBy]} limit.` : `${base}.`;
-  return { coverage: { side, totalFiles: candidates.length, scannedFiles, scannedBytes, skippedFiles, parseErrorFiles, ...(stoppedBy ? { stoppedBy } : {}), message }, callSites };
+  return { coverage: { side, totalFiles: candidates.length, scannedFiles, scannedBytes, skippedFiles, parseErrorFiles, ...(stoppedBy ? { stoppedBy } : {}), message }, callSites, kotlin: { complete: kotlinIndexed === kotlinCandidates, unindexed, packages }, javaFiles };
 }
 
 export type CodeGraphGate = { usable: true; reading: string; indexedFiles?: number } | { usable: false; reason: string };
