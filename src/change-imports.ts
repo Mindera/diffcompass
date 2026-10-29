@@ -7,6 +7,9 @@ import type { GitComparison } from "./types.ts";
 export type ImportTarget = { kind: "file"; path: string } | { kind: "files"; paths: string[]; partial: boolean } | { kind: "external"; name: string } | { kind: "unresolved"; reason: string };
 export interface ImportFact { analysis: "tree-sitter imports"; side: "old" | "new"; startLine: number; endLine: number; specifier: string; changed: boolean; target: ImportTarget }
 export interface TreeModules { files: ReadonlySet<string>; workspacePackages: ReadonlySet<string>; aliasPatterns: readonly string[]; baseUrls: readonly string[]; relativeOptions: readonly string[]; complete: boolean; reason?: string }
+export type ImportSite = Omit<ImportFact, "analysis" | "target">;
+export interface KotlinImportSite extends ImportSite { segments: string[]; star: boolean; hasError: boolean }
+export interface IndexFailure { error: string }
 
 const MANIFEST_LIMIT = 500, TSCONFIG_LIMIT = 100, CONFIG_BYTES = 256_000;
 const TSCONFIG_PATH = /(?:^|\/)tsconfig[^/]*\.json$/;
@@ -104,23 +107,34 @@ function typescriptSpecifier(node: Node): string | null {
   return args?.namedChildCount === 1 ? stringText(args.namedChild(0)) : null;
 }
 
-function importFact(node: Node, side: "old" | "new", specifier: string, changedLines: ReadonlySet<number>, target: ImportTarget): ImportFact {
+function importSite(node: Node, side: "old" | "new", specifier: string, changedLines: ReadonlySet<number>): ImportSite {
   const startLine = node.startPosition.row + 1, endLine = node.endPosition.row + 1;
   let changed = false;
   for (let line = startLine; line <= endLine && !changed; line++) changed = changedLines.has(line);
-  return { analysis: "tree-sitter imports", side, startLine, endLine, specifier, changed, target };
+  return { side, startLine, endLine, specifier, changed };
 }
 
-export function typescriptImports(root: Node, path: string, side: "old" | "new", changedLines: ReadonlySet<number>, modules: TreeModules): ImportFact[] {
-  const facts: ImportFact[] = [];
+const importFact = ({ side, startLine, endLine, specifier, changed }: ImportSite, target: ImportTarget): ImportFact => ({ analysis: "tree-sitter imports", side, startLine, endLine, specifier, changed, target });
+
+export function typescriptImportSites(root: Node, side: "old" | "new", changedLines: ReadonlySet<number>): ImportSite[] {
+  const sites: ImportSite[] = [];
   const stack: Node[] = [root];
   while (stack.length) {
     const node = stack.pop()!;
     const specifier = typescriptSpecifier(node);
-    if (specifier !== null) facts.push(importFact(node, side, specifier, changedLines, resolveTypescriptSpecifier(specifier, path, modules)));
+    if (specifier !== null) sites.push(importSite(node, side, specifier, changedLines));
     for (let i = node.childCount - 1; i >= 0; i--) stack.push(node.child(i)!);
   }
-  return facts;
+  return sites;
+}
+
+export function resolveTypescriptImports(sites: readonly ImportSite[], path: string, modules: TreeModules | IndexFailure): ImportFact[] {
+  if ("error" in modules) return sites.map((site) => importFact(site, unresolved(`import index unavailable: ${modules.error}`)));
+  return sites.map((site) => importFact(site, resolveTypescriptSpecifier(site.specifier, path, modules)));
+}
+
+export function typescriptImports(root: Node, path: string, side: "old" | "new", changedLines: ReadonlySet<number>, modules: TreeModules | IndexFailure): ImportFact[] {
+  return resolveTypescriptImports(typescriptImportSites(root, side, changedLines), path, modules);
 }
 
 const unresolved = (reason: string): ImportTarget => ({ kind: "unresolved", reason });
@@ -182,8 +196,8 @@ function kotlinTarget(segments: readonly string[], star: boolean, specifier: str
   return kotlinNamedTarget(segments, specifier, scan);
 }
 
-export function kotlinImports(root: Node, path: string, side: "old" | "new", changedLines: ReadonlySet<number>, scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles">): ImportFact[] {
-  const facts: ImportFact[] = [];
+export function kotlinImportSites(root: Node, side: "old" | "new", changedLines: ReadonlySet<number>): KotlinImportSite[] {
+  const sites: KotlinImportSite[] = [];
   const stack: Node[] = [root];
   while (stack.length) {
     const node = stack.pop()!;
@@ -193,10 +207,19 @@ export function kotlinImports(root: Node, path: string, side: "old" | "new", cha
       const segments = identifier.namedChildren.filter((child) => child?.type === "simple_identifier").map((child) => child!.text.replace(/`/g, ""));
       const star = node.namedChildren.some((child) => child?.type === "wildcard_import");
       const specifier = star ? `${segments.join(".")}.*` : segments.join(".");
-      facts.push(importFact(node, side, specifier, changedLines, node.hasError || !segments.length ? unresolved("import could not be fully parsed") : kotlinTarget(segments, star, specifier, scan)));
+      sites.push({ ...importSite(node, side, specifier, changedLines), segments, star, hasError: node.hasError });
       continue;
     }
     for (let i = node.childCount - 1; i >= 0; i--) stack.push(node.child(i)!);
   }
-  return facts;
+  return sites;
+}
+
+export function resolveKotlinImports(sites: readonly KotlinImportSite[], scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles"> | IndexFailure): ImportFact[] {
+  if ("error" in scan) return sites.map((site) => importFact(site, unresolved(`package index unavailable: ${scan.error}`)));
+  return sites.map((site) => importFact(site, site.hasError || !site.segments.length ? unresolved("import could not be fully parsed") : kotlinTarget(site.segments, site.star, site.specifier, scan)));
+}
+
+export function kotlinImports(root: Node, path: string, side: "old" | "new", changedLines: ReadonlySet<number>, scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles">): ImportFact[] {
+  return resolveKotlinImports(kotlinImportSites(root, side, changedLines), scan);
 }

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { listCapturedTree } from "../src/captured-tree.ts";
 import { loadChangeFacts, type ChangeFacts, type FileChangeFacts } from "../src/change-facts.ts";
-import { resolveTypescriptSpecifier, type ImportFact, type ImportTarget, type TreeModules } from "../src/change-imports.ts";
+import { resolveKotlinImports, resolveTypescriptImports, resolveTypescriptSpecifier, type ImportFact, type ImportSite, type ImportTarget, type KotlinImportSite, type TreeModules } from "../src/change-imports.ts";
 import type { GitComparison } from "../src/types.ts";
 import { historicalComparison, repositoryComparison } from "./comparison-fixtures.ts";
 
@@ -156,6 +156,30 @@ test("relative, absolute, scheme and bare specifiers each take their own rule", 
   expect(resolve("~/a")).toEqual(unresolved("not a package name"));
   expect(resolveTypescriptSpecifier("zod", "src/main.ts", { ...modules, complete: false, reason: "package and alias index incomplete: x" })).toEqual(unresolved("package and alias index incomplete: x"));
   expect(resolveTypescriptSpecifier("./a", "src/main.ts", { ...modules, relativeOptions: ["rootDirs"] })).toEqual(unresolved("tsconfig rootDirs changes relative resolution"));
+});
+
+test("a TypeScript import index that cannot be built keeps that side's import facts, each unresolved with the error", () => {
+  const modules: TreeModules = { files: new Set(["src/a.ts"]), workspacePackages: new Set(), aliasPatterns: [], baseUrls: [], relativeOptions: [], complete: true };
+  const site = (side: "old" | "new", specifier: string): ImportSite => ({ side, startLine: 1, endLine: 1, specifier, changed: true });
+  const fact = (side: "old" | "new", specifier: string, target: ImportTarget): ImportFact => ({ analysis: "tree-sitter imports", ...site(side, specifier), target });
+  const sites = (side: "old" | "new") => [site(side, "./a"), site(side, "zod")];
+  const unavailable = unresolved("import index unavailable: tree listing failed");
+  expect([...resolveTypescriptImports(sites("old"), "src/main.ts", modules), ...resolveTypescriptImports(sites("new"), "src/main.ts", { error: "tree listing failed" })]).toEqual([
+    fact("old", "./a", { kind: "file", path: "src/a.ts" }), fact("old", "zod", { kind: "external", name: "zod" }),
+    fact("new", "./a", unavailable), fact("new", "zod", unavailable),
+  ]);
+});
+
+test("a Kotlin package index that cannot be built keeps that side's import facts, each unresolved with the error", () => {
+  const packages = new Map([["demo", { files: ["demo/Color.kt"], names: new Map([["Color", ["demo/Color.kt"]]]), namesComplete: true }]]);
+  const scan = { kotlin: { complete: true, unindexed: [], packages }, coverage: { side: "new" as const, totalFiles: 1, scannedFiles: 1, scannedBytes: 40, skippedFiles: 0, parseErrorFiles: 0, message: "Scanned 1 of 1 files." }, javaFiles: 0 };
+  const site = (side: "old" | "new", hasError: boolean): KotlinImportSite => ({ side, startLine: 3, endLine: 3, specifier: "demo.Color", changed: false, segments: ["demo", "Color"], star: false, hasError });
+  const fact = (side: "old" | "new", target: ImportTarget): ImportFact => ({ analysis: "tree-sitter imports", side, startLine: 3, endLine: 3, specifier: "demo.Color", changed: false, target });
+  const unavailable = unresolved("package index unavailable: blob read failed");
+  expect([...resolveKotlinImports([site("old", true), site("old", false)], { error: "blob read failed" }), ...resolveKotlinImports([site("new", true), site("new", false)], scan)]).toEqual([
+    fact("old", unavailable), fact("old", unavailable),
+    fact("new", unresolved("import could not be fully parsed")), fact("new", { kind: "file", path: "demo/Color.kt" }),
+  ]);
 });
 
 test("imports beyond the limit on one side mark the file truncated", async () => {
