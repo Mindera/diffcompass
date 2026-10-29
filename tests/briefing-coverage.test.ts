@@ -57,9 +57,17 @@ test("rows behind an omitted-lines marker stay unexplained", async () => {
   expect(hunk.unexplained.length).toBeGreaterThan(0);
   const diff = doc.evidence[0]!.diff!;
   if (!diff.available) throw Error(diff.reason);
+  expect(diff.rows.some(r => r.kind === "meta")).toBe(true);
   const shownNew = new Set(diff.rows.map(r => r.newLine)), shownOld = new Set(diff.rows.map(r => r.oldLine));
-  for (const line of lines(hunk.unexplained, "new")) expect(shownNew.has(line)).toBe(false);
-  for (const line of lines(hunk.unexplained, "old")) expect(shownOld.has(line)).toBe(false);
+  const captured = comparison.files.find(f => f.path === "large.ts")!.hunks[0]!.rows;
+  const hidden = (side: "old" | "new") => captured
+    .filter(r => r.kind === (side === "old" ? "deletion" : "addition"))
+    .map(r => (side === "old" ? r.oldLine : r.newLine)!)
+    .filter(line => !(side === "old" ? shownOld : shownNew).has(line));
+  expect(hidden("new").length).toBeGreaterThan(0);
+  expect(hidden("old").length).toBeGreaterThan(0);
+  expect(lines(hunk.unexplained, "new")).toEqual(hidden("new"));
+  expect(lines(hunk.unexplained, "old")).toEqual(hidden("old"));
 }, 30_000);
 
 test("an uncited file is not explained and every hunk partitions its changed lines", async () => {
@@ -71,9 +79,43 @@ test("an uncited file is not explained and every hunk partitions its changed lin
     const all = [...hunk.cited, ...hunk.expanded, ...hunk.unexplained].flatMap(r => lines([r], r.side).map(line => `${r.side}${line}`));
     expect(size(hunk.cited) + size(hunk.expanded) + size(hunk.unexplained)).toBe(hunk.changedLines);
     expect(new Set(all).size).toBe(all.length);
+    const captured = comparison.files.find(f => f.path === hunk.path)!.hunks[hunk.hunk]!.rows;
+    expect(hunk.changedLines).toBe(captured.filter(r => r.kind === "addition" || r.kind === "deletion").length);
   }
+  const stateOf = (path: string) => hunksOf(coverage, path)[0]!.state;
+  expect([stateOf("calc.ts"), stateOf("large.ts"), stateOf("log.ts"), stateOf("other.ts")]).toEqual(["explained", "partly-explained", "not-explained", "not-explained"]);
   expect(coverage.totals.hunks).toBe(coverage.hunks.length);
+  expect(coverage.totals.explained).toBe(1);
+  expect(coverage.totals.partlyExplained).toBe(1);
+  expect(coverage.totals.notExplained).toBe(2);
   expect(coverage.totals.changedLines).toBe(coverage.hunks.reduce((n, h) => n + h.changedLines, 0));
+  expect(coverage.totals.cited).toBe(coverage.hunks.reduce((n, h) => n + size(h.cited), 0));
+  expect(coverage.totals.expanded).toBe(coverage.hunks.reduce((n, h) => n + size(h.expanded), 0));
+  expect(coverage.totals.unexplained).toBe(coverage.hunks.reduce((n, h) => n + size(h.unexplained), 0));
+}, 30_000);
+
+test("shown code evidence without a diff is counted and explains nothing", async () => {
+  const doc = structuredClone(await documentWith([["calc.ts", 3]]));
+  delete doc.evidence[0]!.diff;
+  const coverage = briefingCoverage(comparison, doc);
+  expect(coverage.evidenceWithoutDiff).toBe(1);
+  expect(hunksOf(coverage, "calc.ts")[0]!.state).toBe("not-explained");
+}, 30_000);
+
+test("a diff that is unavailable explains nothing", async () => {
+  const doc = structuredClone(await documentWith([["calc.ts", 3]]));
+  doc.evidence[0]!.diff = { available: false, reason: "gone" };
+  const coverage = briefingCoverage(comparison, doc);
+  expect(coverage.evidenceWithoutDiff).toBe(0);
+  expect(hunksOf(coverage, "calc.ts")[0]!.state).toBe("not-explained");
+}, 30_000);
+
+test("a diff whose paths do not match the comparison file explains nothing", async () => {
+  const doc = structuredClone(await documentWith([["calc.ts", 3]]));
+  const diff = doc.evidence[0]!.diff!;
+  if (!diff.available) throw Error(diff.reason);
+  diff.newPath = "elsewhere.ts";
+  expect(hunksOf(briefingCoverage(comparison, doc), "calc.ts")[0]!.state).toBe("not-explained");
 }, 30_000);
 
 test("another comparison makes the coverage unavailable", async () => {

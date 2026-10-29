@@ -1,13 +1,19 @@
-import type { BriefingDocument, BriefingEvidence } from "./briefing.ts";
-import { lineRanges, type LineRange } from "./change-facts.ts";
+import type { BriefingDocument } from "./briefing.ts";
+import { lineRanges, type LineRange, type LineSide } from "./change-facts.ts";
 import { diffSourceIdentity } from "./diff-sources.ts";
-import type { GitComparison } from "./types.ts";
+import type { DiffRow, GitComparison } from "./types.ts";
 
 export type HunkCoverageState = "explained" | "partly-explained" | "not-explained";
 export interface HunkCoverage { path: string; hunk: number; header: string; state: HunkCoverageState; changedLines: number; cited: LineRange[]; expanded: LineRange[]; unexplained: LineRange[] }
 export interface BriefingCoverage { state: "measured" | "unavailable"; reason?: string; comparisonId: string; documentId: string; hunks: HunkCoverage[]; totals: { hunks: number; explained: number; partlyExplained: number; notExplained: number; changedLines: number; cited: number; expanded: number; unexplained: number }; evidenceWithoutDiff: number }
 
 const emptyTotals = () => ({ hunks: 0, explained: 0, partlyExplained: 0, notExplained: 0, changedLines: 0, cited: 0, expanded: 0, unexplained: 0 });
+
+function changedLine(row: DiffRow): { side: LineSide; line: number } | undefined {
+  const side: LineSide | undefined = row.kind === "deletion" ? "old" : row.kind === "addition" ? "new" : undefined;
+  const line = side === "old" ? row.oldLine : side === "new" ? row.newLine : null;
+  return side && line !== null ? { side, line } : undefined;
+}
 
 function shownEvidenceIds(document: BriefingDocument): Set<string> {
   const ids = new Set<string>(), diagrams = new Set<string>();
@@ -26,7 +32,7 @@ export function briefingCoverage(comparison: GitComparison, document: BriefingDo
   const shown = new Map<string, Set<number>>(), cited = new Map<string, Set<number>>();
   const mark = (map: Map<string, Set<number>>, key: string, line: number) => { let set = map.get(key); if (!set) map.set(key, set = new Set()); set.add(line); };
   let evidenceWithoutDiff = 0;
-  for (const evidence of document.evidence as BriefingEvidence[]) {
+  for (const evidence of document.evidence) {
     if (!ids.has(evidence.id) || !evidence.available || evidence.kind !== "code") continue;
     if (evidence.diff === undefined) { evidenceWithoutDiff++; continue; }
     const diff = evidence.diff;
@@ -34,10 +40,9 @@ export function briefingCoverage(comparison: GitComparison, document: BriefingDo
     const file = comparison.files.find(f => [f.path, f.oldPath, f.newPath].includes(evidence.path) && f.oldPath === diff.oldPath && f.newPath === diff.newPath);
     if (!file) continue;
     for (const row of diff.rows) {
-      const side = row.kind === "deletion" ? "old" : row.kind === "addition" ? "new" : undefined;
-      if (!side) continue;
-      const line = side === "old" ? row.oldLine : row.newLine;
-      if (line === null) continue;
+      const changed = changedLine(row);
+      if (!changed) continue;
+      const { side, line } = changed;
       mark(shown, `${file.path}\0${side}`, line);
       if (side === evidence.side && line >= evidence.startLine && line <= evidence.endLine) mark(cited, `${file.path}\0${side}`, line);
     }
@@ -48,10 +53,9 @@ export function briefingCoverage(comparison: GitComparison, document: BriefingDo
       const lists = { cited: { old: [] as number[], new: [] as number[] }, expanded: { old: [] as number[], new: [] as number[] }, unexplained: { old: [] as number[], new: [] as number[] } };
       let changed = 0;
       for (const row of hunk.rows) {
-        const side = row.kind === "deletion" ? "old" : row.kind === "addition" ? "new" : undefined;
-        if (!side) continue;
-        const line = side === "old" ? row.oldLine : row.newLine;
-        if (line === null) continue;
+        const at = changedLine(row);
+        if (!at) continue;
+        const { side, line } = at;
         changed++;
         const key = `${file.path}\0${side}`;
         (cited.get(key)?.has(line) ? lists.cited : shown.get(key)?.has(line) ? lists.expanded : lists.unexplained)[side].push(line);
