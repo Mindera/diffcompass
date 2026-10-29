@@ -82,7 +82,7 @@ function kotlinPackage(root: Node): { name: string; names: string[] } | null {
     if (child.type === "package_header") {
       headed = true;
       const identifier = child.hasError ? null : child.namedChildren.find((part) => part?.type === "identifier");
-      name = identifier ? identifier.text.replace(/\s+/g, "") : null;
+      name = identifier ? identifier.namedChildren.filter((part) => part?.type === "simple_identifier").map((part) => part!.text.replace(/`/g, "")).join(".") : null;
       continue;
     }
     const parts = child.hasError ? undefined : declarationParts(child, "kotlin");

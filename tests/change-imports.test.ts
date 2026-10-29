@@ -269,6 +269,12 @@ test("a name declared twice in one Kotlin file targets that file", async () => {
   expect(targets.new["demo.label"]).toEqual({ kind: "file", path: "demo/Mappers.kt" });
 }, 30_000);
 
+test("a Kotlin package name with a backticked segment resolves imports of its declarations", async () => {
+  const before = { "acme/in/Thing.kt": "package com.acme.`in`\n\nclass Thing\n", "app/Use.kt": "package app\n\nval first = 1\n" };
+  const targets = await kotlinTargets(before, { "app/Use.kt": "package app\n\nimport com.acme.`in`.Thing\n\nval first = 2\n" }, undefined, "app/Use.kt");
+  expect(targets.new["com.acme.in.Thing"]).toEqual({ kind: "file", path: "acme/in/Thing.kt" });
+}, 30_000);
+
 const DEFAULT_PACKAGE_USE = "package app\n\nimport Foo\nimport Color.*\nimport kotlinx.coroutines.flow.Flow\n\nval first = RED\n";
 
 test("Kotlin imports of default-package declarations target their files while undeclared names stay external", async () => {
