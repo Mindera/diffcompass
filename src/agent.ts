@@ -183,7 +183,7 @@ class ArchitectureValidationError extends Error {}
 
 class FileExplanationCoverageError extends Error {}
 
-class DryRunPlanValidationError extends Error {}
+class DryRunPlanValidationError extends ReviewError {}
 
 // Keep initial outline planning, on-demand planning and repair on one contract.
 const DRY_RUN_PLANS_OUTPUT_CONTRACT = `Dry-run plan JSON shape: ${JSON.stringify({

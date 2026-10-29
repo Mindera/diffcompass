@@ -3,6 +3,7 @@ import { TourAgent } from "../src/agent.ts";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { DEFAULT_REVIEW_POLICY } from "../src/config.ts";
 import { validateDryRunPlans } from "../src/dry-runs.ts";
+import { ReviewError } from "../src/errors.ts";
 import type { GitComparison } from "../src/types.ts";
 
 const comparison: GitComparison = {
@@ -137,7 +138,9 @@ test("malformed dry-run plans exhaust two repairs without silently dropping sour
   try {
     let after = 0;
     for (let i = 0; i < 3; i++) after = (await respond(bridge, after, misplacedAnchors())).sequence;
-    expect((await rejected)?.message).toContain("dryRunPlans[0] contains an unsupported field: anchors");
+    const error = await rejected;
+    expect(error).toBeInstanceOf(ReviewError);
+    expect(error?.message).toContain("dryRunPlans[0] contains an unsupported field: anchors");
     expect(await bridge.eventsAfter(after, 0)).toEqual([]);
   } finally { bridge.dispose(); }
 });
