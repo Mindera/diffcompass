@@ -118,7 +118,9 @@ async function check(repo: string, baseRef: string, headRef: string): Promise<vo
   }
 
   const message = facts.callerCoverage.nameMatch?.message;
-  if (!message || !/^Scanned \d+ of \d+ files/.test(message)) fail(7, `scan message is ${JSON.stringify(message)}`);
+  const searched = facts.callerCoverage.names.searched;
+  if (searched > 0 && (!message || !/^Scanned \d+ of \d+ files/.test(message))) fail(7, `scan message is ${JSON.stringify(message)}`);
+  if (searched === 0 && facts.callerCoverage.nameMatch !== null) fail(7, `no names were searched but the scan coverage is ${JSON.stringify(facts.callerCoverage.nameMatch)}`);
 
   const skipped = facts.files.flatMap((file) => file.completeness.state === "skipped" ? [{ path: file.path, reason: file.completeness.reason }] : []);
   console.log(JSON.stringify({
