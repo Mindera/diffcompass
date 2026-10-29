@@ -329,10 +329,16 @@ function markdownCodeBlock(fence) {
   return `<pre><code${language}>${escapeHtml(fence.lines.join("\n"))}</code></pre>`;
 }
 
-function markdownSourceBlock(html, startLine, endLine, source) {
+function markdownSourceBlock(html, startLine, endLine, source, highlight = true, tag = "section") {
   if (!source) return html;
   const changed = [...source.changedLines].some((line) => line >= startLine && line <= endLine);
-  return `<section class="markdown-source-block${changed ? ` ${source.side === "old" ? "deletion" : "addition"}` : ""}" data-markdown-path="${escapeHtml(source.path)}" data-markdown-side="${source.side}" data-source-start="${startLine}" data-source-end="${endLine}">${html}</section>`;
+  source.blocks?.push({ html, startLine, endLine, changed, highlight });
+  return `<${tag} class="markdown-source-block${changed && highlight ? ` ${source.side === "old" ? "deletion" : "addition"}` : ""}" data-markdown-path="${escapeHtml(source.path)}" data-markdown-side="${source.side}" data-source-start="${startLine}" data-source-end="${endLine}">${html}</${tag}>`;
+}
+
+function markdownItemClass(startLine, endLine, source) {
+  const changed = source && [...source.changedLines].some(line => line >= startLine && line <= endLine);
+  return changed ? ` class="markdown-source-item ${source.side === "old" ? "deletion" : "addition"}"` : "";
 }
 
 function markdownInlineSource(value, line, source, sourceLine) {
@@ -348,7 +354,15 @@ function renderMarkdown(value, headingOffset = 1, source = null) {
   let listStart = null;
   let fence = null;
   const closeList = () => {
-    if (listType) output.push(markdownSourceBlock(`<${listType}>${listItems.map((item) => item.html).join("")}</${listType}>`, listStart, listItems.at(-1)?.line ?? listStart, source));
+    if (listType) {
+      // Match individual items in Unified so editing one item does not repeat
+      // the retained list. Split keeps its list wrapper and highlights items.
+      for (const item of listItems) source?.blocks?.push({
+        html: item.html, startLine: item.line, endLine: item.endLine, listType, highlight: true,
+        changed: [...source.changedLines].some(line => line >= item.line && line <= item.endLine),
+      });
+      output.push(markdownSourceBlock(`<${listType}>${listItems.map(item => `<li${markdownItemClass(item.line, item.endLine, source)}>${item.html}</li>`).join("")}</${listType}>`, listStart, listItems.at(-1)?.endLine ?? listStart, source ? { ...source, blocks: undefined } : null, false));
+    }
     listType = null;
     listItems = [];
     listStart = null;
@@ -385,7 +399,7 @@ function renderMarkdown(value, headingOffset = 1, source = null) {
         index += 1;
       }
       index -= 1;
-      output.push(markdownSourceBlock(`<div class="markdown-table-wrap"><table><thead><tr>${headers.map((header, cellIndex) => `<th class="align-${alignments[cellIndex]}">${markdownInlineSource(header, startLine, source, line)}</th>`).join("")}</tr></thead><tbody>${tableRows.map((row) => `<tr>${row.cells.map((cell, cellIndex) => `<td class="align-${alignments[cellIndex]}">${markdownInlineSource(cell, row.line, source, row.sourceLine)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`, startLine, index + 1, source));
+      output.push(markdownSourceBlock(`<div class="markdown-table-wrap"><table><thead><tr${markdownItemClass(startLine, startLine + 1, source)}>${headers.map((header, cellIndex) => `<th class="align-${alignments[cellIndex]}">${markdownInlineSource(header, startLine, source, line)}</th>`).join("")}</tr></thead><tbody>${tableRows.map((row) => `<tr${markdownItemClass(row.line, row.line, source)}>${row.cells.map((cell, cellIndex) => `<td class="align-${alignments[cellIndex]}">${markdownInlineSource(cell, row.line, source, row.sourceLine)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`, startLine, index + 1, source, false));
       continue;
     }
     const heading = /^\s*(#{1,6})\s+(.+?)\s*$/.exec(line);
@@ -403,7 +417,13 @@ function renderMarkdown(value, headingOffset = 1, source = null) {
         listType = nextListType;
         listStart = index + 1;
       }
-      listItems.push({ line: index + 1, html: `<li>${markdownInlineSource(item[2], index + 1, source, line)}</li>` });
+      listItems.push({ line: index + 1, endLine: index + 1, html: markdownInlineSource(item[2], index + 1, source, line) });
+      continue;
+    }
+    if (listType && line.trim()) {
+      const previous = listItems.at(-1);
+      previous.html += ` ${markdownInlineSource(line.trim(), index + 1, source, line)}`;
+      previous.endLine = index + 1;
       continue;
     }
     closeList();
@@ -1818,8 +1838,57 @@ function markdownChangedRanges(file, side) {
 }
 
 function renderMarkdownDiff(file) {
-  const sides = markdownSides(file);
+  const sides = state.diffLayout === "unified" && markdownSides(file).length === 2 ? [["unified", "Changes"]] : markdownSides(file);
   return `<div class="markdown-diff${sides.length === 1 ? " single" : ""}">${sides.map(([side, label]) => `<section class="markdown-diff-side ${side}"><header>${label}</header><article class="markdown-preview rendered-markdown" data-markdown-path="${escapeHtml(file.path)}" data-markdown-side="${side}"><p class="muted">Loading Markdown preview…</p></article></section>`).join("")}</div>`;
+}
+
+function renderUnifiedMarkdownDiff(file, before, after) {
+  const blocks = { old: [], new: [] };
+  const changedLines = { old: markdownChangedLines(file, "old"), new: markdownChangedLines(file, "new") };
+  for (const [side, content] of [["old", before], ["new", after]]) {
+    renderMarkdown(content, 0, { path: file.path, side, blocks: blocks[side], changedLines: changedLines[side], changedRanges: markdownChangedRanges(file, side) });
+  }
+  // Removing the changed lines from each captured source leaves the same
+  // unchanged sequence, including context outside the diff's visible hunks.
+  const oldLines = before.split("\n"), newLines = after.split("\n");
+  const correspondingLines = new Map();
+  let oldLine = 1, newLine = 1;
+  while (oldLine <= oldLines.length && newLine <= newLines.length) {
+    if (changedLines.old.has(oldLine)) { oldLine++; continue; }
+    if (changedLines.new.has(newLine)) { newLine++; continue; }
+    if (oldLines[oldLine - 1] === newLines[newLine - 1]) correspondingLines.set(oldLine, newLine);
+    oldLine++; newLine++;
+  }
+  const newBlocks = new Map(blocks.new.map((block, index) => [block.startLine, { block, index }]));
+  const output = [];
+  let listType;
+  const append = (block, side, changed) => {
+    if (listType !== block.listType) {
+      if (listType) output.push(`</${listType}>`);
+      listType = block.listType;
+      if (listType) output.push(`<${listType}>`);
+    }
+    output.push(markdownSourceBlock(block.html, block.startLine, block.endLine, {
+      path: file.path, side, changedLines: new Set(changed && block.changed ? [block.startLine] : []),
+    }, block.highlight, listType ? "li" : "section"));
+  };
+  let oldIndex = 0, newIndex = 0;
+  for (let index = 0; index < blocks.old.length; index++) {
+    const oldBlock = blocks.old[index];
+    const match = newBlocks.get(correspondingLines.get(oldBlock.startLine));
+    if (oldBlock.changed || !match || match.index < newIndex || match.block.changed
+      || correspondingLines.get(oldBlock.endLine) !== match.block.endLine || oldBlock.html !== match.block.html || oldBlock.listType !== match.block.listType) continue;
+    // Keep tables and fences whole. Unmatched blocks are replaced as a
+    // unit, so deleting a delimiter cannot produce broken Markdown fragments.
+    while (oldIndex < index) append(blocks.old[oldIndex++], "old", true);
+    while (newIndex < match.index) append(blocks.new[newIndex++], "new", true);
+    append(match.block, "new", false);
+    oldIndex = index + 1; newIndex = match.index + 1;
+  }
+  while (oldIndex < blocks.old.length) append(blocks.old[oldIndex++], "old", true);
+  while (newIndex < blocks.new.length) append(blocks.new[newIndex++], "new", true);
+  if (listType) output.push(`</${listType}>`);
+  return output.join("");
 }
 
 async function hydrateMarkdownPreviews(files) {
@@ -1827,8 +1896,10 @@ async function hydrateMarkdownPreviews(files) {
   const revision = state.session.revision;
   const previews = files.filter((file) => isMarkdownFile(file) && state.markdownPreviewPaths.has(file.path));
   for (const file of previews) {
+    const unified = elements.diff.querySelector(`article[data-markdown-path="${CSS.escape(file.path)}"][data-markdown-side="unified"]`);
+    const contents = {};
     for (const [side] of markdownSides(file)) {
-      const target = elements.diff.querySelector(`[data-markdown-path="${CSS.escape(file.path)}"][data-markdown-side="${side}"]`);
+      const target = unified ?? elements.diff.querySelector(`article[data-markdown-path="${CSS.escape(file.path)}"][data-markdown-side="${side}"]`);
       if (!target) continue;
       const key = `${revision}:${file.path}:${side}`;
       try {
@@ -1839,10 +1910,14 @@ async function hydrateMarkdownPreviews(files) {
           content = result.content;
           state.markdownPreviewCache.set(key, content);
         }
-        target.innerHTML = renderMarkdown(content, 0, { path: file.path, side, changedLines: markdownChangedLines(file, side), changedRanges: markdownChangedRanges(file, side) }) || '<p class="muted">This Markdown file is empty.</p>';
+        contents[side] = content;
+        if (!unified) target.innerHTML = renderMarkdown(content, 0, { path: file.path, side, changedLines: markdownChangedLines(file, side), changedRanges: markdownChangedRanges(file, side) }) || '<p class="muted">This Markdown file is empty.</p>';
       } catch (error) {
         if (requestId === state.markdownPreviewRequestId && target.isConnected) target.innerHTML = `<p class="markdown-preview-error">${escapeHtml(error.message)}</p>`;
       }
+    }
+    if (unified?.isConnected && requestId === state.markdownPreviewRequestId && contents.old !== undefined && contents.new !== undefined) {
+      unified.innerHTML = renderUnifiedMarkdownDiff(file, contents.old, contents.new) || '<p class="muted">This Markdown file is empty.</p>';
     }
   }
   if (requestId === state.markdownPreviewRequestId) renderTourAnnotation();
@@ -5639,7 +5714,14 @@ function renderSession() {
     ? `${comparison.base} → since last review`
     : `${comparison.base} → working tree`;
   elements["comparison-view"].value = state.session.comparisonView ?? "full";
-  elements["comparison-view"].disabled = !state.session.checkpoints?.length || Boolean(state.tourMode);
+  elements["comparison-view"].disabled = state.busy;
+  const comparisonRangeReason = state.tourMode ? "Exit the tour to compare changes since your last review."
+    : !state.session.checkpoints?.length ? "Create a review checkpoint to compare later changes against it." : "";
+  const sinceLastReview = elements["comparison-view"].querySelector('[value="since-last-review"]');
+  sinceLastReview.disabled = Boolean(comparisonRangeReason);
+  sinceLastReview.textContent = state.tourMode ? "Since last review (exit tour first)"
+    : !state.session.checkpoints?.length ? "Since last review (create checkpoint first)" : "Since last review";
+  elements["comparison-view"].title = comparisonRangeReason || "Choose which changes to review.";
   elements["revision-summary"].textContent = state.session.revisionSummary?.text ?? "";
   elements["checkpoint-history"].innerHTML = (state.session.checkpoints ?? []).slice().reverse().map((checkpoint, index) => {
     const title = checkpoint.label ?? (checkpoint.kind === "decision" ? (checkpoint.decision ?? checkpoint.outcome ?? "Decision") : "Manual checkpoint");
@@ -8355,6 +8437,11 @@ state.monacoRenderer = createMonacoRenderer({
       const file = state.session.comparison.files.find(file => file.path === path);
       if (!file || !["old", "new"].includes(side)) throw Error("Captured Markdown source is unavailable.");
       return renderMarkdown(content, 0, { path, side, changedLines: markdownChangedLines(file, side), changedRanges: markdownChangedRanges(file, side) });
+    },
+    renderUnifiedMarkdownPreview(path, before, after) {
+      const file = state.session.comparison.files.find(file => file.path === path);
+      if (!file) throw Error("Captured Markdown source is unavailable.");
+      return renderUnifiedMarkdownDiff(file, before, after);
     },
   },
 });

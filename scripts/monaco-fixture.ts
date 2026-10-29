@@ -30,6 +30,12 @@ if (resumeFile) {
     "", "End of decisions.", "",
   ].join("\n");
   extraFiles["docs/wrapping.md"] = { before: wrappingTable("Previous"), after: wrappingTable("Revised") };
+  const previewList = "# Team choices\n\nKeep these choices.\n\n- Which harness to use.\n- How to split its work.\n";
+  extraFiles["docs/preview-layout.md"] = {
+    before: previewList + "- Which workflow it follows. A team that already uses one\n  can keep its practices.\n\n## Shared ending\n\nKeep the ending.\n",
+    after: previewList.replace("Keep these choices.", "Keep these choices.\n\nThe team agrees the change before writing code.") + "\n## Shared ending\n\nKeep the ending.\n",
+  };
+  extraFiles["docs/emptied.md"] = { before: "# Removed contents\n", after: "" };
   if (samplePr || beforeTour) extraFiles[contextFixtureFile.path] = contextFixtureFile;
   for (let i = 0; i < 12; i++) extraFiles[`src/lazy-${i}.ts`] = { before: "// Unchanged context\n".repeat(80) + "export const value = 1;\n", after: "// Unchanged context\n".repeat(80) + "export const value = 2;\n" };
   extraFiles["src/whitespace.py"] = { before: "if ready:\n    run()\n", after: "if ready:\n        run()\n" };

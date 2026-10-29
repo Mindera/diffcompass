@@ -121,6 +121,8 @@
 .review-rendered-markdown .markdown-source-block{border-left:3px solid transparent;padding:1px 10px}
 .review-rendered-markdown .markdown-source-block.addition{border-left-color:#9acb9c;background:#90bb7320}
 .review-rendered-markdown .markdown-source-block.deletion{border-left-color:#dc8686;background:#ef6e6820}
+.review-rendered-markdown .markdown-source-item.addition{background:#90bb7320;box-shadow:inset 3px 0 #9acb9c}
+.review-rendered-markdown .markdown-source-item.deletion{background:#ef6e6820;box-shadow:inset 3px 0 #dc8686}
 .review-rendered-markdown .addition .inline-change{background:#8bad6155}.review-rendered-markdown .deletion .inline-change{background:#d4767255}
 @media(max-width:700px){.review-markdown-columns{display:block}.review-markdown-columns>section+section{border-left:0;border-top:1px solid var(--border)}}
 :root[data-hide-markers] .review-change-gutter > * { visibility: hidden; }

@@ -12,7 +12,7 @@ test("Markdown files expose rendered previews without replacing the diff permane
   expect(app).toContain("function markdownChangedLines(file, side)");
   expect(app).toContain("for (const [side] of markdownSides(file))");
   expect(app).toContain("changedRanges: markdownChangedRanges(file, side)");
-  expect(app).toContain('class="markdown-source-block${changed ? ` ${source.side === "old" ? "deletion" : "addition"}` : ""}"');
+  expect(app).toContain('class="markdown-source-block${changed && highlight ? ` ${source.side === "old" ? "deletion" : "addition"}` : ""}"');
   expect(app).toContain('.markdown-source-block[data-markdown-path="${CSS.escape(path)}"]');
   expect(app).toContain("function markdownTableAlignments(line, columns)");
   expect(app).toContain("function markdownFenceStart(line)");
