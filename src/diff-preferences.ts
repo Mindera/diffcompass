@@ -1,12 +1,13 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { acquireSessionLock } from "./session-library.ts";
-import { isBriefingSectionOrder, type BriefingPreferences, type DiffViewPreferences, type SessionDiffPreferences } from "./types.ts";
+import { isBriefingSectionOrder, isDiffRenderer, type BriefingPreferences, type DiffRenderer, type DiffViewPreferences, type SessionDiffPreferences } from "./types.ts";
 
 interface DiffPreferenceStore {
   schemaVersion: 1;
   repositories: Record<string, SessionDiffPreferences>;
   briefing?: BriefingPreferences;
+  diffRenderer?: DiffRenderer;
 }
 
 const STORE_NAME = ".diff-preferences.json";
@@ -57,6 +58,7 @@ async function loadStore(directory: string): Promise<DiffPreferenceStore> {
       schemaVersion: 1,
       repositories,
       briefing: validBriefingPreferences(value.briefing) ? structuredClone(value.briefing) : undefined,
+      diffRenderer: isDiffRenderer(value.diffRenderer) ? value.diffRenderer : undefined,
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { schemaVersion: 1, repositories: {} };
@@ -105,6 +107,20 @@ export async function loadGlobalBriefingPreferences(directory: string | undefine
   if (!directory) return undefined;
   const store = await loadStore(directory);
   return store.briefing ? structuredClone(store.briefing) : undefined;
+}
+
+export async function loadGlobalDiffRenderer(directory: string | undefined): Promise<DiffRenderer | undefined> {
+  return directory ? (await loadStore(directory)).diffRenderer : undefined;
+}
+
+export async function updateGlobalDiffRenderer(directory: string | undefined, renderer: DiffRenderer | undefined): Promise<DiffRenderer | undefined> {
+  if (!directory) return undefined;
+  return updateStore(directory, (store) => {
+    const previous = store.diffRenderer;
+    if (renderer === undefined) delete store.diffRenderer;
+    else store.diffRenderer = renderer;
+    return previous;
+  });
 }
 
 export async function updateGlobalBriefingPreferences(directory: string | undefined, preferences: BriefingPreferences): Promise<BriefingPreferences | undefined> {

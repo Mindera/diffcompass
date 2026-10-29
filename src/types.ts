@@ -620,6 +620,12 @@ export type ReviewOutcome = "accepted" | "feedback" | "cancelled";
 export type ReviewDecisionIntent = "approve" | "approve-with-comments" | "request-changes" | "cancel";
 export type ReviewStatus = "open" | ReviewOutcome;
 
+export type DiffRenderer = "current" | "monaco";
+
+export function isDiffRenderer(value: unknown): value is DiffRenderer {
+  return value === "current" || value === "monaco";
+}
+
 export interface DiffViewPreferences {
   layout: "unified" | "split";
   wrap: "scroll" | "wrap";

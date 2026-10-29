@@ -102,10 +102,10 @@ test("pending suggestion updates preserve the diff, tour and reading position", 
   expect(h.classify(next, applied)).toBe(false);
 });
 
-test("saved layout preferences arriving by polling do not replace comments or move the diff", async () => {
+test("saved layout and renderer preferences arriving by polling do not replace comments or move the diff", async () => {
   const h = harness();
   const next = { ...structuredClone(h.state.session), revision: 5,
-    diffPreferences: { desktop: { layout: "unified", wrap: "wrap" } } };
+    diffPreferences: { desktop: { layout: "unified", wrap: "wrap" } }, diffRenderer: "monaco" };
   await h.poll(next);
   expect(h.renders).toBe(0);
   expect(h.commentRenders).toBe(0);
