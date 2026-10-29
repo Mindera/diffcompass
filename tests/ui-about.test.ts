@@ -30,7 +30,7 @@ async function renderAbout(codeAnalysis: string) {
 
 test("the about dialog shows the server's code analysis row after the mode", async () => {
   const html = await renderAbout(CODE_ANALYSIS);
-  expect(html.endsWith(`<div><dt>Code analysis</dt><dd>${CODE_ANALYSIS}</dd></div>`)).toBe(true);
+  expect(html.endsWith(`<div><dt>Mode</dt><dd>working tree</dd></div><div><dt>Code analysis</dt><dd>${CODE_ANALYSIS}</dd></div>`)).toBe(true);
 });
 
 test("the code analysis row is escaped like every other about row", async () => {
