@@ -3,7 +3,7 @@ import { buildBriefing, type BriefingDocument } from "../src/briefing.ts";
 import { briefingCoverage, type HunkCoverage } from "../src/briefing-coverage.ts";
 import type { LineRange } from "../src/change-facts.ts";
 import type { GitComparison } from "../src/types.ts";
-import { capturedText, repositoryComparison } from "./comparison-fixtures.ts";
+import { capturedText, historicalComparison, repositoryComparison } from "./comparison-fixtures.ts";
 
 const outline = { title: "t", summary: "s", phases: [], flows: [], callFlows: [], findings: [] };
 const calcBase = ["// head", "const value = 10;", ...Array.from({ length: 40 }, (_, i) => `// context ${i}`)].join("\n") + "\n";
@@ -137,4 +137,54 @@ test("evidence no block references counts as nothing until a diagram element sho
   const other = hunksOf(briefingCoverage(comparison, shown), "other.ts")[0]!;
   expect(other.state).toBe("explained");
   expect(other.cited).toEqual([{ side: "new", startLine: 1, endLine: 1 }]);
+}, 30_000);
+
+test("a document excerpt cites exactly its lines and never expands", async () => {
+  const fixture = await repositoryComparison({ "notes.md": "# Notes\nend\n" }, { "notes.md": "# Notes\nbeta\ngamma\nend\n" });
+  try {
+    const quoted = (await capturedText(fixture.comparison, "new", "notes.md")).split("\n").slice(1, 3).join("\n");
+    const doc = await buildBriefing(fixture.comparison, outline, "", {
+      title: "t", sections: [{ id: "s", title: "s", blocks: [{ id: "b", kind: "source", evidenceId: "d1" }] }],
+      evidence: [{ id: "d1", path: "notes.md", side: "new", startLine: 2, endLine: 3, quote: quoted }],
+    });
+    expect(doc.evidence[0]!.kind).toBe("document");
+    expect(doc.evidence[0]!.available).toBe(true);
+    const hunk = briefingCoverage(fixture.comparison, doc).hunks[0]!;
+    expect(hunk.state).toBe("explained");
+    expect(hunk.cited).toEqual([{ side: "new", startLine: 2, endLine: 3 }]);
+    expect(hunk.expanded).toEqual([]);
+    expect(hunk.unexplained).toEqual([]);
+  } finally { await fixture.cleanup(); }
+}, 30_000);
+
+test("over 8f84166..740bada every changed line is counted exactly once", async () => {
+  const history = await historicalComparison("8f84166", "740bada");
+  const rowsOf = (path: string) => history.files.find(f => f.path === path)!.hunks.flatMap(h => h.rows);
+  const revision = rowsOf("src/revision.ts").find(r => r.kind === "addition")!;
+  const gitRows = rowsOf("src/git.ts");
+  const afterDeletion = gitRows.find((r, i) => r.kind === "addition" && gitRows[i - 1]?.kind === "deletion")!;
+  const cite = async (path: string, line: number, i: number) => ({ id: `e${i}`, path, side: "new" as const, startLine: line, endLine: line, quote: (await capturedText(history, "new", path)).split("\n")[line - 1]! });
+  const evidence = [await cite("src/revision.ts", revision.newLine!, 0), await cite("src/git.ts", afterDeletion.newLine!, 1)];
+  const doc = await buildBriefing(history, outline, "", {
+    title: "t", sections: [{ id: "s", title: "s", blocks: evidence.map((e, i) => ({ id: `b${i}`, kind: "source" as const, evidenceId: e.id })) }], evidence,
+  });
+  const coverage = briefingCoverage(history, doc);
+  expect(coverage.state).toBe("measured");
+  const changed = history.files.flatMap(f => f.hunks.flatMap(h => h.rows)).filter(r => r.kind === "addition" || r.kind === "deletion").length;
+  expect(coverage.totals.changedLines).toBe(changed);
+  for (const hunk of coverage.hunks) {
+    const all = [...hunk.cited, ...hunk.expanded, ...hunk.unexplained].flatMap(r => lines([r], r.side).map(line => `${r.side}${line}`));
+    expect(new Set(all).size).toBe(all.length);
+    expect(size(hunk.cited) + size(hunk.expanded) + size(hunk.unexplained)).toBe(hunk.changedLines);
+  }
+  expect(coverage.hunks.filter(h => h.path === "src/revision.ts").some(h => h.state === "partly-explained")).toBe(true);
+}, 30_000);
+
+test("over 57bf907..27b7e44 a Briefing holding no evidence explains nothing", async () => {
+  const history = await historicalComparison("57bf907", "27b7e44");
+  const doc = await buildBriefing(history, outline, "", { title: "t", sections: [{ id: "s", title: "s", blocks: [{ id: "b", kind: "prose", text: "x", basis: "stated" }] }], evidence: [] });
+  const coverage = briefingCoverage(history, doc);
+  expect(coverage.hunks.length).toBeGreaterThan(0);
+  expect(coverage.hunks.every(h => h.state === "not-explained")).toBe(true);
+  expect(coverage.totals.unexplained).toBe(coverage.totals.changedLines);
 }, 30_000);

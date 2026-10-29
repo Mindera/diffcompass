@@ -33,7 +33,13 @@ export function briefingCoverage(comparison: GitComparison, document: BriefingDo
   const mark = (map: Map<string, Set<number>>, key: string, line: number) => { let set = map.get(key); if (!set) map.set(key, set = new Set()); set.add(line); };
   let evidenceWithoutDiff = 0;
   for (const evidence of document.evidence) {
-    if (!ids.has(evidence.id) || !evidence.available || evidence.kind !== "code") continue;
+    if (!ids.has(evidence.id) || !evidence.available) continue;
+    if (evidence.kind === "document") {
+      const file = comparison.files.find(f => (evidence.side === "new" ? f.newPath : f.oldPath) === evidence.path);
+      if (!file) continue;
+      for (let line = evidence.startLine; line <= evidence.endLine; line++) { mark(shown, `${file.path}\0${evidence.side}`, line); mark(cited, `${file.path}\0${evidence.side}`, line); }
+      continue;
+    }
     if (evidence.diff === undefined) { evidenceWithoutDiff++; continue; }
     const diff = evidence.diff;
     if (!diff.available) continue;
