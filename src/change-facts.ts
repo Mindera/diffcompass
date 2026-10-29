@@ -1,5 +1,6 @@
 import { capturedComparisonSource, validateCapturedFileDiff } from "./comparison-source.ts";
 import { callerDeclarations, CALLER_SCAN_LIMITS, codeGraphCallers, nameMatchedCallers, scanCapturedTree, searchedNames, type CallerCoverage, type CallerFact, type ScanLimits } from "./change-callers.ts";
+import { loadTreeModules, typescriptImports, type ImportFact, type TreeModules } from "./change-imports.ts";
 import { diffSourceIdentity } from "./diff-sources.ts";
 import { analyseSemanticSources, languageParser, SEMANTIC_ENGINE, SEMANTIC_LIMITS, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
 import { calledName, enclosingName, parseWithin } from "./syntax-nodes.ts";
@@ -13,14 +14,14 @@ export interface LineRange { side: LineSide; startLine: number; endLine: number 
 export type SkipReason = "generated" | "oversized" | "unreadable" | "parse-error" | "time-limit" | "analysis-limit" | "unavailable";
 export type FileCompleteness =
   | { state: "complete" }
-  | { state: "truncated"; lists: Array<{ list: "symbols" | "calls" | "tests"; shown: number; total: number }> }
+  | { state: "truncated"; lists: Array<{ list: "symbols" | "calls" | "tests" | "imports"; shown: number; total: number }> }
   | { state: "skipped"; reason: SkipReason; message: string }
   | { state: "unsupported"; message: string };
 export interface SymbolFact { analysis: "tree-sitter declaration diff"; name: string; kind: string; change: Array<"added" | "removed" | "signature" | "body">; before?: SemanticAnchor; after?: SemanticAnchor; ambiguous?: true }
 export interface CallFact { analysis: "tree-sitter call sites"; name: string; change: "removed" | "added"; side: LineSide; line: number; enclosing: string | null }
 export interface TestFact { analysis: "tree-sitter test names"; name: string; side: LineSide; startLine: number; endLine: number; changed: boolean }
-export const CHANGE_FACT_LIMITS = { calls: 1_000, tests: 500 } as const;
-export interface FileChangeFacts { path: string; oldPath: string | null; newPath: string | null; language: SyntaxLanguage | null; completeness: FileCompleteness; changedLines: number; symbols: SymbolFact[]; calls: CallFact[]; tests: TestFact[]; unattributed: LineRange[] }
+export const CHANGE_FACT_LIMITS = { calls: 1_000, tests: 500, imports: 500 } as const;
+export interface FileChangeFacts { path: string; oldPath: string | null; newPath: string | null; language: SyntaxLanguage | null; completeness: FileCompleteness; changedLines: number; symbols: SymbolFact[]; calls: CallFact[]; tests: TestFact[]; imports: ImportFact[]; unattributed: LineRange[] }
 export interface ChangeFacts { engine: string; comparisonId: string; files: FileChangeFacts[]; callers: CallerFact[]; callerCoverage: CallerCoverage }
 
 const unsupported: FileCompleteness = { state: "unsupported", message: NO_CHANGE_FACTS_MESSAGE };
@@ -61,7 +62,7 @@ function changedLineNumbers(file: DiffFile, side: LineSide): number[] {
   }));
 }
 
-function factRanges(facts: Pick<FileChangeFacts, "symbols" | "calls" | "tests">): LineRange[] {
+function factRanges(facts: Pick<FileChangeFacts, "symbols" | "calls" | "tests" | "imports">): LineRange[] {
   return [
     ...facts.symbols.flatMap((symbol) => [
       ...(symbol.before ? [{ side: "old" as const, startLine: symbol.before.startLine, endLine: symbol.before.endLine }] : []),
@@ -69,10 +70,11 @@ function factRanges(facts: Pick<FileChangeFacts, "symbols" | "calls" | "tests">)
     ]),
     ...facts.calls.map((call) => ({ side: call.side, startLine: call.line, endLine: call.line })),
     ...facts.tests.map((test) => ({ side: test.side, startLine: test.startLine, endLine: test.endLine })),
+    ...facts.imports.map((fact) => ({ side: fact.side, startLine: fact.startLine, endLine: fact.endLine })),
   ];
 }
 
-function unattributedRanges(file: DiffFile, facts: Pick<FileChangeFacts, "completeness" | "symbols" | "calls" | "tests">): LineRange[] {
+function unattributedRanges(file: DiffFile, facts: Pick<FileChangeFacts, "completeness" | "symbols" | "calls" | "tests" | "imports">): LineRange[] {
   if (facts.completeness.state === "unsupported") return [];
   const ranges = facts.completeness.state === "skipped" ? [] : factRanges(facts);
   const uncovered = (side: LineSide) => changedLineNumbers(file, side).filter((line) => !ranges.some((range) => range.side === side && range.startLine <= line && line <= range.endLine));
@@ -102,11 +104,12 @@ function summaryFacts(summary: SemanticSummary, language: SyntaxLanguage): Pick<
 }
 
 type AnalysedFacts = Omit<FileChangeFacts, "unattributed">;
+type ModulesFor = (side: LineSide) => Promise<TreeModules | null>;
 
-async function analysedFileFacts(comparison: GitComparison, file: DiffFile): Promise<AnalysedFacts> {
+async function analysedFileFacts(comparison: GitComparison, file: DiffFile, modulesFor: ModulesFor): Promise<AnalysedFacts> {
   const identity = { path: file.path, oldPath: file.oldPath, newPath: file.newPath, changedLines: changedLines(file) };
   const language = fileLanguage(file);
-  if (!language) return { ...identity, language: null, completeness: unsupported, symbols: [], calls: [], tests: [] };
+  if (!language) return { ...identity, language: null, completeness: unsupported, symbols: [], calls: [], tests: [], imports: [] };
   let before: string, after: string;
   try {
     before = await capturedComparisonSource(comparison, file.path, "old", SEMANTIC_LIMITS.bytes);
@@ -114,20 +117,22 @@ async function analysedFileFacts(comparison: GitComparison, file: DiffFile): Pro
     await validateCapturedFileDiff(comparison, file.path);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Captured source is unavailable.";
-    return { ...identity, language, completeness: { state: "skipped", reason: /limit/.test(message) ? "oversized" : "unreadable", message }, symbols: [], calls: [], tests: [] };
+    return { ...identity, language, completeness: { state: "skipped", reason: /limit/.test(message) ? "oversized" : "unreadable", message }, symbols: [], calls: [], tests: [], imports: [] };
   }
   const summary = await analyseSemanticSources(file, before, after, { beforeTree: comparison.mergeBase, afterTree: comparison.sourceTree });
   const facts = summaryFacts(summary, language);
-  if (summary.status !== "analysed") return { ...identity, ...facts, calls: [], tests: [] };
-  const derived = await treeFacts(file, language, before, after);
-  if (!derived) return { ...identity, language, completeness: { state: "skipped", reason: "time-limit", message: "Parser time limit reached; use the text diff." }, symbols: [], calls: [], tests: [] };
+  if (summary.status !== "analysed") return { ...identity, ...facts, calls: [], tests: [], imports: [] };
+  const derived = await treeFacts(file, language, before, after, modulesFor);
+  if (!derived) return { ...identity, language, completeness: { state: "skipped", reason: "time-limit", message: "Parser time limit reached; use the text diff." }, symbols: [], calls: [], tests: [], imports: [] };
   const calls = derived.calls.slice(0, CHANGE_FACT_LIMITS.calls), tests = derived.tests.slice(0, CHANGE_FACT_LIMITS.tests);
+  const imports = derived.imports.flatMap((side) => side.slice(0, CHANGE_FACT_LIMITS.imports)), totalImports = derived.imports.reduce((total, side) => total + side.length, 0);
   const lists = [
     ...(facts.completeness.state === "truncated" ? facts.completeness.lists : []),
     ...(derived.calls.length > calls.length ? [{ list: "calls" as const, shown: calls.length, total: derived.calls.length }] : []),
     ...(derived.tests.length > tests.length ? [{ list: "tests" as const, shown: tests.length, total: derived.tests.length }] : []),
+    ...(totalImports > imports.length ? [{ list: "imports" as const, shown: imports.length, total: totalImports }] : []),
   ];
-  return { ...identity, ...facts, completeness: lists.length ? { state: "truncated", lists } : facts.completeness, calls, tests };
+  return { ...identity, ...facts, completeness: lists.length ? { state: "truncated", lists } : facts.completeness, calls, tests, imports };
 }
 
 function callsIn(tree: Tree, language: SyntaxLanguage, side: LineSide, changed: Set<number>): CallFact[] {
@@ -208,7 +213,7 @@ function testsIn(tree: Tree, language: SyntaxLanguage, side: LineSide, changed: 
   return tests;
 }
 
-async function treeFacts(file: DiffFile, language: SyntaxLanguage, before: string, after: string): Promise<{ calls: CallFact[]; tests: TestFact[] } | null> {
+async function treeFacts(file: DiffFile, language: SyntaxLanguage, before: string, after: string, modulesFor: ModulesFor): Promise<{ calls: CallFact[]; tests: TestFact[]; imports: ImportFact[][] } | null> {
   let parser: Parser | undefined;
   const trees: Tree[] = [];
   try {
@@ -219,12 +224,18 @@ async function treeFacts(file: DiffFile, language: SyntaxLanguage, before: strin
       trees.push(tree);
     }
     const changed = { old: new Set(changedLineNumbers(file, "old")), new: new Set(changedLineNumbers(file, "new")) };
+    const importsIn = async (tree: Tree, side: LineSide, path: string | null): Promise<ImportFact[]> => {
+      if (language === "kotlin" || !path) return [];
+      const modules = await modulesFor(side);
+      return modules ? typescriptImports(tree.rootNode, path, side, changed[side], modules) : [];
+    };
     return {
       calls: [...callsIn(trees[0]!, language, "old", changed.old), ...callsIn(trees[1]!, language, "new", changed.new)],
       tests: [
         ...(file.oldPath && isTestPath(file.oldPath) ? testsIn(trees[0]!, language, "old", changed.old) : []),
         ...(file.newPath && isTestPath(file.newPath) ? testsIn(trees[1]!, language, "new", changed.new) : []),
       ],
+      imports: [await importsIn(trees[0]!, "old", file.oldPath), await importsIn(trees[1]!, "new", file.newPath)],
     };
   } finally {
     for (const tree of trees) tree.delete();
@@ -232,14 +243,19 @@ async function treeFacts(file: DiffFile, language: SyntaxLanguage, before: strin
   }
 }
 
-async function fileFacts(comparison: GitComparison, file: DiffFile): Promise<FileChangeFacts> {
-  const facts = await analysedFileFacts(comparison, file);
+async function fileFacts(comparison: GitComparison, file: DiffFile, modulesFor: ModulesFor): Promise<FileChangeFacts> {
+  const facts = await analysedFileFacts(comparison, file, modulesFor);
   return { ...facts, unattributed: unattributedRanges(file, facts) };
 }
 
 export async function loadChangeFacts(comparison: GitComparison, options: { scanLimits?: ScanLimits; codegraph?: string | null } = {}): Promise<ChangeFacts> {
+  const modules = new Map<LineSide, Promise<TreeModules | null>>();
+  const modulesFor: ModulesFor = (side) => {
+    if (!modules.has(side)) modules.set(side, loadTreeModules(comparison, side).catch(() => null));
+    return modules.get(side)!;
+  };
   const files: FileChangeFacts[] = [];
-  for (const file of comparison.files) files.push(await fileFacts(comparison, file));
+  for (const file of comparison.files) files.push(await fileFacts(comparison, file, modulesFor));
   const declarations = callerDeclarations(files);
   const { names, total } = searchedNames(declarations);
   let callers: CallerFact[] = [];
