@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.2.3, including the v2.1.0 feature baseline
+Canonical delivery state for v2.3.1, including the v2.1.0 feature baseline
 and the patch changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -10,11 +10,39 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.2.3](https://github.com/Mindera/diffcompass/releases/tag/v2.2.3).
+Latest release: [v2.3.1](https://github.com/Mindera/diffcompass/releases/tag/v2.3.1).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.3.1
+
+- Make Markdown previews follow Split/Unified in both Shiki and Monaco. Unified
+  keeps unchanged blocks and list items once; changed list items and table rows
+  receive precise highlights instead of coloring the whole container.
+- Keep Briefing diagrams expanded in Present when selecting code evidence, with
+  the evidence beside the diagram on desktop and below it on narrow screens.
+- Show why “Since last review” is unavailable in the comparison-range menu when
+  a checkpoint is needed or the tour is active.
+- Specify the generated dry-run plan schema and allow up to two correction
+  attempts for malformed plans while retaining strict source validation.
+- Stabilize browser checks around navigation and suggestion menus, and introduce
+  Briefing in the README with fresh screenshots and a dedicated guide.
+
+## Released in v2.3.0
+
+- Install and update release binaries without the GitHub CLI. Publish the
+  macOS/Linux and Windows installers with checksums, preserve saved reviews on
+  update, and verify installation from the release's own scripts and latest links.
+
+## Released in v2.2.4
+
+- Inspect captured repository source to fill missing Briefing diagram bindings,
+  validate exact quotes and element IDs, and explain unavailable evidence.
+- Preserve the Briefing reader when opening source across tour phases and
+  returning from Changes. Fix Monaco gutter colors and Briefing code spacing.
+- Include the Sustainable Use License 1.0 in release packages.
 
 ## Released in v2.2.3
 
