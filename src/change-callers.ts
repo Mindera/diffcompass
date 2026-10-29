@@ -12,7 +12,8 @@ import type { GitComparison } from "./types.ts";
 export interface ScanLimits { files: number; bytes: number; millis: number }
 export interface CallSite { name: string; path: string; line: number; enclosing: string | null }
 export interface ScanCoverage { side: "old" | "new"; totalFiles: number; scannedFiles: number; scannedBytes: number; skippedFiles: number; parseErrorFiles: number; stoppedBy?: "files" | "bytes" | "time"; message: string }
-export interface TreeScan { coverage: ScanCoverage; callSites: Map<string, CallSite[]> }
+export interface KotlinPackageIndex { complete: boolean; packages: Map<string, { files: string[]; names: Map<string, string[]>; namesComplete: boolean }> }
+export interface TreeScan { coverage: ScanCoverage; callSites: Map<string, CallSite[]>; kotlin: KotlinPackageIndex; javaFiles: number }
 
 const BATCH = 100;
 const CLOCK_INTERVAL = 1_000;
@@ -34,7 +35,7 @@ export function simpleName(name: string): string {
   return name.slice(name.lastIndexOf(".") + 1);
 }
 
-export function callerDeclarations(files: readonly FileChangeFacts[]): CallerDeclaration[] {
+export function callerDeclarations(files: readonly Pick<FileChangeFacts, "completeness" | "symbols">[]): CallerDeclaration[] {
   const declarations: CallerDeclaration[] = [];
   for (const file of files) {
     if (file.completeness.state !== "complete" && file.completeness.state !== "truncated") continue;
@@ -61,10 +62,31 @@ export function nameMatchedCallers(declarations: readonly CallerDeclaration[], s
 
 interface Frame { node: Node; index: number; pushed: boolean }
 
+function kotlinPackage(root: Node): { name: string; names: string[] } | null {
+  let name: string | null = root.hasError ? null : "";
+  const names: string[] = [];
+  for (let i = 0; i < root.namedChildCount; i++) {
+    const child = root.namedChild(i)!;
+    if (child.type === "package_header") {
+      const identifier = child.hasError ? null : child.namedChildren.find((part) => part?.type === "identifier");
+      name = identifier ? identifier.text.replace(/\s+/g, "") : null;
+      continue;
+    }
+    const parts = child.hasError ? undefined : declarationParts(child, "kotlin");
+    if (parts) names.push(parts.name.text.replace(/^`|`$/g, ""));
+  }
+  return name === null ? null : { name, names };
+}
+
 export async function scanCapturedTree(comparison: GitComparison, side: "old" | "new", options: { names: ReadonlySet<string>; limits: ScanLimits; first?: readonly string[] }): Promise<TreeScan> {
   const start = performance.now();
   const { names, limits } = options;
-  const candidates = (await listCapturedTree(comparison, side)).filter((entry) => supportedLanguage(entry.path));
+  const listing = await listCapturedTree(comparison, side);
+  const candidates = listing.filter((entry) => supportedLanguage(entry.path));
+  const javaFiles = listing.filter((entry) => entry.path.endsWith(".java")).length;
+  const kotlinCandidates = candidates.filter((entry) => supportedLanguage(entry.path) === "kotlin").length;
+  const packages: KotlinPackageIndex["packages"] = new Map();
+  let kotlinIndexed = 0;
   const byPath = new Map(candidates.map((entry) => [entry.path, entry]));
   const ordered: CapturedTreeEntry[] = [];
   const placed = new Set<string>();
@@ -138,6 +160,20 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
         const found = walk(tree.rootNode, language, entry.path);
         if (!found) { stoppedBy = "time"; break; }
         if (tree.rootNode.hasError) parseErrorFiles++;
+        if (language === "kotlin") {
+          const declared = kotlinPackage(tree.rootNode);
+          if (declared) {
+            kotlinIndexed++;
+            let bucket = packages.get(declared.name);
+            if (!bucket) { bucket = { files: [], names: new Map(), namesComplete: true }; packages.set(declared.name, bucket); }
+            bucket.files.push(entry.path);
+            if (tree.rootNode.hasError) bucket.namesComplete = false;
+            for (const name of declared.names) {
+              const list = bucket.names.get(name);
+              if (list) list.push(entry.path); else bucket.names.set(name, [entry.path]);
+            }
+          }
+        }
         for (const site of found) {
           const list = callSites.get(site.name);
           if (list) list.push(site); else callSites.set(site.name, [site]);
@@ -154,7 +190,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
 
   const base = `Scanned ${scannedFiles} of ${candidates.length} files`;
   const message = stoppedBy ? `${base}; stopped at the ${LIMIT_WORDS[stoppedBy]} limit.` : `${base}.`;
-  return { coverage: { side, totalFiles: candidates.length, scannedFiles, scannedBytes, skippedFiles, parseErrorFiles, ...(stoppedBy ? { stoppedBy } : {}), message }, callSites };
+  return { coverage: { side, totalFiles: candidates.length, scannedFiles, scannedBytes, skippedFiles, parseErrorFiles, ...(stoppedBy ? { stoppedBy } : {}), message }, callSites, kotlin: { complete: kotlinIndexed === kotlinCandidates, packages }, javaFiles };
 }
 
 export type CodeGraphGate = { usable: true; reading: string; indexedFiles?: number } | { usable: false; reason: string };

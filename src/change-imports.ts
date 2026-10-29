@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import type { Node } from "web-tree-sitter";
 import { listCapturedTree, readCapturedBlobs, type CapturedTreeEntry } from "./captured-tree.ts";
+import type { TreeScan } from "./change-callers.ts";
 import type { GitComparison } from "./types.ts";
 
 export type ImportTarget = { kind: "file"; path: string } | { kind: "files"; paths: string[]; partial: boolean } | { kind: "external"; name: string } | { kind: "unresolved"; reason: string };
@@ -148,4 +149,47 @@ export function resolveTypescriptSpecifier(specifier: string, fromPath: string, 
   if (modules.workspacePackages.has(name)) return unresolved("workspace package");
   if (!modules.complete) return unresolved(modules.reason ?? "package and alias index incomplete");
   return { kind: "external", name };
+}
+
+const JAVA_REASON = "may be a Java declaration: the captured tree holds Java files, which this effort does not index";
+
+function kotlinNamedTarget(segments: readonly string[], specifier: string, scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles">): ImportTarget {
+  const { kotlin: index, coverage, javaFiles } = scan;
+  if (!index.complete) return unresolved(`package index incomplete: ${coverage.message}`);
+  for (let k = segments.length - 1; k >= 1; k--) {
+    const name = segments.slice(0, k).join(".");
+    const entry = index.packages.get(name);
+    if (!entry) continue;
+    if (!entry.namesComplete) return unresolved(`a file of package ${name} could not be fully parsed`);
+    const files = entry.names.get(segments[k]) ?? [];
+    if (files.length === 1) return { kind: "file", path: files[0] };
+    if (files.length) return unresolved("declared in more than one file");
+    return unresolved(javaFiles ? JAVA_REASON : `not declared in package ${name}`);
+  }
+  return javaFiles ? unresolved(JAVA_REASON) : { kind: "external", name: specifier };
+}
+
+function kotlinTarget(segments: readonly string[], star: boolean, specifier: string, scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles">): ImportTarget {
+  const entry = star ? scan.kotlin.packages.get(segments.join(".")) : undefined;
+  if (entry) return { kind: "files", paths: [...entry.files], partial: !scan.kotlin.complete || scan.javaFiles > 0 };
+  return kotlinNamedTarget(segments, specifier, scan);
+}
+
+export function kotlinImports(root: Node, path: string, side: "old" | "new", changedLines: ReadonlySet<number>, scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles">): ImportFact[] {
+  const facts: ImportFact[] = [];
+  const stack: Node[] = [root];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.type === "import_header") {
+      const identifier = node.namedChildren.find((child) => child?.type === "identifier");
+      if (!identifier) continue;
+      const segments = identifier.namedChildren.filter((child) => child?.type === "simple_identifier").map((child) => child!.text.replace(/`/g, ""));
+      const star = node.namedChildren.some((child) => child?.type === "wildcard_import");
+      const specifier = star ? `${segments.join(".")}.*` : segments.join(".");
+      facts.push(importFact(node, side, specifier, changedLines, node.hasError || !segments.length ? unresolved("import could not be fully parsed") : kotlinTarget(segments, star, specifier, scan)));
+      continue;
+    }
+    for (let i = node.childCount - 1; i >= 0; i--) stack.push(node.child(i)!);
+  }
+  return facts;
 }

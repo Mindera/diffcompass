@@ -163,3 +163,80 @@ test("imports beyond the limit on one side mark the file truncated", async () =>
   expect(file.imports).toHaveLength(500);
   expect(file.completeness).toEqual({ state: "truncated", lists: [{ list: "imports", shown: 500, total: 505 }] });
 }, 30_000);
+
+const KOTLIN_ROOT = "shop/src/main/kotlin/com/acme";
+const kotlinPath = (path: string) => `${KOTLIN_ROOT}/${path}`;
+const CHECKOUT = kotlinPath("ui/Checkout.kt");
+
+const kotlinBase = (): Record<string, string> => ({
+  [kotlinPath("billing/Receipt.kt")]: "package com.acme.billing\n\nclass Receipt\n",
+  [kotlinPath("billing/Tax.kt")]: "package com.acme.billing\n\nfun tax() = 1\n",
+  [kotlinPath("billing/TaxAlt.kt")]: "package com.acme.billing\n\nfun tax(rate: Int) = rate\n",
+  [kotlinPath("legacy/Old.kt")]: "package com.acme.legacy\n\nclass Old\n",
+  [CHECKOUT]: "package com.acme.ui\n\nimport com.acme.legacy.Old\n\nclass Checkout\n",
+});
+
+const kotlinHead = (extra: Record<string, string | null> = {}): Record<string, string | null> => ({
+  [kotlinPath("legacy/Old.kt")]: null,
+  [kotlinPath("billing/Receipt.kt")]: "package com.acme.billing\n\nclass Receipt {\n    val total = 0\n}\n",
+  [CHECKOUT]: "package com.acme.ui\n\nimport com.acme.billing.Receipt\nimport com.acme.billing.*\nimport com.acme.billing.tax\nimport kotlinx.coroutines.flow.Flow\n\nclass Checkout\n",
+  ...extra,
+});
+
+async function kotlinTargets(before: Record<string, string>, after: Record<string, string | null>, scanLimits?: { files: number; bytes: number; millis: number }, path = CHECKOUT): Promise<{ new: Record<string, ImportTarget>; old: Record<string, ImportTarget> }> {
+  const { comparison, cleanup } = await repositoryComparison(before, after);
+  cleanups.push(cleanup);
+  const facts = await loadChangeFacts(comparison, { codegraph: null, ...(scanLimits ? { scanLimits } : {}) });
+  const bySide = (side: "old" | "new") => Object.fromEntries(importsOf(facts, path).filter((fact) => fact.side === side).map((fact) => [fact.specifier, fact.target]));
+  return { new: bySide("new"), old: bySide("old") };
+}
+
+const billing = ["Receipt.kt", "Tax.kt", "TaxAlt.kt"].map((name) => kotlinPath(`billing/${name}`));
+const unlimited = { bytes: 1e9, millis: 1e9 };
+
+test("Kotlin imports resolve through the package index of their own side's tree", async () => {
+  const targets = await kotlinTargets(kotlinBase(), kotlinHead());
+  expect(targets.new["com.acme.billing.Receipt"]).toEqual({ kind: "file", path: kotlinPath("billing/Receipt.kt") });
+  expect(targets.new["com.acme.billing.*"]).toEqual({ kind: "files", paths: expect.arrayContaining(billing), partial: false });
+  expect((targets.new["com.acme.billing.*"] as { paths: string[] }).paths).toHaveLength(3);
+  expect(targets.new["com.acme.billing.tax"]).toEqual(unresolved("declared in more than one file"));
+  expect(targets.new["kotlinx.coroutines.flow.Flow"]).toEqual({ kind: "external", name: "kotlinx.coroutines.flow.Flow" });
+  expect(targets.old["com.acme.legacy.Old"]).toEqual({ kind: "file", path: kotlinPath("legacy/Old.kt") });
+}, 30_000);
+
+test("a scan stopped by the file limit leaves Kotlin imports unresolved rather than external", async () => {
+  const stopped = await kotlinTargets(kotlinBase(), kotlinHead(), { files: 2, ...unlimited });
+  expect(stopped.new["com.acme.billing.*"]).toEqual({ kind: "files", paths: [kotlinPath("billing/Receipt.kt")], partial: true });
+  for (const specifier of ["com.acme.billing.Receipt", "kotlinx.coroutines.flow.Flow"]) {
+    expect(stopped.new[specifier]).toMatchObject({ kind: "unresolved", reason: expect.stringMatching(/^package index incomplete: Scanned 2 of/) });
+  }
+  const three = await kotlinTargets(kotlinBase(), kotlinHead(), { files: 3, ...unlimited });
+  expect(three.new["com.acme.billing.tax"]).toMatchObject({ kind: "unresolved", reason: expect.stringMatching(/^package index incomplete/) });
+}, 30_000);
+
+test("Java files in the captured tree leave Kotlin imports unresolved rather than external", async () => {
+  const head = kotlinHead({
+    "shop/src/main/java/com/acme/legacy/Ledger.java": "package com.acme.legacy;\n\npublic class Ledger {}\n",
+    [CHECKOUT]: "package com.acme.ui\n\nimport com.acme.billing.*\nimport com.acme.legacy.Ledger\nimport kotlinx.coroutines.flow.Flow\n\nclass Checkout\n",
+  });
+  const targets = await kotlinTargets(kotlinBase(), head);
+  for (const specifier of ["com.acme.legacy.Ledger", "kotlinx.coroutines.flow.Flow"]) {
+    expect(targets.new[specifier]).toMatchObject({ kind: "unresolved", reason: expect.stringMatching(/^may be a Java declaration/) });
+  }
+  expect(targets.new["com.acme.billing.*"]).toMatchObject({ kind: "files", partial: true });
+}, 30_000);
+
+test("a star import of an enum's members targets the enum's file, never external", async () => {
+  const before = { "demo/Color.kt": "package demo\n\nenum class Color { RED }\n", "demo/Use.kt": "package demo\n\nval first = 1\n" };
+  const targets = await kotlinTargets(before, { "demo/Use.kt": "package demo\n\nimport demo.Color.*\n\nval first = RED\n" }, undefined, "demo/Use.kt");
+  expect(targets.new["demo.Color.*"]).toEqual({ kind: "file", path: "demo/Color.kt" });
+}, 30_000);
+
+test("a package holding an unparseable file leaves its names unresolved while other packages stay external", async () => {
+  const broken = "package com.acme.billing\n\nfun tax(rate: Int) = rate\n\nfun broken( {\n";
+  const targets = await kotlinTargets({ ...kotlinBase(), [kotlinPath("billing/TaxAlt.kt")]: broken }, kotlinHead({ [kotlinPath("billing/TaxAlt.kt")]: broken }));
+  const reason = unresolved("a file of package com.acme.billing could not be fully parsed");
+  expect(targets.new["com.acme.billing.tax"]).toEqual(reason);
+  expect(targets.new["com.acme.billing.Receipt"]).toEqual(reason);
+  expect(targets.new["kotlinx.coroutines.flow.Flow"]).toEqual({ kind: "external", name: "kotlinx.coroutines.flow.Flow" });
+}, 30_000);

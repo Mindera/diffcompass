@@ -1,6 +1,6 @@
 import { capturedComparisonSource, validateCapturedFileDiff } from "./comparison-source.ts";
-import { callerDeclarations, CALLER_SCAN_LIMITS, codeGraphCallers, nameMatchedCallers, scanCapturedTree, searchedNames, type CallerCoverage, type CallerFact, type ScanLimits } from "./change-callers.ts";
-import { loadTreeModules, typescriptImports, type ImportFact, type TreeModules } from "./change-imports.ts";
+import { callerDeclarations, CALLER_SCAN_LIMITS, codeGraphCallers, nameMatchedCallers, scanCapturedTree, searchedNames, type CallerCoverage, type CallerFact, type ScanLimits, type TreeScan } from "./change-callers.ts";
+import { kotlinImports, loadTreeModules, typescriptImports, type ImportFact, type TreeModules } from "./change-imports.ts";
 import { diffSourceIdentity } from "./diff-sources.ts";
 import { analyseSemanticSources, languageParser, SEMANTIC_ENGINE, SEMANTIC_LIMITS, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
 import { calledName, enclosingName, parseWithin } from "./syntax-nodes.ts";
@@ -104,6 +104,12 @@ function summaryFacts(summary: SemanticSummary, language: SyntaxLanguage): Pick<
 }
 
 type AnalysedFacts = Omit<FileChangeFacts, "unattributed">;
+
+function cappedImports(sides: ImportFact[][]): { imports: ImportFact[]; lists: Array<{ list: "imports"; shown: number; total: number }> } {
+  const imports = sides.flatMap((side) => side.slice(0, CHANGE_FACT_LIMITS.imports));
+  const total = sides.reduce((sum, side) => sum + side.length, 0);
+  return { imports, lists: total > imports.length ? [{ list: "imports", shown: imports.length, total }] : [] };
+}
 type ModulesFor = (side: LineSide) => Promise<TreeModules | null>;
 
 async function analysedFileFacts(comparison: GitComparison, file: DiffFile, modulesFor: ModulesFor): Promise<AnalysedFacts> {
@@ -125,12 +131,12 @@ async function analysedFileFacts(comparison: GitComparison, file: DiffFile, modu
   const derived = await treeFacts(file, language, before, after, modulesFor);
   if (!derived) return { ...identity, language, completeness: { state: "skipped", reason: "time-limit", message: "Parser time limit reached; use the text diff." }, symbols: [], calls: [], tests: [], imports: [] };
   const calls = derived.calls.slice(0, CHANGE_FACT_LIMITS.calls), tests = derived.tests.slice(0, CHANGE_FACT_LIMITS.tests);
-  const imports = derived.imports.flatMap((side) => side.slice(0, CHANGE_FACT_LIMITS.imports)), totalImports = derived.imports.reduce((total, side) => total + side.length, 0);
+  const { imports, lists: importLists } = cappedImports(derived.imports);
   const lists = [
     ...(facts.completeness.state === "truncated" ? facts.completeness.lists : []),
     ...(derived.calls.length > calls.length ? [{ list: "calls" as const, shown: calls.length, total: derived.calls.length }] : []),
     ...(derived.tests.length > tests.length ? [{ list: "tests" as const, shown: tests.length, total: derived.tests.length }] : []),
-    ...(totalImports > imports.length ? [{ list: "imports" as const, shown: imports.length, total: totalImports }] : []),
+    ...importLists,
   ];
   return { ...identity, ...facts, completeness: lists.length ? { state: "truncated", lists } : facts.completeness, calls, tests, imports };
 }
@@ -243,10 +249,32 @@ async function treeFacts(file: DiffFile, language: SyntaxLanguage, before: strin
   }
 }
 
-async function fileFacts(comparison: GitComparison, file: DiffFile, modulesFor: ModulesFor): Promise<FileChangeFacts> {
-  const facts = await analysedFileFacts(comparison, file, modulesFor);
-  return { ...facts, unattributed: unattributedRanges(file, facts) };
+async function kotlinFileImports(comparison: GitComparison, file: DiffFile, scans: Record<LineSide, TreeScan | null>): Promise<ImportFact[][]> {
+  const parser = await languageParser("kotlin");
+  try {
+    const sides: ImportFact[][] = [];
+    for (const [side, path] of [["old", file.oldPath], ["new", file.newPath]] as const) {
+      const scan = scans[side];
+      const tree = path && scan ? parseWithin(parser, await capturedComparisonSource(comparison, file.path, side, SEMANTIC_LIMITS.bytes), SEMANTIC_LIMITS.parseMicros) : null;
+      try { sides.push(tree && scan && path ? kotlinImports(tree.rootNode, path, side, new Set(changedLineNumbers(file, side)), scan) : []); }
+      finally { tree?.delete(); }
+    }
+    return sides;
+  } finally {
+    parser.delete();
+  }
 }
+
+async function withKotlinImports(comparison: GitComparison, file: DiffFile, facts: AnalysedFacts, scans: Record<LineSide, TreeScan | null>): Promise<AnalysedFacts> {
+  let sides: ImportFact[][];
+  try { sides = await kotlinFileImports(comparison, file, scans); }
+  catch { return facts; }
+  const { imports, lists: importLists } = cappedImports(sides);
+  const lists = [...(facts.completeness.state === "truncated" ? facts.completeness.lists : []), ...importLists];
+  return { ...facts, imports: [...facts.imports, ...imports], completeness: lists.length ? { state: "truncated", lists } : facts.completeness };
+}
+
+const isAnalysedKotlin = (facts: AnalysedFacts) => facts.language === "kotlin" && (facts.completeness.state === "complete" || facts.completeness.state === "truncated");
 
 export async function loadChangeFacts(comparison: GitComparison, options: { scanLimits?: ScanLimits; codegraph?: string | null } = {}): Promise<ChangeFacts> {
   const modules = new Map<LineSide, Promise<TreeModules | null>>();
@@ -254,22 +282,35 @@ export async function loadChangeFacts(comparison: GitComparison, options: { scan
     if (!modules.has(side)) modules.set(side, loadTreeModules(comparison, side).catch(() => null));
     return modules.get(side)!;
   };
-  const files: FileChangeFacts[] = [];
-  for (const file of comparison.files) files.push(await fileFacts(comparison, file, modulesFor));
-  const declarations = callerDeclarations(files);
+  const analysed: AnalysedFacts[] = [];
+  for (const file of comparison.files) analysed.push(await analysedFileFacts(comparison, file, modulesFor));
+  const declarations = callerDeclarations(analysed);
   const { names, total } = searchedNames(declarations);
+  const limits = options.scanLimits ?? CALLER_SCAN_LIMITS;
+  const kotlin = analysed.flatMap((facts, index) => isAnalysedKotlin(facts) ? [comparison.files[index]] : []);
   let callers: CallerFact[] = [];
   const callerCoverage: CallerCoverage = { nameMatch: null, names: { searched: names.size, total }, codegraph: { state: "skipped", declarations: 0, queried: 0 } };
-  if (names.size) {
+  const scans: Record<LineSide, TreeScan | null> = { old: null, new: null };
+  if (names.size || kotlin.some((file) => file.newPath)) {
     try {
-      const first = files.flatMap((file) => (file.newPath ? [file.newPath] : []));
-      const scan = await scanCapturedTree(comparison, "new", { names, limits: options.scanLimits ?? CALLER_SCAN_LIMITS, first });
-      callers = nameMatchedCallers(declarations, scan);
-      callerCoverage.nameMatch = scan.coverage;
+      const first = comparison.files.flatMap((file) => (file.newPath ? [file.newPath] : []));
+      scans.new = await scanCapturedTree(comparison, "new", { names, limits, first });
+      if (names.size) {
+        callers = nameMatchedCallers(declarations, scans.new);
+        callerCoverage.nameMatch = scans.new.coverage;
+      }
     } catch (error) {
-      callerCoverage.error = error instanceof Error ? error.message : String(error);
+      if (names.size) callerCoverage.error = error instanceof Error ? error.message : String(error);
     }
   }
+  if (kotlin.some((file) => file.oldPath)) {
+    try {
+      const first = comparison.files.flatMap((file) => (file.oldPath ? [file.oldPath] : []));
+      scans.old = await scanCapturedTree(comparison, "old", { names: new Set(), limits, first });
+    } catch {}
+  }
+  for (const [index, facts] of analysed.entries()) if (isAnalysedKotlin(facts)) analysed[index] = await withKotlinImports(comparison, comparison.files[index], facts, scans);
+  const files: FileChangeFacts[] = analysed.map((facts, index) => ({ ...facts, unattributed: unattributedRanges(comparison.files[index], facts) }));
   const executable = options.codegraph === undefined ? Bun.which("codegraph") : options.codegraph;
   const codegraph = await codeGraphCallers(comparison, declarations, executable);
   callers = [...callers, ...codegraph.facts];
