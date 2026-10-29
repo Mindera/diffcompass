@@ -335,6 +335,7 @@ const mobileDecorations = {};
 let annotationSignature = null;
 let sourceHadAnchor = false, copyPending = false;
 let markdownPane = null, markdownPreviewButton = null;
+let syncMarkdownPreviewLayout = () => {};
 const markdownPreviewOpen = () => Boolean(markdownPane && !markdownPane.hidden);
 function closeMarkdownPreview(restoreFocus = false) {
   if (!markdownPreviewOpen()) return;
@@ -1299,14 +1300,23 @@ if (host && selectedFile.language === "markdown") {
   // Status is Git's, not guessed from empty content. Existing empty files
   // must retain their Before side, and added files must not invent one.
   const sides = selectedFile.status === "added" ? ["new"] : selectedFile.status === "deleted" ? ["old"] : ["old", "new"];
-  for (const side of sides) {
-    const column = document.createElement("section"); column.dataset.markdownSide = side;
-    const label = document.createElement("h2"); label.textContent = side === "old" ? "Before" : "After";
-    const content = document.createElement("div"); content.className = "review-rendered-markdown";
-    content.innerHTML = host.renderMarkdownPreview(selectedFile.path, side, selectedFile[side]);
-    if (!selectedFile[side]) content.textContent = "Empty file";
-    column.append(label, content); columns.append(column);
-  }
+  syncMarkdownPreviewLayout = () => {
+    if (columns.dataset.layout === activeLayout) return;
+    columns.dataset.layout = activeLayout;
+    columns.replaceChildren();
+    for (const side of activeLayout === "unified" && sides.length === 2 ? ["unified"] : sides) {
+      const column = document.createElement("section"); column.dataset.markdownSide = side;
+      const label = document.createElement("h2"); label.textContent = side === "unified" ? "Changes" : side === "old" ? "Before" : "After";
+      const content = document.createElement("div"); content.className = "review-rendered-markdown";
+      content.innerHTML = side === "unified"
+        ? host.renderUnifiedMarkdownPreview(selectedFile.path, selectedFile.old, selectedFile.new)
+        : host.renderMarkdownPreview(selectedFile.path, side, selectedFile[side]);
+      if (!content.innerHTML) content.textContent = "Empty file";
+      column.append(label, content); columns.append(column);
+    }
+    scheduleDetailHeight();
+  };
+  syncMarkdownPreviewLayout();
   markdownPane.append(heading, columns); fileDetail.append(markdownPane);
   markdownPreviewButton = button("Preview", () => {
     if (composer) { fileToolStatus("Save or cancel the draft before opening Markdown preview."); return; }
@@ -1437,6 +1447,7 @@ return {
   focusTour(id) { closeMarkdownPreview(); if (!$("source-pane").hidden) $("return").click(); return tourAnnotations.focus(id); },
   layout() {
     host?.clearMobileSelection?.();
+    syncMarkdownPreviewLayout();
     $("editor").classList.toggle("review-split", activeLayout === "split");
     deletedSelection.reset(); currentAnchor = null; currentSourceRange = null;
     selectionError = ""; updateFileTools();

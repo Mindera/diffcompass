@@ -693,6 +693,8 @@ kbd { display: inline-block; min-width: 1.5em; border: 1px solid var(--border-ho
 .markdown-source-block { position: relative; margin: 0 -10px; border-left: 3px solid transparent; padding: 1px 10px; }
 .markdown-source-block.addition { border-left-color: var(--addition-line); background: var(--addition); }
 .markdown-source-block.deletion { border-left-color: var(--deletion-line); background: var(--deletion); }
+.markdown-source-item.addition { background: var(--addition); box-shadow: inset 3px 0 var(--addition-line); }
+.markdown-source-item.deletion { background: var(--deletion); box-shadow: inset 3px 0 var(--deletion-line); }
 .markdown-source-block.tour-anchor { border-left-color: var(--accent-strong); background-image: linear-gradient(90deg, var(--tour-highlight), var(--accent-soft)); box-shadow: inset -2px 0 var(--accent-border); filter: saturate(1.18) brightness(1.08); }
 .markdown-source-block.tour-anchor-start { border-top: 2px solid var(--accent-strong); }
 .markdown-source-block.tour-anchor-end { border-bottom: 2px solid var(--accent-strong); }
