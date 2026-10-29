@@ -170,6 +170,9 @@ function kotlinNamedTarget(segments: readonly string[], specifier: string, scan:
     if (files.length) return unresolved("declared in more than one file");
     return unresolved(javaFiles ? JAVA_REASON : `not declared in package ${name}`);
   }
+  const rootFiles = index.packages.get("")?.names.get(segments[0]);
+  if (rootFiles?.length === 1) return { kind: "file", path: rootFiles[0] };
+  if (rootFiles?.length) return unresolved("declared in more than one file");
   return javaFiles ? unresolved(JAVA_REASON) : { kind: "external", name: specifier };
 }
 

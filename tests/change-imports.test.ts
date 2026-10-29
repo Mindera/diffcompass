@@ -238,6 +238,18 @@ test("a name declared twice in one Kotlin file targets that file", async () => {
   expect(targets.new["demo.label"]).toEqual({ kind: "file", path: "demo/Mappers.kt" });
 }, 30_000);
 
+const DEFAULT_PACKAGE_USE = "package app\n\nimport Foo\nimport Color.*\nimport kotlinx.coroutines.flow.Flow\n\nval first = RED\n";
+
+test("Kotlin imports of default-package declarations target their files while undeclared names stay external", async () => {
+  const before = { "Foo.kt": "class Foo\n", "Color.kt": "enum class Color { RED }\n", "app/Use.kt": "package app\n\nval first = 1\n" };
+  const targets = (await kotlinTargets(before, { "app/Use.kt": DEFAULT_PACKAGE_USE }, undefined, "app/Use.kt")).new;
+  expect(targets.Foo).toEqual({ kind: "file", path: "Foo.kt" });
+  expect(targets["Color.*"]).toEqual({ kind: "file", path: "Color.kt" });
+  expect(targets["kotlinx.coroutines.flow.Flow"]).toEqual({ kind: "external", name: "kotlinx.coroutines.flow.Flow" });
+  const broken = (await kotlinTargets({ ...before, "build/Tasks.kt": "import java.io.File\n\nval x = 1\n\nfun broken( {\n" }, { "app/Use.kt": DEFAULT_PACKAGE_USE }, undefined, "app/Use.kt")).new;
+  expect(broken["kotlinx.coroutines.flow.Flow"]).toEqual({ kind: "external", name: "kotlinx.coroutines.flow.Flow" });
+}, 30_000);
+
 test("a package holding an unparseable file leaves its names unresolved while other packages stay external", async () => {
   const broken = "package com.acme.billing\n\nfun tax(rate: Int) = rate\n\nfun broken( {\n";
   const targets = await kotlinTargets({ ...kotlinBase(), [kotlinPath("billing/TaxAlt.kt")]: broken }, kotlinHead({ [kotlinPath("billing/TaxAlt.kt")]: broken }));
