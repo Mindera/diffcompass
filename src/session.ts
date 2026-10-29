@@ -19,12 +19,12 @@ import { extractAcceptanceCriteria, publishPullRequestReview as publishGitHubRev
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
-import type { FindingDisposition } from "./types.ts";
+import type { DiffRenderer, FindingDisposition } from "./types.ts";
 import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, DryRunDetail, DryRunFlowKind, DryRunPlan, DryRunScenario, DryRunTrace, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewerTaskContext, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
-import { isBriefingSectionOrder } from "./types.ts";
+import { isBriefingSectionOrder, isDiffRenderer } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
-import { diffPreferenceStoreDirectory, loadGlobalBriefingPreferences, loadGlobalDiffPreferences, restoreGlobalBriefingPreferences, restoreGlobalDiffPreferences, updateGlobalBriefingPreferences, updateGlobalDiffPreferences } from "./diff-preferences.ts";
+import { diffPreferenceStoreDirectory, loadGlobalBriefingPreferences, loadGlobalDiffPreferences, loadGlobalDiffRenderer, restoreGlobalBriefingPreferences, restoreGlobalDiffPreferences, updateGlobalBriefingPreferences, updateGlobalDiffPreferences, updateGlobalDiffRenderer } from "./diff-preferences.ts";
 import { buildNeedsAttention } from "./attention.ts";
 import { comparisonFingerprint, dryRunPlanFor, dryRunScenarioFingerprint, traceIsStale, validateDryRunPlans, validateDryRunPlanSourceAnchors, validateDryRunScenario, validateTraceSourceAnchors } from "./dry-runs.ts";
 import { ArchifyRenderer, archifyCandidates } from "./archify.ts";
@@ -125,6 +125,7 @@ export class ReviewSession {
   readonly activities: AgentChangeActivity[];
   readonly reviewedFiles: Set<string>;
   private diffPreferences?: SessionDiffPreferences;
+  private diffRenderer?: DiffRenderer;
   readonly browserToken: string;
   readonly preferences: ReviewPreferences;
   readonly reviewPolicy: ReviewPolicy;
@@ -885,6 +886,8 @@ export class ReviewSession {
       });
     }
     const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted, globalDiffPreferences);
+    // Renderer choice belongs to the reviewer, including when resuming an older review.
+    session.diffRenderer = await loadGlobalDiffRenderer(preferenceDirectory);
     await session.selectComparisonView();
     await session.updateRevisionSummary(session.fullComparison).catch(() => undefined);
     if (session.outline && !session.outline.briefing) session.outline.briefing = await buildBriefing(session.comparison, session.outline, session.briefingIntent());
@@ -1064,6 +1067,7 @@ export class ReviewSession {
       selectedCheckpointId: this.selectedCheckpointId ?? this.latestCheckpoint()?.id,
       revisionSummary: structuredClone(this.currentRevisionSummary),
       diffPreferences: structuredClone(this.diffPreferences),
+      diffRenderer: this.diffRenderer,
       preferences: structuredClone(this.preferences),
       reviewPolicy: structuredClone(this.reviewPolicy),
       findingGenerationEnabled: this.defaults.includeFindings !== false,
@@ -1537,6 +1541,32 @@ export class ReviewSession {
         Object.assign(this.preferences, previous);
         this.revision = previousRevision;
         if (globalUpdated) await restoreGlobalBriefingPreferences(preferenceDirectory, previousGlobal).catch(() => undefined);
+        throw error;
+      }
+      return this.snapshot();
+    });
+  }
+
+  async setDiffRenderer(renderer: DiffRenderer) {
+    return this.serializeMutation(async () => {
+      this.ensureOpen();
+      if (!isDiffRenderer(renderer)) throw new ReviewError("Diff renderer is invalid.");
+      if (this.diffRenderer === renderer) return this.snapshot();
+      const previous = this.diffRenderer;
+      const previousRevision = this.revision;
+      const directory = this.defaults.diffPreferenceDirectory ?? diffPreferenceStoreDirectory(this.defaults.stateFile);
+      let globalUpdated = false;
+      let previousGlobal: DiffRenderer | undefined;
+      try {
+        previousGlobal = await updateGlobalDiffRenderer(directory, renderer);
+        globalUpdated = directory !== undefined;
+        this.diffRenderer = renderer;
+        this.revision += 1;
+        await this.persist();
+      } catch (error) {
+        this.diffRenderer = previous;
+        this.revision = previousRevision;
+        if (globalUpdated) await updateGlobalDiffRenderer(directory, previousGlobal).catch(() => undefined);
         throw error;
       }
       return this.snapshot();
