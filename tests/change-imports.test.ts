@@ -269,6 +269,12 @@ test("a name declared twice in one Kotlin file targets that file", async () => {
   expect(targets.new["demo.label"]).toEqual({ kind: "file", path: "demo/Mappers.kt" });
 }, 30_000);
 
+test("a Kotlin import of a name its package does not declare names that declaration", async () => {
+  const before = { "demo/Color.kt": "package demo\n\nenum class Color { RED }\n", "demo/Use.kt": "package demo\n\nval first = 1\n" };
+  const targets = await kotlinTargets(before, { "demo/Use.kt": "package demo\n\nimport demo.Missing\n\nval first = 2\n" }, undefined, "demo/Use.kt");
+  expect(targets.new["demo.Missing"]).toEqual(unresolved("Missing is not declared in package demo"));
+}, 30_000);
+
 test("a Kotlin package name with a backticked segment resolves imports of its declarations", async () => {
   const before = { "acme/in/Thing.kt": "package com.acme.`in`\n\nclass Thing\n", "app/Use.kt": "package app\n\nval first = 1\n" };
   const targets = await kotlinTargets(before, { "app/Use.kt": "package app\n\nimport com.acme.`in`.Thing\n\nval first = 2\n" }, undefined, "app/Use.kt");
