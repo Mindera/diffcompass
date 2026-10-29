@@ -2,13 +2,18 @@ import { capturedComparisonSource, validateCapturedFileDiff } from "./comparison
 import { callerDeclarations, CALLER_SCAN_LIMITS, codeGraphCallers, nameMatchedCallers, scanCapturedTree, searchedNames, type CallerCoverage, type CallerFact, type ScanLimits, type TreeScan } from "./change-callers.ts";
 import { kotlinImportSites, loadTreeModules, resolveKotlinImports, typescriptImports, type ImportFact, type IndexFailure, type KotlinImportSite, type TreeModules } from "./change-imports.ts";
 import { diffSourceIdentity } from "./diff-sources.ts";
-import { analyseSemanticSources, languageParser, SEMANTIC_ENGINE, SEMANTIC_LIMITS, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
+import { analyseSemanticSources, languageParser, SEMANTIC_ENGINE, SEMANTIC_LIMITS, SYNTAX_LANGUAGES, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
 import { calledName, enclosingName, parseWithin } from "./syntax-nodes.ts";
 import type { DiffFile, GitComparison } from "./types.ts";
 import type { Node, Parser, Tree } from "web-tree-sitter";
 
 export const CHANGE_FACTS_ENGINE = `${SEMANTIC_ENGINE} / change facts 1`;
-export const NO_CHANGE_FACTS_MESSAGE = "No change facts: DiffCompass derives change facts from TypeScript, TSX and Kotlin files only.";
+function languageList(): string {
+  const labels = SYNTAX_LANGUAGES.map((language) => language.label);
+  return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+export const CODE_ANALYSIS_SUMMARY = `${languageList()}. Changes in other languages get no static facts. CodeGraph is used when this repository has a matching index.`;
+export const NO_CHANGE_FACTS_MESSAGE = `No change facts: DiffCompass derives change facts from ${languageList()} files only.`;
 export type LineSide = "old" | "new";
 export interface LineRange { side: LineSide; startLine: number; endLine: number }
 export type SkipReason = "generated" | "oversized" | "unreadable" | "parse-error" | "time-limit" | "analysis-limit" | "unavailable";

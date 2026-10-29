@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { CHANGE_FACTS_ENGINE, isTestPath, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact, type TestFact } from "../src/change-facts.ts";
+import { CHANGE_FACTS_ENGINE, CODE_ANALYSIS_SUMMARY, isTestPath, lineRanges, loadChangeFacts, NO_CHANGE_FACTS_MESSAGE, type ChangeFacts, type FileChangeFacts, type LineRange, type LineSide, type SymbolFact, type TestFact } from "../src/change-facts.ts";
 import { diffSourceIdentity } from "../src/diff-sources.ts";
 import { languageParser } from "../src/semantic-diff.ts";
 import { parseWithin } from "../src/syntax-nodes.ts";
@@ -111,6 +111,11 @@ test("browser assets in 8f84166..740bada are unsupported", async () => {
     expect(file.symbols).toEqual([]);
   }
 }, 30_000);
+
+test("the code analysis summary and the no-facts message name the supported languages", () => {
+  expect(CODE_ANALYSIS_SUMMARY).toBe("TypeScript, TSX and Kotlin. Changes in other languages get no static facts. CodeGraph is used when this repository has a matching index.");
+  expect(NO_CHANGE_FACTS_MESSAGE).toBe("No change facts: DiffCompass derives change facts from TypeScript, TSX and Kotlin files only.");
+});
 
 test("the added src/revision.ts declares symbols that exist at head", async () => {
   const { comparison, facts } = await revision;

@@ -438,6 +438,7 @@ test("about reports the running version and review context", async () => {
     reviewStatus: "open",
     agent: "not selected",
     mode: "working tree",
+    codeAnalysis: "TypeScript, TSX and Kotlin. Changes in other languages get no static facts. CodeGraph is used when this repository has a matching index.",
   });
 });
 

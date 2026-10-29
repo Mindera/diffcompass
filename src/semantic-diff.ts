@@ -15,7 +15,7 @@ import type { DiffFile, GitComparison, TourAnchor } from "./types.ts";
 export const SEMANTIC_ENGINE = "tree-sitter 0.25.10 / grammars 0.1.13 / summary 4";
 export const SEMANTIC_LIMITS = { bytes: 256_000, lines: 10_000, declarations: 1_000, changes: 200, nodes: 100_000, depth: 200, parseMicros: 150_000, cachedFiles: 32, requests: 4 } as const;
 export const SEMANTIC_NOTICE = "Syntax evidence only: changes or unchanged syntax do not prove behaviour, equivalence, or runtime impact. Names are matched within this file; overload ambiguity is retained. Imports, expressions and unsupported declarations may need the text diff. Display labels are shortened; open source for exact text.";
-export const SYNTAX_LANGUAGES = [{ id: "typescript", extensions: [".ts", ".mts", ".cts"] }, { id: "tsx", extensions: [".tsx"] }, { id: "kotlin", extensions: [".kt", ".kts"] }] as const;
+export const SYNTAX_LANGUAGES = [{ id: "typescript", label: "TypeScript", extensions: [".ts", ".mts", ".cts"] }, { id: "tsx", label: "TSX", extensions: [".tsx"] }, { id: "kotlin", label: "Kotlin", extensions: [".kt", ".kts"] }] as const;
 export type SyntaxLanguage = (typeof SYNTAX_LANGUAGES)[number]["id"];
 export interface SemanticAnchor extends TourAnchor { signature: string }
 interface SyntaxInput { name: string; optional: boolean; defaulted?: boolean }
