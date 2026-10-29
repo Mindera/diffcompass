@@ -101,6 +101,16 @@ test("paths inherited through a followed tsconfig extends make a bare specifier 
   expect(targets["domain/model"]).toEqual(unresolved("tsconfig paths alias"));
 }, 30_000);
 
+test("paths inherited through any entry of an array tsconfig extends make a bare specifier an alias", async () => {
+  const targets = await headTargets({
+    "tsconfig.json": '{ "extends": ["./a.json", "./b.json"] }',
+    "a.json": '{ "compilerOptions": { "strict": true } }',
+    "b.json": '{ "compilerOptions": { "paths": { "domain/*": ["src/domain/*"] } } }',
+    "src/main.ts": 'import { Model } from "domain/model";\nexport type Main = Model;\n',
+  });
+  expect(targets["domain/model"]).toEqual(unresolved("tsconfig paths alias"));
+}, 30_000);
+
 test("a tsconfig extending a package leaves bare specifiers unresolved as an incomplete index", async () => {
   const targets = await headTargets({
     "tsconfig.json": '{ "extends": "@tsconfig/node20/tsconfig.json" }',
@@ -320,6 +330,11 @@ test("an unparsed Kotlin file whose first node is an error names itself as unpla
   const reason = unresolved("package index incomplete: no package known for build/Tasks.kt");
   expect(targets["demo.Color"]).toEqual(reason);
   expect(targets["kotlinx.coroutines.flow.Flow"]).toEqual(reason);
+}, 30_000);
+
+test("an unparsed Kotlin file whose file annotation holds the error names itself as unplaced although a clean node follows", async () => {
+  const targets = await demoTargets({ "build/Tasks.kt": "@file:Suppress(,)\n\nclass X\n" });
+  expect(targets["demo.Color"]).toEqual(unresolved("package index incomplete: no package known for build/Tasks.kt"));
 }, 30_000);
 
 test("unplaced Kotlin files are counted after the first one named", async () => {
