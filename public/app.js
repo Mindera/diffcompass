@@ -1098,6 +1098,7 @@ async function openAboutDialog() {
       ["Review", about.reviewStatus],
       ["Agent", about.agent],
       ["Mode", about.mode],
+      ["Code analysis", about.codeAnalysis],
     ];
     elements["about-details"].innerHTML = rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
   } catch (error) {
