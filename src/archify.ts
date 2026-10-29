@@ -332,7 +332,7 @@ function dataflowCandidate(diagram: ReviewAdaptiveDiagram): ArchifyCandidate | u
 
 /** Builds only views for which the already-validated tour has bounded evidence. */
 function domainCandidate(model: import("./domain-context.ts").DomainModel, models: import("./domain-context.ts").DomainModel[]): ArchifyCandidate {
-  const conceptContext = (concept: import("./domain-context.ts").DomainConcept) => concept.source.path === model.path ? model.context : models.find(item => item.path === concept.source.path)?.context ?? concept.source.path.replace(/\/CONTEXT\.md$/, "");
+  const conceptContext = (concept: import("./domain-context.ts").DomainConcept) => concept.source.path === model.path ? model.context : models.find(item => item.path === concept.source.path)?.context ?? concept.source.path.replace(/\/(?:CONTEXT|GLOSSARY)\.md$/, "");
   return {
     id: `domain-${model.id}`, type: "architecture", purpose: "domain-model", title: model.context,
     evidence: [`Domain vocabulary from ${model.path}. This is a documented model, not a runtime dependency graph.`, "Code changes do not imply changes to domain definitions."],
