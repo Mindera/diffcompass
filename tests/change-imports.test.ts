@@ -158,6 +158,13 @@ test("relative, absolute, scheme and bare specifiers each take their own rule", 
   expect(resolveTypescriptSpecifier("./a", "src/main.ts", { ...modules, relativeOptions: ["rootDirs"] })).toEqual(unresolved("tsconfig rootDirs changes relative resolution"));
 });
 
+test("a TypeScript declaration file is an import target and a candidate beside a directory index", () => {
+  const modules: TreeModules = { files: new Set(["src/types.d.ts", "src/foo.d.ts", "src/foo/index.ts"]), workspacePackages: new Set(), aliasPatterns: [], baseUrls: [], relativeOptions: [], complete: true };
+  expect(resolveTypescriptSpecifier("./types", "src/main.ts", modules)).toEqual({ kind: "file", path: "src/types.d.ts" });
+  expect(resolveTypescriptSpecifier("./foo", "src/main.ts", modules)).toEqual(unresolved("more than one matching file"));
+  expect(resolveTypescriptSpecifier("types", "src/main.ts", { ...modules, baseUrls: ["src"] })).toEqual(unresolved("tsconfig baseUrl path"));
+});
+
 test("a TypeScript import index that cannot be built keeps that side's import facts, each unresolved with the error", () => {
   const modules: TreeModules = { files: new Set(["src/a.ts"]), workspacePackages: new Set(), aliasPatterns: [], baseUrls: [], relativeOptions: [], complete: true };
   const site = (side: "old" | "new", specifier: string): ImportSite => ({ side, startLine: 1, endLine: 1, specifier, changed: true });

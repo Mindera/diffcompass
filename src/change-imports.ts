@@ -138,7 +138,7 @@ export function typescriptImports(root: Node, path: string, side: "old" | "new",
 }
 
 const unresolved = (reason: string): ImportTarget => ({ kind: "unresolved", reason });
-const moduleCandidates = (target: string) => [target, `${target}.ts`, `${target}.tsx`, posix.join(target, "index.ts"), posix.join(target, "index.tsx")];
+const moduleCandidates = (target: string) => [target, `${target}.ts`, `${target}.tsx`, `${target}.d.ts`, posix.join(target, "index.ts"), posix.join(target, "index.tsx"), posix.join(target, "index.d.ts")];
 
 function relativeTarget(specifier: string, fromPath: string, modules: TreeModules): ImportTarget {
   if (JAVASCRIPT_EXTENSION.test(specifier)) return unresolved("JavaScript extension substitution is not implemented");
