@@ -232,6 +232,12 @@ test("a star import of an enum's members targets the enum's file, never external
   expect(targets.new["demo.Color.*"]).toEqual({ kind: "file", path: "demo/Color.kt" });
 }, 30_000);
 
+test("a name declared twice in one Kotlin file targets that file", async () => {
+  const before = { "demo/Mappers.kt": "package demo\n\nclass A\nclass B\nfun A.label() = 1\nfun B.label() = 2\n", "app/Use.kt": "package app\n\nval first = 1\n" };
+  const targets = await kotlinTargets(before, { "app/Use.kt": "package app\n\nimport demo.label\n\nval first = 2\n" }, undefined, "app/Use.kt");
+  expect(targets.new["demo.label"]).toEqual({ kind: "file", path: "demo/Mappers.kt" });
+}, 30_000);
+
 test("a package holding an unparseable file leaves its names unresolved while other packages stay external", async () => {
   const broken = "package com.acme.billing\n\nfun tax(rate: Int) = rate\n\nfun broken( {\n";
   const targets = await kotlinTargets({ ...kotlinBase(), [kotlinPath("billing/TaxAlt.kt")]: broken }, kotlinHead({ [kotlinPath("billing/TaxAlt.kt")]: broken }));

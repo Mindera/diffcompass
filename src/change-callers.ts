@@ -185,7 +185,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
             if (!bucket) { bucket = { files: [], names: new Map(), namesComplete: true }; packages.set(declared.name, bucket); }
             bucket.files.push(entry.path);
             if (tree.rootNode.hasError) bucket.namesComplete = false;
-            for (const name of declared.names) {
+            for (const name of new Set(declared.names)) {
               const list = bucket.names.get(name);
               if (list) list.push(entry.path); else bucket.names.set(name, [entry.path]);
             }
