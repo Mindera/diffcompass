@@ -50,7 +50,7 @@ Understand the outcome, intent, and design through prose, focused diffs, and dia
 - Attach passages or diagram elements to questions and export the saved story.
 
 Inferred rationale is labelled. Saved documents retain their text until regenerated.
-See the [Briefing guide](../README.md#narrative-briefing) for evidence and snapshot limits.
+See the [Briefing guide](briefing.md) for evidence and snapshot limits.
 
 ### Guided walkthrough
 
