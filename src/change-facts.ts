@@ -1,4 +1,5 @@
 import { capturedComparisonSource, validateCapturedFileDiff } from "./comparison-source.ts";
+import { callerDeclarations, CALLER_SCAN_LIMITS, codeGraphCallers, nameMatchedCallers, scanCapturedTree, searchedNames, type CallerCoverage, type CallerFact, type ScanLimits } from "./change-callers.ts";
 import { diffSourceIdentity } from "./diff-sources.ts";
 import { analyseSemanticSources, languageParser, SEMANTIC_ENGINE, SEMANTIC_LIMITS, supportedLanguage, type SemanticAnchor, type SemanticSummary, type SyntaxLanguage } from "./semantic-diff.ts";
 import { calledName, enclosingName, parseWithin } from "./syntax-nodes.ts";
@@ -20,7 +21,7 @@ export interface CallFact { analysis: "tree-sitter call sites"; name: string; ch
 export interface TestFact { analysis: "tree-sitter test names"; name: string; side: LineSide; startLine: number; endLine: number; changed: boolean }
 export const CHANGE_FACT_LIMITS = { calls: 1_000, tests: 500 } as const;
 export interface FileChangeFacts { path: string; oldPath: string | null; newPath: string | null; language: SyntaxLanguage | null; completeness: FileCompleteness; changedLines: number; symbols: SymbolFact[]; calls: CallFact[]; tests: TestFact[]; unattributed: LineRange[] }
-export interface ChangeFacts { engine: string; comparisonId: string; files: FileChangeFacts[] }
+export interface ChangeFacts { engine: string; comparisonId: string; files: FileChangeFacts[]; callers: CallerFact[]; callerCoverage: CallerCoverage }
 
 const unsupported: FileCompleteness = { state: "unsupported", message: NO_CHANGE_FACTS_MESSAGE };
 const TS_TEST_PATH = /\.(?:test|spec)\.(?:ts|tsx|mts|cts)$/i;
@@ -236,8 +237,26 @@ async function fileFacts(comparison: GitComparison, file: DiffFile): Promise<Fil
   return { ...facts, unattributed: unattributedRanges(file, facts) };
 }
 
-export async function loadChangeFacts(comparison: GitComparison): Promise<ChangeFacts> {
+export async function loadChangeFacts(comparison: GitComparison, options: { scanLimits?: ScanLimits; codegraph?: string | null } = {}): Promise<ChangeFacts> {
   const files: FileChangeFacts[] = [];
   for (const file of comparison.files) files.push(await fileFacts(comparison, file));
-  return { engine: CHANGE_FACTS_ENGINE, comparisonId: diffSourceIdentity(comparison), files };
+  const declarations = callerDeclarations(files);
+  const { names, total } = searchedNames(declarations);
+  let callers: CallerFact[] = [];
+  const callerCoverage: CallerCoverage = { nameMatch: null, names: { searched: names.size, total }, codegraph: { state: "skipped", declarations: 0, queried: 0 } };
+  if (names.size) {
+    try {
+      const first = files.flatMap((file) => (file.newPath ? [file.newPath] : []));
+      const scan = await scanCapturedTree(comparison, "new", { names, limits: options.scanLimits ?? CALLER_SCAN_LIMITS, first });
+      callers = nameMatchedCallers(declarations, scan);
+      callerCoverage.nameMatch = scan.coverage;
+    } catch (error) {
+      callerCoverage.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const executable = options.codegraph === undefined ? Bun.which("codegraph") : options.codegraph;
+  const codegraph = await codeGraphCallers(comparison, declarations, executable);
+  callers = [...callers, ...codegraph.facts];
+  callerCoverage.codegraph = codegraph.coverage;
+  return { engine: CHANGE_FACTS_ENGINE, comparisonId: diffSourceIdentity(comparison), files, callers, callerCoverage };
 }

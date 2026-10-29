@@ -37,7 +37,13 @@ export async function runProcess(
   }
 
   let timedOut = false;
-  const stop = () => process.kill();
+  const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
+  const stop = () => {
+    process.kill();
+    void process.exited.then(() => {
+      for (const reader of readers) void reader.cancel().catch(() => {});
+    });
+  };
   const timer = options.timeoutMs
     ? setTimeout(() => {
         timedOut = true;
@@ -52,6 +58,7 @@ export async function runProcess(
   try {
     const read = async (stream: ReadableStream<Uint8Array>, onChunk?: (chunk: string) => void) => {
       const reader = stream.getReader();
+      readers.push(reader);
       const decoder = new TextDecoder();
       let output = "";
       while (true) {
