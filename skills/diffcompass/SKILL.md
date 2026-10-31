@@ -18,8 +18,10 @@ Run the local tour in attached mode so every explanation and reviewer question r
    For an ordinary branch or working-tree tour, skip findings by default. This includes walking through code the user wrote or had an agent write for them:
 
    ```text
-   diffcompass --attached --start-tour --open --preview-redirect --no-findings --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
+   diffcompass --attached --start-tour --open --preview-redirect --no-findings --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...] [--intent-file ABSOLUTE_INTENT_PATH]
    ```
+
+   When you hold author-stated context for an ordinary tour, such as which tests the branch changed and why, write it to a plain-text file and pass it with `--intent-file` so the Briefing can use it as stated intent.
 
    When the user asks for a tour of a GitHub pull request, enable findings by default: use the PR command and omit `--no-findings`. This captures the PR's base, head, and GitHub context:
 

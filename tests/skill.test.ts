@@ -33,6 +33,12 @@ test("the attached-agent skill scopes preview redirects and media evidence", asy
   expect(skill).toContain("preparation failure leaves the server running without opening an empty tour");
 });
 
+test("the attached-agent skill offers author intent for ordinary branch tours", async () => {
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
+  expect(skill).toContain("[--media ABSOLUTE_MEDIA_PATH ...] [--intent-file ABSOLUTE_INTENT_PATH]");
+  expect(skill).toContain("pass it with `--intent-file`");
+});
+
 test("the attached-agent skill keeps reviewer conversations concise, contextual, and scoped", async () => {
   const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
   expect(skill).toContain("Lead with the direct answer and default to a concise response");

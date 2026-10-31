@@ -7,6 +7,8 @@ import { loadComparison } from "../src/git.ts";
 import { ReviewSession } from "../src/session.ts";
 import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
 import { createRequestHandler } from "../src/server.ts";
+import { briefingFingerprint } from "../src/briefing.ts";
+import { exportReview } from "../src/export.ts";
 import type { PersistedReviewSession } from "../src/types.ts";
 
 const directories: string[] = [];
@@ -1400,4 +1402,53 @@ test("CLI accepts --no-findings and rejects a state path inside the reviewed rep
   );
   expect(`${result.stdout}\n${result.stderr}`).toContain("state must be stored outside the reviewed repository");
   expect(directory).toBeDefined();
+});
+
+test("a branch review without an intent file keeps the empty intent, fingerprint and saved state", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    expect(session.outline!.briefing!.intent).toBe("{}");
+    expect(session.outline!.briefing!.fingerprint).toBe(briefingFingerprint(session.comparison, "{}"));
+    await session.refreshComparison();
+    expect(await readFile(stateFile, "utf8")).not.toContain("authorIntent");
+    expect(exportReview(session, "markdown").content).not.toContain("(outdated)");
+  } finally { await session.dispose(); }
+});
+
+test("intent file text reaches the Briefing intent and survives resume and export", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const stated = "Changed tests: app.test.ts now pins the second constant because callers depend on it.";
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true, authorIntent: stated });
+  try {
+    expect(JSON.parse(session.outline!.briefing!.intent).authorIntent).toBe(stated);
+    await session.refreshComparison();
+    expect((await loadPersistedSession(stateFile)).authorIntent).toBe(stated);
+  } finally { await session.dispose(); }
+  const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    expect(resumed.authorIntent).toBe(stated);
+    await resumed.refreshComparison();
+    expect(resumed.outline!.briefing!.outdated).toBeUndefined();
+    expect(exportReview(resumed, "markdown").content).not.toContain("(outdated)");
+  } finally { await resumed.dispose(); }
+});
+
+test("saved sessions reject a malformed author intent", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository, { authorIntent: 7 as unknown as string }));
+  await expect(loadPersistedSession(stateFile)).rejects.toThrow();
+});
+
+test("CLI rejects a missing or non-file --intent-file before launching a server", async () => {
+  const { directory } = await repositoryFixture();
+  const missing = join(directory, "missing-intent.md");
+  const absent = await runProcess([process.execPath, "run", "src/cli.ts", "--intent-file", missing], join(import.meta.dir, ".."), [1]);
+  expect(`${absent.stdout}\n${absent.stderr}`).toContain(`Intent file must be a regular file: ${missing}`);
+  const folder = await runProcess([process.execPath, "run", "src/cli.ts", "--intent-file", directory], join(import.meta.dir, ".."), [1]);
+  expect(`${folder.stdout}\n${folder.stderr}`).toContain(`Intent file must be a regular file: ${directory}`);
+  const incomplete = await runProcess([process.execPath, "run", "src/cli.ts", "--intent-file"], join(import.meta.dir, ".."), [1]);
+  expect(`${incomplete.stdout}\n${incomplete.stderr}`).toContain("Unknown or incomplete option: --intent-file");
 });

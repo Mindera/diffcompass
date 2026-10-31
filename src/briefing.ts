@@ -79,10 +79,10 @@ export function validBriefingDocument(value: unknown): value is BriefingDocument
   return (v.sections as NarrativeSection[]).every(s => s.blocks.every(b => b.kind === "diagram" ? diagrams.has(b.diagramId) : b.kind === "source" ? evidence.has(b.evidenceId) : true));
 }
 
-export function briefingIntent(input: { pullRequest?: { title: string; body?: string; linkedIssue?: unknown }; reviewerTask?: unknown }): string {
+export function briefingIntent(input: { pullRequest?: { title: string; body?: string; linkedIssue?: unknown }; reviewerTask?: unknown; authorIntent?: string }): string {
   const issue = record(input.pullRequest?.linkedIssue) ? input.pullRequest.linkedIssue : undefined;
   const task = record(input.reviewerTask) ? input.reviewerTask : undefined;
-  return JSON.stringify({ pullRequest: input.pullRequest ? { title: input.pullRequest.title, body: input.pullRequest.body?.slice(0, 10000), linkedIssue: issue ? { title: issue.title, body: issue.body, acceptanceCriteria: issue.acceptanceCriteria } : undefined } : undefined, reviewerTask: task ? { body: task.body, acceptanceCriteria: task.acceptanceCriteria } : undefined }).slice(0, 24000);
+  return JSON.stringify({ pullRequest: input.pullRequest ? { title: input.pullRequest.title, body: input.pullRequest.body?.slice(0, 10000), linkedIssue: issue ? { title: issue.title, body: issue.body, acceptanceCriteria: issue.acceptanceCriteria } : undefined } : undefined, reviewerTask: task ? { body: task.body, acceptanceCriteria: task.acceptanceCriteria } : undefined, authorIntent: input.authorIntent }).slice(0, 24000);
 }
 
 export function normalizeElementSources(value: unknown): ElementSource[] | undefined {

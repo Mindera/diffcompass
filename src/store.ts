@@ -744,6 +744,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.findingGenerationEnabled !== undefined && typeof session.findingGenerationEnabled !== "boolean") ||
     (session.dryRuns !== undefined && (!Array.isArray(session.dryRuns) || session.dryRuns.length > 32 || !session.dryRuns.every(validDryRunTrace))) ||
     (session.pullRequest !== undefined && !validPullRequest(session.pullRequest)) ||
+    (session.authorIntent !== undefined && (typeof session.authorIntent !== "string" || session.authorIntent.length > 24000)) ||
     (session.screenshots !== undefined && (!Array.isArray(session.screenshots) || session.screenshots.length > 12 || !session.screenshots.every(validScreenshot) || new Set(session.screenshots.map((shot) => shot.id)).size !== session.screenshots.length)) ||
     (session.outline !== undefined && !validOutline(session.outline)) ||
     (session.selection !== undefined && !validSelection(session.selection)) ||
