@@ -788,6 +788,9 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
           (session.pullRequest!.publication!.outcome === "comment" && session.pullRequest!.publication!.status === "published" && comment.githubPublication?.reviewId === session.pullRequest!.publication!.reviewId))))) ||
       (session.pullRequest.publication?.outcome === "comment" && session.pullRequest.publication.commentIds.some(id => !session.comments!.some(comment => comment.id === id && comment.suggestion))) ||
       (["accepted", "feedback"].includes(session.status ?? "") &&
+        // Local approval closes a PR tour without publishing a GitHub decision.
+        !(session.status === "accepted" && (!session.pullRequest.publication ||
+          (session.pullRequest.publication.status === "published" && session.pullRequest.publication.outcome === "comment"))) &&
         (session.pullRequest.publication?.status !== "published" || session.pullRequest.publication.outcome !== session.status))
     )) ||
     (session.outline?.issueAssessment !== undefined && (!session.pullRequest?.linkedIssue || session.pullRequest.linkedIssue.access !== "available" ||

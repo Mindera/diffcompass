@@ -605,12 +605,22 @@ test("pull request state is bounded and cannot redirect its workspace or publica
     (copy: PersistedReviewSession) => { copy.repositoryRoot = "/private/tmp/other"; },
     (copy: PersistedReviewSession) => { copy.pullRequest!.publication!.commentIds = ["missing"]; },
     (copy: PersistedReviewSession) => { copy.pullRequest!.headRefOid = "not-an-oid"; },
+    (copy: PersistedReviewSession) => { copy.status = "accepted"; },
   ]) {
     const malformed = structuredClone(valid);
     mutate(malformed);
     await writeFile(path, JSON.stringify(malformed));
     await expect(loadPersistedSession(path)).rejects.toThrow();
   }
+
+  const localApproval = structuredClone(valid);
+  localApproval.status = "accepted";
+  delete localApproval.pullRequest!.publication;
+  await savePersistedSession(path, localApproval);
+  await expect(loadPersistedSession(path)).resolves.toEqual(localApproval);
+  localApproval.status = "feedback";
+  await savePersistedSession(path, localApproval);
+  await expect(loadPersistedSession(path)).rejects.toThrow();
 });
 
 test("preserving an existing parent mode does not loosen or tighten it", async () => {
