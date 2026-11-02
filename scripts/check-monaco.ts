@@ -30,6 +30,12 @@ const groups = {
 };
 const requested = process.env.MONACO_CHECK_GROUP;
 if (requested && !Object.hasOwn(groups, requested)) throw Error("Unknown MONACO_CHECK_GROUP: " + requested);
+if (!requested || requested === "local") {
+  console.log("BROWSER CHECK scripts/session-discovery-browser.mjs (CLI fixture)");
+  const test = Bun.spawn([process.execPath, "scripts/session-discovery-browser.mjs", resolve("node_modules/playwright/index.mjs")], { stdout: "inherit", stderr: "inherit" });
+  const exitCode = await test.exited;
+  if (exitCode) process.exitCode = exitCode;
+}
 for (const [name, group] of Object.entries(groups)) {
   if (requested && name !== requested) continue;
   for (const script of group.scripts) {

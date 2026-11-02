@@ -25,6 +25,20 @@ protect active sessions and proposal/bridge workspaces; paths and freshness are
 rechecked before deletion. PR worktrees are removed only from the tool-owned
 state directory and only when clean.
 
+External tools can find a running review through `<session>.json.lock` beside its
+saved session. The lock keeps its existing `pid`, `token`, and `startedAt` fields
+and adds `reviewUrl` once the server is listening. Attached sessions also include
+`bridgeUrl`, the bridge's base URL. These fields are absent during early startup
+and disappear when the lock is removed at shutdown.
+
+Match the saved session's `repositoryRoot` to the repository, then verify that
+the lock's `pid` is alive before opening `reviewUrl`. For PR reviews, the original
+checkout is in `pullRequest.sourceRepositoryRoot`. Ignore locks with dead PIDs;
+reopening that session replaces a stale lock. The lock is written atomically with
+mode `0600`. Treat `reviewUrl` as a credential: it includes the browser token and
+must not be copied into logs or shared status output. The lock's existing `token`
+is its ownership token, not the browser or attached-agent authentication token.
+
 ## Comparison base
 
 When `--base` is omitted, resolution uses:
