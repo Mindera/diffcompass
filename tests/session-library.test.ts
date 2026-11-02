@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { access, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireSessionLock, listReviewSessions, pruneReviewSessions, resolveReviewSession, runSessionCommand } from "../src/session-library.ts";
@@ -124,6 +124,39 @@ test("retention max count is deterministic and CLI requires explicit apply", asy
   await expect(runSessionCommand(["prune", "--unknown"], directory)).rejects.toThrow("Unknown");
 });
 
+test("live URLs extend a private lock without changing ownership or session listings", async () => {
+  const directory = await libraryFixture();
+  const path = join(directory, "aaaaaaaa-1111.json");
+  const release = await acquireSessionLock(path);
+  try {
+    const original = JSON.parse(await readFile(`${path}.lock`, "utf8"));
+    const urls = { reviewUrl: "http://127.0.0.1:43210/#token=browser-secret&intro=1", bridgeUrl: "http://127.0.0.1:43210" };
+    await release.publishUrls(urls);
+    expect(JSON.parse(await readFile(`${path}.lock`, "utf8"))).toEqual({ ...original, ...urls });
+    if (process.platform !== "win32") expect((await stat(`${path}.lock`)).mode & 0o777).toBe(0o600);
+    expect((await runSessionCommand(["list", "--all"], directory)).output).not.toContain("browser-secret");
+    expect(JSON.stringify(await listReviewSessions(directory, true))).not.toContain("browser-secret");
+    await expect(acquireSessionLock(path)).rejects.toThrow("already open");
+
+    // Release must wait for an already-started publication, then remove its URL.
+    await Promise.all([release.publishUrls({ reviewUrl: urls.reviewUrl }), release()]);
+    await expect(access(`${path}.lock`)).rejects.toThrow();
+    await expect(release.publishUrls(urls)).rejects.toThrow();
+    await expect(access(`${path}.lock`)).rejects.toThrow();
+  } finally { await release(); }
+});
+
+test("an old lock holder cannot publish URLs into or release a replacement lock", async () => {
+  const directory = await libraryFixture();
+  const path = join(directory, "aaaaaaaa-1111.json");
+  const release = await acquireSessionLock(path);
+  const replacement = { pid: process.pid, token: "replacement-owner", startedAt: new Date().toISOString() };
+  await writeFile(`${path}.lock`, JSON.stringify(replacement));
+  await expect(release.publishUrls({ reviewUrl: "http://127.0.0.1:43210/#token=browser-secret" })).rejects.toThrow("no longer owned");
+  await release();
+  expect(JSON.parse(await readFile(`${path}.lock`, "utf8"))).toEqual(replacement);
+});
+
 test("temporary retention removes only stale owned directories", async () => {
   const directory = await mkdtemp(join(tmpdir(), "diffcompass-retention-"));
   const sessions = join(directory, "sessions");
@@ -159,8 +192,13 @@ test("temporary retention removes only stale owned directories", async () => {
   await expect(access(unrelated)).resolves.toBeNull();
 
   const staleLock = join(sessions, "stale.json");
-  await writeFile(`${staleLock}.lock`, JSON.stringify({ pid: 999_999_999, token: "old" }));
+  await writeFile(`${staleLock}.lock`, JSON.stringify({ pid: 999_999_999, token: "old", reviewUrl: "http://127.0.0.1:43210/#token=stale", bridgeUrl: "http://127.0.0.1:43210" }));
   const release = await acquireSessionLock(staleLock);
+  const freshLock = JSON.parse(await readFile(`${staleLock}.lock`, "utf8"));
+  expect(freshLock.pid).toBe(process.pid);
+  expect(freshLock.token).not.toBe("old");
+  expect(freshLock.reviewUrl).toBeUndefined();
+  expect(freshLock.bridgeUrl).toBeUndefined();
   await release();
 });
 

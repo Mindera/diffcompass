@@ -33,6 +33,16 @@ interface LibraryMetadata {
   sessions: Record<string, { name?: string; archived?: boolean }>;
 }
 
+export interface LiveSessionUrls {
+  reviewUrl: string;
+  bridgeUrl?: string;
+}
+
+export interface SessionLock {
+  (): Promise<void>;
+  publishUrls(urls: LiveSessionUrls): Promise<void>;
+}
+
 async function loadLibraryMetadata(directory: string): Promise<LibraryMetadata> {
   try {
     const value = JSON.parse(await readFile(join(directory, ".library.json"), "utf8")) as LibraryMetadata;
@@ -106,21 +116,46 @@ async function activeTemporaryDirectory(path: string): Promise<boolean> {
   }
 }
 
-export async function acquireSessionLock(sessionPath: string): Promise<() => Promise<void>> {
+export async function acquireSessionLock(sessionPath: string): Promise<SessionLock> {
   const path = lockPath(sessionPath);
   const token = crypto.randomUUID();
   await mkdir(join(path, ".."), { recursive: true, mode: 0o700 });
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       await writeFile(path, `${JSON.stringify({ pid: process.pid, token, startedAt: new Date().toISOString() })}\n`, { mode: 0o600, flag: "wx" });
-      return async () => {
+      // Serialize publication and release so an in-flight write cannot recreate
+      // a released lock. Atomic replacement keeps external readers from seeing
+      // partial JSON (and mistaking a live lock for a stale one).
+      let queue: Promise<void> = Promise.resolve();
+      const serialize = (operation: () => Promise<void>) => {
+        const result = queue.then(operation);
+        queue = result.catch(() => undefined);
+        return result;
+      };
+      const release = () => serialize(async () => {
         try {
           const current = JSON.parse(await readFile(path, "utf8")) as { token?: string };
           if (current.token === token) await unlink(path);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         }
-      };
+      });
+      return Object.assign(release, {
+        publishUrls: (urls: LiveSessionUrls) => serialize(async () => {
+          const current = JSON.parse(await readFile(path, "utf8")) as { pid: number; token: string; startedAt: string };
+          if (current.token !== token || current.pid !== process.pid) throw new Error("The review session lock is no longer owned by this process.");
+          const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+          try {
+            await writeFile(temporary, `${JSON.stringify({ ...current, reviewUrl: urls.reviewUrl, bridgeUrl: urls.bridgeUrl })}\n`, { mode: 0o600, flag: "wx" });
+            await chmod(temporary, 0o600);
+            const latest = JSON.parse(await readFile(path, "utf8")) as { token?: string };
+            if (latest.token !== token) throw new Error("The review session lock is no longer owned by this process.");
+            await rename(temporary, path);
+          } finally {
+            await rm(temporary, { force: true });
+          }
+        }),
+      });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       if (await activeSessionLock(sessionPath)) throw new Error("This review session is already open in another process.");

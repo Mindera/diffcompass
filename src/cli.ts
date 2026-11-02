@@ -283,6 +283,16 @@ if (!session.pullRequest) {
 const server = startServer(session, options.port, undefined, options.previewRedirect, options.startTour);
 const baseUrl = `http://${server.hostname}:${server.port}`;
 const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${options.startTour ? "&intro=1" : ""}`;
+try {
+  await releaseSessionLock.publishUrls({ reviewUrl, bridgeUrl: session.bridge ? baseUrl : undefined });
+} catch (error) {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  repositoryWatcher?.close();
+  await server.stop(true);
+  await session.dispose();
+  await releaseSessionLock();
+  throw error;
+}
 const deferReviewUrl = options.open && options.startTour;
 if (!deferReviewUrl) console.log(`DiffCompass: ${reviewUrl}`);
 console.log(`Repository: ${session.comparison.repositoryRoot}`);
