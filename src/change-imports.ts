@@ -116,7 +116,7 @@ function importSite(node: Node, side: "old" | "new", specifier: string, changedL
 
 const importFact = ({ side, startLine, endLine, specifier, changed }: ImportSite, target: ImportTarget): ImportFact => ({ analysis: "tree-sitter imports", side, startLine, endLine, specifier, changed, target });
 
-export function typescriptImportSites(root: Node, side: "old" | "new", changedLines: ReadonlySet<number>): ImportSite[] {
+function typescriptImportSites(root: Node, side: "old" | "new", changedLines: ReadonlySet<number>): ImportSite[] {
   const sites: ImportSite[] = [];
   const stack: Node[] = [root];
   while (stack.length) {
@@ -218,8 +218,4 @@ export function kotlinImportSites(root: Node, side: "old" | "new", changedLines:
 export function resolveKotlinImports(sites: readonly KotlinImportSite[], scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles"> | IndexFailure): ImportFact[] {
   if ("error" in scan) return sites.map((site) => importFact(site, unresolved(`package index unavailable: ${scan.error}`)));
   return sites.map((site) => importFact(site, site.hasError || !site.segments.length ? unresolved("import could not be fully parsed") : kotlinTarget(site.segments, site.star, site.specifier, scan)));
-}
-
-export function kotlinImports(root: Node, path: string, side: "old" | "new", changedLines: ReadonlySet<number>, scan: Pick<TreeScan, "kotlin" | "coverage" | "javaFiles">): ImportFact[] {
-  return resolveKotlinImports(kotlinImportSites(root, side, changedLines), scan);
 }

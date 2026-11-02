@@ -210,7 +210,7 @@ export async function scanCapturedTree(comparison: GitComparison, side: "old" | 
   return { coverage: { side, totalFiles: candidates.length, scannedFiles, scannedBytes, skippedFiles, parseErrorFiles, ...(stoppedBy ? { stoppedBy } : {}), message }, callSites, kotlin: { complete: kotlinIndexed === kotlinCandidates, unindexed, packages }, javaFiles };
 }
 
-export type CodeGraphGate = { usable: true; reading: string; indexedFiles?: number } | { usable: false; reason: string };
+type CodeGraphGate = { usable: true; reading: string; indexedFiles?: number } | { usable: false; reason: string };
 
 const GATE_TIMEOUT_MS = 15_000;
 const STATUS_TIMEOUT_MS = 5_000;
@@ -274,7 +274,7 @@ async function comparedTree(root: string): Promise<{ tree: string } | { reason: 
   }
 }
 
-export async function codeGraphGate(comparison: GitComparison, executable: string | null): Promise<CodeGraphGate> {
+async function codeGraphGate(comparison: GitComparison, executable: string | null): Promise<CodeGraphGate> {
   const skip = (reason: string): CodeGraphGate => ({ usable: false, reason });
   if (!executable) return skip("CodeGraph is not installed.");
   const root = comparison.repositoryRoot;
