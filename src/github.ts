@@ -331,6 +331,11 @@ export async function createPullRequestWorkspace(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   await ensurePullRequestCommits(context, runner);
+  // Saved reviews must still reopen after their temporary checkout is removed
+  // and the source branch or its reflog no longer retains the reviewed commits.
+  for (const [name, oid] of [["base", context.baseRefOid], ["head", context.headRefOid]]) {
+    await git(runner, context.sourceRepositoryRoot, ["update-ref", `${context.refNamespace}/${name}`, oid!]);
+  }
   await mkdir(containerRoot, { recursive: true, mode: 0o700 });
   await writeFile(join(containerRoot, ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
   const workspace = join(containerRoot, "workspace");

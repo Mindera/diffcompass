@@ -318,6 +318,9 @@ for (const attached of [false, true]) {
       expect((await loadPersistedSession(fixture.stateFile)).status).toBe("accepted");
     } finally { await cli.stop(); }
 
+    await git(fixture.root, "branch", "-D", "feature");
+    await git(fixture.root, "reflog", "expire", "--expire=now", "--all");
+    await git(fixture.root, "gc", "--prune=now");
     const resumed = await launchReview(fixture);
     try { expect(await resumed.finish()).toMatchObject({ code: 0, stderr: "" }); }
     finally { await resumed.stop(); }
