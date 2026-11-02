@@ -1,9 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPullRequestWorkspace, extractAcceptanceCriteria, loadPullRequestContext, parsePullRequestIdentifier, publishPullRequestReview, removePullRequestWorkspace, updatePullRequestWorkspace, type GitHubRunner } from "../src/github.ts";
 import { runProcess } from "../src/process.ts";
+import { ReviewSession } from "../src/session.ts";
+import { loadPersistedSession } from "../src/store.ts";
+import { pruneReviewSessions } from "../src/session-library.ts";
 import type { PullRequestContext, ReviewComment } from "../src/types.ts";
 
 const roots: string[] = [];
@@ -190,7 +193,7 @@ test("loads one same-repository linked issue and degrades when issue access is u
 async function git(cwd: string, ...args: string[]) { return runProcess(["git", ...args], cwd); }
 
 async function repositoryFixture() {
-  const root = await mkdtemp(join(tmpdir(), "diffcompass-pr-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "diffcompass-pr-")));
   roots.push(root);
   await git(root, "init", "-b", "main");
   await git(root, "config", "user.name", "Test");
@@ -223,6 +226,154 @@ test("workspace creation never changes the source checkout and cleanup refuses d
   await expect(removePullRequestWorkspace(context)).rejects.toThrow("local changes");
   expect(await readFile(join(workspace, "file.txt"), "utf8")).toBe("dirty\n");
 });
+
+async function cliFixture(attached = false) {
+  const fixture = await repositoryFixture();
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "diffcompass-pr-cleanup-")));
+  roots.push(directory);
+  const stateFile = join(directory, "sessions", "review.json");
+  const container = join(directory, "worktrees", "review");
+  const workspace = await createPullRequestWorkspace(fixture.context, container);
+  const session = await ReviewSession.create(workspace, fixture.base, {
+    stateFile, pullRequest: fixture.context, attached, agentAdapters: [], includeFindings: false,
+  });
+  await session.dispose();
+  return { ...fixture, directory, stateFile, container, workspace, attached };
+}
+
+async function launchReview(fixture: Awaited<ReturnType<typeof cliFixture>>) {
+  const child = Bun.spawn([process.execPath, join(import.meta.dir, "../src/cli.ts"), "--resume", fixture.stateFile, "--port", "0", "--no-findings"], {
+    cwd: fixture.root, stdout: "pipe", stderr: "pipe",
+    env: { ...process.env, XDG_STATE_HOME: join(fixture.directory, "user-state") },
+  });
+  let output = "";
+  const stdout = (async () => { for await (const chunk of child.stdout) output += new TextDecoder().decode(chunk); })();
+  const stderr = new Response(child.stderr).text();
+  const exited = child.exited;
+  const stop = async () => {
+    if (child.exitCode === null) child.kill();
+    const timer = setTimeout(() => child.kill("SIGKILL"), 2_000);
+    try { await exited; await stdout; } finally { clearTimeout(timer); }
+  };
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!output.includes(fixture.attached ? "Attached bridge token file:" : "Resume: ")) {
+      if (child.exitCode !== null || Date.now() >= deadline) throw new Error(`CLI failed to start: ${output}\n${await (child.exitCode === null ? Promise.resolve("") : stderr)}`);
+      await Bun.sleep(10);
+    }
+    const url = /^DiffCompass: (.+)$/m.exec(output)![1]!;
+    return {
+      child, url, stop,
+      async finish() {
+        const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
+        try { const code = await exited; await stdout; return { code, output, stderr: await stderr }; }
+        finally { clearTimeout(timer); }
+      },
+    };
+  } catch (error) { await stop(); throw error; }
+}
+
+async function acceptReview(url: string) {
+  const response = await fetch(new URL("/api/close", url), {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: new URL(url).origin, "x-diffcompass-token": new URL(url).hash.slice("#token=".length) },
+    body: JSON.stringify({ outcome: "accepted", decision: "approve", localOnly: true }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ status: "accepted" });
+}
+
+async function acknowledgeReview(url: string, stateFile: string) {
+  const state = await loadPersistedSession(stateFile);
+  const headers = { "x-diffcompass-token": state.bridgeToken! };
+  const response = await fetch(new URL("/api/bridge/events", url), { headers });
+  const { events } = await response.json() as { events: { id: string; type: string; leaseId: string; outcome: string }[] };
+  const terminal = events.find(event => event.type === "review.closed")!;
+  expect(terminal.outcome).toBe("accepted");
+  const ack = await fetch(new URL("/api/bridge/ack", url), {
+    method: "POST", headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ eventId: terminal.id, leaseId: terminal.leaseId }),
+  });
+  expect(ack.status).toBe(200); await ack.text();
+}
+
+for (const attached of [false, true]) {
+  test(`accepted ${attached ? "attached" : "standalone"} PR tours remove their worktree and can resume and prune`, async () => {
+    const fixture = await cliFixture(attached);
+    await writeFile(join(fixture.root, "my-notes.txt"), "Keep my source checkout untouched.\n");
+    const before = (await git(fixture.root, "status", "--porcelain")).stdout;
+    const cli = await launchReview(fixture);
+    try {
+      await acceptReview(cli.url);
+      if (attached) {
+        // Keep the review readable until the launching agent receives the decision.
+        await expect(access(fixture.workspace)).resolves.toBeNull();
+        await acknowledgeReview(cli.url, fixture.stateFile);
+      }
+      expect(await cli.finish()).toMatchObject({ code: 0, stderr: "" });
+      await expect(access(fixture.container)).rejects.toThrow();
+      await expect(access(`${fixture.stateFile}.lock`)).rejects.toThrow();
+      expect((await git(fixture.root, "worktree", "list", "--porcelain")).stdout).not.toContain(fixture.workspace);
+      expect((await git(fixture.root, "status", "--porcelain")).stdout).toBe(before);
+      expect((await loadPersistedSession(fixture.stateFile)).status).toBe("accepted");
+    } finally { await cli.stop(); }
+
+    const resumed = await launchReview(fixture);
+    try { expect(await resumed.finish()).toMatchObject({ code: 0, stderr: "" }); }
+    finally { await resumed.stop(); }
+    await expect(access(fixture.container)).rejects.toThrow();
+    const pruned = await pruneReviewSessions({ maxSessions: 0, includeArchived: true }, { directory: join(fixture.directory, "sessions"), apply: true });
+    expect(pruned.sessions.map(session => session.id)).toEqual(["review"]);
+    await expect(access(fixture.stateFile)).rejects.toThrow();
+  }, 30_000);
+}
+
+test("stopping an accepted attached review clears its timer and resume delivers the saved result", async () => {
+  const fixture = await cliFixture(true);
+  const cli = await launchReview(fixture);
+  try {
+    await acceptReview(cli.url);
+    cli.child.kill("SIGTERM");
+    expect(await cli.finish()).toMatchObject({ code: 0, stderr: "" });
+    await expect(access(fixture.container)).rejects.toThrow();
+    expect((await loadPersistedSession(fixture.stateFile)).bridgeTerminalEvent?.acknowledged).not.toBe(true);
+  } finally { await cli.stop(); }
+  const resumed = await launchReview(fixture);
+  try {
+    await expect(access(fixture.workspace)).resolves.toBeNull();
+    await acknowledgeReview(resumed.url, fixture.stateFile);
+    expect(await resumed.finish()).toMatchObject({ code: 0, stderr: "" });
+    await expect(access(fixture.container)).rejects.toThrow();
+  } finally { await resumed.stop(); }
+}, 30_000);
+
+test("shutdown retains unfinished PR worktrees and releases their active markers and lock", async () => {
+  const fixture = await cliFixture();
+  const cli = await launchReview(fixture);
+  try {
+    cli.child.kill("SIGTERM");
+    expect(await cli.finish()).toMatchObject({ code: 0, stderr: "" });
+    await expect(access(fixture.workspace)).resolves.toBeNull();
+    await expect(access(join(fixture.container, ".active.json"))).rejects.toThrow();
+    await expect(access(`${fixture.stateFile}.lock`)).rejects.toThrow();
+    expect((await loadPersistedSession(fixture.stateFile)).status).toBe("open");
+  } finally { await cli.stop(); }
+}, 15_000);
+
+test("accepted dirty PR worktrees are retained without blocking shutdown or lock release", async () => {
+  const fixture = await cliFixture();
+  const cli = await launchReview(fixture);
+  try {
+    await writeFile(join(fixture.workspace, "file.txt"), "Keep this edit.\n");
+    await acceptReview(cli.url);
+    const result = await cli.finish();
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("local changes and was retained");
+    expect(await readFile(join(fixture.workspace, "file.txt"), "utf8")).toBe("Keep this edit.\n");
+    await expect(access(`${fixture.stateFile}.lock`)).rejects.toThrow();
+    await expect(access(join(fixture.container, ".active.json"))).rejects.toThrow();
+  } finally { await cli.stop(); }
+}, 15_000);
 
 test("PR refresh refuses to overwrite a dirty isolated workspace", async () => {
   const { root, context } = await repositoryFixture();

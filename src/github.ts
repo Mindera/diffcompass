@@ -350,7 +350,12 @@ export async function removePullRequestWorkspace(context: PullRequestContext, ru
   const workspace = resolve(context.workspaceRoot);
   const container = dirname(workspace);
   if (basename(workspace) !== "workspace") throw new ReviewError("The pull request workspace path is not owned by DiffCompass.");
-  const [workspaceMetadata, containerMetadata] = await Promise.all([lstat(workspace), lstat(container)]);
+  const workspaceMetadata = await lstat(workspace).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+    return undefined;
+  });
+  if (!workspaceMetadata) return; // Already removed when the completed review shut down.
+  const containerMetadata = await lstat(container);
   if (!workspaceMetadata.isDirectory() || workspaceMetadata.isSymbolicLink() || !containerMetadata.isDirectory() || containerMetadata.isSymbolicLink()) {
     throw new ReviewError("The pull request workspace path is not a safe directory.");
   }
