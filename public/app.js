@@ -1741,6 +1741,18 @@ function persistDiffPreferences() {
     .catch((error) => toast(error.message));
 }
 
+function persistDiffRenderer(diffRenderer) {
+  state.diffPreferenceSave = (state.diffPreferenceSave ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(async () => {
+      const session = await api("/api/preferences", {
+        method: "POST", body: JSON.stringify({ diffRenderer }),
+      });
+      if (state.session) state.session.diffRenderer = session.diffRenderer;
+    })
+    .catch((error) => toast(`Could not save renderer preference: ${error.message}`));
+}
+
 function diffViewRow(path, side, line) {
   return elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-side="${side}"][data-line="${line}"]`)
     ?? elements.diff.querySelector(`.diff-row[data-path="${CSS.escape(path)}"][data-${side}-line="${line}"]`);
@@ -5600,10 +5612,10 @@ function isInPlaceSessionUpdate(previous, latest) {
   // Explanations and comments can be updated without replacing the diff.
   // Only skip the full render when everything else is unchanged, including
   // the route, selected stop, diff, and review lifecycle.
-  // Layout/wrap are applied immediately by changeDiffView. A later polling
+  // Renderer/layout/wrap are applied immediately by their controls. A later polling
   // acknowledgement of their saved preferences must not rebuild the diff,
   // replace comment DOM or steal the reader's position.
-  const structuralSnapshot = ({ revision, agentActivity, activities, comments, messages, outline, pullRequest, diffPreferences, ...session }) => ({
+  const structuralSnapshot = ({ revision, agentActivity, activities, comments, messages, outline, pullRequest, diffPreferences, diffRenderer, ...session }) => ({
     ...session,
     pullRequest: pullRequest ? (({ threads, threadsTruncated, updatedAt, ...metadata }) => metadata)(pullRequest) : pullRequest,
     outline: outline ? {
@@ -5626,7 +5638,7 @@ function isSamePhaseNavigationUpdate(previous, latest, { acrossPhases = false } 
   const previousPhase = previous.outline.phases.find((phase) => phase.steps.some((step) => step.id === previousStep?.id));
   const latestPhase = latest.outline.phases.find((phase) => phase.steps.some((step) => step.id === latestStep?.id));
   if (!previousPhase || !latestPhase || (!acrossPhases && previousPhase.id !== latestPhase.id)) return false;
-  const navigationSnapshot = ({ revision, agentActivity, currentStepIndex, outline, diffPreferences, ...session }) => ({
+  const navigationSnapshot = ({ revision, agentActivity, currentStepIndex, outline, diffPreferences, diffRenderer, ...session }) => ({
     ...session,
     outline: outline ? {
       ...outline,
@@ -5695,6 +5707,7 @@ function renderSessionUpdate(previous, options) {
 }
 
 function renderSession() {
+  state.monacoRenderer?.restorePreference(state.session.diffRenderer);
   getBriefingReader().render(state.session);
   const { comparison, comments } = state.session;
   syncDryRunSourceCache();
@@ -8388,6 +8401,7 @@ state.monacoRenderer = createMonacoRenderer({
   actions: {
     notify: toast, tourShortcut: handleTourShortcut, viewportChanged: scheduleCurrentStepReturnUpdate,
     reserveScroll: reserveDiffScrollPosition,
+    saveRendererPreference: persistDiffRenderer,
     review: setReviewed,
     fileSummaryControl: file => globalThis.DiffCompassSemantic?.control(file, false) ?? "",
     async suggestionCreated(result, path) {

@@ -331,6 +331,11 @@ export async function createPullRequestWorkspace(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   await ensurePullRequestCommits(context, runner);
+  // Saved reviews must still reopen after their temporary checkout is removed
+  // and the source branch or its reflog no longer retains the reviewed commits.
+  for (const [name, oid] of [["base", context.baseRefOid], ["head", context.headRefOid]]) {
+    await git(runner, context.sourceRepositoryRoot, ["update-ref", `${context.refNamespace}/${name}`, oid!]);
+  }
   await mkdir(containerRoot, { recursive: true, mode: 0o700 });
   await writeFile(join(containerRoot, ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
   const workspace = join(containerRoot, "workspace");
@@ -350,7 +355,12 @@ export async function removePullRequestWorkspace(context: PullRequestContext, ru
   const workspace = resolve(context.workspaceRoot);
   const container = dirname(workspace);
   if (basename(workspace) !== "workspace") throw new ReviewError("The pull request workspace path is not owned by DiffCompass.");
-  const [workspaceMetadata, containerMetadata] = await Promise.all([lstat(workspace), lstat(container)]);
+  const workspaceMetadata = await lstat(workspace).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+    return undefined;
+  });
+  if (!workspaceMetadata) return; // Already removed when the completed review shut down.
+  const containerMetadata = await lstat(container);
   if (!workspaceMetadata.isDirectory() || workspaceMetadata.isSymbolicLink() || !containerMetadata.isDirectory() || containerMetadata.isSymbolicLink()) {
     throw new ReviewError("The pull request workspace path is not a safe directory.");
   }

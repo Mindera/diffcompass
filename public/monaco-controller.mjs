@@ -6,12 +6,15 @@ import { panReviewScroll } from "./monaco/pen-scroll.mjs";
 
 export function createMonacoRenderer({ container, controls, token, snapshot, render, actions }) {
   const preferenceKey = "diffcompass-diff-renderer";
-  let preferred = "current";
-  try { if (localStorage.getItem(preferenceKey) === "monaco") preferred = "monaco"; } catch {}
+  let browserPreference;
+  try { browserPreference = localStorage.getItem(preferenceKey); } catch {}
+  let preferred = browserPreference === "monaco" ? "monaco" : "current";
+  let preferenceRestored = false;
   const label = document.createElement("label"); label.textContent = "Renderer ";
   const select = document.createElement("select"); select.id = "diff-renderer"; select.setAttribute("aria-label", "Diff renderer");
   // Keep the persisted value "current" compatible with existing installations.
   select.add(new Option("Shiki", "current")); select.add(new Option("Monaco", "monaco")); select.value = preferred;
+  select.disabled = true; // Restore the saved reviewer preference before accepting changes.
   label.append(select); controls.append(label);
   const region = document.createElement("section"); region.className = "monaco-review-region"; region.hidden = true;
   const notice = document.createElement("p"); notice.className = "monaco-review-notice"; notice.setAttribute("role", "status");
@@ -355,6 +358,7 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
     cancelPhase();
     preferred = select.value; failed = false; pendingFailure = null;
     try { localStorage.setItem(preferenceKey, preferred); } catch {}
+    actions.saveRendererPreference(preferred);
     if (preferred === "current") closeAll();
     render();
   };
@@ -449,6 +453,19 @@ export function createMonacoRenderer({ container, controls, token, snapshot, ren
   }
   const controller = {
     owns, sync, hasDraft, setCommentsVisible, preservePhasePosition,
+    restorePreference(saved) {
+      if (preferenceRestored) return;
+      preferenceRestored = true;
+      if (["current", "monaco"].includes(saved)) {
+        preferred = saved;
+        try { localStorage.setItem(preferenceKey, preferred); } catch {}
+      } else if (["current", "monaco"].includes(browserPreference)) {
+        // Migrate the old port-scoped choice only when no durable choice exists.
+        actions.saveRendererPreference(preferred);
+      }
+      select.value = preferred;
+      select.disabled = false;
+    },
     updateMobileActions: mobileActions.update,
     cancelPhase,
     async preparePhase(session) {

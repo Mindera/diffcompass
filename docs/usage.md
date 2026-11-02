@@ -25,6 +25,12 @@ protect active sessions and proposal/bridge workspaces; paths and freshness are
 rechecked before deletion. PR worktrees are removed only from the tool-owned
 state directory and only when clean.
 
+Completed PR reviews remove their temporary worktree when the review server
+shuts down, after the attached agent acknowledges the result or its delivery
+timeout expires. Interrupted reviews and worktrees with local changes are kept.
+The saved review remains available; reopening a completed review recreates its
+checkout at the recorded PR revision when needed.
+
 External tools can find a running review through `<session>.json.lock` beside its
 saved session. The lock keeps its existing `pid`, `token`, and `startedAt` fields
 and adds `reviewUrl` once the server is listening. Attached sessions also include

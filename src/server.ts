@@ -50,7 +50,7 @@ import { resolveSymbolPeek } from "./symbol-peek.ts";
 import { ReviewSession } from "./session.ts";
 import { deleteReviewSession, listReviewSessions, resolveReviewSession, reviewSessionDirectory, updateReviewSessionMetadata } from "./session-library.ts";
 import { createUpdateService, type UpdateService } from "./update.ts";
-import { isBriefingSectionOrder, type BriefingPreferences } from "./types.ts";
+import { isBriefingSectionOrder, isDiffRenderer, type BriefingPreferences } from "./types.ts";
 import {
   enumValue,
   exactKeys,
@@ -283,7 +283,13 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/preferences") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["prefetchSteps", "diffLayout", "diffWrap", "mobile", "showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingCallFlows", "briefingNeedsAttention", "briefingReviewEffort", "briefingOrder"]);
+        exactKeys(input, ["prefetchSteps", "diffLayout", "diffWrap", "diffRenderer", "mobile", "showBriefing", "briefingArchitecture", "briefingSequenceDiagrams", "briefingCallFlows", "briefingNeedsAttention", "briefingReviewEffort", "briefingOrder"]);
+        if ("diffRenderer" in input) {
+          if (Object.keys(input).length !== 1 || !isDiffRenderer(input.diffRenderer)) {
+            throw new HttpError(422, "Diff renderer must be current or monaco.");
+          }
+          return json(await session.setDiffRenderer(input.diffRenderer));
+        }
         if (input.prefetchSteps !== undefined) {
           if (Object.keys(input).length !== 1 || !Number.isInteger(input.prefetchSteps) || Number(input.prefetchSteps) < 0 || Number(input.prefetchSteps) > 5) {
             throw new HttpError(422, "Prepare ahead must be between 0 and 5 steps.");

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -176,8 +176,10 @@ const stateFile = options.resume ?? join(
   "sessions",
   `${crypto.randomUUID()}.json`,
 );
-const intendedRepositoryRoot = options.resume
-  ? (await loadPersistedSession(stateFile)).repositoryRoot
+const resumedState = options.resume ? await loadPersistedSession(stateFile) : undefined;
+// A completed PR review may have already released its isolated checkout.
+const intendedRepositoryRoot = resumedState
+  ? resumedState.pullRequest?.sourceRepositoryRoot ?? resumedState.repositoryRoot
   : await resolveRepositoryRoot(options.repository);
 const canonicalRepositoryRoot = await realpath(intendedRepositoryRoot);
 const repositoryConfig = await loadRepositoryConfig(canonicalRepositoryRoot);
@@ -212,16 +214,28 @@ const releaseSessionLock = await acquireSessionLock(canonicalStatePath);
 let session: ReviewSession;
 let pullRequest: PullRequestContext | undefined;
 let createdPullRequestWorkspace = false;
+const workspaceContainer = join(dirname(canonicalStateDirectory), "worktrees", basename(canonicalStatePath, ".json"));
 try {
   let reviewRepository = options.repository;
   let reviewBase = options.base ?? repositoryConfig.base;
   if (options.pullRequest) {
     pullRequest = await loadPullRequestContext(canonicalRepositoryRoot, options.pullRequest);
-    const sessionId = basename(canonicalStatePath, ".json");
-    const container = join(dirname(dirname(canonicalStatePath)), "worktrees", sessionId);
-    reviewRepository = await createPullRequestWorkspace(pullRequest, container);
+    reviewRepository = await createPullRequestWorkspace(pullRequest, workspaceContainer);
     createdPullRequestWorkspace = true;
     reviewBase = pullRequest.baseRefOid;
+  } else if (resumedState?.pullRequest) {
+    pullRequest = resumedState.pullRequest;
+    if (resolve(pullRequest.workspaceRoot) !== join(workspaceContainer, "workspace")) {
+      throw new Error("Persisted pull request workspace is outside the owned worktree directory.");
+    }
+    const missing = await lstat(pullRequest.workspaceRoot).then(() => false, (error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return true;
+    });
+    if (missing && resumedState.status !== "open") {
+      await createPullRequestWorkspace(pullRequest, workspaceContainer);
+      createdPullRequestWorkspace = true;
+    }
   }
   session = await ReviewSession.create(reviewRepository, reviewBase, {
     adapterId: options.attached ? "attached" : options.agent ?? repositoryConfig.agent,
@@ -287,16 +301,27 @@ console.log(`Tour agents: ${session.agentAdapters.map((adapter) => adapter.label
 console.log(`Session state: ${canonicalStatePath}`);
 console.log(`Resume: diffcompass --resume ${JSON.stringify(canonicalStatePath)}`);
 let shuttingDown = false;
+let terminalDeliveryTimer: ReturnType<typeof setTimeout> | undefined;
 const shutdown = async (bridgeDirectory?: string, force = false) => {
   if (shuttingDown) return;
   shuttingDown = true;
+  if (terminalDeliveryTimer) clearTimeout(terminalDeliveryTimer);
   if (refreshTimer) clearTimeout(refreshTimer);
   repositoryWatcher?.close();
-  server.stop(force);
+  const stopped = server.stop(force);
   await session.dispose();
-  if (session.pullRequest?.workspaceRoot) await unlink(join(session.pullRequest.workspaceRoot, "..", ".active.json")).catch(() => undefined);
-  await releaseSessionLock();
-  if (bridgeDirectory) await rm(bridgeDirectory, { recursive: true, force: true });
+  await stopped;
+  try {
+    // Interrupted, unfinished reviews still need their checkout for resume.
+    // Normal attached shutdown waits for terminal delivery or timeout.
+    if (session.status !== "open" && session.pullRequest) await removePullRequestWorkspace(session.pullRequest);
+  } catch (error) {
+    console.warn(`Could not remove the completed review workspace: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    if (session.pullRequest?.workspaceRoot) await unlink(join(session.pullRequest.workspaceRoot, "..", ".active.json")).catch(() => undefined);
+    try { await releaseSessionLock(); }
+    finally { if (bridgeDirectory) await rm(bridgeDirectory, { recursive: true, force: true }); }
+  }
 };
 if (session.bridge) {
   const bridgeDirectory = await mkdtemp(join(tmpdir(), "diffcompass-"));
@@ -306,13 +331,12 @@ if (session.bridge) {
   console.log(`Attached bridge URL: ${baseUrl}`);
   console.log(`Attached bridge token file: ${bridgeTokenFile}`);
 
-  let fallback: ReturnType<typeof setTimeout> | undefined;
   session.closed.then(() => {
-    fallback = setTimeout(() => shutdown(bridgeDirectory), 5 * 60 * 1_000);
+    if (!shuttingDown) terminalDeliveryTimer = setTimeout(() => shutdown(bridgeDirectory), 5 * 60 * 1_000);
   });
   session.bridge.terminalAcknowledged.then(() => {
-    if (fallback) clearTimeout(fallback);
-    setTimeout(() => shutdown(bridgeDirectory), 100);
+    if (terminalDeliveryTimer) clearTimeout(terminalDeliveryTimer);
+    if (!shuttingDown) setTimeout(() => shutdown(bridgeDirectory), 100);
   });
   process.on("SIGINT", () => shutdown(bridgeDirectory, true));
   process.on("SIGTERM", () => shutdown(bridgeDirectory, true));
