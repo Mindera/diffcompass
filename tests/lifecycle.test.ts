@@ -329,6 +329,57 @@ test("new sessions inherit the last repository-scoped diff preferences", async (
   } finally { await first.dispose(); }
 });
 
+test("renderer choice follows the reviewer across repositories and resumed reviews", async () => {
+  const first = await repositoryFixture();
+  const second = await repositoryFixture();
+  const defaults = { ...noAdapters, diffPreferenceDirectory: join(first.directory, "preferences") };
+  const sessions: ReviewSession[] = [];
+  const open = async (repository: string, stateFile: string, resume = false) => {
+    const session = await ReviewSession.create(repository, undefined, { ...defaults, stateFile, resume });
+    sessions.push(session);
+    return session;
+  };
+  try {
+    const original = await open(first.repository, first.stateFile);
+    expect(original.snapshot().diffRenderer).toBeUndefined();
+    await original.setDiffPreferences("desktop", { layout: "unified", wrap: "wrap" });
+    await original.setDiffRenderer("monaco");
+
+    const next = await open(second.repository, second.stateFile);
+    expect(next.snapshot().diffRenderer).toBe("monaco");
+    expect(next.snapshot().diffPreferences).toBeUndefined();
+    // Updating other saved preferences must retain the global renderer.
+    await next.setDiffPreferences("mobile", { layout: "split", wrap: "scroll" });
+    const resumed = await open(first.repository, first.stateFile, true);
+    expect(resumed.snapshot().diffRenderer).toBe("monaco");
+    expect(resumed.snapshot().diffPreferences?.desktop).toEqual({ layout: "unified", wrap: "wrap" });
+
+    await next.setDiffRenderer("current");
+    const resumedAgain = await open(first.repository, first.stateFile, true);
+    expect(resumedAgain.snapshot().diffRenderer).toBe("current");
+  } finally {
+    for (const session of sessions) await session.dispose();
+  }
+});
+
+test("renderer preference persistence failures retain the previous choice", async () => {
+  const { repository, stateFile, directory } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+  try {
+    await session.setDiffRenderer("monaco");
+    const revision = session.revision;
+    // Fail the session write after the global settings file has been updated.
+    await rm(stateFile);
+    await mkdir(stateFile);
+    await expect(session.setDiffRenderer("current")).rejects.toThrow();
+    expect(session.snapshot().diffRenderer).toBe("monaco");
+    expect(session.revision).toBe(revision);
+    const next = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile: join(directory, "next.json") });
+    try { expect(next.snapshot().diffRenderer).toBe("monaco"); }
+    finally { await next.dispose(); }
+  } finally { await session.dispose(); }
+});
+
 test("new sessions inherit the global briefing preferences", async () => {
   const { directory, repository, stateFile } = await repositoryFixture();
   const first = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });

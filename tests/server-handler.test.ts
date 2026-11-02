@@ -247,6 +247,24 @@ test("diff preferences persist independently for desktop and mobile sessions", a
   expect(invalid.status).toBe(422);
 });
 
+test("renderer preferences accept both renderers and reject invalid or mixed settings", async () => {
+  const { session, fetch } = fixture();
+  for (const diffRenderer of ["monaco", "current"]) {
+    const response = await fetch(authorizedRequest(session, "/api/preferences", { diffRenderer }));
+    expect(response.status).toBe(200);
+    expect((await response.json()).diffRenderer).toBe(diffRenderer);
+  }
+  for (const input of [
+    { diffRenderer: "shiki" }, { diffRenderer: null }, { diffRenderer: ["monaco"] },
+    { diffRenderer: "monaco", diffLayout: "split", diffWrap: "wrap", mobile: false },
+    { diffRenderer: "monaco", prefetchSteps: 1 },
+  ]) {
+    const response = await fetch(authorizedRequest(session, "/api/preferences", input));
+    expect(response.status).toBe(422);
+    expect(session.snapshot().diffRenderer).toBe("current");
+  }
+});
+
 test("discussion endpoints validate paths, ranges, stop ids, and preserve quotations", async () => {
   const { session, fetch } = fixture();
   (session as unknown as { outline: unknown; currentStepIndex: number }).outline = {
