@@ -21,6 +21,7 @@
     "fixture:github-suggestions": "bun scripts/github-suggestions-fixture.ts",
     "build:release": "bash scripts/build-release.sh",
     "test": "bun test",
+    "check:change-facts": "bun scripts/check-change-facts.ts",
     "test:monaco": "bun scripts/check-monaco.ts",
     "test:github-suggestions-browser": "bun scripts/check-github-suggestions.ts",
     "typecheck": "bunx tsc --noEmit",

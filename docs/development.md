@@ -174,7 +174,7 @@ Shiki renderer. Sequence-diagram code snippets are a separate surface.
 
 Map types describe evidenced roles (for example Agent skill, Script, ViewModel,
 Use case, Repository, or Domain model), independently of a node's name and
-its domain vocabulary from `CONTEXT.md`. Architecture and sequence generation
+its domain vocabulary from `CONTEXT.md` or `GLOSSARY.md`. Architecture and sequence generation
 can supply `nodeRoles` keyed by Mermaid node id, each with a `type` and a
 source-grounded `evidence` explanation. The Types filter groups these roles;
 component details include “Why this type”. Names and suffixes alone do not

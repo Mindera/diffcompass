@@ -302,6 +302,7 @@ test("every Archify family captures its native viewer without mutating source IR
     expect(diagram.elements).toEqual(original.find(d => d.id === diagram.id)!.elements);
     expect(briefingDiagramHtml(diagram)).toContain("connect-src 'none'");
     expect(briefingDiagramHtml(diagram)).toContain("diffcompass-briefing-diagram-select");
+    expect(briefingDiagramHtml(diagram)).toContain("<style data-diffcompass-briefing-details>.focus-chip{display:none!important}</style>");
   }
   expect(validBriefingDocument(document)).toBe(true);
   document.diagrams[0]!.nodeRoles = { invented: { type: "Made up", evidence: "bad" } } as any;

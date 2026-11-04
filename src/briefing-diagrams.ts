@@ -40,5 +40,5 @@ export function briefingDiagramHtml(diagram: BriefingDiagram): string | undefine
     html = html.slice(0, boundary) + bridge + html.slice(boundary);
   }
   // srcdoc exports need the same network isolation as the live iframe route.
-  return html.replace(/<head\b[^>]*>/i, opening => `${opening}<meta http-equiv="Content-Security-Policy" content="${BRIEFING_DIAGRAM_CSP}">`);
+  return html.replace(/<head\b[^>]*>/i, opening => `${opening}<meta http-equiv="Content-Security-Policy" content="${BRIEFING_DIAGRAM_CSP}"><style data-diffcompass-briefing-details>.focus-chip{display:none!important}</style>`);
 }

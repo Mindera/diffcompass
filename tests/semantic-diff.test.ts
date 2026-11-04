@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { analyseSemanticSources, SEMANTIC_LIMITS } from "../src/semantic-diff.ts";
+import { analyseSemanticSources, SEMANTIC_LIMITS, SYNTAX_LANGUAGES, supportedLanguage } from "../src/semantic-diff.ts";
 import type { DiffFile } from "../src/types.ts";
 
 const file = (path = "test.ts", extra: Partial<DiffFile> = {}): DiffFile => ({ path, oldPath: path, newPath: path, status: "modified", metadata: [], hunks: [], additions: 0, deletions: 0, ...extra });
@@ -84,7 +84,8 @@ test("failures, unsupported/mixed files and successful empty results are distinc
   const empty = await analyse("", ""); expect(empty.status).toBe("analysed"); expect(empty.changes).toEqual([]);
   const imports = await analyse('import "before";', 'import "after";'); expect(imports.status).toBe("analysed"); expect(imports.message).toContain("No supported declaration change");
   expect((await analyse("// @generated\nconst x = 1;", "const x = 2;")).status).toBe("generated");
-  expect((await analyse("", " ".repeat(SEMANTIC_LIMITS.bytes + 1))).status).toBe("limited");
+  const oversized = await analyse("", " ".repeat(SEMANTIC_LIMITS.bytes + 1));
+  expect(oversized.status).toBe("limited"); expect(oversized.limit).toBe("size");
   expect((await analyse("", "\n".repeat(SEMANTIC_LIMITS.lines))).status).toBe("limited");
 });
 test("results and resource lifetime stay bounded across repeated analyses", async () => {
@@ -93,4 +94,15 @@ test("results and resource lifetime stay bounded across repeated analyses", asyn
   for (let i = 0; i < 10; i++) expect((await analyse("", `const x = ${i};`)).status).toBe("analysed");
   const tooMany = await analyse("", Array.from({ length: 1001 }, (_, i) => `const value${i} = ${i};`).join("\n"));
   expect(tooMany.status).toBe("limited"); expect(tooMany.changes).toEqual([]);
+});
+test("supportedLanguage maps extensions case-insensitively and SYNTAX_LANGUAGES lists the ids", () => {
+  for (const path of ["a.ts", "a.mts", "a.cts", "a.d.ts"]) expect(supportedLanguage(path)).toBe("typescript");
+  for (const path of ["a.tsx", "A.TSX"]) expect(supportedLanguage(path)).toBe("tsx");
+  for (const path of ["a.kt", "build.gradle.kts"]) expect(supportedLanguage(path)).toBe("kotlin");
+  for (const path of ["a.js", "a.mjs", "a.json", null, ""]) expect(supportedLanguage(path)).toBeUndefined();
+  expect(SYNTAX_LANGUAGES.map((language) => language.id)).toEqual(["typescript", "tsx", "kotlin"]);
+});
+test("a declaration-count overflow reports the complexity limit", async () => {
+  const result = await analyse("", Array.from({ length: 1001 }, (_, i) => `function f${i}() {}`).join("\n"));
+  expect(result.status).toBe("limited"); expect(result.limit).toBe("complexity");
 });

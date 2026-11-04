@@ -67,3 +67,39 @@ test("tree reviews read glossary content from the reviewed tree, not the working
   const found = await loadDomainDocuments({...comparison,repositoryRoot:root,repositoryFiles:["CONTEXT.md"],sourceKind:"tree",sourceTree:tree});
   expect(found[0]?.text).toBe("# Original vocabulary");
 });
+test("tree reviews discover GLOSSARY.md beside CONTEXT.md", async () => {
+  const root = await mkdtemp(join(tmpdir(),"diffcompass-domain-glossary-"));
+  await runProcess(["git","init"],root);
+  await mkdir(join(root,"src"));
+  await writeFile(join(root,"GLOSSARY.md"),"# Root glossary");
+  await writeFile(join(root,"src/GLOSSARY.md"),"# Nested glossary");
+  await writeFile(join(root,"CONTEXT.md"),"# Context");
+  await runProcess(["git","add","GLOSSARY.md","src/GLOSSARY.md","CONTEXT.md"],root);
+  const tree = (await runProcess(["git","write-tree"],root)).stdout.trim();
+  await writeFile(join(root,"GLOSSARY.md"),"# Later");
+  await writeFile(join(root,"src/GLOSSARY.md"),"# Later");
+  await writeFile(join(root,"CONTEXT.md"),"# Later");
+  const found = await loadDomainDocuments({...comparison,repositoryRoot:root,repositoryFiles:["GLOSSARY.md","src/GLOSSARY.md","CONTEXT.md"],files:[{path:"src/code.ts"}],sourceKind:"tree",sourceTree:tree} as GitComparison);
+  expect(found.map(doc=>[doc.path,doc.text]).sort()).toEqual([["CONTEXT.md","# Context"],["GLOSSARY.md","# Root glossary"],["src/GLOSSARY.md","# Nested glossary"]]);
+}, 30_000);
+test("a CONTEXT.md and a GLOSSARY.md in one folder are equally near", () => {
+  const both = [{path:"CONTEXT.md",scope:"",text:domainFixtureText},{path:"GLOSSARY.md",scope:"",text:domainFixtureText}];
+  expect(validateDomainModels([domainFixtureModel],both,comparison)).toEqual([domainFixtureModel]);
+  const glossary = structuredClone(domainFixtureModel);
+  glossary.path = "GLOSSARY.md";
+  for (const concept of glossary.concepts) concept.source.path = "GLOSSARY.md";
+  for (const edge of glossary.relationships) edge.source.path = "GLOSSARY.md";
+  expect(validateDomainModels([glossary],both,comparison)).toEqual([glossary]);
+  expect(domainPrompt(both)).toContain("CONTEXT.md and GLOSSARY.md in one folder give two models");
+});
+test("a nested GLOSSARY.md takes precedence over the root CONTEXT.md", () => {
+  expect(() => validateDomainModels([domainFixtureModel],[...docs,{path:"src/GLOSSARY.md",scope:"src",text:"# Different vocabulary"}],comparison)).toThrow("nearest glossary");
+});
+test("a GLOSSARY.md concept source names its context after the folder", () => {
+  const model = structuredClone(domainFixtureModel);
+  model.path = "CONTEXT-MAP.md";
+  model.concepts[0]!.source.path = "billing/GLOSSARY.md";
+  const outline = {domainModels:[model],callFlows:[],flows:[]} as unknown as TourOutline;
+  const candidate = archifyCandidates(outline)[0]!;
+  expect(candidate.domainDetails?.[model.concepts[0]!.id]?.context).toBe("billing");
+});

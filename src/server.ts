@@ -25,6 +25,7 @@ import semanticDiffStyles from "../public/semantic-diff.css" with { type: "text"
 // Bun embeds required parser/grammar notices in release binaries.
 import semanticDiffNotices from "./semantic-diff-notices.txt" with { type: "text" };
 import { semanticDiffForFile } from "./semantic-diff.ts";
+import { CODE_ANALYSIS_SUMMARY } from "./change-facts.ts";
 import { fileExplanationFor, fileSummarySource } from "./file-explanations.ts";
 // @ts-expect-error Bun embeds the shared browser runtime.
 import mapPresentationScript from "../public/map-presentation.js" with { type: "text" };
@@ -269,6 +270,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
           reviewStatus: snapshot.status,
           agent: snapshot.agentSelection?.adapterId ?? "not selected",
           mode: snapshot.pullRequest ? "pull request workspace" : "working tree",
+          codeAnalysis: CODE_ANALYSIS_SUMMARY,
         });
       }
       if (request.method === "GET" && url.pathname.startsWith("/api/screenshots/")) {
