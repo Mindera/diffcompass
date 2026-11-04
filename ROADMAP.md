@@ -1,7 +1,7 @@
 # Roadmap
 
-Canonical delivery state for v2.3.1, including the v2.1.0 feature baseline
-and the patch changes below.
+Canonical delivery state for v2.4.0, including the v2.1.0 feature baseline
+and the changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
 [RESEARCH](RESEARCH.md#current-delivery-and-verification-2026-10-08) preserves
@@ -10,11 +10,31 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.3.1](https://github.com/Mindera/diffcompass/releases/tag/v2.3.1).
+Latest release: [v2.4.0](https://github.com/Mindera/diffcompass/releases/tag/v2.4.0).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.4.0
+
+- Remember the preferred diff renderer across new and resumed reviews, including
+  different repositories and browser ports.
+- Remove clean, tool-owned PR worktrees when a review finishes. Keep open or
+  modified workspaces, and recreate a removed workspace at its recorded revision
+  when resuming a completed review.
+- Publish live review and attached bridge URLs in the private session lock so
+  external tools can reopen a running review. Remove them on shutdown and replace
+  stale locks on resume.
+- Discover domain vocabulary in `GLOSSARY.md` as well as `CONTEXT.md`, respecting
+  the nearest glossary and keeping same-folder glossary files as separate models.
+  Show the supported code-analysis languages in About.
+- Hide the diagram's duplicate component-details card inside Briefing diagrams.
+- Add internal change-fact, caller, import-resolution and Briefing coverage
+  analysis, with bounded captured-tree scans and optional matching CodeGraph
+  indexes. These helpers are not yet connected to Briefing generation.
+- Return promptly from timed-out commands even when a child process keeps an
+  output pipe open.
 
 ## Released in v2.3.1
 
