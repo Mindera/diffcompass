@@ -8,6 +8,8 @@ const context = await browser.newContext({ viewport: { width: 1600, height: 1000
 const page = await context.newPage();
 page.setDefaultTimeout(20000);
 const errors = []; page.on('pageerror', error => errors.push(error.message));
+// Tabs exist before session hydration; their click handlers need the review state.
+const waitForSession = target => target.locator('#diff-renderer:enabled').waitFor({ state: 'attached' });
 const currentSection = id => page.waitForFunction(id => document.querySelector('#briefing-outline [aria-current="location"]')?.dataset.briefingSection === id, id);
 const readerScroll = () => page.locator('#diff-panel').evaluate(el => el.scrollTop);
 async function wheelToSection(id) {
@@ -20,6 +22,7 @@ async function wheelToSection(id) {
 try {
   console.log('CHECK Briefing opening code and scrolling');
   await page.goto(url);
+  await waitForSession(page);
   await page.locator('#diff-tab').click();
   await page.locator('[data-diff-layout="unified"]').click();
   await page.locator('#briefing-tab').click();
@@ -180,6 +183,7 @@ try {
   await page.locator('#diff-tab').click();
   assert.equal(await page.locator('#file-panel-collapse').getAttribute('aria-expanded'), 'false');
   await page.reload();
+  await waitForSession(page);
   await page.locator('#briefing-tab').click();
   await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('.diagram-container > svg').waitFor();
   assert.equal(await wideButton.getAttribute('aria-pressed'), 'true', 'The wider reading preference survives reload');
@@ -210,6 +214,7 @@ try {
   });
   const freshPage = await page.context().newPage();
   await freshPage.goto(url);
+  await waitForSession(freshPage);
   await freshPage.locator('#briefing-tab').click();
   await freshPage.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('g[data-node-id]').first().waitFor();
   await freshPage.waitForFunction(() => document.getElementById('diff-panel').scrollTop === 0);
@@ -248,7 +253,7 @@ try {
   assert.equal(await page.locator('#briefing-inspector').textContent(), inspected, 'Selecting Monaco text does not select its card');
   assert.ok(await frame.evaluate(() => window.monaco.editor.getEditors().some(editor => editor.hasTextFocus() && !editor.getSelection().isEmpty())), 'Monaco code remains selectable');
   assert.deepEqual(snippetRequests, [], 'Saved snippet viewers never request repository source or session APIs');
-  await page.reload(); await page.locator('#briefing-tab').click();
+  await page.reload(); await waitForSession(page); await page.locator('#briefing-tab').click();
   await page.locator('[data-briefing-section="intent"]').click();
   await source.locator('.briefing-code-frame:not([hidden])').waitFor();
   assert.equal(await page.locator('#diff-renderer').inputValue(), 'monaco', 'The renderer choice survives reload');
