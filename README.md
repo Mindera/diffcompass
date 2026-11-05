@@ -1,5 +1,11 @@
 # DiffCompass
 
+[![DiffCompass demo: Briefing, guided tour, diagrams, dry runs, and findings on the bundled checkout fixture](docs/media/diffcompass-demo.gif)](docs/media/diffcompass-demo.mp4)
+
+*36-second walkthrough of the disposable checkout demo: Briefing, guided tour,
+sequence and call-flow diagrams, dry runs, and evidence-backed findings.
+[Watch the MP4 with sound](docs/media/diffcompass-demo.mp4).*
+
 A local, agent-led review for Git changes. Start with a Briefing that explains the
 outcome and connects it to the code. Explore diagrams and diffs, ask questions,
 and follow a guided tour of a branch or GitHub pull request in your browser.
