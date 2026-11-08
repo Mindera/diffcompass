@@ -12,10 +12,10 @@ await page.addInitScript(() => {
   const describe = error => ({ message: error?.message, stack: error?.stack, errors: error?.errors?.map(describe) });
   window.addEventListener("error", event => { if (event.error?.errors) console.error("Disposal detail: " + JSON.stringify(describe(event.error))); });
 });
-const errors = [], violations = [], sources = [], workers = [];
+const errors = [], violations = [], sources = [], workers = [], consoleErrors = [];
 page.on("worker", worker => workers.push(worker.url()));
 page.on("pageerror", error => errors.push(error.stack || error.message));
-page.on("console", message => { if (message.text().startsWith("Disposal detail:")) console.log(message.text()); if (message.type() === "error" && /Content Security Policy/.test(message.text())) violations.push(message.text().slice(0, 160)); });
+page.on("console", message => { if (message.text().startsWith("Disposal detail:")) console.log(message.text()); if (message.type() === "error") consoleErrors.push(message.text().slice(0, 500)); if (message.type() === "error" && /Content Security Policy/.test(message.text())) violations.push(message.text().slice(0, 160)); });
 page.on("request", request => { if (request.url().includes("/api/diff/sources?")) sources.push(request.url()); });
 const check = (ok, description) => { if (!ok) throw Error(description); };
 const token = new URL(url).hash.slice(7);
@@ -186,5 +186,16 @@ try {
   check(!errors.length && !violations.length, "Clean recovery after a handled startup failure");
   console.log("PASS startup failure rollback and successful renderer remount");
   await page.screenshot({ path: "/tmp/dc-monaco-foundation.png" });
-} catch (error) { await page.screenshot({ path: "/tmp/dc-monaco-foundation-failure.png" }); console.error(error.stack); process.exitCode = 1; }
+} catch (error) {
+  await page.screenshot({ path: "/tmp/dc-monaco-foundation-failure.png" });
+  const monaco = await Promise.all(page.frames().filter(frame => frame !== page.mainFrame()).map(frame => frame.evaluate(() => ({
+    url: location.href,
+    diffLab: Boolean(window.diffLab),
+    views: window.diffLab ? [...diffLab.views.keys()] : [],
+    lineChanges: window.diffLab?.views.get("src/cart.ts")?.diff?.getLineChanges?.()?.length ?? null,
+    models: window.monaco?.editor.getModels().length ?? null,
+  })).catch(reason => ({ url: frame.url(), unreadable: String(reason) }))));
+  console.error("Monaco foundation failure", { error: String(error), name: error?.name, message: error?.message, errors, consoleErrors, violations, sources, workers, monaco });
+  console.error(error.stack); process.exitCode = 1;
+}
 finally { await browser.close(); }
