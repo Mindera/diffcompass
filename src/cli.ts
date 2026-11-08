@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { lstat, mkdir, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -32,6 +32,7 @@ interface Options {
   disableFindings: boolean;
   previewRedirect: boolean;
   media: string[];
+  intentFile?: string;
   resume?: string;
   pullRequest?: string;
 }
@@ -66,6 +67,7 @@ Options:
   --port PORT          Loopback port (default: random)
   --preview-redirect   Redirect / to the tokenized URL so remote previews work
   --media PATH         Add an image or MP4 to the Media tab (repeatable)
+  --intent-file PATH   Give the Briefing author-stated context from a text file
   --resume FILE        Resume a persisted review session
   --version            Print the installed version
   --help               Show this help`);
@@ -100,6 +102,9 @@ function parseOptions(args: string[]): Options {
       options.previewRedirect = true;
     } else if (arg === "--media" && value) {
       options.media.push(resolve(value));
+      index += 1;
+    } else if (arg === "--intent-file" && value) {
+      options.intentFile = resolve(value);
       index += 1;
     } else if (arg === "--screenshot") {
       throw new Error("--screenshot was replaced by --media; pass each image or MP4 with --media PATH.");
@@ -170,6 +175,13 @@ if ((options.callerModel || options.callerReasoning) && !options.attached && !op
   throw new Error("--caller-model and --caller-reasoning require --attached or --resume.");
 }
 options.pullRequest = pullRequestIdentifier;
+let authorIntent: string | undefined;
+if (options.intentFile) {
+  const metadata = await lstat(options.intentFile).catch(() => undefined);
+  if (!metadata?.isFile()) throw new Error(`Intent file must be a regular file: ${options.intentFile}`);
+  authorIntent = await readFile(options.intentFile, "utf8");
+  if (authorIntent.length > 24000) throw new Error(`Intent file exceeds its size limit (24000 characters): ${options.intentFile}`);
+}
 const stateFile = options.resume ?? join(
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),
   "diffcompass",
@@ -252,6 +264,7 @@ try {
     includeFindings: options.disableFindings ? false : undefined,
     pullRequest,
     screenshots: options.media,
+    authorIntent,
   });
   if (session.pullRequest?.workspaceRoot) {
     await writeFile(join(session.pullRequest.workspaceRoot, "..", ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });

@@ -58,6 +58,7 @@ interface AgentDefaults {
   includeFindings?: boolean;
   pullRequest?: PullRequestContext;
   screenshots?: string[];
+  authorIntent?: string;
   githubRunner?: GitHubRunner;
   agentAdapters?: AgentAdapterOption[];
 }
@@ -130,6 +131,7 @@ export class ReviewSession {
   readonly preferences: ReviewPreferences;
   readonly reviewPolicy: ReviewPolicy;
   readonly screenshots: ReviewScreenshot[];
+  readonly authorIntent?: string;
   readonly checkpoints: SourceCheckpoint[];
   readonly checkpointRefNamespace: string;
   comparisonView: ComparisonView = "full";
@@ -204,6 +206,7 @@ export class ReviewSession {
       : configuredReviewPolicy;
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.screenshots = structuredClone(persisted?.screenshots ?? []);
+    this.authorIntent = persisted?.authorIntent ?? defaults.authorIntent;
     this.checkpoints = structuredClone(persisted?.checkpoints ?? []);
     this.checkpointRefNamespace = persisted?.checkpointRefNamespace ?? `refs/diffcompass/checkpoints/${this.refKey(defaults.stateFile)}`;
     this.comments = structuredClone(persisted?.comments ?? []);
@@ -308,6 +311,7 @@ export class ReviewSession {
       dryRuns: structuredClone(this.dryRunTraces),
       pullRequest: structuredClone(this.pullRequest),
       screenshots: structuredClone(this.screenshots),
+      authorIntent: this.authorIntent,
       revision: this.revision,
       status: this.status,
       selection: structuredClone(this.selection),
@@ -1810,7 +1814,7 @@ export class ReviewSession {
     });
   }
 
-  private briefingIntent(): string { return briefingIntent({ pullRequest: this.pullRequest, reviewerTask: this.pullRequest?.reviewerTask }); }
+  private briefingIntent(): string { return briefingIntent({ pullRequest: this.pullRequest, reviewerTask: this.pullRequest?.reviewerTask, authorIntent: this.authorIntent }); }
 
   async regenerateBriefing() {
     return this.serialize(async () => {

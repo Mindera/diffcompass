@@ -941,6 +941,7 @@ export interface PersistedReviewSession {
   dryRuns?: DryRunTrace[];
   pullRequest?: PullRequestContext;
   screenshots?: ReviewScreenshot[];
+  authorIntent?: string;
   revision: number;
   status: ReviewStatus;
   selection?: AgentSelection;

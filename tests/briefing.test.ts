@@ -145,6 +145,18 @@ test("freshness responds to source and stated intent, not assessment timestamps 
   expect(briefingIntent({ pullRequest: changed, reviewerTask: changed.reviewerTask })).not.toBe(intent);
 });
 
+test("author intent from an intent file is additive and absent intent keeps the existing serialization", () => {
+  const pullRequestIntent = briefingIntent({ pullRequest: persisted.pullRequest, reviewerTask: persisted.pullRequest?.reviewerTask });
+  expect(briefingIntent({})).toBe("{}");
+  expect(briefingIntent({ authorIntent: undefined })).toBe("{}");
+  expect(briefingIntent({ pullRequest: persisted.pullRequest, reviewerTask: persisted.pullRequest?.reviewerTask, authorIntent: undefined })).toBe(pullRequestIntent);
+  expect(briefingFingerprint(comparison, briefingIntent({ authorIntent: undefined }))).toBe(briefingFingerprint(comparison, "{}"));
+  const stated = "Changed tests: checkout.test.ts covers fractional discounts because rounding regressed.";
+  expect(JSON.parse(briefingIntent({ authorIntent: stated })).authorIntent).toBe(stated);
+  expect(briefingFingerprint(comparison, briefingIntent({ authorIntent: stated }))).not.toBe(briefingFingerprint(comparison, "{}"));
+  expect(briefingIntent({ authorIntent: "x".repeat(30000) }).length).toBe(24000);
+});
+
 test("offline reader is inserted after bundled scripts containing HTML boundary strings", () => {
   const bundled = '<html><body><nav class="tabs"></nav><script>const template = "</body>";</script></body></html>';
   const exported = withBriefingExport(bundled, persisted.outline!.briefing!, comparison);

@@ -467,7 +467,7 @@ function markdownStructuralBlastRadius(radius: StructuralBlastRadius): string[] 
 function exportedBriefing(session: ReviewSession, options: HtmlExportOptions) {
   if (!session.outline?.briefing) return undefined;
   const document = structuredClone(session.outline.briefing);
-  document.outdated = Boolean(document.outdated) || document.fingerprint !== briefingFingerprint(session.comparison, briefingIntent({ pullRequest: session.pullRequest, reviewerTask: session.pullRequest?.reviewerTask }));
+  document.outdated = Boolean(document.outdated) || document.fingerprint !== briefingFingerprint(session.comparison, briefingIntent({ pullRequest: session.pullRequest, reviewerTask: session.pullRequest?.reviewerTask, authorIntent: session.authorIntent }));
   document.diagrams = document.diagrams.filter(d => options.includeDiagrams !== false && (d.family !== "call-flow" || options.includeCallFlows !== false));
   const ids = new Set(document.diagrams.map(d => d.id));
   document.sections = document.sections.map(s => ({ ...s, blocks: s.blocks.filter(b => b.kind !== "diagram" || ids.has(b.diagramId)) })).filter(s => s.blocks.length);
