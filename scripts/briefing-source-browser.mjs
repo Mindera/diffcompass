@@ -16,6 +16,7 @@ try {
     const step = initial.outline.phases.flatMap(phase => phase.steps)[initial.currentStepIndex];
     assert.equal(step.anchor.path, 'src/cart.ts');
     await page.goto(url);
+    await page.locator('#diff-renderer:enabled').waitFor({ state: 'attached' });
     await page.locator('#diff-tab').click();
     await page.locator('#diff-renderer').selectOption(renderer);
     await page.locator('#briefing-tab').click();
@@ -23,10 +24,14 @@ try {
     await page.frameLocator('#briefing-view .briefing-canvas iframe').first().locator('g[data-node-id="receipt"]').click();
     const selected = page.locator('#briefing-inspector [data-evidence-element="receipt"] .briefing-card-title');
     await page.locator('#briefing-inspector [data-evidence-element="receipt"] .briefing-card-title[aria-pressed="true"]').waitFor();
-    const readerPosition = await page.locator('#diff-panel').evaluate(el => el.scrollTop);
-
-    async function openSource(id, path, line, returnToBriefing = true) {
-      await page.locator(`#briefing-inspector [data-briefing-source="${id}"]`).click();
+    async function openSource(id, path, line, { surface = 'action', keyboard = false, returnToBriefing = true } = {}) {
+      const control = surface === 'action'
+        ? page.locator(`#briefing-inspector button.text-button[data-briefing-source="${id}"]`)
+        : page.locator(`#${surface === 'inline' ? 'briefing-view' : 'briefing-inspector'} .briefing-file-link[data-briefing-source="${id}"]`);
+      await control.scrollIntoViewIfNeeded();
+      const readerPosition = await page.locator('#diff-panel').evaluate(el => el.scrollTop);
+      if (keyboard) { await control.focus(); await page.keyboard.press('Enter'); }
+      else await control.click();
       await page.locator('#diff-tab[aria-selected="true"]').waitFor();
       await page.getByRole('button', { name: 'Resume tour', exact: true }).waitFor();
       if (renderer === 'monaco') {
@@ -56,9 +61,11 @@ try {
       assert.equal(await page.locator('#briefing-source-return').isVisible(), false);
     }
 
-    // Receipt lives in the next phase. Cart is in the paused phase.
+    // The inline receipt filename crosses phases. The inspector filename is
+    // keyboard accessible, and the existing action still works while paused.
+    await openSource('receipt-body', 'src/receipt.ts', 3, { surface: 'inline' });
+    await openSource('total-body', 'src/cart.ts', 14, { surface: 'inspector', keyboard: true });
     await openSource('receipt-body', 'src/receipt.ts', 3);
-    await openSource('total-body', 'src/cart.ts', 14);
     await page.locator('[data-briefing-tour]').click();
     await page.locator('#diff-tab[aria-selected="true"]').waitFor();
     await page.getByRole('button', { name: 'Exit tour', exact: true }).waitFor();
@@ -68,7 +75,7 @@ try {
     } else await page.locator('.tour-code-note.active').filter({ hasText: step.title }).waitFor();
     assert.equal(await page.locator('#briefing-source-return').isVisible(), false, 'Resuming the tour is a separate handoff');
     await page.locator('#briefing-tab').click();
-    await openSource('receipt-body', 'src/receipt.ts', 3, false);
+    await openSource('receipt-body', 'src/receipt.ts', 3, { surface: 'inline', returnToBriefing: false });
     await page.getByRole('button', { name: 'Resume tour', exact: true }).click();
     await page.getByRole('button', { name: 'Exit tour', exact: true }).waitFor();
     assert.equal(await page.locator('#briefing-source-return').isVisible(), false, 'Resuming directly in Changes ends the Briefing detour');
@@ -76,7 +83,7 @@ try {
     assert.equal(after.currentStepIndex, initial.currentStepIndex);
     assert.deepEqual(after.reviewedFiles, initial.reviewedFiles);
     assert.deepEqual(errors, []);
-    console.log(`PASS ${renderer}: cross-phase source, paused source, return position and selection, resume without changing progress`);
+    console.log(`PASS ${renderer}: inline and inspector filenames, keyboard navigation, cross-phase source, return position and selection, unchanged tour progress`);
     await page.close();
   }
 } finally { await browser.close(); }
