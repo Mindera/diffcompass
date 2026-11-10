@@ -82,6 +82,9 @@ iframe[data-map-present-split] { --map-present-width: calc(100vw - var(--present
 .briefing-evidence-card.briefing-selected { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
 .briefing-card-title { display: block; border: 0; padding: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; font-weight: 600; margin-bottom: 12px; }
 .briefing-source-label { font: 11px/1.6 var(--font-mono, monospace); color: var(--muted); overflow-wrap: anywhere; }
+.briefing-source-label .briefing-file-link { max-width: 100%; border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.briefing-file-link:hover, .briefing-file-link:focus-visible { color: var(--accent); }
+.briefing-file-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
 .briefing-source pre, .briefing-block pre { font: 12px/1.7 var(--font-mono, monospace); overflow: auto; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
 .briefing-excerpt, .briefing-example { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .briefing-source pre, .briefing-code-slot { cursor: text; }

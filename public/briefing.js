@@ -245,12 +245,15 @@ function createBriefingReader(options) {
     el.addEventListener("keydown", event => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); event.stopPropagation(); inspect(blockId, elementId); } });
   }
   function sourceLabel(e) {
+    const diff = e.kind === "code" ? e.diff : undefined;
+    const path = diff?.available && diff.oldPath && diff.newPath && diff.oldPath !== diff.newPath ? `${diff.oldPath} → ${diff.newPath}` : e.path;
+    const file = e.available && options.onChanges
+      ? `<button type="button" class="briefing-file-link" data-briefing-source="${esc(e.id)}" aria-label="Open ${esc(path)} in Changes" title="Open file in Changes">${esc(path)}</button>`
+      : esc(path);
     if (e.kind === "code") {
-      const diff = e.diff;
-      const path = diff?.available && diff.oldPath && diff.newPath && diff.oldPath !== diff.newPath ? `${diff.oldPath} → ${diff.newPath}` : e.path;
-      return `${esc(path)} · diff`;
+      return `${file} · diff`;
     }
-    return `${esc(e.kind === "document" ? "Documentary evidence · " : "")}${esc(e.path)}:${e.startLine}–${e.endLine} · ${e.side === "old" ? "before" : "after"}`;
+    return `${esc(e.kind === "document" ? "Documentary evidence · " : "")}${file}:${e.startLine}–${e.endLine} · ${e.side === "old" ? "before" : "after"}`;
   }
   function sourceLines(e) {
     return e.kind === "code" ? e.diff?.available ? e.diff.rows.map(r => r.content) : [] : e.quote.split("\n");

@@ -252,6 +252,8 @@ try {
   await page.goto(pathToFileURL(file).href);
   await page.locator('#export-briefing-tab').click();
   await exercise(page.locator('#export-briefing-reader'), page.locator('#export-briefing-pane'), false);
+  assert.equal(await page.locator('#export-briefing .briefing-file-link').count(), 0, 'Offline file names stay readable without live navigation');
+  assert.match(await page.locator('#export-briefing-pane .briefing-source-label').first().textContent(), /src\/.+\.ts/);
   const reader = page.locator('#export-briefing-reader');
   await reader.locator('[data-briefing-layout="split"]').click();
   await reader.locator('[data-briefing-wrap="wrap"]').click();

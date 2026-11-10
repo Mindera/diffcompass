@@ -51,8 +51,10 @@ remembered in this browser when reopening the same saved document; a different s
 starts without that selection. On mobile, evidence and questions open in a dismissible
 sheet.
 
-**Open in Changes** pauses an active tour and reveals the cited source, including files
-in another phase. **Back to Briefing** restores the reader and its selected evidence.
+Click the file name above a code excerpt to open the file in Changes at the cited line.
+File names in the evidence pane and **Open in Changes** do the same. This pauses an
+active tour and can open files in another phase. **Back to Briefing** restores the
+reader and its selected evidence.
 Resuming the tour clears that return button and keeps the tour's saved stop.
 
 Briefing uses the same Archify viewers as Diagrams for sequences, architecture,
