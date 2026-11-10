@@ -4,6 +4,14 @@
   let restoreStyle = null;
   let inert = [];
   let companion = null;
+  const paneSizeKey = 'diffcompass-present-evidence-size';
+  const paneSizes = {};
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(paneSizeKey));
+    for (const axis of ['width', 'height']) {
+      if (Number.isInteger(saved?.[axis]) && saved[axis] > 0 && saved[axis] <= 10000) paneSizes[axis] = saved[axis];
+    }
+  } catch (_) {}
   const preferencesKey = 'diffcompass-map-preferences';
   let preferences = { motion: true };
   function validated(value) {
@@ -24,10 +32,10 @@
   }
   function isolate() {
     restoreInert();
-    // Keep both branches interactive without moving either iframe. Reparenting
+    // Keep the diagram, evidence and divider interactive without moving iframes. Reparenting
     // would reload the diagram or the evidence pane's mounted Monaco editors.
     const branches = new Set();
-    for (const target of [expanded, companion?.node]) {
+    for (const target of [expanded, companion?.node, companion?.resizer]) {
       for (let branch = target; branch; branch = branch.parentElement) branches.add(branch);
     }
     const hidden = new Set();
@@ -42,6 +50,7 @@
   function closePane() {
     if (!companion) return;
     const { node, popover } = companion;
+    companion.disposeResize?.();
     companion = null;
     if (typeof node.hidePopover === 'function' && node.matches(':popover-open')) node.hidePopover();
     if (popover === null) node.removeAttribute('popover');
@@ -49,12 +58,96 @@
     node.removeAttribute('data-map-present-pane');
     node.dispatchEvent(new Event('diffcompass-map-pane-change'));
   }
+  function paneSize(axis) {
+    const desktop = axis === 'width';
+    const viewport = desktop ? window.innerWidth : window.innerHeight;
+    const min = Math.min(desktop ? 280 : 160, Math.floor(viewport / 2));
+    const max = Math.max(min, viewport - (desktop ? 320 : 180));
+    const fallback = desktop ? Math.min(640, Math.max(320, viewport * .4)) : viewport * .45;
+    return { min, max, value: Math.round(Math.max(min, Math.min(max, paneSizes[axis] ?? fallback))) };
+  }
+  function installPaneResize(frame, node) {
+    // A separate popover survives inspector re-renders without moving its editors.
+    const resizer = document.createElement('div');
+    resizer.className = 'map-present-resizer';
+    resizer.setAttribute('data-map-present-resizer', '');
+    resizer.setAttribute('role', 'separator');
+    resizer.setAttribute('aria-label', 'Resize presentation evidence pane');
+    if (node.id) resizer.setAttribute('aria-controls', node.id);
+    resizer.tabIndex = 0;
+    document.body.appendChild(resizer);
+    companion.resizer = resizer;
+    if (typeof resizer.showPopover === 'function') {
+      resizer.setAttribute('popover', 'manual');
+      resizer.showPopover();
+    }
+    const axis = () => window.innerWidth > 900 ? 'width' : 'height';
+    const save = () => { try { window.localStorage.setItem(paneSizeKey, JSON.stringify(paneSizes)); } catch (_) {} };
+    function sync() {
+      for (const dimension of ['width', 'height']) {
+        const value = `${paneSize(dimension).value}px`;
+        for (const target of [frame, node, resizer]) target.style.setProperty(`--present-evidence-${dimension}`, value);
+      }
+      const size = paneSize(axis());
+      resizer.hidden = companion.collapsed;
+      resizer.setAttribute('aria-orientation', axis() === 'width' ? 'vertical' : 'horizontal');
+      for (const [name, value] of [['min', size.min], ['max', size.max], ['now', size.value]]) resizer.setAttribute(`aria-value${name}`, String(value));
+      resizer.setAttribute('aria-valuetext', `Evidence ${axis()} ${size.value} pixels`);
+    }
+    function resize(value) {
+      const { min, max } = paneSize(axis());
+      paneSizes[axis()] = Math.round(Math.max(min, Math.min(max, value)));
+      sync();
+    }
+    let drag = null;
+    function stop() {
+      if (!drag) return;
+      const id = drag.id;
+      drag = null;
+      document.documentElement.classList.remove('map-pane-resizing');
+      if (resizer.hasPointerCapture(id)) resizer.releasePointerCapture(id);
+      save();
+    }
+    resizer.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || companion.collapsed) return;
+      event.preventDefault();
+      resizer.focus({ preventScroll: true });
+      drag = { id: event.pointerId, axis: axis(), start: axis() === 'width' ? event.clientX : event.clientY, size: paneSize(axis()).value };
+      resizer.setPointerCapture(event.pointerId);
+      document.documentElement.classList.add('map-pane-resizing');
+    });
+    resizer.addEventListener('pointermove', event => {
+      if (!drag || event.pointerId !== drag.id) return;
+      resize(drag.size + drag.start - (drag.axis === 'width' ? event.clientX : event.clientY));
+    });
+    for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) resizer.addEventListener(name, stop);
+    resizer.addEventListener('keydown', event => {
+      const { min, max, value } = paneSize(axis());
+      const increase = axis() === 'width' ? 'ArrowLeft' : 'ArrowUp';
+      const decrease = axis() === 'width' ? 'ArrowRight' : 'ArrowDown';
+      if (!['Home', 'End', increase, decrease].includes(event.key)) return;
+      event.preventDefault(); event.stopPropagation();
+      resize(event.key === 'Home' ? min : event.key === 'End' ? max : value + (event.key === increase ? 1 : -1) * (event.shiftKey ? 50 : 20));
+      save();
+    });
+    const viewportChanged = () => { stop(); sync(); };
+    window.addEventListener('resize', viewportChanged);
+    companion.syncResize = () => { stop(); sync(); };
+    companion.disposeResize = () => {
+      stop();
+      window.removeEventListener('resize', viewportChanged);
+      resizer.remove();
+      for (const target of [frame, node]) for (const dimension of ['width', 'height']) target.style.removeProperty(`--present-evidence-${dimension}`);
+    };
+    sync();
+  }
   function setPaneCollapsed(node, collapsed) {
     if (companion?.node !== node) return;
     companion.collapsed = collapsed;
     const value = collapsed ? 'collapsed' : 'expanded';
     node.setAttribute('data-map-present-pane', value);
     expanded.setAttribute('data-map-present-split', value);
+    companion.syncResize?.();
     node.dispatchEvent(new Event('diffcompass-map-pane-change'));
   }
   function showPane(frame, node) {
@@ -67,6 +160,7 @@
         node.setAttribute('popover', 'manual');
         node.showPopover();
       }
+      installPaneResize(frame, node);
       isolate();
     }
     return true;

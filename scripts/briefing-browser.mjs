@@ -70,7 +70,6 @@ try {
   // about it must not replace the inspector with another copy of that code.
   console.log('CHECK Briefing inline code stays in the story and tab restoration');
   const beforeInspect = await readerScroll(), beforePane = await page.locator('#briefing-inspector').textContent();
-  await source.locator('.briefing-source-label').click();
   await source.locator('.briefing-diff-summary').click();
   await source.click({ position: { x: 5, y: 5 } });
   assert.equal(await source.locator('[data-briefing-inspect]').count(), 0);

@@ -29,7 +29,9 @@ an accessible element list when canvas identities cannot be matched safely.
 Use **Present** to expand a diagram. Selecting a component or relationship keeps the
 diagram expanded and opens its code evidence beside it. On narrow screens, the evidence
 sits below the diagram. Collapse or expand the evidence pane without leaving Present;
-exit presentation to return to the story.
+drag the divider to resize its width (or height on a narrow screen). The divider also
+supports arrow keys, Home and End, and remembers your chosen size. Exit presentation
+to return to the story.
 
 New and regenerated Briefings include a source-linking pass for missing bindings in the
 diagrams used by the story. The agent receives the finished diagram's exact element IDs
@@ -51,8 +53,10 @@ remembered in this browser when reopening the same saved document; a different s
 starts without that selection. On mobile, evidence and questions open in a dismissible
 sheet.
 
-**Open in Changes** pauses an active tour and reveals the cited source, including files
-in another phase. **Back to Briefing** restores the reader and its selected evidence.
+Click the file name above a code excerpt to open the file in Changes at the cited line.
+File names in the evidence pane and **Open in Changes** do the same. This pauses an
+active tour and can open files in another phase. **Back to Briefing** restores the
+reader and its selected evidence.
 Resuming the tour clears that return button and keeps the tour's saved stop.
 
 Briefing uses the same Archify viewers as Diagrams for sequences, architecture,

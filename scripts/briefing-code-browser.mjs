@@ -11,6 +11,8 @@ let release;
 const reader = page.locator('#briefing-view');
 const source = reader.locator('[data-evidence-id="subtotal-body"]');
 const frames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+// The tabs appear before session hydration has restored saved preferences.
+const waitForSession = () => page.locator('#diff-renderer:enabled').waitFor({ state: 'attached' });
 async function renderer(value) {
   await page.locator('#diff-tab').click();
   await page.locator('#diff-renderer').selectOption(value);
@@ -28,6 +30,7 @@ try {
     await route.fulfill({ json: current });
   });
   await page.goto(url);
+  await waitForSession();
   await page.locator('#diff-tab').click();
   await page.locator('[data-diff-layout="unified"]').click();
   await page.locator('#briefing-tab').click();
@@ -35,7 +38,10 @@ try {
   assert.equal(await reader.locator('[data-briefing-layout="unified"]').getAttribute('aria-pressed'), 'true');
   assert.equal((await source.textContent()).includes('Before → After'), false);
   await reader.locator('[data-briefing-layout="split"]').click();
+  const savedWrap = page.waitForResponse(response => response.url().endsWith('/api/preferences') && response.request().postDataJSON()?.diffWrap === 'wrap' && response.request().postDataJSON()?.diffLayout === 'split');
   await reader.locator('[data-briefing-wrap="wrap"]').click();
+  // Drain earlier saves so the later Scroll wait cannot match the first Split save.
+  await (await savedWrap).finished();
   for (const [side, excluded] of [['old', 'addition'], ['new', 'deletion']]) {
     assert.deepEqual(await source.locator(`[data-diff-side="${side}"] .briefing-line-content`).allTextContents(), evidence.diff.rows.filter(row => row.kind !== 'meta' && row.kind !== excluded).map(row => row.content));
   }
@@ -51,11 +57,11 @@ try {
   assert.equal(await page.locator('[data-diff-wrap="wrap"]').getAttribute('aria-pressed'), 'true');
   const savedScroll = page.waitForResponse(response => response.url().endsWith('/api/preferences') && response.request().postDataJSON()?.diffWrap === 'scroll' && response.request().postDataJSON()?.diffLayout === 'split');
   await page.locator('[data-diff-wrap="scroll"]').click();
-  await savedScroll;
+  await (await savedScroll).finished();
   await page.locator('#briefing-tab').click();
   assert.equal(await reader.locator('[data-briefing-wrap="scroll"]').getAttribute('aria-pressed'), 'true');
   assert.ok(await source.locator('.briefing-diff-column').first().evaluate(el => el.scrollWidth > el.clientWidth));
-  await page.reload(); await page.locator('#briefing-tab').click();
+  await page.reload(); await waitForSession(); await page.locator('#briefing-tab').click();
   assert.equal(await reader.locator('[data-briefing-layout="split"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await reader.locator('[data-briefing-wrap="scroll"]').getAttribute('aria-pressed'), 'true');
   console.log('PASS Shiki: shared layout/wrap preferences, exact sides, aligned wrapped rows, horizontal scrolling');
@@ -116,6 +122,27 @@ try {
   assert.deepEqual(await page.evaluate(() => window.shikiFlashes), []);
   await page.evaluate(() => { window.watchBriefingCode = false; });
   console.log('PASS Monaco: no Shiki during delayed loading or rapid scrolling in either pane');
+
+  const diagramElement = await reader.locator('.briefing-canvas iframe').first().elementHandle();
+  const diagramFrame = await diagramElement.contentFrame();
+  await diagramFrame.locator('#btn-present').click();
+  await diagramFrame.locator('g[data-node-id="cart"]').click();
+  const divider = page.getByRole('separator', { name: 'Resize presentation evidence pane', exact: true });
+  await divider.waitFor();
+  const mountedCode = await paneEditor.evaluateHandle(() => ({ document, models: monaco.editor.getModels() }));
+  await divider.press('Shift+ArrowLeft');
+  const width = Number(await divider.getAttribute('aria-valuenow'));
+  assert.ok(width > 640, 'Presented evidence can grow beyond its former fixed width');
+  await page.setViewportSize({ width: 960, height: 1000 });
+  await page.waitForFunction(() => document.querySelector('[data-map-present-pane]').getBoundingClientRect().width <= innerWidth - 320);
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.waitForFunction(width => Math.abs(document.querySelector('[data-map-present-pane]').getBoundingClientRect().width - width) < 1, width);
+  assert.equal(await paneEditor.evaluate(previous => previous.document === document && previous.models.every(model => monaco.editor.getModels().includes(model)), mountedCode), true, 'Presentation resizing and viewport clamping preserve the Monaco document and models');
+  await mountedCode.dispose();
+  await divider.press('Escape');
+  await diagramFrame.waitForFunction(() => !Archify.presentation.active());
+  assert.equal(await page.locator('[data-map-present-resizer]').count(), 0);
+  console.log('PASS Monaco: Present resizing retains code models and restores the chosen width after viewport clamping');
 
   await renderer('current');
   await source.scrollIntoViewIfNeeded();

@@ -66,22 +66,32 @@
 .briefing-inspector > header > div { flex: 1; min-width: 0; }
 .briefing-inspector h2 { font-size: 17px; margin: 6px 0 0; line-height: 1.4; }
 /* Present keeps the original diagram and evidence iframe documents mounted. */
-[data-map-present-split], [data-map-present-pane] { --present-evidence-size: clamp(320px, 40vw, 640px); }
+[data-map-present-split], [data-map-present-pane], [data-map-present-resizer] { --present-evidence-size: var(--present-evidence-width, clamp(320px, 40vw, 640px)); }
 [data-map-present-split="collapsed"], [data-map-present-pane="collapsed"] { --present-evidence-size: 40px; }
 iframe[data-map-present-split] { --map-present-width: calc(100vw - var(--present-evidence-size)); }
 .briefing-inspector[data-map-present-pane] { position: fixed !important; inset: 0 0 0 auto !important; box-sizing: border-box; width: var(--present-evidence-size) !important; height: 100dvh !important; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-left: 1px solid var(--border); border-radius: 0; display: flex !important; background: var(--panel); color: var(--text); z-index: 2147483647; }
+.map-present-resizer { position: fixed; inset: 0 auto 0 calc(100vw - var(--present-evidence-size) - 4px); box-sizing: border-box; width: 8px; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: col-resize; touch-action: none; z-index: 2147483647; }
+.map-present-resizer[hidden] { display: none !important; }
+.map-present-resizer:hover, .map-present-resizer:focus-visible { background: var(--accent, #867cff); outline: none; }
+html.map-pane-resizing { cursor: col-resize; user-select: none; }
+html.map-pane-resizing iframe { pointer-events: none !important; }
 @media(max-width: 900px) {
-  [data-map-present-split], [data-map-present-pane] { --present-evidence-size: 45dvh; }
+  [data-map-present-split], [data-map-present-pane], [data-map-present-resizer] { --present-evidence-size: var(--present-evidence-height, 45dvh); }
   [data-map-present-split="collapsed"], [data-map-present-pane="collapsed"] { --present-evidence-size: 40px; }
   iframe[data-map-present-split] { --map-present-width: 100vw; --map-present-height: calc(100dvh - var(--present-evidence-size)); }
   .briefing-inspector[data-map-present-pane] { inset: auto 0 0 !important; width: 100vw !important; height: var(--present-evidence-size) !important; border-left: 0; border-top: 1px solid var(--border); }
   .briefing-mode.workspace > #agent-panel:has([data-map-present-pane]) { display: flex !important; position: fixed; inset: 0; }
+  .map-present-resizer { inset: calc(100dvh - var(--present-evidence-size) - 4px) 0 auto; width: 100vw; height: 8px; cursor: row-resize; }
+  html.map-pane-resizing { cursor: row-resize; }
 }
 .briefing-evidence-scroll { padding: 16px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
 .briefing-evidence-card { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; padding: 12px; scroll-margin: 12px; cursor: pointer; }
 .briefing-evidence-card.briefing-selected { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
 .briefing-card-title { display: block; border: 0; padding: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; font-weight: 600; margin-bottom: 12px; }
 .briefing-source-label { font: 11px/1.6 var(--font-mono, monospace); color: var(--muted); overflow-wrap: anywhere; }
+.briefing-source-label .briefing-file-link { max-width: 100%; border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.briefing-file-link:hover, .briefing-file-link:focus-visible { color: var(--accent); }
+.briefing-file-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
 .briefing-source pre, .briefing-block pre { font: 12px/1.7 var(--font-mono, monospace); overflow: auto; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
 .briefing-excerpt, .briefing-example { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .briefing-source pre, .briefing-code-slot { cursor: text; }
