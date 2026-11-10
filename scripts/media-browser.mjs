@@ -33,6 +33,7 @@ try {
     });
     try {
       await page.goto(url);
+      await page.waitForFunction(() => document.getElementById("diff-renderer")?.disabled === false);
       const expected = curatedCount + (includeChanged ? 2 * changedCount : 0);
       await page.waitForFunction(expected => document.getElementById("screenshots-tab-count").textContent === String(expected), expected);
       await page.waitForTimeout(150);
@@ -44,6 +45,7 @@ try {
       } else {
         await page.locator("#screenshots-tab").click();
         assert.equal(await page.locator("#screenshots .screenshot-card").count(), expected);
+        await page.waitForFunction(count => document.querySelectorAll("#screenshots [data-screenshot-id] img").length === count, curatedCount);
         assert.equal(await page.locator("#screenshots [data-screenshot-id] img").count(), curatedCount);
         if (!includeChanged) {
           assert.equal(requested.size, 0, "Default Media must not fetch screenshot-test references");
