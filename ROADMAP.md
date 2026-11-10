@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.4.0, including the v2.1.0 feature baseline
+Canonical delivery state for v2.5.0, including the v2.1.0 feature baseline
 and the changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -10,11 +10,30 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.4.0](https://github.com/Mindera/diffcompass/releases/tag/v2.4.0).
+Latest release: [v2.5.0](https://github.com/Mindera/diffcompass/releases/tag/v2.5.0).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.5.0
+
+- Give Tour, Questions and Comments their own sidebar tabs, preserving drafts,
+  reading positions and tour progress. Keep a stop-comment draft attached to its
+  original stop when navigating before saving.
+- Open a Briefing excerpt's filename in Changes, pause the tour, and return with
+  Back to Briefing without losing the reading position or selected evidence.
+- Resize the evidence pane beside a presented diagram on desktop or below it on
+  narrow screens, with pointer and keyboard controls and remembered dimensions.
+- Accept author-stated Briefing context from a text file with `--intent-file`.
+- Resolve Kotlin references through an installed `kotlin-lsp --stdio` or
+  `kotlin-language-server`, retaining the selected source column and explaining
+  name-search fallbacks. Project support depends on the chosen provider; a
+  compatible language server must be installed separately.
+- Confirm Monaco comment deletion inline with themed Cancel/Delete controls,
+  keyboard cancellation and retryable errors.
+- Add sidebar screenshots and a README demo video. Stabilize browser checks
+  around editor readiness, tab visibility and pending requests during teardown.
 
 ## Released in v2.4.0
 
