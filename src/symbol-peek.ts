@@ -37,6 +37,7 @@ export interface SymbolPeekRequest {
   symbol: string;
   path?: string;
   line?: number;
+  column?: number;
   side?: "old" | "new";
 }
 
@@ -83,6 +84,9 @@ function ensureRequest(comparison: GitComparison, request: SymbolPeekRequest): S
   }
   if (request.line !== undefined && (!Number.isSafeInteger(request.line) || request.line <= 0)) {
     throw new ReviewError("Symbol peek line must be a positive integer.");
+  }
+  if (request.column !== undefined && (!Number.isSafeInteger(request.column) || request.column <= 0)) {
+    throw new ReviewError("Symbol peek column must be a positive integer.");
   }
   return { ...request, symbol };
 }
@@ -259,16 +263,21 @@ async function codeGraphResult(comparison: GitComparison, request: SymbolPeekReq
   }
 }
 
-function languageServerForPath(path?: string): { command: string; args: string[] } | undefined {
+interface LanguageServer { command: string; args: string[]; languageId: string; timeoutMs?: number }
+
+function languageServersForPath(path?: string): LanguageServer[] {
   const extension = path?.split(".").at(-1)?.toLowerCase();
-  const candidates = extension === "ts" || extension === "tsx" || extension === "js" || extension === "jsx" || extension === "mjs" || extension === "cjs"
-    ? [{ command: "typescript-language-server", args: ["--stdio"] }]
-    : extension === "py" ? [{ command: "pylsp", args: [] }]
-      : extension === "rs" ? [{ command: "rust-analyzer", args: [] }]
-        : extension === "go" ? [{ command: "gopls", args: ["serve"] }]
-          : extension === "swift" ? [{ command: "sourcekit-lsp", args: [] }]
-            : extension === "java" ? [{ command: "jdtls", args: [] }] : [];
-  return candidates.find((candidate) => Bun.which(candidate.command));
+  const ids: Record<string, string> = { ts: "typescript", tsx: "typescriptreact", js: "javascript", jsx: "javascriptreact", mjs: "javascript", cjs: "javascript" };
+  if (extension && ids[extension]) return [{ command: "typescript-language-server", args: ["--stdio"], languageId: ids[extension]! }];
+  if (extension === "kt" || extension === "kts") return [
+    { command: "kotlin-lsp", args: ["--stdio"], languageId: "kotlin", timeoutMs: 30_000 },
+    { command: "kotlin-language-server", args: [], languageId: "kotlin", timeoutMs: 30_000 },
+  ];
+  return extension === "py" ? [{ command: "pylsp", args: [], languageId: "python" }]
+    : extension === "rs" ? [{ command: "rust-analyzer", args: [], languageId: "rust" }]
+      : extension === "go" ? [{ command: "gopls", args: ["serve"], languageId: "go" }]
+        : extension === "swift" ? [{ command: "sourcekit-lsp", args: [], languageId: "swift" }]
+          : extension === "java" ? [{ command: "jdtls", args: [], languageId: "java" }] : [];
 }
 
 function locationPath(root: string, repositoryFiles: Set<string>, uri: string): string | undefined {
@@ -282,44 +291,52 @@ function locationPath(root: string, repositoryFiles: Set<string>, uri: string): 
   }
 }
 
-async function runLanguageServer(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }, server: { command: string; args: string[] }): Promise<{ locations: Array<{ path: string; line: number; kind: "definition" | "usage" }>; truncated: boolean } | undefined> {
+async function runLanguageServer(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }, server: LanguageServer): Promise<{ locations: Array<{ path: string; line: number; kind: "definition" | "usage" }>; truncated: boolean } | undefined> {
   if (!request.path) return undefined;
   const content = await loadRepositoryFile(comparison, request.path, MAX_FILE_BYTES);
   const lines = content.split(/\r?\n/);
-  const line = Math.min(lines.length, request.line ?? 1);
-  const character = Math.max(0, lines[line - 1]?.indexOf(request.symbol) ?? 0);
+  const line = request.line ?? 1;
+  const text = lines[line - 1] ?? "";
+  const identifiers = [...text.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)].filter(match => match[0] === request.symbol);
+  const selected = request.column === undefined
+    ? identifiers.length === 1 ? identifiers[0] : undefined
+    : identifiers.find(match => match.index! <= request.column! - 1 && request.column! - 1 <= match.index! + match[0].length);
+  if (!selected) throw new Error("The selected symbol cannot be identified at this current-workspace position. Select it in current source and try again.");
+  const character = selected.index!;
   const rootUri = pathToFileURL(comparison.repositoryRoot).toString();
   const documentUri = pathToFileURL(resolve(comparison.repositoryRoot, request.path)).toString();
-  const child = Bun.spawn([server.command, ...server.args], { cwd: comparison.repositoryRoot, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+  const executable = Bun.which(server.command, { PATH: process.env.PATH }) ?? server.command;
+  const child = Bun.spawn([executable, ...server.args], { cwd: comparison.repositoryRoot, env: process.env, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
   const stdin = child.stdin;
   const stdout = child.stdout;
   if (!stdin || !stdout) {
     child.kill();
     return undefined;
   }
-  let buffer = "";
-  const decoder = new TextDecoder();
+  let buffer: Buffer = Buffer.alloc(0);
   const reader = stdout.getReader();
-  const readMessage = async (): Promise<Record<string, unknown>> => {
-    const deadline = Date.now() + 2_500;
+  const readMessage = async (deadline: number): Promise<Record<string, unknown>> => {
     while (true) {
       const headerEnd = buffer.indexOf("\r\n\r\n");
       if (headerEnd >= 0) {
-        const headers = buffer.slice(0, headerEnd);
+        const headers = buffer.subarray(0, headerEnd).toString("ascii");
         const match = /Content-Length:\s*(\d+)/i.exec(headers);
         if (!match) throw new Error("Invalid language-server response header.");
         const length = Number(match[1]);
+        if (!Number.isSafeInteger(length) || length < 0 || length > MAX_CODEGRAPH_OUTPUT) throw new Error("Language server response is too large.");
         const start = headerEnd + 4;
         if (buffer.length >= start + length) {
-          const payload = buffer.slice(start, start + length);
-          buffer = buffer.slice(start + length);
-          return JSON.parse(payload) as Record<string, unknown>;
+          const payload = buffer.subarray(start, start + length);
+          buffer = buffer.subarray(start + length);
+          return JSON.parse(payload.toString("utf8")) as Record<string, unknown>;
         }
       }
-      const remaining = Math.max(1, deadline - Date.now());
-      const value = await Promise.race([reader.read(), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Language server timed out.")), remaining))]);
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error("Language server timed out.");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const value = await Promise.race([reader.read(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Language server timed out.")), remaining); })]).finally(() => clearTimeout(timer));
       if (value.done) throw new Error("Language server exited before replying.");
-      buffer += decoder.decode(value.value, { stream: true });
+      buffer = Buffer.concat([buffer, value.value]);
       if (buffer.length > MAX_CODEGRAPH_OUTPUT) throw new Error("Language server response is too large.");
     }
   };
@@ -328,16 +345,33 @@ async function runLanguageServer(comparison: GitComparison, request: SymbolPeekR
     stdin.write(`Content-Length: ${new TextEncoder().encode(payload).byteLength}\r\n\r\n${payload}`);
   };
   const response = async (id: number): Promise<Record<string, unknown>> => {
+    const deadline = Date.now() + (server.timeoutMs ?? 10_000);
     while (true) {
-      const message = await readMessage();
-      if (message.id === id) return message;
+      if (Date.now() >= deadline) throw new Error("Language server timed out.");
+      const message = await readMessage(deadline);
+      if (typeof message.method === "string") {
+        // Some servers request configuration during startup. Ignoring these
+        // requests stalls initialization and incorrectly forces name search.
+        if (message.id !== undefined) {
+          const params = message.params as { items?: unknown[] } | undefined;
+          if (message.method === "workspace/configuration") send({ jsonrpc: "2.0", id: message.id, result: (params?.items ?? []).map(() => null) });
+          else if (message.method === "workspace/workspaceFolders") send({ jsonrpc: "2.0", id: message.id, result: [{ uri: rootUri, name: comparison.repositoryName }] });
+          else if (["client/registerCapability", "client/unregisterCapability", "window/workDoneProgress/create"].includes(message.method)) send({ jsonrpc: "2.0", id: message.id, result: null });
+          else send({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Method not supported" } });
+        }
+        continue;
+      }
+      if (message.id === id) {
+        if (message.error) throw new Error("Language server rejected the reference lookup.");
+        return message;
+      }
     }
   };
   try {
-    send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { processId: process.pid, rootUri, workspaceFolders: [{ uri: rootUri, name: comparison.repositoryName }], capabilities: {} } });
+    send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { processId: process.pid, rootUri, workspaceFolders: [{ uri: rootUri, name: comparison.repositoryName }], capabilities: { workspace: { configuration: true, workspaceFolders: true } } } });
     await response(1);
     send({ jsonrpc: "2.0", method: "initialized", params: {} });
-    send({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri: documentUri, languageId: request.path.split(".").at(-1) ?? "text", version: 1, text: content } } });
+    send({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri: documentUri, languageId: server.languageId, version: 1, text: content } } });
     send({ jsonrpc: "2.0", id: 2, method: "textDocument/definition", params: { textDocument: { uri: documentUri }, position: { line: line - 1, character } } });
     const definitionResponse = await response(2);
     send({ jsonrpc: "2.0", id: 3, method: "textDocument/references", params: { textDocument: { uri: documentUri }, position: { line: line - 1, character }, context: { includeDeclaration: false } } });
@@ -360,26 +394,28 @@ async function runLanguageServer(comparison: GitComparison, request: SymbolPeekR
     append(definitionResponse.result, "definition");
     append(referencesResponse.result, "usage");
     return { locations, truncated: locations.length >= MAX_RESULTS };
-  } catch {
-    return undefined;
   } finally {
     try { stdin.end(); } catch { /* language servers may already have exited */ }
     try { child.kill(); } catch { /* language servers may already have exited */ }
+    void reader.cancel().catch(() => {});
   }
 }
 
-async function languageServerResult(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }): Promise<SymbolPeekResult | undefined> {
-  const server = languageServerForPath(request.path);
-  if (!server) return undefined;
+async function languageServerResult(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }): Promise<{ result?: SymbolPeekResult; notice?: string }> {
+  const candidates = languageServersForPath(request.path);
+  const server = candidates.find(candidate => Bun.which(candidate.command, { PATH: process.env.PATH }));
+  if (!server) return { notice: !request.path ? "Choose a symbol in a file to use a language server."
+    : candidates.length ? `No ${candidates[0]!.languageId} language server was found on DiffCompass's PATH (${candidates.map(candidate => candidate.command).join(" or ")}).`
+      : `No language server is configured for .${request.path.split(".").at(-1)} files.` };
   let result: Awaited<ReturnType<typeof runLanguageServer>>;
   try {
     result = await runLanguageServer(comparison, request, server);
-  } catch {
-    return undefined;
+  } catch (error) {
+    return { notice: `${server.command}: ${error instanceof Error ? error.message : "Reference lookup failed."}` };
   }
-  if (!result) return undefined;
+  if (!result) return { notice: `${server.command} could not start a reference lookup.` };
   const materialized = await materializeLocations(comparison, result.locations);
-  return sourceResult(request.symbol, "language-server", materialized.filter((location) => location.kind === "definition"), materialized.filter((location) => location.kind === "usage"), materialized.length ? `Resolved by ${server.command}.` : `${server.command} returned no locations for this symbol.`, result.truncated);
+  return { result: sourceResult(request.symbol, "language-server", materialized.filter((location) => location.kind === "definition"), materialized.filter((location) => location.kind === "usage"), materialized.length ? `Resolved by ${server.command}.` : `${server.command} returned no locations for this symbol.`, result.truncated) };
 }
 
 async function withPartialSymbolSuggestions(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }, result: SymbolPeekResult): Promise<SymbolPeekResult> {
@@ -401,14 +437,15 @@ export async function resolveSymbolPeek(comparison: GitComparison, input: Symbol
   const codeGraph = await codeGraphResult(comparison, request);
   if (codeGraph) return withPartialSymbolSuggestions(comparison, request, codeGraph);
   const languageServer = await languageServerResult(comparison, request);
-  if (languageServer) return withPartialSymbolSuggestions(comparison, request, languageServer);
+  if (languageServer.result) return withPartialSymbolSuggestions(comparison, request, languageServer.result);
   const search = await searchRepositoryAsync(comparison, request.symbol);
   const definitions: SymbolPeekLocation[] = [];
   const usages: SymbolPeekLocation[] = [];
   const matches = await materializeLocations(comparison, search.matches.map((match) => ({ ...match, kind: isDefinition(match.content, request.symbol) ? "definition" as const : "usage" as const })));
   for (const match of matches) (match.kind === "definition" ? definitions : usages).push(match);
-  const notice = matches.length
+  const fallback = matches.length
     ? "CodeGraph and a language server were unavailable; results come from a bounded repository search."
     : "No definition or usage was found. CodeGraph and a language server were unavailable, and repository search was bounded.";
+  const notice = `${languageServer.notice ?? ""} ${fallback}`.trim();
   return withPartialSymbolSuggestions(comparison, request, sourceResult(request.symbol, "repository-search", definitions, usages, notice, search.truncated));
 }

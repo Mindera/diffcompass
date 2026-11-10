@@ -44,6 +44,8 @@ it through prose, focused before-and-after diffs, and interactive diagrams.
 Use **Open in Changes** to inspect the cited source and **Back to Briefing** to
 return to the story. Reading and inspecting a Briefing does not advance the tour
 or mark files reviewed. **Tour the code** continues into the guided walkthrough.
+The review sidebar has separate **Tour**, **Questions**, and **Comments** tabs,
+with drafts and reading positions retained when you switch between them.
 
 Briefing shares the Shiki/Monaco, Split/Unified, and Scroll/Wrap preferences with
 Changes. Resize or collapse the evidence pane, choose **Wide briefing**, and

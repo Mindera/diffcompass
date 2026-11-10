@@ -27,8 +27,7 @@ const state = {
   questionsOpen: false,
   questionDrafts: new Map(),
   questionContextPaths: new Set(),
-  questionPanePercent: 45,
-  mobileAgentPane: "tour",
+  agentPane: "tour",
   navigationDirection: null,
   navigationGeneration: 0,
   activeTab: "diff",
@@ -152,11 +151,11 @@ const elements = Object.fromEntries(
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "checkpoint-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "checkpoint-dialog", "checkpoint-form", "checkpoint-label", "cancel-checkpoint", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
     "workspace", "repository-label", "comparison-label", "file-count", "file-tree", "file-panel", "file-panel-toggle", "file-panel-close", "file-panel-collapse", "file-panel-backdrop", "file-resizer", "agent-panel", "agent-panel-collapse", "agent-resizer", "diff-panel", "diff", "empty-diff", "diff-view", "symbol-peek-panel", "symbol-peek-title", "symbol-peek-close", "symbol-peek-trail", "symbol-peek-form", "symbol-peek-input", "symbol-peek-status", "symbol-peek-result", "symbol-peek-open", "review-overview", "tour-overview", "tour-mode-toggle", "current-step-return", "review-overview-title", "review-overview-summary", "pull-request-description", "pull-request-description-body", "call-flows-view", "call-flows", "call-flows-empty", "call-flows-tab", "regenerate-call-flows", "sequence-view", "architecture", "architecture-content", "flows", "flows-empty", "diff-tab", "sequence-tab", "findings-tab", "findings-tab-count", "findings-view", "findings-back", "all-findings-empty", "all-findings-list", "activity-tab", "activity-tab-count", "activity-view", "activity-empty", "activity-list", "screenshots-tab", "screenshots-tab-count", "screenshots-view", "screenshots", "pull-request-tab", "pull-request-view", "pull-request-content", "connection-banner", "diff-search", "status-filter", "review-filter", "test-files-filter", "tree-mode", "diff-layout", "filter-summary",
     "settings-menu", "prefetch-steps", "theme-select", "syntax-theme-select", "update-button", "update-label", "sessions-button", "sessions-dialog", "close-sessions", "show-archived-sessions", "sessions-list", "about-button", "about-dialog", "about-details", "close-about", "export-menu", "refresh-button", "close-button", "close-review-button", "feedback-button", "approve-comments-button", "review-decision-dialog", "review-decision-form", "review-decision-eyebrow", "review-decision-title", "review-decision-description", "review-decision-note", "cancel-review-decision", "submit-review-decision", "closed-banner", "closed-banner-message", "cancel-auto-close", "tour-empty", "tour-empty-title", "tour-empty-description", "agent-config", "tour-active", "start-tour", "include-architecture", "include-call-flows", "include-flows", "include-findings",
-    "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "step-comment-list", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
+    "step-count", "progress-value", "phase-count", "phase-title", "phase-summary", "phase-files-details", "phase-files-count", "phase-files", "phase-finding-drawer", "phase-finding-count", "phase-finding-list", "step-anchor", "step-title", "step-objective", "step-discussion", "step-discussion-scope", "comment-stop", "step-comment-form", "step-comment-input", "cancel-step-comment", "tour-scroll", "planning-activity", "planning-activity-body", "planning-notes", "planning-note-list",
     "shortcut-help-dialog", "shortcut-help-title", "shortcuts-button", "close-shortcut-help", "focus-mode-toggle",
     "adaptive-view", "adaptive-diagrams", "adaptive-empty", "adaptive-tab", "include-adaptive-diagrams", "dry-runs-view", "dry-runs", "dry-runs-tab", "archify-view", "archify-tab", "archify-empty", "archify-select", "archify-picker-count", "archify-artifacts", "include-archify",
     "step-explanation", "agent-activity", "agent-activity-title", "agent-activity-body", "reviewer-task-assessment-status", "reviewer-task-assessment-status-title", "reviewer-task-assessment-status-body", "view-reviewer-task-assessment", "previous-step", "next-step", "chat-messages", "chat-form", "chat-input",
-    "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "questions-resizer", "new-question", "show-tour-pane", "show-questions-pane", "agent-pane-switch",
+    "conversations-tab", "conversations-view", "conversation-list", "conversation-select", "question-scope", "questions-pane", "questions-toggle", "questions-body", "questions-scroll", "new-question", "show-tour-pane", "show-questions-pane", "show-comments-pane", "agent-pane-switch", "agent-tour-pane", "questions-tab-count", "comments-tab-count",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-diagrams", "export-dry-runs", "cancel-html-export", "finding-tooltip", "toast",
     "selection-pill", "code-selection-toolbar", "question-file-context", "add-question-files", "question-files-dialog", "question-files-form", "question-files-search", "question-files-tree", "cancel-question-files", "tour-intro-dialog", "tour-intro-title", "tour-intro-summary", "tour-intro-attention", "tour-intro-attention-note", "tour-intro-attention-list", "tour-intro-estimate", "tour-intro-estimate-summary", "tour-intro-estimate-factors", "tour-intro-architecture-section", "tour-intro-architecture", "tour-intro-sequence-section", "tour-intro-sequence", "tour-intro-call-flows-section", "tour-intro-call-flows", "begin-tour", "architecture-viewer-dialog", "architecture-viewer-eyebrow", "architecture-viewer-title", "architecture-viewer-shell", "architecture-viewer-controls", "architecture-viewer-legend", "architecture-viewer-diagram", "architecture-viewer-help", "close-architecture-viewer", "issue-assessment-dialog", "issue-assessment-title", "issue-assessment-description", "close-issue-assessment", "reviewer-task-dialog", "reviewer-task-form", "reviewer-task-body", "reviewer-task-preview", "cancel-reviewer-task", "html-export-dialog", "html-export-form", "html-export-description", "export-prepare-steps", "export-findings", "export-call-flows", "export-structural-blast-radius", "export-diagrams", "cancel-html-export", "finding-tooltip", "toast",
     "agent-name", "agent-mode", "agent-select", "model-select", "reasoning-select", "agent-note", "comment-drawer", "comment-list", "comment-count", "finding-drawer", "finding-list", "finding-count", "regenerate-flows", "flow-dialog", "flow-form", "flow-id", "flow-title", "flow-summary", "flow-provenance", "flow-blast-radius", "flow-affected-files", "flow-mermaid", "cancel-flow",
@@ -1209,7 +1208,7 @@ async function handleNextStep() {
   const steps = state.session.outline?.phases.flatMap((phase) => phase.steps) ?? [];
   if (!steps.length || !state.tourMode || !reviewIsOpen()) return;
   if (state.session.currentStepIndex === steps.length - 1) {
-    state.questionsOpen = true;
+    selectAgentPane("questions");
     await toggleTourMode();
   } else await navigate("next");
 }
@@ -1346,7 +1345,6 @@ function initializeUiPreferences() {
   const savedFilePanelCollapsed = window.localStorage.getItem(preferenceKey("file-panel-collapsed")) === "true";
   const savedAgentPanelCollapsed = window.localStorage.getItem(preferenceKey("agent-panel-collapsed")) === "true";
   const savedSplitOldWidth = Number(window.localStorage.getItem(preferenceKey("split-old-width")));
-  const savedQuestionPanePercent = Number(window.localStorage.getItem(preferenceKey("question-pane-percent")));
   const savedPullRequestWide = window.localStorage.getItem(preferenceKey("pull-request-wide")) === "true";
   const legacyChangedOnly = window.localStorage.getItem(preferenceKey("changed-only"));
   state.diffLayout = preferredDiffLayout();
@@ -1363,7 +1361,6 @@ function initializeUiPreferences() {
   setPaneCollapsed("agent", savedAgentPanelCollapsed);
   setSplitOldWidth(Number.isFinite(savedSplitOldWidth) && savedSplitOldWidth > 0 ? savedSplitOldWidth : 50);
   setPullRequestContentWidth(savedPullRequestWide);
-  resizeQuestions(Number.isFinite(savedQuestionPanePercent) && savedQuestionPanePercent > 0 ? savedQuestionPanePercent : 45);
   setFilePanelWidth(state.filePanelWidth);
 }
 
@@ -2280,7 +2277,7 @@ function renderRepositoryFile(path, content) {
 }
 
 function symbolPeekContext() {
-  if (state.codeSelection) return { path: state.codeSelection.path, line: state.codeSelection.startLine, side: state.codeSelection.side };
+  if (state.codeSelection) return { path: state.codeSelection.path, line: state.codeSelection.startLine, column: state.codeSelection.startOffset + 1, side: state.codeSelection.side };
   if (state.selectedLine) return { path: state.selectedLine.path, line: state.selectedLine.line, side: state.selectedLine.side };
   const step = currentStep();
   return step ? { path: step.anchor.path, line: step.anchor.startLine, side: step.anchor.side } : {};
@@ -2395,7 +2392,7 @@ async function resolvePeekSymbol(symbol, context = symbolPeekContext(), pushHist
   try {
     const result = await api("/api/symbol-peek", {
       method: "POST",
-      body: JSON.stringify({ symbol: normalized, ...(context.path ? { path: context.path } : {}), ...(context.line ? { line: context.line } : {}), ...(context.side ? { side: context.side } : {}) }),
+      body: JSON.stringify({ symbol: normalized, ...(context.path ? { path: context.path } : {}), ...(context.line ? { line: context.line } : {}), ...(context.column ? { column: context.column } : {}), ...(context.side ? { side: context.side } : {}) }),
     });
     if (requestId !== peek.requestId) return;
     peek.result = result;
@@ -2713,7 +2710,7 @@ function renderComments() {
     }
   }
   elements["comment-count"].textContent = String(state.session.comments.length);
-  elements["comment-drawer"].classList.toggle("hidden", state.session.comments.length === 0);
+  elements["comments-tab-count"].textContent = String(state.session.comments.length);
   const closed = !reviewIsOpen();
   const disabled = closed ? " disabled" : "";
   elements["comment-list"].innerHTML = state.session.comments.length === 0
@@ -5220,23 +5217,31 @@ function conversationThreads() {
   return [...threads.values()];
 }
 
+function selectAgentPane(name, focus = false) {
+  if (!state.session || !["tour", "questions", "comments"].includes(name)) return;
+  state.agentPane = name;
+  if (name === "questions") state.questionsOpen = true;
+  setPaneCollapsed("agent", false);
+  renderQuestionLayout();
+  if (focus) elements[`show-${name}-pane`].focus({ preventScroll: true });
+}
+
 function renderQuestionLayout() {
-  const panel = elements["questions-pane"].closest(".agent-panel");
-  const guided = Boolean(state.activeTab === "briefing" || (state.tourMode && state.session.outline));
-  const open = state.questionsOpen || !guided;
-  panel.classList.toggle("questions-open", open);
-  panel.classList.toggle("questions-only", Boolean(state.session.outline && !guided));
-  panel.dataset.mobilePane = guided ? state.mobileAgentPane : "questions";
-  panel.style.setProperty("--questions-share", String(state.questionPanePercent));
-  panel.style.setProperty("--tour-share", String(100 - state.questionPanePercent));
+  const briefing = state.activeTab === "briefing";
+  const selected = state.agentPane ?? "tour";
+  const open = briefing ? state.questionsOpen : selected === "questions";
+  const panes = { tour: "agent-tour-pane", questions: "questions-pane", comments: "comment-drawer" };
+  for (const [name, id] of Object.entries(panes)) {
+    const active = name === selected;
+    elements[id].classList.toggle("hidden", briefing ? name !== "questions" : !active);
+    elements[`show-${name}-pane`].setAttribute("aria-selected", String(active));
+    elements[`show-${name}-pane`].tabIndex = active ? 0 : -1;
+  }
+  elements["questions-tab-count"].textContent = String(conversationThreads().length);
+  elements["comments-tab-count"].textContent = String(state.session.comments.length);
   elements["questions-body"].classList.toggle("hidden", !open);
   elements["questions-toggle"].setAttribute("aria-expanded", String(open));
-  elements["questions-toggle"].disabled = !guided;
   elements["questions-toggle"].textContent = `Questions (${conversationThreads().length})`;
-  elements["questions-resizer"].classList.toggle("hidden", !guided || !open);
-  elements["show-tour-pane"].disabled = !guided;
-  elements["show-tour-pane"].setAttribute("aria-pressed", String(guided && state.mobileAgentPane === "tour"));
-  elements["show-questions-pane"].setAttribute("aria-pressed", String(!guided || state.mobileAgentPane === "questions"));
 }
 
 function openConversation(id = null) {
@@ -5248,7 +5253,7 @@ function openConversation(id = null) {
   state.questionContextPaths = new Set(id ? [] : draft?.contextPaths ?? []);
   elements["chat-input"].placeholder = id ? "Follow up on this conversation…" : "Ask about this review or selected code…";
   state.questionsOpen = true;
-  state.mobileAgentPane = "questions";
+  selectAgentPane("questions");
   renderMessages();
   renderAgentActivity();
 }
@@ -5339,14 +5344,11 @@ function renderConversationBadges() {
 
 function renderStepDiscussion() {
   const step = currentStep();
-  const comments = step ? state.session.comments.filter((comment) => comment.scope === "stop" && comment.stepId === step.id) : [];
   elements["step-discussion"].classList.toggle("hidden", !step);
   if (!step) return;
   elements["step-discussion-scope"].textContent = `Comments are attached to “${step.title}” and stay with this stop if the diff moves.`;
   elements["comment-stop"].disabled = !reviewIsOpen() || state.busy;
-  elements["step-comment-list"].innerHTML = comments.length
-    ? comments.map((comment) => `<article class="step-comment" data-comment-id="${escapeHtml(comment.id)}"><span class="comment-status">${escapeHtml(comment.status)}</span><p>${renderInlineMarkdown(comment.body)}</p><div class="comment-actions"><button class="text-button" data-step-comment-action="edit" type="button">Edit</button><button class="text-button danger" data-step-comment-action="delete" type="button">Delete</button></div></article>`).join("")
-    : '<p class="comment-empty">No comments on this stop yet.</p>';
+
 }
 
 function renderQuestionScope(thread = conversationThreads().find((item) => item.id === state.activeThreadId)) {
@@ -5851,6 +5853,7 @@ async function beginPreparedTour() {
   state.tourIntroPending = false;
   state.tourIntroReturn = false;
   state.tourStarted = true;
+  state.agentPane = "tour";
   elements["tour-intro-dialog"].close();
   closeBriefingSheet();
   if (!state.tourMode) await toggleTourMode();
@@ -5886,6 +5889,7 @@ async function startTour() {
       }),
     });
     state.tourMode = true;
+    state.agentPane = "tour";
     state.tourStarted = true;
     state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null;
     renderSession();
@@ -5955,7 +5959,7 @@ async function toggleTourMode() {
   if (!state.session.outline || state.busy) return;
   if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before leaving the tour.");
   state.tourMode = !state.tourMode;
-  if (state.tourMode) state.briefingSourceReturn = false;
+  if (state.tourMode) { state.briefingSourceReturn = false; state.agentPane = "tour"; }
   state.fileRequestId += 1;
   state.phaseDiffLoadKey = null;
   state.phaseDiffLoadPromise = null;
@@ -6562,6 +6566,7 @@ async function saveInlineComment(form) {
 
 function openStepCommentEditor(comment = null) {
   if (!reviewIsOpen() || !currentStep()) return;
+  selectAgentPane("comments");
   elements["step-comment-form"].classList.remove("hidden");
   elements["step-comment-form"].dataset.commentId = comment?.id ?? "";
   elements["step-comment-input"].value = comment?.body ?? "";
@@ -6632,7 +6637,7 @@ async function askAgent(event) {
   state.activeThreadId = pending.threadId;
   state.questionDrafts.delete(originalThreadId);
   state.questionsOpen = true;
-  state.mobileAgentPane = "questions";
+  state.agentPane = "questions";
   state.dryRunQuestionContext = null;
   elements["chat-input"].placeholder = "Ask about this review";
   // Each request owns its captured location. Clear the draft now instead of
@@ -6986,14 +6991,7 @@ elements["cancel-step-comment"].addEventListener("click", () => {
   elements["step-comment-input"].value = "";
 });
 elements["step-comment-form"].addEventListener("submit", saveStepComment);
-elements["step-comment-list"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-step-comment-action]");
-  const item = event.target.closest("[data-comment-id]");
-  const comment = item && state.session.comments.find((candidate) => candidate.id === item.dataset.commentId);
-  if (!button || !comment) return;
-  if (button.dataset.stepCommentAction === "edit") void openStepCommentEditor(comment);
-  if (button.dataset.stepCommentAction === "delete") void deleteReviewComment(comment);
-});
+
 elements["selection-pill"].addEventListener("click", (event) => {
   if (!event.target.closest("[data-remove-line-context]")) return;
   state.selectedLine = null;
@@ -7044,44 +7042,28 @@ elements["question-files-form"].addEventListener("submit", (event) => {
   elements["question-files-dialog"].close();
   renderMessages();
 });
-elements["show-tour-pane"].addEventListener("click", () => { state.mobileAgentPane = "tour"; renderQuestionLayout(); });
+for (const name of ["tour", "questions", "comments"]) {
+  elements[`show-${name}-pane`].addEventListener("click", () => selectAgentPane(name));
+}
+elements["agent-pane-switch"].addEventListener("keydown", event => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const tabs = ["tour", "questions", "comments"];
+  const current = tabs.findIndex(name => elements[`show-${name}-pane`] === event.target);
+  if (current < 0) return;
+  event.preventDefault();
+  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+    : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  selectAgentPane(tabs[next], true);
+});
 document.getElementById("mobile-tour-jump").addEventListener("click", () => {
   if (!state.session) return;
   // A wide Pull request view hides the agent pane; restore its normal layout.
   activateReviewTab("diff");
   if (state.filePanelOpen) setFilePanelOpen(false);
-  state.mobileAgentPane = "tour";
+  state.agentPane = "tour";
   renderQuestionLayout();
   revealMobilePanel("agent-panel");
 });
-elements["show-questions-pane"].addEventListener("click", () => { state.mobileAgentPane = "questions"; state.questionsOpen = true; renderQuestionLayout(); });
-function resizeQuestions(percent, persist = false) {
-  state.questionPanePercent = Math.max(25, Math.min(70, percent));
-  elements["questions-resizer"].setAttribute("aria-valuenow", String(Math.round(state.questionPanePercent)));
-  elements["questions-resizer"].setAttribute("aria-valuetext", `Questions ${Math.round(state.questionPanePercent)}%, tour ${Math.round(100 - state.questionPanePercent)}%`);
-  if (persist && state.preferenceRepository) window.localStorage.setItem(preferenceKey("question-pane-percent"), String(state.questionPanePercent));
-  renderQuestionLayout();
-}
-elements["questions-resizer"].addEventListener("keydown", (event) => {
-  if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-  event.preventDefault();
-  resizeQuestions(event.key === "Home" ? 25 : event.key === "End" ? 70 : state.questionPanePercent + (event.key === "ArrowUp" ? 5 : -5), true);
-});
-elements["questions-resizer"].addEventListener("pointerdown", (event) => {
-  if (event.button !== 0) return;
-  event.preventDefault();
-  const separator = event.currentTarget;
-  const startY = event.clientY;
-  const startPercent = state.questionPanePercent;
-  const height = elements["questions-pane"].getBoundingClientRect().height + elements["tour-active"].getBoundingClientRect().height;
-  separator.setPointerCapture(event.pointerId);
-  const move = (next) => resizeQuestions(startPercent + (startY - next.clientY) / height * 100);
-  const end = () => { resizeQuestions(state.questionPanePercent, true); separator.removeEventListener("pointermove", move); separator.removeEventListener("pointerup", end); separator.removeEventListener("pointercancel", end); };
-  separator.addEventListener("pointermove", move);
-  separator.addEventListener("pointerup", end);
-  separator.addEventListener("pointercancel", end);
-});
-elements["questions-resizer"].addEventListener("dblclick", () => resizeQuestions(45, true));
 elements["chat-form"].addEventListener("submit", askAgent);
 elements["close-button"].addEventListener("click", () => state.session.preferences?.closeOutcome === "cancelled" ? requestCloseReview() : close("accepted", "approve"));
 elements["close-review-button"].addEventListener("click", requestCloseReview);
@@ -7567,7 +7549,7 @@ elements["code-selection-toolbar"].addEventListener("click", (event) => {
   } else if (tool === "edit") {
     openInlineEdit(selected.endRow, selected);
   } else if (tool === "peek") {
-    void resolvePeekSymbol(symbolForCodeSelection(selected).symbol, { path: selected.path, line: selected.startLine, side: selected.side });
+    void resolvePeekSymbol(symbolForCodeSelection(selected).symbol, { path: selected.path, line: selected.startLine, column: selected.startOffset + 1, side: selected.side });
   } else {
     const target = lineTarget(selected.startRow);
     openInlineCommentEditor(selected.endRow, target, null, { mode: tool === "ask" ? "ask" : "comment", endLine: selected.endLine, selection: selected });
@@ -8429,7 +8411,7 @@ state.monacoRenderer = createMonacoRenderer({
       renderDiff(state.renderedDiffFiles, currentDiffRenderOptions()); renderTourAnnotation();
     },
     options(layout, wrap) { changeDiffView(layout, wrap ? "wrap" : "scroll"); },
-    peek(symbol, path, line, side) { return resolvePeekSymbol(symbol, { path, line, side }); },
+    peek(symbol, path, line, side, column) { return resolvePeekSymbol(symbol, { path, line, side, column }); },
     theme() { state.monacoRenderer.sync(); },
     conversation: openConversation, finding: openFindingFromCode,
     githubThreadReplyUrl, renderReviewMarkdown: renderMarkdown,

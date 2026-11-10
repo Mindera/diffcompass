@@ -744,7 +744,7 @@ function mobileSelection(anchor = currentAnchor, range = currentSourceRange, quo
     },
     async run(action) {
       if (!valid()) throw Error("The source changed. Select the code again.");
-      if (action === "references") { await host.peek(symbol, selectedFile.path, anchor.line, side); host.clearMobileSelection(); return; }
+      if (action === "references") { await host.peek(symbol, selectedFile.path, anchor.line, side, range.startColumn); host.clearMobileSelection(); return; }
       await host.revealMobile(side, anchor.line, anchor.endLine);
       restore();
       if (action === "suggest") { openSuggestedEdit(); host.clearMobileSelection(); return; }
@@ -913,10 +913,38 @@ function drawAnnotations() {
           const submit = button("Submit suggestions", () => host.suggestionAction(entry.suggestion.activityId, "submit-suggestions"));
           restore.disabled = submit.disabled = session.status !== "open"; actions.append(restore, submit);
         }
-      } else actions.append(button("Edit", () => openComposer("comment", entry)), button("Delete", async () => {
-        if (!confirm(production ? "Delete this comment?" : "Delete this fixture comment?")) return;
-        session = await api(`/api/comments/${entry.id}`, {}, "DELETE"); await refresh();
-      }));
+      } else {
+        const edit = button("Edit", () => openComposer("comment", entry));
+        const remove = button("Delete", () => {
+          const label = document.createElement("span"); label.textContent = "Delete this comment?";
+          const cancel = button("Cancel", reset);
+          const confirm = button("Delete", async () => {
+            cancel.disabled = confirm.disabled = true;
+            actions.setAttribute("aria-busy", "true");
+            try {
+              session = await api(`/api/comments/${entry.id}`, {}, "DELETE"); await refresh();
+            } finally {
+              actions.removeAttribute("aria-busy");
+              cancel.disabled = confirm.disabled = session.status !== "open";
+            }
+          });
+          confirm.className = "review-delete-confirm";
+          actions.setAttribute("data-comment-delete-confirmation", "");
+          actions.replaceChildren(label, cancel, confirm);
+          cancel.focus({ preventScroll: true });
+        });
+        function reset() {
+          actions.removeAttribute("data-comment-delete-confirmation");
+          actions.replaceChildren(edit, remove);
+          remove.focus({ preventScroll: true });
+        }
+        actions.addEventListener("keydown", event => {
+          if (event.key !== "Escape" || !actions.hasAttribute("data-comment-delete-confirmation") || actions.hasAttribute("aria-busy")) return;
+          event.preventDefault(); event.stopPropagation(); reset();
+        });
+        edit.disabled = remove.disabled = session.status !== "open";
+        actions.append(edit, remove);
+      }
       content.append(label);
       if (description.quote) content.append(quotedCode(description));
       content.append(text, actions); node.append(content);
@@ -1249,7 +1277,7 @@ $("peek").onclick = () => guard(async () => {
   const editor = editors[activeSide];
   const symbol = editor.getModel().getWordAtPosition({ lineNumber: currentSourceRange.startLineNumber, column: currentSourceRange.startColumn })?.word;
   if (!symbol) throw new Error("Place the cursor on a symbol");
-  await current().peek(symbol, selectedFile.path, currentAnchor.line, activeSide);
+  await current().peek(symbol, selectedFile.path, currentAnchor.line, activeSide, currentSourceRange.startColumn);
   status("Find references opened · current workspace, not a historical revision.");
 });
 $("source").onclick = () => {
@@ -1281,7 +1309,7 @@ $("source").onclick = () => {
     run: () => guard(async () => {
       const position = sourceEditor.getPosition(), symbol = sourceModel.getWordAtPosition(position)?.word;
       if (!symbol) throw new Error("Place the cursor on a symbol");
-      await current().peek(symbol, selectedFile.path, position.lineNumber, sourceSide);
+      await current().peek(symbol, selectedFile.path, position.lineNumber, sourceSide, position.column);
     }),
   });
   sourceEditor.revealLinesInCenter(firstLine, lastLine);

@@ -61,8 +61,15 @@ Turn a long diff into an ordered explanation, one source-backed stop at a time.
 - Follow an agent-organized route through related changes.
 - See current and upcoming stops alongside their source anchors.
 - Explore freely, then return to your current stop.
+- Switch the right pane between **Tour**, **Questions**, and **Comments**. Each
+  section gets the full pane; tab switches keep drafts and reading positions.
+  Use the arrow keys, Home, or End when a tab has focus.
 
 Source anchors help you check the explanation; they do not prove it is correct.
+
+| Tour | Questions | Comments |
+| --- | --- | --- |
+| ![Tour tab with its explanation and navigation](images/review-tour.png) | ![Questions tab with its conversation picker and retained draft](images/review-questions.png) | ![Comments tab with current-stop feedback and saved comments](images/review-comments.png) |
 
 ### Architecture maps
 
@@ -166,6 +173,15 @@ Follow a definition or usage without losing your place.
 - Inspect definition and usage results within the tool's limits.
 - Use partial-name suggestions and a navigation trail.
 - Use available providers, with repository search as a fallback.
+
+Monaco calls this **Find references**. Lookups use the current workspace and the
+selected symbol's line and column. Kotlin (`.kt` and `.kts`) supports
+`kotlin-lsp --stdio` or `kotlin-language-server` on DiffCompass's `PATH`.
+The server must support the project's build configuration. See the
+[official Kotlin server setup and supported projects](https://github.com/Kotlin/kotlin-lsp#install-kotlin-lsp-cli);
+its current documentation lists Kotlin Multiplatform support as forthcoming.
+When a server is missing or fails, the result explains the reason and labels
+repository text matches as candidates.
 
 Provider coverage varies. Search matches are candidates, not guaranteed call
 targets or project-aware IntelliSense.

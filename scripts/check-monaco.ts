@@ -25,7 +25,7 @@ const groups = {
   briefing: { samplePr: false, scripts: ["briefing-entry", "briefing-source", "briefing", "briefing-code", "briefing-diagrams"] },
   local: { samplePr: false, scripts: ["monaco-foundation", "monaco-scroll", "file-header", "monaco-edits", "monaco-edits-syntax", "monaco-themes", "renderer-preference", "monaco-gutter", "monaco-wrapping", "markdown-preview", "monaco-semantic", "monaco-mount", "monaco-paged-draft"] },
   navigation: { samplePr: true, scripts: ["monaco-phase", "monaco-phase-scroll", "monaco-upward-tour", "monaco-reviewed-scroll", "monaco-sticky", "monaco-file-explorer"] },
-  discussions: { samplePr: true, scripts: ["renderer-comments", "monaco-context", "monaco-edits", "monaco-edits-syntax", "monaco-discussions"] },
+  discussions: { samplePr: true, scripts: ["review-pane", "renderer-comments", "monaco-context", "monaco-edits", "monaco-edits-syntax", "monaco-discussions"] },
   before: { samplePr: true, beforeTour: true, scripts: ["monaco-before-tour"] },
 };
 const requested = process.env.MONACO_CHECK_GROUP;
