@@ -164,6 +164,16 @@ Read what changed with enough surrounding code to judge it.
 Large diffs use bounded paging. Captured historical source and the current
 workspace remain distinct.
 
+### Review media
+
+Inspect QA captures and recordings supplied by the launching agent with
+`--media`. Media shows only those files by default, and stays hidden when none
+were supplied. Changed PNGs retain their before/after view in Changes.
+
+To add changed PNGs to Media, use `--media-include-changed-images` or
+`.diffcompass.json` → `media.includeChangedImages: true`. The extra images load
+only when viewed, and the choice survives resume. See [review media options](usage.md#review-media).
+
 ### Symbol Peek
 
 Follow a definition or usage without losing your place.

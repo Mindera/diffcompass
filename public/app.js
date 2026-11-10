@@ -108,6 +108,9 @@ const state = {
     : "github",
   commentQuoteHighlightRequestId: 0,
   screenshotUrls: new Map(),
+  screenshotLoads: new Map(),
+  screenshotRenderId: 0,
+  changedImageObserver: null,
   diffImageUrls: new Map(),
   diffImageRequestId: 0,
   markdownPreviewPaths: new Set(),
@@ -4376,6 +4379,7 @@ function renderActivities() {
 }
 
 function changedImageMedia() {
+  if (state.session?.mediaIncludeChangedImages !== true) return [];
   const revision = state.session?.revision ?? 0;
   return (state.session?.comparison?.files ?? []).filter(isPngDiff).flatMap((file) => [
     file.oldPath ? { id: `diff:${revision}:${file.path}:old`, path: file.path, side: "old", name: `${file.path} · Before` } : null,
@@ -4841,7 +4845,7 @@ function addDryRunScenario() {
 }
 
 function availableTabs() {
-  return ["briefing", "diff", "archify", "dry-runs", "findings", "activity", "conversations", "screenshots", ...(state.session?.pullRequest ? ["pull-request"] : [])];
+  return ["briefing", "diff", "archify", "dry-runs", "findings", "activity", "conversations", ...((state.session?.screenshots?.length || changedImageMedia().length) ? ["screenshots"] : []), ...(state.session?.pullRequest ? ["pull-request"] : [])];
 }
 
 const MAP_VIEWS = ["archify", "call-flows", "sequence", "adaptive", "structural-blast-radius"];
@@ -4887,6 +4891,7 @@ function renderMapsNavigation() {
 }
 
 function renderActiveTab() {
+  if (state.activeTab === "screenshots" && !availableTabs().includes("screenshots")) state.activeTab = "diff";
   if (state.activeTab !== "diff") state.briefingSourceReturn = false;
   for (const tabName of ["briefing", "diff", "call-flows", "structural-blast-radius", "archify", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
     const active = state.activeTab === tabName;
@@ -4904,15 +4909,15 @@ function renderActiveTab() {
 }
 
 async function renderScreenshots() {
+  const requestId = ++state.screenshotRenderId;
+  state.changedImageObserver?.disconnect();
+  state.changedImageObserver = null;
   const screenshots = state.session?.screenshots ?? [];
   const changedImages = changedImageMedia();
   const mediaCount = screenshots.length + changedImages.length;
   elements["screenshots-tab-count"].textContent = String(mediaCount);
   elements["screenshots-tab-count"].classList.toggle("hidden", mediaCount === 0);
-  if (mediaCount === 0) {
-    elements.screenshots.innerHTML = '<p class="empty compact media-empty">No media is available for this review.</p>';
-    return;
-  }
+  elements["screenshots-tab"].classList.toggle("hidden", mediaCount === 0);
   const visibleIds = new Set([...screenshots.map((shot) => shot.id), ...changedImages.map((image) => image.id)]);
   for (const [id, url] of state.screenshotUrls) {
     if (!visibleIds.has(id)) {
@@ -4920,39 +4925,64 @@ async function renderScreenshots() {
       state.screenshotUrls.delete(id);
     }
   }
+  if (mediaCount === 0) {
+    elements.screenshots.innerHTML = '<p class="empty compact media-empty">No media is available for this review.</p>';
+    return;
+  }
+  async function mediaUrl(id, path) {
+    if (state.screenshotUrls.has(id)) return state.screenshotUrls.get(id);
+    let pending = state.screenshotLoads.get(id);
+    if (!pending) {
+      pending = apiBlob(path).finally(() => state.screenshotLoads.delete(id));
+      state.screenshotLoads.set(id, pending);
+    }
+    const blob = await pending;
+    if (requestId !== state.screenshotRenderId) return;
+    if (!state.screenshotUrls.has(id)) state.screenshotUrls.set(id, URL.createObjectURL(blob));
+    return state.screenshotUrls.get(id);
+  }
   elements.screenshots.innerHTML = [
     ...screenshots.map((shot) => `<figure class="screenshot-card" data-screenshot-id="${escapeHtml(shot.id)}"><div class="screenshot-loading">Loading media…</div><figcaption><strong>${escapeHtml(shot.name)}</strong><span>${Math.max(1, Math.round(shot.size / 1024)).toLocaleString()} KiB</span></figcaption></figure>`),
-    ...changedImages.map((image) => `<figure class="screenshot-card changed-image-media" data-changed-image-id="${escapeHtml(image.id)}"><div class="screenshot-loading">Loading changed image…</div><figcaption><strong>${escapeHtml(image.name)}</strong><span>Changed PNG</span></figcaption></figure>`),
+    ...changedImages.map((image) => `<figure class="screenshot-card changed-image-media" data-changed-image-id="${escapeHtml(image.id)}"><div class="screenshot-loading"><button type="button" class="text-button" aria-label="${escapeHtml(`View ${image.name}`)}">View image</button></div><figcaption><strong>${escapeHtml(image.name)}</strong><span>Changed PNG</span></figcaption></figure>`),
   ].join("");
-  await Promise.all([...screenshots.map(async (shot) => {
+  async function loadChangedImage(image, card) {
+    if (requestId !== state.screenshotRenderId || !card.isConnected || card.dataset.loading) return;
+    card.dataset.loading = "true";
+    state.changedImageObserver?.unobserve(card);
+    card.querySelector(".screenshot-loading").textContent = "Loading changed image…";
     try {
-      let url = state.screenshotUrls.get(shot.id);
-      if (!url) {
-        url = URL.createObjectURL(await apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`));
-        state.screenshotUrls.set(shot.id, url);
-      }
+      const url = await mediaUrl(image.id, `/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`);
+      if (!url || requestId !== state.screenshotRenderId || !card.isConnected) return;
+      card.querySelector(".screenshot-loading").outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(image.name)}" /></a>`;
+    } catch (error) {
+      if (requestId === state.screenshotRenderId && card.isConnected) card.querySelector(".screenshot-loading").textContent = error.message;
+    }
+  }
+  const imagesById = new Map(changedImages.map(image => [image.id, image]));
+  if (changedImages.length && typeof IntersectionObserver !== "undefined") {
+    state.changedImageObserver = new IntersectionObserver(entries => {
+      if (state.activeTab !== "screenshots" || requestId !== state.screenshotRenderId) return;
+      for (const entry of entries) if (entry.isIntersecting) void loadChangedImage(imagesById.get(entry.target.dataset.changedImageId), entry.target);
+    });
+  }
+  for (const card of elements.screenshots.querySelectorAll("[data-changed-image-id]")) {
+    card.querySelector("button").onclick = () => void loadChangedImage(imagesById.get(card.dataset.changedImageId), card);
+    state.changedImageObserver?.observe(card);
+  }
+  await Promise.all(screenshots.map(async (shot) => {
+    try {
+      const url = await mediaUrl(shot.id, `/api/screenshots/${encodeURIComponent(shot.id)}`);
+      if (!url || requestId !== state.screenshotRenderId) return;
       const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
       if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").outerHTML = shot.mimeType === "video/mp4"
         ? `<video src="${escapeHtml(url)}" controls preload="metadata" aria-label="${escapeHtml(shot.name)}"></video>`
         : `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(shot.name)}" /></a>`;
     } catch (error) {
+      if (requestId !== state.screenshotRenderId) return;
       const card = elements.screenshots.querySelector(`[data-screenshot-id="${CSS.escape(shot.id)}"]`);
       if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").textContent = error.message;
     }
-  }), ...changedImages.map(async (image) => {
-    try {
-      let url = state.screenshotUrls.get(image.id);
-      if (!url) {
-        url = URL.createObjectURL(await apiBlob(`/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`));
-        state.screenshotUrls.set(image.id, url);
-      }
-      const card = elements.screenshots.querySelector(`[data-changed-image-id="${CSS.escape(image.id)}"]`);
-      if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").outerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open full-size image"><img src="${escapeHtml(url)}" alt="${escapeHtml(image.name)}" /></a>`;
-    } catch (error) {
-      const card = elements.screenshots.querySelector(`[data-changed-image-id="${CSS.escape(image.id)}"]`);
-      if (card?.querySelector(".screenshot-loading")) card.querySelector(".screenshot-loading").textContent = error.message;
-    }
-  })]);
+  }));
 }
 
 let briefingReader;

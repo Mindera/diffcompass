@@ -58,6 +58,7 @@ interface AgentDefaults {
   includeFindings?: boolean;
   pullRequest?: PullRequestContext;
   screenshots?: string[];
+  mediaIncludeChangedImages?: boolean;
   authorIntent?: string;
   githubRunner?: GitHubRunner;
   agentAdapters?: AgentAdapterOption[];
@@ -131,6 +132,7 @@ export class ReviewSession {
   readonly preferences: ReviewPreferences;
   readonly reviewPolicy: ReviewPolicy;
   readonly screenshots: ReviewScreenshot[];
+  readonly mediaIncludeChangedImages: boolean;
   readonly authorIntent?: string;
   readonly checkpoints: SourceCheckpoint[];
   readonly checkpointRefNamespace: string;
@@ -206,6 +208,7 @@ export class ReviewSession {
       : configuredReviewPolicy;
     this.pullRequest = structuredClone(persisted?.pullRequest ?? defaults.pullRequest);
     this.screenshots = structuredClone(persisted?.screenshots ?? []);
+    this.mediaIncludeChangedImages = defaults.mediaIncludeChangedImages ?? persisted?.mediaIncludeChangedImages ?? false;
     this.authorIntent = persisted?.authorIntent ?? defaults.authorIntent;
     this.checkpoints = structuredClone(persisted?.checkpoints ?? []);
     this.checkpointRefNamespace = persisted?.checkpointRefNamespace ?? `refs/diffcompass/checkpoints/${this.refKey(defaults.stateFile)}`;
@@ -311,6 +314,7 @@ export class ReviewSession {
       dryRuns: structuredClone(this.dryRunTraces),
       pullRequest: structuredClone(this.pullRequest),
       screenshots: structuredClone(this.screenshots),
+      mediaIncludeChangedImages: this.mediaIncludeChangedImages,
       authorIntent: this.authorIntent,
       revision: this.revision,
       status: this.status,
@@ -1083,6 +1087,7 @@ export class ReviewSession {
         : undefined,
       pullRequest: structuredClone(this.pullRequest),
       screenshots: structuredClone(this.screenshots),
+      mediaIncludeChangedImages: this.mediaIncludeChangedImages,
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,

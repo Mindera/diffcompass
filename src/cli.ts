@@ -32,6 +32,7 @@ interface Options {
   disableFindings: boolean;
   previewRedirect: boolean;
   media: string[];
+  mediaIncludeChangedImages?: boolean;
   intentFile?: string;
   resume?: string;
   pullRequest?: string;
@@ -67,6 +68,8 @@ Options:
   --port PORT          Loopback port (default: random)
   --preview-redirect   Redirect / to the tokenized URL so remote previews work
   --media PATH         Add an image or MP4 to the Media tab (repeatable)
+  --media-include-changed-images
+                       Also show changed PNGs in Media (loaded on demand)
   --intent-file PATH   Give the Briefing author-stated context from a text file
   --resume FILE        Resume a persisted review session
   --version            Print the installed version
@@ -100,6 +103,8 @@ function parseOptions(args: string[]): Options {
       options.open = true;
     } else if (arg === "--preview-redirect") {
       options.previewRedirect = true;
+    } else if (arg === "--media-include-changed-images") {
+      options.mediaIncludeChangedImages = true;
     } else if (arg === "--media" && value) {
       options.media.push(resolve(value));
       index += 1;
@@ -264,6 +269,7 @@ try {
     includeFindings: options.disableFindings ? false : undefined,
     pullRequest,
     screenshots: options.media,
+    mediaIncludeChangedImages: options.mediaIncludeChangedImages ?? resumedState?.mediaIncludeChangedImages ?? repositoryConfig.mediaIncludeChangedImages,
     authorIntent,
   });
   if (session.pullRequest?.workspaceRoot) {

@@ -59,6 +59,30 @@ For a stacked branch:
 git config branch.my-feature.reviewTourBase parent-feature
 ```
 
+## Review media
+
+Pass each QA capture or recording with `--media PATH` (PNG, JPEG, GIF, WebP or
+MP4). Media shows only those session-owned files by default; its count excludes
+images from the diff. With no supplied media, the tab is hidden. Changed PNGs
+remain available in Changes with their captured before/after comparison.
+
+To include changed PNGs in Media as well, add `--media-include-changed-images`
+to a branch or `diffcompass pr` launch, or set this repository default:
+
+```json
+{ "media": { "includeChangedImages": true } }
+```
+
+Each available side contributes one item (two for a modified PNG, one for an
+added or deleted PNG). These optional images load when scrolled into view or
+explicitly opened, rather than during page startup. Supplied `--media` files
+keep their existing import and loading behavior.
+
+The choice is saved with the session. On resume, an explicit CLI flag wins over
+the saved choice; the saved choice wins over repository configuration. Older
+sessions without a saved choice use the repository default, which is false
+unless opted in.
+
 ## Repository defaults
 
 Add `.diffcompass.json` at the repository root:

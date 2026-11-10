@@ -22,6 +22,7 @@ test("missing repository configuration uses conservative defaults", async () => 
     preferences: DEFAULT_REVIEW_PREFERENCES,
     retention: { includeArchived: false },
     reviewPolicy: DEFAULT_REVIEW_POLICY,
+    mediaIncludeChangedImages: false,
   });
   expect(DEFAULT_REVIEW_PREFERENCES.diffLayout).toBe("split");
 });
@@ -35,6 +36,7 @@ test("loads every supported repository default", async () => {
     reasoning: "high",
     diff: { layout: "split", changedFilesOnly: true, contextLines: 25 },
     review: { requireAllFilesReviewed: true, closeOutcome: "cancelled" },
+    media: { includeChangedImages: true },
     retention: { maxAgeDays: 30, maxSessions: 50, includeArchived: true },
     analysis: {
       instructions: ["Treat authentication changes as high risk."],
@@ -43,6 +45,7 @@ test("loads every supported repository default", async () => {
   }));
 
   expect(await loadRepositoryConfig(directory)).toEqual({
+    mediaIncludeChangedImages: true,
     base: "parent-feature",
     agent: "claude",
     model: "opus",
@@ -83,6 +86,9 @@ test("fails closed for unknown, mistyped, oversized, and linked configuration", 
   const path = join(directory, ".diffcompass.json");
   for (const value of [
     { unexpected: true },
+    { media: true },
+    { media: { includeChangedImages: "yes" } },
+    { media: { includeImages: true } },
     { diff: { contextLines: 2 } },
     { diff: { contextLines: 201 } },
     { diff: { changedFilesOnly: "yes" } },
