@@ -172,16 +172,26 @@ Follow a definition or usage without losing your place.
 
 - Inspect definition and usage results within the tool's limits.
 - Use partial-name suggestions and a navigation trail.
-- Use available providers, with repository search as a fallback.
+- Use available providers, built-in Kotlin syntax lookup, or repository search.
 
 Monaco calls this **Find references**. Lookups use the current workspace and the
-selected symbol's line and column. Kotlin (`.kt` and `.kts`) supports
-`kotlin-lsp --stdio` or `kotlin-language-server` on DiffCompass's `PATH`.
+selected symbol's line and column. Without extra setup, Kotlin (`.kt` and `.kts`)
+can find same-file declaration and usage candidates for properties, functions
+and parameters. The bundled parser respects explicit lexical scopes and
+shadowing, excludes comments and plain string text, and distinguishes `this`
+members from unknown receivers. Results are labelled **Kotlin syntax**; syntax
+the parser cannot read is reported as partial. This does not resolve receiver
+types, overloads, imports or references in other files.
+
+For project-aware results, Kotlin supports `kotlin-lsp --stdio` or
+`kotlin-language-server` on DiffCompass's `PATH`.
 The server must support the project's build configuration. See the
 [official Kotlin server setup and supported projects](https://github.com/Kotlin/kotlin-lsp#install-kotlin-lsp-cli);
 its current documentation lists Kotlin Multiplatform support as forthcoming.
-When a server is missing or fails, the result explains the reason and labels
-repository text matches as candidates.
+When a server is missing or fails, the result explains the reason. Unsupported
+lookups use bounded repository text search, prioritizing the selected file,
+nearby source, changed files and then the same file extension so unrelated
+files cannot exhaust the search before it reaches the selected file.
 
 Provider coverage varies. Search matches are candidates, not guaranteed call
 targets or project-aware IntelliSense.

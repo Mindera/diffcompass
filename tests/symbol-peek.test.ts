@@ -84,12 +84,15 @@ test("ambiguous or moved source positions do not silently resolve a different oc
   await expect(resolveSymbolPeek(reviewed, { symbol: "value", path: "example.kt", line: 2, column: 0 })).rejects.toThrow("column must be a positive integer");
 });
 
-test("missing Kotlin tooling explains why the name-search fallback was used", async () => {
+test("Kotlin scripts use built-in syntax lookup when no language server is installed", async () => {
   const root = await mkdtemp(join(import.meta.dir, "symbol-peek-")); roots.push(root);
   await writeFile(join(root, "example.kts"), "val value = 1\nprintln(value)\n");
   process.env.PATH = root;
   const result = await resolveSymbolPeek(comparison(root, ["example.kts"]), { symbol: "value", path: "example.kts", line: 2, column: 9 });
-  expect(result.source).toBe("repository-search");
+  expect(result.source).toBe("kotlin-syntax");
+  expect(result.definitions).toMatchObject([{ path: "example.kts", line: 1 }]);
+  expect(result.usages).toMatchObject([{ path: "example.kts", line: 2 }]);
+  expect(result.notice).toContain("Same-file syntax candidates");
   expect(result.notice).toContain("No kotlin language server was found on DiffCompass's PATH (kotlin-lsp or kotlin-language-server)");
 });
 
@@ -151,6 +154,54 @@ test("symbol peek keeps the fallback result bounded", async () => {
   expect(result.source).toBe("repository-search");
   expect(result.truncated).toBe(true);
   expect(result.definitions).toHaveLength(0);
+});
+
+test("bounded fallback searches the selected Kotlin file and related source before unrelated files", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "symbol-peek-")); roots.push(root);
+  process.env.PATH = root;
+  const unrelated = Array.from({ length: 205 }, (_, index) => `document-${index}.md`);
+  await Promise.all(unrelated.map(path => writeFile(join(root, path), "Project notes\n")));
+  const selected = "PeopleViewModel.kt";
+  const sibling = "PeopleScreen.kt";
+  const otherSource = "shared/PeopleState.kt";
+  await mkdir(join(root, "shared"));
+  await writeFile(join(root, selected), "internal val Searching = LoadStates()\nfun search() {\n  emit(PagingData.empty(sourceLoadStates = Searching))\n}\n");
+  await writeFile(join(root, sibling), "fun screen() = Searching\n");
+  await writeFile(join(root, otherSource), "fun state() = Searching\n");
+  const result = await resolveSymbolPeek(comparison(root, [...unrelated, otherSource, sibling, selected]), {
+    // A name entered without a source position still uses repository search.
+    symbol: "Searching", path: selected,
+  });
+  expect(result.source).toBe("repository-search");
+  expect(result.definitions).toMatchObject([{ path: selected, line: 1 }]);
+  expect(result.usages).toEqual(expect.arrayContaining([
+    expect.objectContaining({ path: selected, line: 3 }),
+    expect.objectContaining({ path: sibling, line: 1 }),
+    expect.objectContaining({ path: otherSource, line: 1 }),
+  ]));
+  expect(result.truncated).toBe(true);
+
+  const syntax = await resolveSymbolPeek(comparison(root, [...unrelated, otherSource, sibling, selected]), {
+    symbol: "Searching", path: selected, line: 1, column: 14,
+  });
+  expect(syntax.source).toBe("kotlin-syntax");
+  expect(syntax.definitions).toMatchObject([{ path: selected, line: 1 }]);
+  expect(syntax.usages).toMatchObject([{ path: selected, line: 3 }]);
+  expect(syntax.truncated).toBe(false);
+});
+
+test("partial-identifier suggestions also include the selected file beyond the scan limit", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "symbol-peek-")); roots.push(root);
+  process.env.PATH = root;
+  const files = Array.from({ length: 205 }, (_, index) => `file-${index}.kt`);
+  await Promise.all(files.map(path => writeFile(join(root, path), "val other = 1\n")));
+  const selected = "PeopleViewModel.kt";
+  await writeFile(join(root, selected), "private val Searching = LoadStates()\n");
+  const result = await resolveSymbolPeek(comparison(root, [...files, selected]), {
+    symbol: "Search", path: selected, line: 1,
+  });
+  expect(result.suggestions).toContainEqual({ symbol: "Searching", path: selected, line: 1 });
+  expect(result.suggestionsTruncated).toBe(true);
 });
 
 test("symbol peek offers bounded explicit partial-identifier suggestions after a miss", async () => {
