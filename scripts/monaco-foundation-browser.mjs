@@ -187,12 +187,12 @@ try {
 } catch (error) {
   await page.screenshot({ path: "/tmp/dc-monaco-foundation-failure.png" });
   const monaco = await Promise.all(page.frames().filter(frame => frame !== page.mainFrame()).map(frame => frame.evaluate(() => ({
-    url: location.href,
+    url: location.origin + location.pathname + location.search,
     diffLab: Boolean(window.diffLab),
     views: window.diffLab ? [...diffLab.views.keys()] : [],
     lineChanges: window.diffLab?.views.get("src/cart.ts")?.diff?.getLineChanges?.()?.length ?? null,
     models: window.monaco?.editor.getModels().length ?? null,
-  })).catch(reason => ({ url: frame.url(), unreadable: String(reason) }))));
+  })).catch(reason => ({ url: frame.url().split('#')[0], unreadable: String(reason) }))));
   console.error("Monaco foundation failure", { error: String(error), name: error?.name, message: error?.message, errors, consoleErrors, violations, sources, workers, monaco });
   console.error(error.stack); process.exitCode = 1;
 }

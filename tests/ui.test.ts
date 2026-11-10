@@ -355,7 +355,6 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(html.indexOf('id="questions-scroll"')).toBeLessThan(html.indexOf('id="question-scope" class="question-scope"'));
   expect(html.indexOf('id="question-scope" class="question-scope"')).toBeLessThan(html.indexOf('class="question-composer"'));
   expect(html).not.toContain('id="conversation-context"');
-  expect(app).toContain('scope: "stop", stepId: step.id');
   expect(app).toContain('scope: "range"');
   expect(app).toContain("form.dataset.commentSelectedText");
   expect(app).toContain("Exact selected quotation");
@@ -1530,7 +1529,7 @@ test("diff rows stay dense and the explanation owns a bounded scroll area", asyn
   expect(app).toContain('<div class="diff-file-scroll">');
   expect(styles).toContain("grid-template-rows: auto minmax(0, 1fr) auto");
   expect(styles).toContain("white-space: pre;");
-  expect(styles).toContain("max-height: min(180px, 26vh)");
+  expect(styles).toContain(".persistent-comment-drawer { flex: 1 1 0;");
   expect(styles).toContain(".diff-row.split-side.split-empty");
   expect(styles).not.toContain(".diff-row.split-side.empty");
   expect(html).toContain('id="tour-scroll" class="tour-scroll"');

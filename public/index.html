@@ -307,7 +307,13 @@
           </div>
         </div>
 
+        <div class="agent-pane-switch" id="agent-pane-switch" role="tablist" aria-label="Review sections">
+          <button id="show-tour-pane" type="button" role="tab" aria-selected="true" aria-controls="agent-tour-pane">Tour</button>
+          <button id="show-questions-pane" type="button" role="tab" aria-selected="false" aria-controls="questions-pane" tabindex="-1">Questions <span id="questions-tab-count" class="count">0</span></button>
+          <button id="show-comments-pane" type="button" role="tab" aria-selected="false" aria-controls="comment-drawer" tabindex="-1">Comments <span id="comments-tab-count" class="count">0</span></button>
+        </div>
         <section id="briefing-inspector" class="briefing-inspector hidden" aria-label="Briefing evidence"></section>
+        <section id="agent-tour-pane" class="agent-tour-pane" role="tabpanel" aria-labelledby="show-tour-pane" tabindex="0">
         <div id="tour-empty" class="tour-empty">
           <div class="agent-orb">✦</div>
           <h2 id="tour-empty-title">Walk through this change</h2>
@@ -335,10 +341,6 @@
           <button id="start-tour" class="button primary wide">Start tour</button>
         </div>
 
-        <div class="agent-pane-switch" id="agent-pane-switch">
-          <button id="show-tour-pane" type="button" class="button secondary">Tour</button>
-          <button id="show-questions-pane" type="button" class="button secondary">Questions</button>
-        </div>
         <div id="tour-active" class="tour-active hidden">
           <div class="tour-progress">
             <span id="step-count"></span>
@@ -376,15 +378,6 @@
                 <p id="reviewer-task-assessment-status-body"></p>
                 <button id="view-reviewer-task-assessment" class="text-button hidden" type="button">View assessment</button>
               </section>
-              <section id="step-discussion" class="step-discussion" aria-label="Current stop discussion">
-                <div><span class="eyebrow">Current stop</span><p id="step-discussion-scope">Comments here stay attached to this tour stop.</p></div>
-                <button id="comment-stop" class="button secondary" type="button">Add stop comment</button>
-                <form id="step-comment-form" class="step-comment-form hidden">
-                  <textarea id="step-comment-input" rows="3" placeholder="What should the reviewer remember about this stop?"></textarea>
-                  <footer><button id="cancel-step-comment" class="text-button" type="button">Cancel</button><button class="button primary" type="submit">Add stop comment</button></footer>
-                </form>
-                <div id="step-comment-list" class="step-comment-list"></div>
-              </section>
             </article>
           <details id="finding-drawer" class="finding-drawer current-step-findings" aria-labelledby="finding-drawer-title" open>
             <summary class="comment-drawer-heading">
@@ -404,8 +397,8 @@
             </div>
           </div>
         </div>
-        <div id="questions-resizer" class="questions-resizer hidden" role="separator" aria-label="Resize tour and questions" aria-orientation="horizontal" aria-valuemin="25" aria-valuemax="70" aria-valuenow="45" tabindex="0"></div>
-        <section id="questions-pane" class="questions-pane" aria-label="Questions">
+        </section>
+        <section id="questions-pane" class="questions-pane hidden" role="tabpanel" aria-labelledby="show-questions-pane" tabindex="0">
           <header class="questions-heading">
             <button id="questions-toggle" class="questions-toggle" type="button" aria-expanded="false" aria-controls="questions-body">Questions (0)</button>
             <button id="new-question" class="questions-new" type="button"><span aria-hidden="true">＋</span> New question</button>
@@ -428,7 +421,7 @@
             </div>
           </div>
         </section>
-        <section id="comment-drawer" class="comment-drawer persistent-comment-drawer" aria-labelledby="comment-drawer-title">
+        <section id="comment-drawer" class="comment-drawer persistent-comment-drawer hidden" role="tabpanel" aria-labelledby="show-comments-pane" tabindex="0">
           <div class="comment-drawer-heading">
             <div>
               <div class="eyebrow">Review feedback</div>
@@ -436,6 +429,15 @@
             </div>
             <span id="comment-count" class="count">0</span>
           </div>
+          <section id="step-discussion" class="step-discussion" aria-label="Current stop discussion">
+            <div><span class="eyebrow">Current stop</span><p id="step-discussion-scope">Comments here stay attached to this tour stop.</p></div>
+            <button id="comment-stop" class="button secondary" type="button">Add stop comment</button>
+            <form id="step-comment-form" class="step-comment-form hidden">
+              <p id="step-comment-draft-scope" class="muted"></p>
+              <textarea id="step-comment-input" rows="3" placeholder="What should the reviewer remember about this stop?"></textarea>
+              <footer><button id="cancel-step-comment" class="text-button" type="button">Cancel</button><button class="button primary" type="submit">Add stop comment</button></footer>
+            </form>
+          </section>
           <div id="comment-list" class="comment-list" aria-live="polite"></div>
         </section>
       </aside>

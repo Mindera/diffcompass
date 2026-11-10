@@ -59,7 +59,7 @@
 .briefing-outline nav button[aria-current="location"] { border-left-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .briefing-version, .briefing-stale { color: var(--muted); font-size: 12px; margin-top: 28px; line-height: 1.6; }
 .briefing-mode .file-panel > :not(.briefing-outline):not(.file-resizer) { display: none !important; }
-.briefing-mode .agent-panel > #tour-empty, .briefing-mode .agent-panel > #tour-active, .briefing-mode #agent-pane-switch, .briefing-mode #comment-drawer, .briefing-mode #questions-resizer { display: none !important; }
+.briefing-mode #agent-tour-pane, .briefing-mode #agent-pane-switch, .briefing-mode #comment-drawer { display: none !important; }
 .briefing-mode .agent-heading { display: none; }
 .briefing-inspector { min-height: 0; display: flex; flex-direction: column; flex: 1 1 50%; overflow: hidden; }
 .briefing-inspector > header { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }

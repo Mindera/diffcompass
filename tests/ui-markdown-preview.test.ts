@@ -47,11 +47,3 @@ test("rendered Markdown emphasizes the exact changed words", () => {
 
   expect(html).toContain('calculates a <span class="inline-change">discount-aware</span> total');
 });
-
-test("the tour/questions separator persists accessible pointer and keyboard resizing", () => {
-  expect(app).toContain('preferenceKey("question-pane-percent")');
-  expect(app).toContain('setAttribute("aria-valuetext"');
-  expect(app).toContain('addEventListener("dblclick", () => resizeQuestions(45, true))');
-  expect(app).toContain('resizeQuestions(state.questionPanePercent, true)');
-  expect(styles).toContain(".questions-resizer::after");
-});

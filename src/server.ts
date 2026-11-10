@@ -406,12 +406,13 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       }
       if (request.method === "POST" && url.pathname === "/api/symbol-peek") {
         const input = await readJsonObject(request);
-        exactKeys(input, ["symbol", "path", "line", "side"]);
+        exactKeys(input, ["symbol", "path", "line", "column", "side"]);
         const line = input.line === undefined ? undefined : finitePositiveInteger(input.line, "line");
         return json(await resolveSymbolPeek(session.comparison, {
           symbol: requiredString(input.symbol, "symbol", 200),
           path: input.path === undefined ? undefined : requiredString(input.path, "path", 4_096),
           line,
+          column: input.column === undefined ? undefined : finitePositiveInteger(input.column, "column"),
           side: input.side === undefined ? undefined : enumValue(input.side, "side", ["old", "new"]),
         }));
       }

@@ -132,6 +132,7 @@ try {
   const queued = await api("/api/session");
   const firstComment = queued.comments.find((comment: any) => comment.suggestion?.activityId === activityId);
   const secondComment = queued.comments.find((comment: any) => comment.suggestion?.activityId === second.activityId);
+  await page.getByRole("tab", { name: /^Comments/ }).click();
   const selection = page.locator(`#comment-list [data-comment-id="${secondComment.id}"]`).getByRole("checkbox", { name: "Include in GitHub review" });
   assert.equal(await selection.isChecked(), true);
   await clickMutation(selection, `/api/comments/${secondComment.id}/github`);
@@ -169,6 +170,7 @@ try {
   assert.equal(await frame!.getByRole("button", { name: "Return to local", exact: true }).count(), 1);
   await page.locator("#diff-renderer").selectOption("current");
   await page.locator(".inline-comment").getByText("Published in the GitHub review.", { exact: true }).waitFor();
+  await page.getByRole("tab", { name: /^Comments/ }).click();
   assert.equal(await selection.isChecked(), false);
   await clickMutation(selection, `/api/comments/${secondComment.id}/github`);
   await page.reload();

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AttachedAgentBridge } from "../src/bridge.ts";
 import { createRequestHandler } from "../src/server.ts";
@@ -8,9 +8,89 @@ import { resolveSymbolPeek } from "../src/symbol-peek.ts";
 import type { GitComparison } from "../src/types.ts";
 
 const roots: string[] = [];
+const originalPath = process.env.PATH;
 
 afterEach(async () => {
+  process.env.PATH = originalPath;
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+async function kotlinServer(command = "kotlin-lsp", reject = false) {
+  const root = await mkdtemp(join(import.meta.dir, "symbol-peek-")); roots.push(root);
+  const bin = join(root, "bin"); await mkdir(bin);
+  // Exercise the actual stdio transport, including byte-framed Unicode and a
+  // server request whose numeric ID collides with our initialize request.
+  await writeFile(join(bin, command), `#!${process.execPath}
+const reject = ${reject};
+const output = message => {
+  const body = JSON.stringify(message);
+  process.stdout.write('Content-Length: ' + Buffer.byteLength(body) + '\\r\\n\\r\\n' + body);
+};
+let buffer = Buffer.alloc(0), document;
+process.stdin.on('data', chunk => {
+  buffer = Buffer.concat([buffer, chunk]);
+  while (true) {
+    const end = buffer.indexOf('\\r\\n\\r\\n'); if (end < 0) return;
+    const length = Number(/Content-Length: (\\d+)/i.exec(buffer.subarray(0, end).toString())[1]);
+    if (buffer.length < end + 4 + length) return;
+    const message = JSON.parse(buffer.subarray(end + 4, end + 4 + length)); buffer = buffer.subarray(end + 4 + length);
+    if (message.method === 'initialize') {
+      output({jsonrpc:'2.0', method:'window/logMessage', params:{type:3,message:'Kotlin café 🚀'}});
+      output({jsonrpc:'2.0', id:1, method:'workspace/configuration', params:{items:[{section:'kotlin'}]}});
+    } else if (message.id === 1 && !message.method) {
+      if (JSON.stringify(message.result) !== '[null]') process.exit(3);
+      output({jsonrpc:'2.0', id:1, result:{capabilities:{definitionProvider:true,referencesProvider:true}}});
+    } else if (message.method === 'textDocument/didOpen') {
+      document = message.params.textDocument;
+      if (document.languageId !== 'kotlin') process.exit(4);
+    } else if (message.method === 'textDocument/definition' || message.method === 'textDocument/references') {
+      if (reject) { output({jsonrpc:'2.0',id:message.id,error:{code:-32603,message:'Index unavailable'}}); continue; }
+      if (message.params.position.line !== 1 || message.params.position.character !== 27) process.exit(5);
+      const line = message.method.endsWith('definition') ? 0 : 2;
+      output({jsonrpc:'2.0',id:message.id,result:[{uri:document.uri,range:{start:{line,character:0},end:{line,character:5}}}]});
+    }
+  }
+});
+`, { mode: 0o755 });
+  await writeFile(join(root, "example.kt"), "val value = 1\nval sample = value + other.value\nprintln(other.value)\n");
+  process.env.PATH = bin;
+  return comparison(root, ["example.kt"]);
+}
+
+test("Kotlin reference lookup uses the selected occurrence and completes a Unicode LSP handshake", async () => {
+  const reviewed = await kotlinServer();
+  const result = await resolveSymbolPeek(reviewed, { symbol: "value", path: "example.kt", line: 2, column: 28 });
+  expect(result.source).toBe("language-server");
+  expect(result.definitions).toMatchObject([{ path: "example.kt", line: 1 }]);
+  expect(result.usages).toMatchObject([{ path: "example.kt", line: 3 }]);
+  expect(result.notice).toContain("kotlin-lsp");
+});
+
+test("Kotlin also supports kotlin-language-server and exposes protocol failures instead of claiming zero references", async () => {
+  const reviewed = await kotlinServer("kotlin-language-server", true);
+  const result = await resolveSymbolPeek(reviewed, { symbol: "value", path: "example.kt", line: 2, column: 28 });
+  expect(result.source).toBe("repository-search");
+  expect(result.notice).toContain("kotlin-language-server: Language server rejected");
+  expect(result.usages.length + result.definitions.length).toBeGreaterThan(0);
+});
+
+test("ambiguous or moved source positions do not silently resolve a different occurrence", async () => {
+  const reviewed = await kotlinServer();
+  for (const column of [undefined, 2]) {
+    const result = await resolveSymbolPeek(reviewed, { symbol: "value", path: "example.kt", line: 2, column });
+    expect(result.source).toBe("repository-search");
+    expect(result.notice).toContain("cannot be identified at this current-workspace position");
+  }
+  await expect(resolveSymbolPeek(reviewed, { symbol: "value", path: "example.kt", line: 2, column: 0 })).rejects.toThrow("column must be a positive integer");
+});
+
+test("missing Kotlin tooling explains why the name-search fallback was used", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "symbol-peek-")); roots.push(root);
+  await writeFile(join(root, "example.kts"), "val value = 1\nprintln(value)\n");
+  process.env.PATH = root;
+  const result = await resolveSymbolPeek(comparison(root, ["example.kts"]), { symbol: "value", path: "example.kts", line: 2, column: 9 });
+  expect(result.source).toBe("repository-search");
+  expect(result.notice).toContain("No kotlin language server was found on DiffCompass's PATH (kotlin-lsp or kotlin-language-server)");
 });
 
 function comparison(root: string, repositoryFiles: string[]): GitComparison {
