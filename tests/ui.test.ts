@@ -1743,17 +1743,17 @@ test("images and videos are exposed through an authenticated media tab with an e
     readFile(join(root, "public/app.js"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(html).toContain('id="screenshots-tab" class="tab"');
+  expect(html).toContain('id="screenshots-tab" class="tab hidden"');
   expect(html).toContain('id="screenshots-view" class="review-view hidden"');
   expect(html).toContain('>Media <span id="screenshots-tab-count" class="tab-count hidden">0</span>');
   expect(app).toContain("function changedImageMedia()");
   expect(app).toContain("const mediaCount = screenshots.length + changedImages.length");
-  expect(app).toContain('"conversations", "screenshots", ...(state.session?.pullRequest');
+  expect(app).toContain('state.session?.mediaIncludeChangedImages !== true');
   expect(app).toContain('elements["screenshots-tab-count"].classList.toggle("hidden", mediaCount === 0)');
   expect(app).toContain('No media is available for this review.');
   expect(app).toContain('"X-DiffCompass-Token": state.apiToken');
-  expect(app).toContain('apiBlob(`/api/screenshots/${encodeURIComponent(shot.id)}`)');
-  expect(app).toContain('apiBlob(`/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`)');
+  expect(app).toContain('mediaUrl(shot.id, `/api/screenshots/${encodeURIComponent(shot.id)}`)');
+  expect(app).toContain('mediaUrl(image.id, `/api/diff/image?${new URLSearchParams({ path: image.path, side: image.side })}`)');
   expect(app).toContain('shot.mimeType === "video/mp4"');
   expect(styles).toContain(".screenshot-gallery { display: grid;");
   expect(styles).toContain(".media-empty { grid-column: 1 / -1; }");

@@ -941,6 +941,8 @@ export interface PersistedReviewSession {
   dryRuns?: DryRunTrace[];
   pullRequest?: PullRequestContext;
   screenshots?: ReviewScreenshot[];
+  /** Optional for older sessions; changed PNGs are excluded from Media by default. */
+  mediaIncludeChangedImages?: boolean;
   authorIntent?: string;
   revision: number;
   status: ReviewStatus;

@@ -16,6 +16,7 @@ export interface RepositoryConfig {
   preferences: ReviewPreferences;
   retention: RetentionConfig;
   reviewPolicy: ReviewPolicy;
+  mediaIncludeChangedImages: boolean;
 }
 
 export const DEFAULT_REVIEW_POLICY: ReviewPolicy = {
@@ -85,7 +86,7 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
     raw = await readFile(path, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { preferences: { ...DEFAULT_REVIEW_PREFERENCES }, retention: { includeArchived: false }, reviewPolicy: structuredClone(DEFAULT_REVIEW_POLICY) };
+      return { preferences: { ...DEFAULT_REVIEW_PREFERENCES }, retention: { includeArchived: false }, reviewPolicy: structuredClone(DEFAULT_REVIEW_POLICY), mediaIncludeChangedImages: false };
     }
     throw new Error(`Could not read ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -93,7 +94,11 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error(`${path} is not valid JSON.`); }
   if (!object(value)) throw new Error(`${path} must contain a JSON object.`);
-  exactKeys(value, ["base", "agent", "model", "reasoning", "diff", "review", "retention", "analysis"], path);
+  exactKeys(value, ["base", "agent", "model", "reasoning", "diff", "review", "retention", "analysis", "media"], path);
+  const media = value.media === undefined ? {} : value.media;
+  if (!object(media)) throw new Error(`${path} media settings must be an object.`);
+  exactKeys(media, ["includeChangedImages"], `${path} media`);
+  if (media.includeChangedImages !== undefined && typeof media.includeChangedImages !== "boolean") throw new Error(`${path} media.includeChangedImages must be a boolean.`);
   const diff = value.diff === undefined ? {} : value.diff;
   const review = value.review === undefined ? {} : value.review;
   const retention = value.retention === undefined ? {} : value.retention;
@@ -131,6 +136,7 @@ export async function loadRepositoryConfig(repositoryRoot: string): Promise<Repo
   if (!["critical", "high", "medium", "low"].includes(minimumSeverity)) throw new Error(`${path} analysis.findings.minimumSeverity is unsupported.`);
 
   return {
+    mediaIncludeChangedImages: media.includeChangedImages ?? false,
     base: optionalString(value.base, `${path} base`, 4_096),
     agent: agent as RepositoryConfig["agent"],
     model: optionalString(value.model, `${path} model`, 256),

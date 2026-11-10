@@ -298,6 +298,25 @@ test("startup screenshots are snapshotted, authenticated, and persisted across r
 
   const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   expect(resumed.snapshot().screenshots).toEqual(session.snapshot().screenshots);
+  expect(resumed.snapshot().mediaIncludeChangedImages).toBe(false);
+});
+
+test("changed-image Media opt-in persists, while legacy sessions default to curated media", async () => {
+  const { repository, stateFile } = await repositoryFixture();
+  await savePersistedSession(stateFile, persistedAttachedSession(repository));
+  const legacy = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  expect(legacy.snapshot().mediaIncludeChangedImages).toBe(false);
+  await legacy.dispose();
+  const enabled = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true, mediaIncludeChangedImages: true });
+  expect(enabled.snapshot().mediaIncludeChangedImages).toBe(true);
+  await enabled.dispose();
+  expect((await loadPersistedSession(stateFile)).mediaIncludeChangedImages).toBe(true);
+  const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  expect(resumed.snapshot().mediaIncludeChangedImages).toBe(true);
+  await resumed.dispose();
+  const saved = JSON.parse(await readFile(stateFile, "utf8"));
+  await writeFile(stateFile, JSON.stringify({ ...saved, mediaIncludeChangedImages: "yes" }));
+  await expect(loadPersistedSession(stateFile)).rejects.toThrow();
 });
 
 test("selected diff preferences survive an existing session resume", async () => {
