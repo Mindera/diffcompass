@@ -43,8 +43,7 @@ try {
   check(await page.locator("#diff-renderer").inputValue() === "current", "Current renderer remains the default");
   check(!sources.length && await page.locator(".monaco-review-frame").count() === 0, "No Monaco sources/editors are loaded before opt-in");
   await page.locator("#diff-renderer").selectOption("monaco");
-  await page.waitForSelector(".monaco-review-frame");
-  frame = page.frames().find(frame => frame.url().includes("production=1"));
+  frame = await fileFrame("src/cart.ts");
   await frame.waitForFunction(() => window.diffLab?.views.get("src/cart.ts")?.diff.getLineChanges()?.length > 0);
   check(await page.locator('#diff .diff-file[data-path="src/cart.ts"]').count() === 0, "No duplicate native text DOM behind Monaco");
   check(sources.length === 1, "Only the visible file is fetched, not the entire manifest: " + sources.length);
@@ -102,8 +101,7 @@ try {
     await frame.waitForFunction(() => document.getElementById("status").textContent.includes("previous comparison"));
     check(await input.isVisible(), "Stale save fails without closing the draft");
     await frame.getByRole("button", { name: "Cancel", exact: true }).click();
-    await page.waitForTimeout(500);
-    frame = page.frames().find(frame => frame.url().includes("production=1"));
+    frame = await fileFrame("src/cart.ts");
     await frame.waitForFunction(() => window.diffLab?.views.get("src/cart.ts")?.editors.new.getValue().includes("Captured refresh regression"));
     console.log("PASS source refresh, stale-save rejection, draft recovery and fresh model replacement");
   } else await frame.getByRole("button", { name: "Cancel", exact: true }).click();
