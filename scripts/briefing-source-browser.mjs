@@ -10,6 +10,8 @@ try {
     page.setDefaultTimeout(20000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    let operation = 'open Briefing';
+    try {
     const headers = { 'x-diffcompass-token': new URLSearchParams(new URL(url).hash.slice(1)).get('token') };
     const snapshot = async () => (await page.request.get(new URL('/api/session', url).href, { headers })).json();
     const initial = await snapshot();
@@ -25,12 +27,23 @@ try {
     const selected = page.locator('#briefing-inspector [data-evidence-element="receipt"] .briefing-card-title');
     await page.locator('#briefing-inspector [data-evidence-element="receipt"] .briefing-card-title[aria-pressed="true"]').waitFor();
     async function openSource(id, path, line, { surface = 'action', keyboard = false, returnToBriefing = true } = {}) {
+      operation = `${surface} ${id}${keyboard ? ' with keyboard' : ''}`;
       const control = surface === 'action'
         ? page.locator(`#briefing-inspector button.text-button[data-briefing-source="${id}"]`)
         : page.locator(`#${surface === 'inline' ? 'briefing-view' : 'briefing-inspector'} .briefing-file-link[data-briefing-source="${id}"]`);
       await control.scrollIntoViewIfNeeded();
+      if (renderer === 'monaco') {
+        // Scrolling mounts lazy snippets in both panes. Their initial height
+        // updates can move a filename between pointer-down and pointer-up.
+        // Exercise the link after the displayed excerpts have finished loading.
+        const sourceSlot = await control.evaluateHandle(el => el.closest('.briefing-source')?.querySelector('.briefing-code-slot'));
+        await page.waitForFunction(source => source?.getAttribute('aria-busy') === 'false' && [...document.querySelectorAll('#briefing-view .briefing-code-slot, #briefing-inspector .briefing-code-slot')]
+          .filter(slot => slot.querySelector('iframe'))
+          .every(slot => slot.getAttribute('aria-busy') === 'false'), sourceSlot);
+        await sourceSlot.dispose();
+      }
       const readerPosition = await page.locator('#diff-panel').evaluate(el => el.scrollTop);
-      if (keyboard) { await control.focus(); await page.keyboard.press('Enter'); }
+      if (keyboard) await control.press('Enter');
       else await control.click();
       await page.locator('#diff-tab[aria-selected="true"]').waitFor();
       await page.getByRole('button', { name: 'Resume tour', exact: true }).waitFor();
@@ -84,6 +97,15 @@ try {
     assert.deepEqual(after.reviewedFiles, initial.reviewedFiles);
     assert.deepEqual(errors, []);
     console.log(`PASS ${renderer}: inline and inspector filenames, keyboard navigation, cross-phase source, return position and selection, unchanged tour progress`);
-    await page.close();
+    } catch (error) {
+      console.error('Briefing source failure', { renderer, operation, errors, page: await page.evaluate(() => ({
+        activeTab: document.querySelector('#diff-panel [role="tab"][aria-selected="true"]')?.id,
+        diffSelected: document.querySelector('#diff-tab')?.getAttribute('aria-selected'),
+        focused: document.activeElement?.outerHTML.slice(0, 500),
+        notices: [...document.querySelectorAll('[role="status"], .toast')].map(el => el.textContent).filter(Boolean),
+      })) });
+      await page.screenshot({ path: `/tmp/dc-briefing-source-${renderer}.png` });
+      throw error;
+    } finally { await page.close(); }
   }
 } finally { await browser.close(); }
