@@ -18,7 +18,7 @@ await page.addInitScript(() => {
     return decoded.then(() => new Promise(resolve => window.pendingImageDecodes.push(resolve)));
   };
 });
-let heldSource=null, sourceArrived=null;
+let heldSource=null, sourceArrived=null, releaseSource;
 await page.route('**/api/diff/sources?*',async route=>{
   if(new URL(route.request().url()).searchParams.get('path')==='src/receipt.ts' && heldSource){
     sourceArrived?.(); await heldSource;
@@ -135,15 +135,14 @@ try{
     console.log(`PASS ${layout}: cold phase handoff, delayed PNG sizing, stable destination, ready code throughout smooth same-phase travel`);
   }
   await transition('next',1,'src/cart.ts',false);
-  let unblock;
-  heldSource=new Promise(resolve=>{unblock=resolve;});
+  heldSource=new Promise(resolve=>{releaseSource=resolve;});
   const arrived=new Promise(resolve=>{sourceArrived=resolve;});
   await page.locator('#next-step').click();await arrived;
   await page.waitForTimeout(2200); // Cross a poll tick while loading is held.
   assert.match(await page.locator('#step-count').textContent(),/Step 2\)/,'Poll must not publish the loading phase');
   assert.equal(await page.locator('.monaco-file-slot[data-path="src/cart.ts"]:not(.monaco-phase-staging) iframe').count(),1);
   await page.locator('#previous-step').click();
-  await at(1,'src/cart.ts');unblock();heldSource=null;
+  await at(1,'src/cart.ts');releaseSource();heldSource=null;
   await page.waitForTimeout(400);
   assert.equal(await page.locator('.monaco-phase-staging').count(),0,'Cancelled staging is removed');
   assert.match(await page.locator('#step-count').textContent(),/Step 2\)/,'Late completion cannot restore a cancelled phase');
@@ -170,4 +169,11 @@ try{
 }catch(error){
   await page.screenshot({path:'/tmp/dc-phase-failure.png'});
   console.error(error.stack);console.error('PAGE_ERRORS',errors);process.exitCode=1;
-}finally{await browser.close();}
+}finally{
+  // Polling can still be inside route.fetch() after the last assertion. Finish
+  // intercepted requests before destroying the browser's request context.
+  // Release the deliberately held source too if an earlier assertion failed.
+  releaseSource?.();heldSource=null;
+  try{await page.unrouteAll({behavior:'wait'});}
+  finally{await browser.close();}
+}
