@@ -39,8 +39,19 @@ try {
   assert.equal(await page.locator('#chat-input').inputValue(), 'Keep this question draft');
   await tab('Questions').press('End'); await active('Comments');
   assert.equal(await page.locator('#step-comment-input').inputValue(), 'Keep this stop comment draft');
-  await page.locator('#cancel-step-comment').click();
   assert.equal((await snapshot()).currentStepIndex, initial.currentStepIndex);
+  await tab('Tour').click(); await page.locator('#next-step').click();
+  await page.waitForFunction(() => document.querySelector('#step-count').textContent.includes('(Step 2)') && !document.querySelector('#next-step').disabled);
+  await tab('Comments').click();
+  const originalStep = initial.outline.phases.flatMap(phase => phase.steps)[initial.currentStepIndex];
+  assert.match(await page.locator('#step-comment-draft-scope').textContent(), new RegExp(originalStep.title));
+  await page.locator('#step-comment-form').getByRole('button', { name: 'Add stop comment', exact: true }).click();
+  await page.locator('#step-comment-form').waitFor({ state: 'hidden' });
+  const saved = (await snapshot()).comments.find(comment => comment.body === 'Keep this stop comment draft');
+  assert.equal(saved?.stepId, originalStep.id, 'A draft remains attached to its original stop after navigation');
+  initial.comments.push(saved);
+  await tab('Tour').click(); await page.locator('#previous-step').click();
+  await page.waitForFunction(() => document.querySelector('#step-count').textContent.includes('(Step 1)') && !document.querySelector('#next-step').disabled);
   console.log('PASS sidebar: separate panels, keyboard tabs, counts, drafts, scroll and tour progress retained');
 
   const path = 'src/cart.ts';

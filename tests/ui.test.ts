@@ -355,7 +355,6 @@ test("scoped discussion exposes stop and range anchors in the composer and promp
   expect(html.indexOf('id="questions-scroll"')).toBeLessThan(html.indexOf('id="question-scope" class="question-scope"'));
   expect(html.indexOf('id="question-scope" class="question-scope"')).toBeLessThan(html.indexOf('class="question-composer"'));
   expect(html).not.toContain('id="conversation-context"');
-  expect(app).toContain('scope: "stop", stepId: step.id');
   expect(app).toContain('scope: "range"');
   expect(app).toContain("form.dataset.commentSelectedText");
   expect(app).toContain("Exact selected quotation");

@@ -6569,6 +6569,8 @@ function openStepCommentEditor(comment = null) {
   selectAgentPane("comments");
   elements["step-comment-form"].classList.remove("hidden");
   elements["step-comment-form"].dataset.commentId = comment?.id ?? "";
+  elements["step-comment-form"].dataset.stepId = comment?.stepId ?? currentStep().id;
+  document.getElementById("step-comment-draft-scope").textContent = `Comment on “${comment?.stepTitle ?? currentStep().title}”`;
   elements["step-comment-input"].value = comment?.body ?? "";
   elements["step-comment-form"].querySelector('[type="submit"]').textContent = comment ? "Save stop comment" : "Add stop comment";
   elements["step-comment-input"].focus({ preventScroll: true });
@@ -6578,15 +6580,15 @@ async function saveStepComment(event) {
   event.preventDefault();
   if (!reviewIsOpen()) return;
   const body = elements["step-comment-input"].value.trim();
-  const step = currentStep();
-  if (!body || !step) return;
+  const stepId = elements["step-comment-form"].dataset.stepId;
+  if (!body || !stepId) return;
   const commentId = elements["step-comment-form"].dataset.commentId;
   const submit = elements["step-comment-form"].querySelector('[type="submit"]');
   submit.disabled = true;
   try {
     const latest = commentId
       ? await api(`/api/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify({ body }) })
-      : await api("/api/comments", { method: "POST", body: JSON.stringify({ scope: "stop", stepId: step.id, body }) });
+      : await api("/api/comments", { method: "POST", body: JSON.stringify({ scope: "stop", stepId, body }) });
     const previous = state.session;
     state.session = latest;
     elements["step-comment-form"].classList.add("hidden");
