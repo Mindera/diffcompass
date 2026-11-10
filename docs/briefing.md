@@ -29,7 +29,9 @@ an accessible element list when canvas identities cannot be matched safely.
 Use **Present** to expand a diagram. Selecting a component or relationship keeps the
 diagram expanded and opens its code evidence beside it. On narrow screens, the evidence
 sits below the diagram. Collapse or expand the evidence pane without leaving Present;
-exit presentation to return to the story.
+drag the divider to resize its width (or height on a narrow screen). The divider also
+supports arrow keys, Home and End, and remembers your chosen size. Exit presentation
+to return to the story.
 
 New and regenerated Briefings include a source-linking pass for missing bindings in the
 diagrams used by the story. The agent receives the finished diagram's exact element IDs

@@ -89,19 +89,63 @@ try {
       assert.ok(Math.abs(mapBounds.y + mapBounds.height - codeBounds.y) <= 1, 'Code sits below the map on narrow screens');
     }
     assert.equal(await inspector.evaluate(el => Boolean(el.closest('[inert]'))), false, 'Presented code remains interactive');
+    const desktop = page.viewportSize().width > 900;
+    const dimension = desktop ? 'width' : 'height';
+    const divider = page.getByRole('separator', { name: 'Resize presentation evidence pane', exact: true });
+    await divider.waitFor();
+    assert.equal(await divider.getAttribute('aria-orientation'), desktop ? 'vertical' : 'horizontal');
+    assert.equal(await divider.evaluate(el => Boolean(el.closest('[inert]'))), false, 'The presentation divider remains interactive');
+    const expectSize = async size => {
+      await page.waitForFunction(({ node, dimension, size }) => Math.abs(node.getBoundingClientRect()[dimension] - size) < 1, { node: await inspector.elementHandle(), dimension, size });
+      const map = await element.boundingBox(), pane = await inspector.boundingBox();
+      assert.ok(Math.abs(desktop ? map.width - pane.x : map.height - pane.y) < 1, 'Resizing keeps the diagram and evidence adjacent');
+    };
+    // Both keyboard limits and dragging across the iframe must work. The final
+    // size is retained when the pane is collapsed and when Present is reopened.
+    await divider.press('Home');
+    await expectSize(Number(await divider.getAttribute('aria-valuemin')));
+    await divider.press('End');
+    await expectSize(Number(await divider.getAttribute('aria-valuemax')));
+    const size = Math.min(codeBounds[dimension] + 80, Number(await divider.getAttribute('aria-valuemax')));
+    const current = (await inspector.boundingBox())[dimension];
+    const edge = await divider.boundingBox();
+    const x = edge.x + edge.width / 2, y = edge.y + edge.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x + (desktop ? current - size : 0), y + (desktop ? 0 : current - size), { steps: 8 });
+    await page.mouse.up();
+    await expectSize(size);
+    await divider.press(desktop ? 'ArrowRight' : 'ArrowDown');
+    const resized = size - 20;
+    await expectSize(resized);
+    assert.equal(await page.evaluate(dimension => JSON.parse(localStorage.getItem('diffcompass-present-evidence-size'))[dimension], dimension), resized);
+    assert.equal(await page.locator('html.map-pane-resizing').count(), 0);
     await card.locator('.briefing-card-title').click();
     await inspector.getByRole('button', { name: 'Collapse evidence pane', exact: true }).click();
+    assert.equal(await divider.isVisible(), false);
     await inspector.getByRole('button', { name: 'Expand evidence pane', exact: true }).click();
+    await divider.waitFor(); await expectSize(resized);
     if (diagram.family === 'architecture') await page.screenshot({ path: `/tmp/diffcompass-briefing-present-${page.url().startsWith('file:') ? 'offline' : 'live'}-${page.viewportSize().width}.png` });
     if (page.viewportSize().width > 900) await frame.locator('#btn-present').click();
     else await inspector.getByRole('button', { name: 'Collapse evidence pane', exact: true }).press('Escape');
     await frame.waitForFunction(() => !Archify.presentation.active());
     assert.equal(await inspector.evaluate(el => el.parentElement.id), parent, 'Presentation retains the existing code pane');
     assert.equal(await page.locator('[data-map-present-pane], [data-map-present-split]').count(), 0);
+    assert.equal(await divider.count(), 0, 'Exit removes the presentation divider');
+    assert.equal(await inspector.evaluate(el => el.style.getPropertyValue('--present-evidence-width')), '');
     assert.equal(await element.evaluate(el => el.isConnected), true, 'The diagram iframe survives presentation');
     assert.equal(await frame.evaluate(original => original === window.presentationProbe, originalWindow), true, 'Presentation does not reload the diagram');
     await originalWindow.dispose();
     assert.equal(await page.locator('[inert]').count(), inertBefore, 'Exit restores the workspace controls');
+    await frame.locator('#btn-present').click();
+    await frame.waitForFunction(() => Archify.presentation.active());
+    const next = diagram.elements.find(item => item.id !== message.id && item.evidenceIds.length);
+    assert.ok(next, 'The fixture supplies another bound element for reopening evidence');
+    const nextNode = ['components', 'states', 'nodes'].includes(next.kind);
+    const nextTarget = frame.locator(`[${nextNode ? 'data-node-id' : 'data-relationship-id'}="${next.id}"]`).first();
+    await nextTarget.focus(); await nextTarget.press('Enter');
+    await divider.waitFor(); await expectSize(resized);
+    await divider.press('Escape');
+    await frame.waitForFunction(() => !Archify.presentation.active());
   }
 
   async function exerciseArchify(map, inspector, diagram) {
