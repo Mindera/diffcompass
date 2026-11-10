@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.5.0, including the v2.1.0 feature baseline
+Canonical delivery state for v2.5.1, including the v2.1.0 feature baseline
 and the changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -10,11 +10,26 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.5.0](https://github.com/Mindera/diffcompass/releases/tag/v2.5.0).
+Latest release: [v2.5.1](https://github.com/Mindera/diffcompass/releases/tag/v2.5.1).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.5.1
+
+- Keep Media limited to supplied `--media` files by default and hide its tab
+  when none were supplied. Changed PNGs retain their before/after view in Changes.
+  Include them in Media with `--media-include-changed-images` or the repository
+  setting `media.includeChangedImages`; load these images only when viewed and
+  retain the choice across resume.
+- Find Kotlin declaration and usage candidates in the current file without
+  installing a language server. Respect explicit scopes and shadowing, report
+  partial parses, and prioritize selected source in the bounded text fallback.
+  Cross-file and type-dependent resolution still need a project-aware provider.
+- Prevent Monaco's first click or context-menu click from scrolling the review
+  to the previous cursor position. Preserve Shift-click and drag selection in
+  split and unified views.
 
 ## Released in v2.5.0
 
