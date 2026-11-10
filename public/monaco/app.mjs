@@ -4,6 +4,7 @@ import { installContextMenuViewport } from "./context-menu.mjs";
 import { syntaxThemes } from "/monaco/theme-data.mjs";
 import { installDeletedSelection } from "./deleted-selection.mjs";
 import { installPenScroll, installPeekPenScroll } from "./pen-scroll.mjs";
+import { installPointerFocus } from "./pointer-focus.mjs";
 import { installDeletedAnnotations, sourceLineHidden, hiddenCommentCounts, hiddenQuestions, badgeDisplayRow } from "./deleted-annotations.mjs";
 import { installTourAnnotations, fileStatusLabel, fileChangeCounts, gutterRowGradient, configureReferenceActions } from "./annotations.mjs";
 import { reviewMarkers, highestPriority, collapsedRegionState, unchangedContextState, expandedRegionState, commentDescription, commentSubmission } from "./annotations.mjs";
@@ -803,6 +804,7 @@ for (const [side, editor] of Object.entries(editors)) {
     run: () => { capture(side); openSuggestedEdit(); },
   });
 }
+diff.onDidDispose(installPointerFocus({ root: editorSurface, editors: Object.values(editors), monaco }));
 function clearZones() {
   for (const [editor, id, dispose] of zones) { dispose?.(); editor?.changeViewZones(accessor => accessor.removeZone(id)); }
   zones = []; composer = null; commentCards.clear(); prCards.clear();
