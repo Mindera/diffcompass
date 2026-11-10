@@ -1,9 +1,10 @@
 import { lstat } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadRepositoryFile } from "./git.ts";
 import { ReviewError } from "./errors.ts";
 import { runProcess } from "./process.ts";
+import { kotlinReferences } from "./kotlin-references.ts";
 import type { GitComparison } from "./types.ts";
 
 const MAX_SYMBOL_LENGTH = 200;
@@ -17,7 +18,7 @@ const MAX_CODEGRAPH_OUTPUT = 512 * 1024;
 const MAX_EXCERPT_LINES = 7;
 const MAX_LINE_LENGTH = 500;
 
-export type SymbolPeekSource = "codegraph" | "language-server" | "repository-search";
+export type SymbolPeekSource = "codegraph" | "language-server" | "kotlin-syntax" | "repository-search";
 
 export interface SymbolPeekLocation {
   path: string;
@@ -103,13 +104,32 @@ function isDefinition(line: string, symbol: string): boolean {
     || new RegExp(`\\b${escaped}\\s*\\(`).test(line) && /(?:function|def|fn|func|fun|method|override|public|private|protected|async|export)/i.test(line);
 }
 
-async function searchRepositoryAsync(comparison: GitComparison, symbol: string): Promise<{ matches: SearchMatch[]; truncated: boolean }> {
+function searchPaths(comparison: GitComparison, request: SymbolPeekRequest): string[] {
+  if (!request.path) return comparison.repositoryFiles;
+  const directory = dirname(request.path);
+  const extension = extname(request.path).toLowerCase();
+  const changed = new Set(comparison.files.map(file => file.path));
+  const groups: string[][] = [[], [], [], [], []];
+  // Spend the bounded search budget on the selected context before unrelated
+  // repository entries. A large repository must not exclude the clicked file.
+  for (const path of new Set(comparison.repositoryFiles)) {
+    const group = path === request.path ? 0
+      : dirname(path) === directory && extname(path).toLowerCase() === extension ? 1
+        : changed.has(path) ? 2
+          : extension && extname(path).toLowerCase() === extension ? 3 : 4;
+    groups[group]!.push(path);
+  }
+  return groups.flat();
+}
+
+async function searchRepositoryAsync(comparison: GitComparison, request: SymbolPeekRequest & { symbol: string }): Promise<{ matches: SearchMatch[]; truncated: boolean }> {
+  const { symbol } = request;
   const pattern = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
   let bytes = 0;
   let files = 0;
   let truncated = false;
   const matches: SearchMatch[] = [];
-  for (const path of comparison.repositoryFiles) {
+  for (const path of searchPaths(comparison, request)) {
     if (files >= MAX_SEARCH_FILES || bytes >= MAX_SEARCH_BYTES || matches.length >= MAX_RESULTS) {
       truncated = true;
       break;
@@ -159,7 +179,7 @@ async function partialSymbolSuggestions(comparison: GitComparison, request: Symb
   let files = 0;
   let identifiers = 0;
   let truncated = false;
-  scan: for (const path of comparison.repositoryFiles) {
+  scan: for (const path of searchPaths(comparison, request)) {
     if (files >= MAX_SEARCH_FILES || bytes >= MAX_SEARCH_BYTES) {
       truncated = true;
       break;
@@ -216,7 +236,7 @@ function sourceResult(symbol: string, source: SymbolPeekSource, definitions: Sym
   return {
     symbol,
     source,
-    sourceLabel: source === "codegraph" ? "CodeGraph" : source === "language-server" ? "Language server" : "Repository search",
+    sourceLabel: source === "codegraph" ? "CodeGraph" : source === "language-server" ? "Language server" : source === "kotlin-syntax" ? "Kotlin syntax" : "Repository search",
     definitions,
     usages,
     ...(raw ? { raw } : {}),
@@ -432,13 +452,26 @@ async function withPartialSymbolSuggestions(comparison: GitComparison, request: 
   };
 }
 
+async function kotlinSyntaxResult(comparison: GitComparison, request: SymbolPeekRequest, providerNotice?: string): Promise<SymbolPeekResult | undefined> {
+  if (!request.path || !request.line || !/\.kts?$/i.test(request.path) || request.side === "old") return;
+  let content: string;
+  try { content = await loadRepositoryFile(comparison, request.path, MAX_FILE_BYTES); } catch { return; }
+  const result = await kotlinReferences(content, request.symbol, request.line, request.column);
+  if (!result) return;
+  const location = (line: number, kind: "definition" | "usage"): SymbolPeekLocation => ({ path: request.path!, line, endLine: line, kind, excerpt: excerpt(content, line) });
+  return sourceResult(request.symbol, "kotlin-syntax", [location(result.definition, "definition")], result.usages.map(line => location(line, "usage")),
+    `Same-file syntax candidates, respecting explicit lexical scopes. Receiver types, overloads, imports and references in other files need a project-aware provider.${result.partial ? " Some Kotlin syntax could not be parsed; results may be incomplete." : ""} ${providerNotice ?? ""}`.trim(), result.truncated);
+}
+
 export async function resolveSymbolPeek(comparison: GitComparison, input: SymbolPeekRequest): Promise<SymbolPeekResult> {
   const request = ensureRequest(comparison, input);
   const codeGraph = await codeGraphResult(comparison, request);
   if (codeGraph) return withPartialSymbolSuggestions(comparison, request, codeGraph);
   const languageServer = await languageServerResult(comparison, request);
   if (languageServer.result) return withPartialSymbolSuggestions(comparison, request, languageServer.result);
-  const search = await searchRepositoryAsync(comparison, request.symbol);
+  const kotlin = await kotlinSyntaxResult(comparison, request, languageServer.notice);
+  if (kotlin) return kotlin;
+  const search = await searchRepositoryAsync(comparison, request);
   const definitions: SymbolPeekLocation[] = [];
   const usages: SymbolPeekLocation[] = [];
   const matches = await materializeLocations(comparison, search.matches.map((match) => ({ ...match, kind: isDefinition(match.content, request.symbol) ? "definition" as const : "usage" as const })));
