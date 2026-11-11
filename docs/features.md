@@ -60,6 +60,10 @@ Turn a long diff into an ordered explanation, one source-backed stop at a time.
 
 - Follow an agent-organized route through related changes.
 - See current and upcoming stops alongside their source anchors.
+- Explanations must trace behavioral claims through callers, guards, and consumers.
+  Review questions are optional: agents must check their premises and explain
+  answers already settled by the repository, separating planned behavior from
+  implemented behavior.
 - Explore freely, then return to your current stop.
 - Switch the right pane between **Tour**, **Questions**, and **Comments**. Each
   section gets the full pane; tab switches keep drafts and reading positions.

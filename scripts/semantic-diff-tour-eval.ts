@@ -20,11 +20,63 @@ interface Case {
   start?: number;
   end?: number;
   previous?: { title: string; objective: string };
+  /** Unchanged source outside the patch: the explanation must inspect the captured tree. */
+  supportingFiles?: Record<string, string>;
   expectedStatus: string;
   review: string[];
 }
 const source = (lines: string[]) => lines.join("\n") + "\n";
+const sectionBefore = source([
+  "sealed interface Section<out T> {",
+  "    data object Failed : Section<Nothing>",
+  "    data object Retrying : Section<Nothing>",
+  "    data class Shown<T>(val content: T) : Section<T>",
+  "}",
+]);
+const sectionAfter = sectionBefore.replace("val content: T)", "val content: T, val updateFailed: Boolean = false)");
+const sectionRenderer = source([
+  "fun render(section: Section<String>): String = when (section) {",
+  "    Section.Failed -> \"error card\"",
+  "    Section.Retrying -> \"skeleton\"",
+  "    is Section.Shown -> section.content",
+  "}",
+]);
 const cases: Case[] = [
+  {
+    id: "kotlin-guarded-retry", path: "Section.kt", expectedStatus: "analysed",
+    before: sectionBefore, after: sectionAfter,
+    previous: { title: "Retry content", objective: "Retrying replaces shown content with a skeleton." },
+    supportingFiles: {
+      "Renderer.kt": sectionRenderer,
+      "Controller.kt": source([
+        "fun retry(section: Section<String>): Section<String> =",
+        "    if (section == Section.Failed) Section.Retrying else section",
+        "fun refresh(section: Section<String>): Section<String> = section",
+      ]),
+    },
+    review: ["inspect unchanged Controller.kt in the captured tree, not just the state declaration", "retry only transitions Failed to Retrying; Shown is preserved", "correct the false premise in the previous stop", "do not ask whether retry should keep content that it does not discard", "the new flag represents a failed update; no code sets it yet", "a concise explanation without any review question is valid"],
+  },
+  {
+    id: "kotlin-planned-retry", path: "Section.kt", expectedStatus: "analysed",
+    before: sectionBefore, after: sectionAfter,
+    supportingFiles: {
+      "Renderer.kt": sectionRenderer,
+      "PLAN.md": "The controller is not implemented yet. Planned rules: Failed enters Retrying on an error-card retry. Shown remains Shown during refresh; a failed refresh keeps its content and sets updateFailed.\n",
+    },
+    review: ["read PLAN.md and label its transition rules as planned", "only the state contract and renderer are implemented", "do not claim an implemented Shown-to-Retrying path or content loss", "do not turn missing controller code into a defect or a product decision the plan already settled", "the updateFailed flag is representable, not proof of a wired refresh"],
+  },
+  {
+    id: "kotlin-reachable-content-loss", path: "Section.kt", expectedStatus: "analysed",
+    before: sectionBefore, after: sectionAfter,
+    supportingFiles: {
+      "Renderer.kt": sectionRenderer,
+      "Controller.kt": source([
+        "fun retry(section: Section<String>): Section<String> = Section.Retrying",
+        "fun refreshShown(content: String): String = render(retry(Section.Shown(content)))",
+      ]),
+    },
+    review: ["inspect Controller.kt and Renderer.kt before claiming content loss", "refreshShown passes Shown into an unconditional retry and renders the resulting skeleton", "a content-retention question is legitimate here if it names this proven path", "do not blindly apply the safe Failed-only example in the prompt", "do not invent the author's intent or a failed-refresh implementation"],
+  },
   {
     id: "typescript-optional-discount", path: "cart.ts", expectedStatus: "analysed", start: 10, end: 13,
     before: source(["export interface Item { price: number; quantity: number; }", "", "export function total(items: Item[]): number {", "  return items.reduce((sum, item) => sum + item.price * item.quantity, 0);", "}"]),
@@ -97,7 +149,7 @@ await writeJSON(join(artifactRoot, `${mode.slice(2)}-environment.json`), {
   selection, modelNote: "Configured CLI default; resolved model must be verified separately, not inferred.",
   cliVersion: (await runProcess(["codex", "--version"], checkout)).stdout.trim(),
   harnessHash: digest(await readFile(import.meta.filename, "utf8")),
-  sourceHashes: Object.fromEntries(await Promise.all(["src/agent.ts", "src/semantic-diff-tour.ts", "src/semantic-diff.ts", "src/comparison-source.ts", "src/git.ts"].map(async (path) => [path, digest(await readFile(join(checkout, path), "utf8"))]))),
+  sourceHashes: Object.fromEntries(await Promise.all(["src/agent.ts", "src/tour-grounding.ts", "src/semantic-diff-tour.ts", "src/semantic-diff.ts", "src/comparison-source.ts", "src/git.ts"].map(async (path) => [path, digest(await readFile(join(checkout, path), "utf8"))]))),
   scope: "Human-authored fixed tour stops; real production explanation calls. No planner, browser, statistical A/B or compiler evaluation.",
 });
 let failures = 0;
@@ -115,6 +167,9 @@ for (const fixture of selected) {
     await git(repositoryRoot, "config", "user.email", "evaluation@example.test");
     await git(repositoryRoot, "config", "core.hooksPath", "/dev/null");
     await writeFile(join(repositoryRoot, fixture.oldPath ?? fixture.path), fixture.before);
+    for (const [path, content] of Object.entries(fixture.supportingFiles ?? {})) {
+      await writeFile(join(repositoryRoot, path), content);
+    }
     await git(repositoryRoot, "add", ".");
     await git(repositoryRoot, "-c", "commit.gpgsign=false", "commit", "-m", "Controlled before source");
     if (fixture.oldPath) await rm(join(repositoryRoot, fixture.oldPath));
