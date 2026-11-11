@@ -300,7 +300,15 @@ test("asks for short plain-language stop explanations", async () => {
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an explanation prompt.");
   expect(event.prompt).toContain("Tour purpose: A new input changes the returned value.");
   expect(event.prompt).toContain("Current phase: Carry the value — The implementation moves the input to the result.");
-  expect(event.prompt).toContain("Previously established: Accept the input — The function receives the new value.");
+  expect(event.prompt).toContain("Previous stop (generated route context, not evidence): Accept the input — The function receives the new value.");
+  expect(event.prompt).not.toContain("Previously established:");
+  expect(event.prompt).toContain("through guards, state writes, and consumers in the captured comparison");
+  expect(event.prompt).toContain("A question's premise is a factual claim");
+  expect(event.prompt).toContain("If those already settle it, explain the answer instead of asking the reviewer");
+  expect(event.prompt).toContain("If the state writer is not implemented yet");
+  expect(event.prompt).toContain("label documented transitions as planned rather than verified runtime behavior");
+  expect(event.prompt).toContain("Correct an unsupported premise instead of repeating it");
+  expect(event.prompt).toContain("a complete explanation needs no question");
   expect(event.prompt).toContain("next link in the tour's causal journey");
   expect(event.prompt).toContain("Keep it under 150 words");
   expect(event.prompt).toContain("Return only the finished reviewer-facing explanation");
@@ -334,6 +342,9 @@ test("bounds tour prompts to a first-read comparison and orders phases as concep
   const [event] = await bridge.eventsAfter(0, 1_000);
   if (!event || event.type !== "agent.prompt") throw new Error("Expected an outline prompt.");
   expect(event.prompt).toContain("fresh, first-time reading of the selected comparison");
+  expect(event.prompt).toContain("Review questions are optional, never a quota");
+  expect(event.prompt).toContain("A question's premise is a factual claim");
+  expect(event.prompt).toContain("Inspect related unchanged code when the anchor alone cannot establish the behavior");
   expect(event.prompt).toContain("Ignore prior chat, caller-session context, implementation chronology");
   expect(event.prompt).toContain("ordered conceptual layers");
   expect(event.prompt).toContain("not file order or remembered implementation chronology");

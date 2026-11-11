@@ -134,7 +134,7 @@ merely because the first or current stop is visible in the browser.
 Prompt kinds:
 
 - `tour.outline`: return only the JSON shape requested by the event. Inspect the diff and repository before responding. Treat this as a fresh first-time reading of the selected base-to-tip or working-tree comparison. Ignore prior chat, caller implementation history, remembered iterations, and claims about earlier changes unless that chronology is directly present in the selected comparison or repository evidence you explicitly inspect. Ground the title, summary, phase names, phase summaries, objectives, architecture summaries, and diagrams only in that evidence. Read every requested anchor from the full event: a step anchor is `{ path, side, startLine, endLine }`, not `{ path, side, line }`. Omitting `startLine` or `endLine` invalidates the step; if every step is invalid, the complete outline fails with no anchored tour phases. Treat `TourPhase` objects as ordered conceptual layers and derive their order from behavior and dependency flow, normally contract or foundation before implementation before integration or effects when supported by evidence, never from file order or remembered implementation chronology. Every phase summary must briefly state what its layer establishes and how it enables the next layer, or how the final layer reaches the observable result or verification. Use only the currently supported architecture and sequence diagram kinds when they materially clarify a layer; do not invent state-machine or ER diagram types. Tour startup may send two consecutive outline-kind prompts: the first requests the full route and candidate analysis; the second is a focused, authoritative finding audit and requests only final finding JSON. Complete and acknowledge both in order.
-- `tour.explanation`: return the conversational explanation for that stop, using only the selected comparison and repository evidence you explicitly inspect. Keep the same first-read boundary: unsupported references to corrections, iterations, follow-ups, or a prior/current state must not enter the explanation. The preceding tour step is allowed as generated route context because it is part of this selected comparison, not caller history.
+- `tour.explanation`: return the conversational explanation for that stop, using only the selected comparison and repository evidence you explicitly inspect. Keep the same first-read boundary: unsupported references to corrections, iterations, follow-ups, or a prior/current state must not enter the explanation. The preceding tour step is allowed as generated route context because it is part of this selected comparison, not caller history. Generated route context is not independent evidence; correct an unsupported premise rather than repeating it. Apply the behavioral evidence check below before returning.
 - `review.question`: answer the reviewer using the current step, selected-line context, and preceding reviewer conversation. Lead with the direct answer and default to a concise response unless the reviewer asks for depth. Use that context to resolve references such as "this" or "these comments" instead of discarding information already present in the conversation. Do not narrate tool limitations or offer unrelated follow-up work. Ask a clarifying question only when multiple plausible interpretations would produce materially different changes. Once the reviewer clarifies the intended scope, follow that clarification without substituting a preferred implementation or relitigating the choice. When the event prompt supplies an isolated proposal workspace, modify files only inside that exact workspace and only when the reviewer explicitly requests a concrete change. Never edit the original reviewed repository, stage, or commit. Run proportionate checks inside the proposal workspace and write a concise UTF-8 verification summary to a temporary file. Include commands and outcomes, or state why a relevant check was not run. Then call `diffcompass bridge refresh --url URL --token-file TOKEN_FILE --event EVENT_ID --lease LEASE_ID --verification-file VERIFICATION_FILE` before responding. The refresh captures the isolated edits as a pending bundle; it does not apply them to the reviewed working tree. Delete the verification file after the bridge accepts the refresh. Tell the reviewer that the proposal is ready for Apply or Reject rather than claiming it is already applied. This event-bound refresh is what authorizes the question's answer to cross that comparison update.
 
 ## Finish
@@ -154,6 +154,25 @@ diffcompass bridge ack --url URL --token-file TOKEN_FILE --event EVENT_ID --leas
 ```
 
 Never invent feedback not present in the event. Every repository change after review closure must be directly required to resolve the submitted note or comments. Preserve unrelated work and report independently discovered issues separately instead of including them in the feedback implementation. If implementation needs authority beyond the review scope, stop and ask the user before making that change.
+
+### Behavioral evidence for tour prose
+
+Apply this check to outline objectives and summaries as well as stop explanations.
+Trace behavioral claims through the trigger or caller, guards, state writes, and
+consumers in the captured source, including relevant unchanged code. A type or
+renderer branch alone does not establish a reachable transition. A payload-free
+`Retrying` case, for example, does not imply `Shown` ever enters it or loses its
+content; check retry and refresh entry points first.
+
+Review questions are optional, never a quota. Their premises need the same
+evidence as factual prose. First try to answer the question from the implementation,
+callers, tests, and repository contracts. Explain an already-settled answer instead
+of asking the reviewer to investigate it. Ask only about a remaining decision or
+uncertainty with an established premise, briefly naming the supporting symbol or
+guard. Omit unsupported concerns instead of dressing them as questions. If the
+state writer is not implemented, distinguish planned transitions from implemented
+rendering; neither a plan nor an expected test proves runtime behavior. Keep this
+check internal and return only the event's requested output.
 
 ### Narrative Briefing prompts
 

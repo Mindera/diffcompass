@@ -72,3 +72,12 @@ test("the attached-agent skill resolves feedback without inventing edits or unre
   expect(skill).toContain("Every repository change after review closure must be directly required");
   expect(skill).toContain("report independently discovered issues separately");
 });
+
+test("the attached-agent skill requires behavioral evidence for optional tour questions", async () => {
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
+  expect(skill).toContain("Apply this check to outline objectives and summaries as well as stop explanations");
+  expect(skill).toContain("Review questions are optional, never a quota");
+  expect(skill).toContain("A type or\nrenderer branch alone does not establish a reachable transition");
+  expect(skill).toContain("Explain an already-settled answer instead");
+  expect(skill).toContain("distinguish planned transitions from implemented\nrendering");
+});

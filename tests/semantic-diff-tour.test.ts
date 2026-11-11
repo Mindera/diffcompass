@@ -128,7 +128,10 @@ test("agent requests captured facts after live edits, with unchanged source navi
   const evidence = data(event.prompt);
   expect(evidence.status).toBe("analysed"); expect(evidence.changes.find((entry: SemanticChange) => entry.name === "total").inputs.added).toEqual([{ name: "discount", optional: true }]);
   expect(event.prompt).not.toContain("liveOnly"); expect(event.prompt).toContain(fixture.comparison.patch); expect(event.prompt).toContain("Anchor: cart.ts:1-1 (new side)");
-  expect(event.prompt).toContain("one specific review question"); expect(event.prompt).toContain("do not pair ambiguous versions or infer rationale");
+  expect(event.prompt).toContain("A review question is optional"); expect(event.prompt).toContain("do not pair ambiguous versions or infer rationale");
+  expect(event.prompt).toContain(`Captured source: before ${fixture.comparison.mergeBase}, after ${fixture.comparison.sourceTree}`);
+  expect(event.prompt).toContain("inspect these exact Git objects with git show");
+  expect(event.prompt).toContain("Never substitute current workspace files");
   expect(cachedSemanticSummaries(fixture.comparison)).toHaveLength(1);
   await bridge.respond(event.id, "The total accepts an optional discount. Check the omitted-discount case.");
   expect((await pending).value).toContain("optional discount"); agent.cancel();

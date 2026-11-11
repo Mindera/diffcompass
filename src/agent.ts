@@ -3,6 +3,7 @@ import { BRIEFING_AUDIT_PROMPT, BriefingAuditValidationError, briefingSequenceFl
 import { BRIEFING_SOURCE_PROMPT, BriefingSourceValidationError, briefingSourceContext, captureBriefingSourceDecisions, missingBriefingSources } from "./briefing-sources.ts";
 import { createHash } from "node:crypto";
 import { syntaxContextForTourStep } from "./semantic-diff-tour.ts";
+import { TOUR_BEHAVIOR_GROUNDING } from "./tour-grounding.ts";
 import { FILE_EXPLANATION_PROMPT, fileSummarySource, usableFileExplanation } from "./file-explanations.ts";
 import { ReviewError } from "./errors.ts";
 import { MAP_NODE_ROLE_PROMPT } from "./map-node-roles.ts";
@@ -82,7 +83,9 @@ interface GeminiStreamEvent {
   response?: string;
 }
 
-const TOUR_CONTEXT_BOUNDARY = `Review-context boundary (mandatory for tour generation): Treat this as a fresh, first-time reading of the selected comparison. Ignore prior chat, caller-session context, implementation chronology, earlier iterations, previous tours, and unstated claims about what was changed before. They are not review evidence.
+const TOUR_CONTEXT_BOUNDARY = `${TOUR_BEHAVIOR_GROUNDING}
+
+Review-context boundary (mandatory for tour generation): Treat this as a fresh, first-time reading of the selected comparison. Ignore prior chat, caller-session context, implementation chronology, earlier iterations, previous tours, and unstated claims about what was changed before. They are not review evidence.
 
 Ground tour framing only in the selected base-to-tip or working-tree comparison and repository files or symbols you explicitly inspect for this comparison. This rule applies to the tour title, summary, phase names and summaries, objectives, architecture titles and summaries, diagrams, and explanations. Do not describe a change as a correction, iteration, follow-up, or current state relative to earlier work unless that relationship is directly supported by the selected comparison or inspected repository evidence. If it is unsupported, use neutral first-read language.
 
@@ -1618,20 +1621,21 @@ For a detailed walkthrough, use up to 24 steps and expand only intermediate valu
 Tour: ${outline.title}
 Tour purpose: ${outline.summary}
 Current phase: ${phase ? `${phase.title} — ${phase.summary}` : "Unknown"}
-${previousStep ? `Previously established: ${previousStep.title} — ${previousStep.objective}` : "This is the first stop, so establish the input, trigger, or prerequisite."}
+${previousStep ? `Previous stop (generated route context, not evidence): ${previousStep.title} — ${previousStep.objective}` : "This is the first stop, so establish the input, trigger, or prerequisite."}
 
 Tour step ${index + 1} of ${total}: ${step.title}
 Anchor: ${step.anchor.path}:${step.anchor.startLine}-${step.anchor.endLine} (${step.anchor.side} side)
 Objective: ${step.objective}
 Comparison fingerprint: ${this.comparisonFingerprint}
+Captured source: before ${comparison?.mergeBase ?? "unavailable"}, after ${comparison?.sourceTree ?? "unavailable"}. For supporting source outside the patch, inspect these exact Git objects with git show, respecting old/new rename paths. Never substitute current workspace files. If captured source is unavailable, narrow the explanation to the supplied evidence.
 
 ${syntaxContext}
 
-Use the narrative context above silently. Explain this anchor as the next link in the tour's causal journey. If this is not the first stop, connect its mechanism to the fact established immediately before it. Introduce one new idea and explain the mechanism visible in the selected code, not only the resulting behavior.
+Use the narrative context above silently, after checking its premises against the captured source. Explain this anchor as the next link in the tour's causal journey. If this is not the first stop, connect its mechanism to the preceding stop only where the inspected evidence supports that connection. Introduce one new idea and explain the mechanism visible in the selected code, not only the resulting behavior.
 
 Return only the finished reviewer-facing explanation. Do not include progress updates, plans to inspect code, skill announcements, or tool-use commentary in the answer. Keep any work-in-progress messages separate from the final response.
 
-Use plain technical language for a reviewer who knows programming fundamentals. Keep it under 150 words in two or three short paragraphs. Use short active sentences, one idea per sentence, and one consistent term for each concept. Avoid metaphors and idioms. Avoid project-specific jargon unless the code requires it; explain any necessary term in a few words. Say why the mechanism matters and what the reviewer should check. Do not repeat the title, objective, or file path. Do not predict, name, or summarize the next step; the route may change independently of this explanation. End with a short instruction to select Next when ready. Do not modify files. Do not use prior chat or implementation chronology to explain this stop. Use only the selected comparison and repository evidence you explicitly inspect.`;
+Use plain technical language for a reviewer who knows programming fundamentals. Keep it under 150 words in two or three short paragraphs. Use short active sentences, one idea per sentence, and one consistent term for each concept. Avoid metaphors and idioms. Avoid project-specific jargon unless the code requires it; explain any necessary term in a few words. Say why the mechanism matters. Include a review question only when it passes the behavioral evidence requirements above; a complete explanation needs no question. Do not repeat the title, objective, or file path. Do not predict, name, or summarize the next step; the route may change independently of this explanation. End with a short instruction to select Next when ready. Do not modify files. Do not use prior chat or implementation chronology to explain this stop. Use only the selected comparison and repository evidence you explicitly inspect.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
     const promptWithDiff = needsAttachment ? prompt : `${prompt}\n\n<diff>\n${comparison?.patch ?? ""}\n</diff>`;
     const attachment = needsAttachment && comparison ? { name: "review.diff", content: comparison.patch } : undefined;
