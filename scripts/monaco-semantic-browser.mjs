@@ -11,15 +11,22 @@ const browser = await chromium.launch({ headless: true, channel: process.env.CI 
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
 page.setDefaultTimeout(20000);
 const errors = [], requests = [];
-let releasePoll;
+let releasePoll, traceSaved = false;
 page.on("pageerror", error => errors.push(error.message));
 page.on("request", request => { if (request.url().includes("/api/diff/semantic?")) requests.push(request.url()); });
 const pass = (value, message) => { assert(value, message); console.log(`PASS ${message}`); };
 const card = path => page.locator(`#diff > [data-path="${path}"]`);
 const panel = path => card(path).locator("[data-semantic-panel]");
 const control = path => card(path).locator("[data-semantic-file]");
-async function open(path) {
+async function selectFile(path) {
   await page.locator(`[data-file="${path}"]`).click();
+  // Explorer clicks start asynchronous mounting and scrolling. A visible
+  // header alone does not mean that journey has finished: a late editor above
+  // it can move the button between pointer-down and pointer-up.
+  await page.evaluate(path => diffCompassProductionHost.reveal(path), path);
+}
+async function open(path) {
+  await selectFile(path);
   if (await control(path).getAttribute("aria-expanded") !== "true") await control(path).click();
   await panel(path).locator("h3").first().waitFor();
 }
@@ -47,13 +54,14 @@ async function anchor(path, side) {
   return text;
 }
 try {
+  await page.context().tracing.start({ screenshots: true, snapshots: true, sources: true });
   await page.route("**/api/update", route => route.fulfill({ json: { updateAvailable: false } }));
   await page.goto(url);
   await page.locator("#step-count").filter({ hasText: "Step " }).waitFor();
   await page.locator("#diff-renderer").selectOption("monaco");
   pass(await page.locator("[data-semantic-file]").count() === 0, "Monaco tour has no duplicate What changed control");
   await page.getByRole("button", { name: "Exit tour", exact: true }).click();
-  await page.locator('[data-file="src/cart.ts"]').click();
+  await selectFile("src/cart.ts");
   await control("src/cart.ts").focus(); await page.keyboard.press("Enter");
   await panel("src/cart.ts").getByRole("heading", { name: "What changed", exact: true }).waitFor();
   pass(await card("src/cart.ts").getAttribute("class") === "monaco-file-slot", "keyboard opens the shared summary in the Monaco file card");
@@ -121,8 +129,12 @@ try {
   pass(await page.locator("[data-semantic-panel]").count() === 0, "comparison refresh invalidates open summaries");
   for (const [path, text] of [["Sample.kt", "What changed"], ["broken.ts", "Couldn’t read all of this code"], ["src/whitespace.py", "This file type isn’t supported"], ["large.txt", "This file type isn’t supported"], ["large.ts", "This file exceeds the summary limits"], ["sample.generated.ts", "Generated code — summary skipped"]]) {
     if (path === "broken.ts") await page.route("**/api/diff/semantic?path=broken.ts", route => route.abort());
-    await page.locator(`[data-file="${path}"]`).click();
-    await control(path).click();
+    await selectFile(path);
+    await Promise.all([
+      page.waitForRequest(request => new URL(request.url()).pathname === "/api/diff/semantic"
+        && new URL(request.url()).searchParams.get("path") === path),
+      control(path).click(),
+    ]);
     if (path === "broken.ts") {
       await panel(path).getByRole("alert").waitFor();
       await page.unroute("**/api/diff/semantic?path=broken.ts");
@@ -179,11 +191,17 @@ try {
   pass(await draft.inputValue() === "Keep this draft with the captured version", "new summary coordinates cannot navigate a retained stale editor or discard its draft");
   pass(errors.length === 0, `no browser errors (${errors.join("; ")})`);
 } catch (error) {
-  console.error(await page.evaluate(() => ({ notice: document.querySelector(".monaco-review-notice")?.textContent, renderer: document.querySelector("#diff-renderer")?.value, toasts: [...document.querySelectorAll(".toast")].map(node => node.textContent) })));
+  console.error(await page.evaluate(() => ({ notice: document.querySelector(".monaco-review-notice")?.textContent, renderer: document.querySelector("#diff-renderer")?.value, summaries: [...document.querySelectorAll("[data-semantic-file]")].map(button => ({ path: button.dataset.semanticFile, expanded: button.getAttribute("aria-expanded") })), toasts: [...document.querySelectorAll(".toast")].map(node => node.textContent) })));
+  console.error("Summary request paths:", requests.map(url => new URL(url).searchParams.get("path")));
   await page.screenshot({ path: "/tmp/dc-monaco-what-changed-failure.png" });
+  await page.context().tracing.stop({ path: "/tmp/dc-monaco-what-changed-trace.zip" });
+  traceSaved = true;
   throw error;
 } finally {
   releasePoll?.();
   try { await page.unrouteAll({ behavior: "wait" }); }
-  finally { await browser.close(); }
+  finally {
+    try { if (!traceSaved) await page.context().tracing.stop(); }
+    finally { await browser.close(); }
+  }
 }
