@@ -78,6 +78,7 @@ jobs:
           name: monaco-browser-failure-${{ matrix.group }}
           path: |
             /tmp/dc-*.png
+            /tmp/dc-*-trace.zip
             /tmp/diffcompass-suggestions-*.png
           if-no-files-found: ignore
   windows:
