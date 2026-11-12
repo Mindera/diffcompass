@@ -200,7 +200,9 @@ export class ReviewSession {
       ...(defaults.preferences ?? {}),
       ...(persisted?.preferences ?? {}),
     });
-    this.diffPreferences = structuredClone(persisted?.diffPreferences ?? initialDiffPreferences);
+    this.diffPreferences = initialDiffPreferences || persisted?.diffPreferences
+      ? structuredClone({ ...persisted?.diffPreferences, ...initialDiffPreferences })
+      : undefined;
     const configuredReviewPolicy = structuredClone(persisted?.reviewPolicy ?? defaults.reviewPolicy ?? DEFAULT_REVIEW_POLICY);
     const pullRequestReview = Boolean(persisted?.pullRequest ?? defaults.pullRequest);
     this.reviewPolicy = pullRequestReview && defaults.includeFindings !== false
@@ -864,7 +866,7 @@ export class ReviewSession {
     )) throw new ReviewError("The persisted review does not match the requested repository comparison.");
     const adapters = structuredClone(defaults.agentAdapters ?? await discoverAgentAdapters(comparison.repositoryRoot));
     const preferenceRepositoryRoot = persisted?.pullRequest?.sourceRepositoryRoot ?? defaults.pullRequest?.sourceRepositoryRoot ?? comparison.repositoryRoot;
-    const globalDiffPreferences = await loadGlobalDiffPreferences(preferenceDirectory, preferenceRepositoryRoot);
+    const globalDiffPreferences = await loadGlobalDiffPreferences(preferenceDirectory, preferenceRepositoryRoot, persisted?.diffPreferences);
     const attached = defaults.attached || Boolean(persisted?.bridgeToken);
     const bridge = attached ? new AttachedAgentBridge(
       persisted?.bridgeToken,
@@ -1589,10 +1591,9 @@ export class ReviewSession {
         throw new ReviewError("Diff preferences are invalid.");
       }
       const previous = structuredClone(this.diffPreferences);
-      const preferenceRepositoryRoot = this.pullRequest?.sourceRepositoryRoot ?? this.comparison.repositoryRoot;
       const preferenceDirectory = this.defaults.diffPreferenceDirectory ?? diffPreferenceStoreDirectory(this.defaults.stateFile);
-      const current = this.diffPreferences?.[scope];
-      if (current?.layout === preferences.layout && current.wrap === preferences.wrap) return this.snapshot();
+      // Another open review may have changed the global default since this
+      // session loaded, so even reselecting its current choice must be saved.
       this.diffPreferences = {
         ...this.diffPreferences,
         [scope]: structuredClone(preferences),
@@ -1602,13 +1603,13 @@ export class ReviewSession {
       let globalUpdated = false;
       let previousGlobal: SessionDiffPreferences | undefined;
       try {
-        previousGlobal = await updateGlobalDiffPreferences(preferenceDirectory, preferenceRepositoryRoot, scope, preferences);
+        previousGlobal = await updateGlobalDiffPreferences(preferenceDirectory, scope, preferences);
         globalUpdated = preferenceDirectory !== undefined;
         await this.persist();
       } catch (error) {
         this.diffPreferences = previous;
         this.revision = previousRevision;
-        if (globalUpdated) await restoreGlobalDiffPreferences(preferenceDirectory, preferenceRepositoryRoot, previousGlobal).catch(() => undefined);
+        if (globalUpdated) await restoreGlobalDiffPreferences(preferenceDirectory, scope, previousGlobal, preferences).catch(() => undefined);
         throw error;
       }
       return this.snapshot();

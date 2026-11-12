@@ -48,7 +48,9 @@ The review sidebar has separate **Tour**, **Questions**, and **Comments** tabs,
 with drafts and reading positions retained when you switch between them.
 
 Briefing shares the Shiki/Monaco, Split/Unified, and Scroll/Wrap preferences with
-Changes. Resize or collapse the evidence pane, choose **Wide briefing**, and
+Changes. These choices follow you across repositories and resumed reviews, with
+separate layout and wrapping preferences for desktop and mobile.
+Resize or collapse the evidence pane, choose **Wide briefing**, and
 export an offline HTML reader with its diagrams and saved evidence.
 
 See the [Briefing guide](docs/briefing.md) for saved reading state, regeneration,

@@ -7,6 +7,7 @@ import { loadComparison } from "../src/git.ts";
 import { ReviewSession } from "../src/session.ts";
 import { loadPersistedSession, savePersistedSession } from "../src/store.ts";
 import { createRequestHandler } from "../src/server.ts";
+import { loadGlobalDiffPreferences, restoreGlobalDiffPreferences, updateGlobalDiffPreferences } from "../src/diff-preferences.ts";
 import { briefingFingerprint } from "../src/briefing.ts";
 import { exportReview } from "../src/export.ts";
 import type { PersistedReviewSession } from "../src/types.ts";
@@ -332,15 +333,16 @@ test("selected diff preferences survive an existing session resume", async () =>
   });
 });
 
-test("new sessions inherit the last repository-scoped diff preferences", async () => {
+test("new sessions inherit global diff preferences across repositories", async () => {
   const { directory, repository, stateFile } = await repositoryFixture();
+  const other = await repositoryFixture();
   const first = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
   const nextStateFile = join(directory, "next-session.json");
   try {
     await first.setDiffPreferences("desktop", { layout: "unified", wrap: "wrap" });
     await first.setDiffPreferences("mobile", { layout: "split", wrap: "scroll" });
 
-    const next = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile: nextStateFile });
+    const next = await ReviewSession.create(other.repository, undefined, { ...noAdapters, stateFile: nextStateFile });
     try {
       expect(next.snapshot().diffPreferences).toEqual({
         desktop: { layout: "unified", wrap: "wrap" },
@@ -348,6 +350,117 @@ test("new sessions inherit the last repository-scoped diff preferences", async (
       });
     } finally { await next.dispose(); }
   } finally { await first.dispose(); }
+});
+
+test("resuming an older review uses the latest global diff preferences for each device", async () => {
+  const first = await repositoryFixture();
+  const other = await repositoryFixture();
+  const defaults = { ...noAdapters, diffPreferenceDirectory: first.directory };
+  const sessions: ReviewSession[] = [];
+  const open = async (repository: string, stateFile: string, resume = false) => {
+    const session = await ReviewSession.create(repository, undefined, { ...defaults, stateFile, resume });
+    sessions.push(session);
+    return session;
+  };
+  try {
+    const original = await open(first.repository, first.stateFile);
+    await original.setDiffPreferences("desktop", { layout: "split", wrap: "scroll" });
+    const next = await open(other.repository, other.stateFile);
+    await next.setDiffPreferences("desktop", { layout: "unified", wrap: "wrap" });
+    await next.setDiffPreferences("mobile", { layout: "split", wrap: "wrap" });
+    const resumed = await open(first.repository, first.stateFile, true);
+    expect(resumed.snapshot().diffPreferences).toEqual({
+      desktop: { layout: "unified", wrap: "wrap" },
+      mobile: { layout: "split", wrap: "wrap" },
+    });
+
+    // A choice from an already open review still changes the global default,
+    // even when that review already displays the requested values.
+    await original.setDiffPreferences("desktop", { layout: "split", wrap: "scroll" });
+    const again = await open(other.repository, other.stateFile, true);
+    expect(again.snapshot().diffPreferences).toEqual({
+      desktop: { layout: "split", wrap: "scroll" },
+      mobile: { layout: "split", wrap: "wrap" },
+    });
+  } finally {
+    for (const session of sessions) await session.dispose();
+  }
+});
+
+test("legacy diff preferences migrate without an older settings writer erasing global choices", async () => {
+  const first = await repositoryFixture();
+  const other = await repositoryFixture();
+  const storePath = join(first.directory, ".diff-preferences.json");
+  await writeFile(storePath, JSON.stringify({ schemaVersion: 1, diffRenderer: "monaco", repositories: {
+    [first.repository]: { desktop: { layout: "unified", wrap: "wrap" } },
+  } }));
+  const original = await ReviewSession.create(first.repository, undefined, { ...noAdapters, stateFile: first.stateFile });
+  try {
+    expect(original.snapshot().diffPreferences?.desktop).toEqual({ layout: "unified", wrap: "wrap" });
+    // Previous binaries retain the repository map but discard unknown top-level
+    // fields when saving renderer, briefing, or repository-scoped preferences.
+    const saved = JSON.parse(await readFile(storePath, "utf8"));
+    await writeFile(storePath, JSON.stringify({ schemaVersion: 1, repositories: saved.repositories, diffRenderer: "current" }));
+    const next = await ReviewSession.create(other.repository, undefined, { ...noAdapters, stateFile: other.stateFile, diffPreferenceDirectory: first.directory });
+    try {
+      expect(next.snapshot().diffPreferences?.desktop).toEqual({ layout: "unified", wrap: "wrap" });
+      expect(next.snapshot().diffRenderer).toBe("current");
+    } finally { await next.dispose(); }
+  } finally { await original.dispose(); }
+});
+
+test("legacy session diff preferences fill missing global devices without replacing newer choices", async () => {
+  const { directory, repository, stateFile } = await repositoryFixture();
+  const original = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+  await original.setDiffPreferences("desktop", { layout: "split", wrap: "scroll" });
+  await original.setDiffPreferences("mobile", { layout: "split", wrap: "wrap" });
+  await original.dispose();
+  await writeFile(join(directory, ".diff-preferences.json"), JSON.stringify({ schemaVersion: 1, repositories: {
+    [repository]: { desktop: { layout: "split", wrap: "scroll" } },
+  } }));
+  await updateGlobalDiffPreferences(directory, "desktop", { layout: "unified", wrap: "wrap" });
+  const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
+  try {
+    const expected = { desktop: { layout: "unified", wrap: "wrap" }, mobile: { layout: "split", wrap: "wrap" } } as const;
+    expect(resumed.snapshot().diffPreferences).toEqual(expected);
+    const other = await repositoryFixture();
+    expect(await loadGlobalDiffPreferences(directory, other.repository)).toEqual(expected);
+  } finally { await resumed.dispose(); }
+});
+
+test("failed diff preference saves roll back global choices", async () => {
+  const { repository, stateFile, directory } = await repositoryFixture();
+  const session = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile });
+  try {
+    await session.setDiffPreferences("desktop", { layout: "unified", wrap: "wrap" });
+    await session.setDiffRenderer("monaco");
+    await rm(stateFile);
+    await mkdir(stateFile);
+    await expect(session.setDiffPreferences("desktop", { layout: "split", wrap: "scroll" })).rejects.toThrow();
+    const other = await repositoryFixture();
+    const next = await ReviewSession.create(other.repository, undefined, { ...noAdapters, stateFile: other.stateFile, diffPreferenceDirectory: directory });
+    try {
+      expect(next.snapshot().diffPreferences?.desktop).toEqual({ layout: "unified", wrap: "wrap" });
+      expect(next.snapshot().diffRenderer).toBe("monaco");
+    } finally { await next.dispose(); }
+  } finally { await session.dispose(); }
+});
+
+test("rolling back diff preferences preserves choices saved by another review", async () => {
+  const { directory, repository } = await repositoryFixture();
+  const original = { layout: "split", wrap: "scroll" } as const;
+  const attempted = { layout: "unified", wrap: "wrap" } as const;
+  await updateGlobalDiffPreferences(directory, "desktop", original);
+  const previous = await updateGlobalDiffPreferences(directory, "desktop", attempted);
+  await updateGlobalDiffPreferences(directory, "mobile", attempted);
+  await restoreGlobalDiffPreferences(directory, "desktop", previous, attempted);
+  expect(await loadGlobalDiffPreferences(directory, repository)).toEqual({ desktop: original, mobile: attempted });
+
+  await updateGlobalDiffPreferences(directory, "desktop", attempted);
+  const newer = { layout: "split", wrap: "wrap" } as const;
+  await updateGlobalDiffPreferences(directory, "desktop", newer);
+  await restoreGlobalDiffPreferences(directory, "desktop", previous, attempted);
+  expect(await loadGlobalDiffPreferences(directory, repository)).toEqual({ desktop: newer, mobile: attempted });
 });
 
 test("renderer choice follows the reviewer across repositories and resumed reviews", async () => {
@@ -368,7 +481,7 @@ test("renderer choice follows the reviewer across repositories and resumed revie
 
     const next = await open(second.repository, second.stateFile);
     expect(next.snapshot().diffRenderer).toBe("monaco");
-    expect(next.snapshot().diffPreferences).toBeUndefined();
+    expect(next.snapshot().diffPreferences?.desktop).toEqual({ layout: "unified", wrap: "wrap" });
     // Updating other saved preferences must retain the global renderer.
     await next.setDiffPreferences("mobile", { layout: "split", wrap: "scroll" });
     const resumed = await open(first.repository, first.stateFile, true);

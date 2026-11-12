@@ -1249,7 +1249,8 @@ function diffLayoutPreferenceKey() {
 function preferredDiffLayout() {
   const sessionPreference = typeof state !== "undefined" ? state.session?.diffPreferences?.[narrowFilePanelLayout() ? "mobile" : "desktop"]?.layout : undefined;
   if (["unified", "split"].includes(sessionPreference)) return sessionPreference;
-  const saved = window.localStorage.getItem(diffLayoutPreferenceKey());
+  let saved;
+  try { saved = window.localStorage.getItem(diffLayoutPreferenceKey()); } catch {}
   if (["unified", "split"].includes(saved)) return saved;
   return narrowFilePanelLayout() ? "unified" : state.session.preferences?.diffLayout ?? "split";
 }
@@ -1261,7 +1262,8 @@ function diffWrapPreferenceKey() {
 function preferredDiffWrap() {
   const sessionPreference = typeof state !== "undefined" ? state.session?.diffPreferences?.[narrowFilePanelLayout() ? "mobile" : "desktop"]?.wrap : undefined;
   if (["scroll", "wrap"].includes(sessionPreference)) return sessionPreference;
-  const saved = window.localStorage.getItem(diffWrapPreferenceKey());
+  let saved;
+  try { saved = window.localStorage.getItem(diffWrapPreferenceKey()); } catch {}
   return ["scroll", "wrap"].includes(saved) ? saved : "scroll";
 }
 
@@ -1776,8 +1778,10 @@ function changeDiffView(layout, wrap, persist = true) {
   state.diffLayout = layout;
   state.diffWrap = wrap;
   if (persist) {
-    window.localStorage.setItem(diffLayoutPreferenceKey(), state.diffLayout);
-    window.localStorage.setItem(diffWrapPreferenceKey(), state.diffWrap);
+    try {
+      window.localStorage.setItem(diffLayoutPreferenceKey(), state.diffLayout);
+      window.localStorage.setItem(diffWrapPreferenceKey(), state.diffWrap);
+    } catch {}
     if (typeof persistDiffPreferences === "function") persistDiffPreferences();
   }
   if (rerender) {

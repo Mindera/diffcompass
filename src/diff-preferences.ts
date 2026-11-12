@@ -11,6 +11,9 @@ interface DiffPreferenceStore {
 }
 
 const STORE_NAME = ".diff-preferences.json";
+// A non-path key keeps reviewer defaults intact when an older running review
+// rewrites this store: older readers preserve this map but drop new root fields.
+const GLOBAL_DIFF_PREFERENCES_KEY = "*";
 let updateQueue: Promise<void> = Promise.resolve();
 
 function validPreferences(value: unknown): value is DiffViewPreferences {
@@ -96,11 +99,29 @@ export function diffPreferenceStoreDirectory(stateFile?: string): string | undef
   return stateFile ? dirname(stateFile) : undefined;
 }
 
-export async function loadGlobalDiffPreferences(directory: string | undefined, repositoryRoot: string): Promise<SessionDiffPreferences | undefined> {
+export async function loadGlobalDiffPreferences(
+  directory: string | undefined,
+  repositoryRoot: string,
+  sessionPreferences?: SessionDiffPreferences,
+): Promise<SessionDiffPreferences | undefined> {
   if (!directory) return undefined;
   const store = await loadStore(directory);
-  const preferences = store.repositories[repositoryKey(repositoryRoot)];
-  return preferences ? structuredClone(preferences) : undefined;
+  const key = repositoryKey(repositoryRoot);
+  const global = store.repositories[GLOBAL_DIFF_PREFERENCES_KEY];
+  const legacy = { ...sessionPreferences, ...store.repositories[key] };
+  const needsMigration = (["desktop", "mobile"] as const).some((scope) => !global?.[scope] && legacy?.[scope]);
+  if (!needsMigration) return global ? structuredClone(global) : undefined;
+  // Carry existing choices forward when their review is first opened. Never
+  // guess between other repositories' conflicting legacy choices.
+  return updateStore(directory, (current) => {
+    const preferences = {
+      ...sessionPreferences,
+      ...current.repositories[key],
+      ...current.repositories[GLOBAL_DIFF_PREFERENCES_KEY],
+    };
+    current.repositories[GLOBAL_DIFF_PREFERENCES_KEY] = preferences;
+    return structuredClone(preferences);
+  });
 }
 
 export async function loadGlobalBriefingPreferences(directory: string | undefined): Promise<BriefingPreferences | undefined> {
@@ -142,13 +163,12 @@ export async function restoreGlobalBriefingPreferences(directory: string | undef
 
 export async function updateGlobalDiffPreferences(
   directory: string | undefined,
-  repositoryRoot: string,
   scope: "desktop" | "mobile",
   preferences: DiffViewPreferences,
 ): Promise<SessionDiffPreferences | undefined> {
   if (!directory) return undefined;
   return updateStore(directory, (store) => {
-    const key = repositoryKey(repositoryRoot);
+    const key = GLOBAL_DIFF_PREFERENCES_KEY;
     const previous = structuredClone(store.repositories[key]);
     store.repositories[key] = { ...store.repositories[key], [scope]: structuredClone(preferences) };
     return previous;
@@ -157,13 +177,19 @@ export async function updateGlobalDiffPreferences(
 
 export async function restoreGlobalDiffPreferences(
   directory: string | undefined,
-  repositoryRoot: string,
+  scope: "desktop" | "mobile",
   previous: SessionDiffPreferences | undefined,
+  attempted: DiffViewPreferences,
 ): Promise<void> {
   if (!directory) return;
   await updateStore(directory, (store) => {
-    const key = repositoryKey(repositoryRoot);
-    if (previous) store.repositories[key] = structuredClone(previous);
+    const key = GLOBAL_DIFF_PREFERENCES_KEY;
+    const current = store.repositories[key];
+    if (current?.[scope]?.layout !== attempted.layout || current?.[scope]?.wrap !== attempted.wrap) return;
+    const restored = { ...current };
+    if (previous?.[scope]) restored[scope] = structuredClone(previous[scope]);
+    else delete restored[scope];
+    if (Object.keys(restored).length) store.repositories[key] = restored;
     else delete store.repositories[key];
   });
 }
