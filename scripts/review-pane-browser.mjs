@@ -50,6 +50,40 @@ try {
   const saved = (await snapshot()).comments.find(comment => comment.body === 'Keep this stop comment draft');
   assert.equal(saved?.stepId, originalStep.id, 'A draft remains attached to its original stop after navigation');
   initial.comments.push(saved);
+
+  const secondStep = initial.outline.phases.flatMap(phase => phase.steps)[1];
+  const stopForm = page.locator('#step-comment-form');
+  const stopSubmit = stopForm.locator('[type="submit"]');
+  await page.locator('#comment-stop').click();
+  await page.locator('#step-comment-input').fill('Comment on another stop');
+  assert.equal(await stopSubmit.isEnabled(), true, 'Saving a stop comment must leave the form reusable');
+  await stopSubmit.click();
+  await stopForm.waitFor({ state: 'hidden' });
+  const second = (await snapshot()).comments.find(comment => comment.body === 'Comment on another stop');
+  assert.equal(second?.stepId, secondStep.id, 'The next comment belongs to the newly selected stop');
+  initial.comments.push(second);
+
+  await page.locator(`#comment-list [data-comment-id="${saved.id}"] [data-action="edit"]`).click();
+  assert.equal(await page.locator('#step-comment-input').inputValue(), saved.body);
+  assert.equal(await stopSubmit.isEnabled(), true, 'An existing stop comment can be edited after adding another');
+  await page.locator('#step-comment-input').fill('Updated original stop comment');
+  await page.route(`**/api/comments/${saved.id}`, route => route.request().method() === 'PATCH'
+    ? route.fulfill({ status: 500, json: { error: 'Test stop comment failure' } }) : route.continue(), { times: 1 });
+  await Promise.all([
+    page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().endsWith(`/api/comments/${saved.id}`) && response.status() === 500),
+    stopSubmit.click(),
+  ]);
+  await stopForm.locator('[type="submit"]:enabled').waitFor();
+  assert.equal(await stopForm.isVisible(), true, 'A failed save leaves the draft open for retry');
+  assert.equal(await page.locator('#step-comment-input').inputValue(), 'Updated original stop comment');
+  await stopSubmit.click();
+  await stopForm.waitFor({ state: 'hidden' });
+  const edited = (await snapshot()).comments.find(comment => comment.id === saved.id);
+  assert.equal(edited?.body, 'Updated original stop comment');
+  assert.equal(edited?.stepId, originalStep.id);
+  assert.equal(await stopSubmit.isEnabled(), true, 'Editing also leaves the form reusable');
+  console.log('PASS stop comments: consecutive stops, editing and failed-save retry');
+
   await tab('Tour').click(); await page.locator('#previous-step').click();
   await page.waitForFunction(() => document.querySelector('#step-count').textContent.includes('(Step 1)') && !document.querySelector('#next-step').disabled);
   console.log('PASS sidebar: separate panels, keyboard tabs, counts, drafts, scroll and tour progress retained');
