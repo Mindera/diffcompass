@@ -421,7 +421,7 @@ test("legacy session diff preferences fill missing global devices without replac
   await updateGlobalDiffPreferences(directory, "desktop", { layout: "unified", wrap: "wrap" });
   const resumed = await ReviewSession.create(repository, undefined, { ...noAdapters, stateFile, resume: true });
   try {
-    const expected = { desktop: { layout: "unified", wrap: "wrap" }, mobile: { layout: "split", wrap: "wrap" } };
+    const expected = { desktop: { layout: "unified", wrap: "wrap" }, mobile: { layout: "split", wrap: "wrap" } } as const;
     expect(resumed.snapshot().diffPreferences).toEqual(expected);
     const other = await repositoryFixture();
     expect(await loadGlobalDiffPreferences(directory, other.repository)).toEqual(expected);
