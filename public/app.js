@@ -6627,6 +6627,7 @@ async function saveStepComment(event) {
     toast(commentId ? "Stop comment updated" : "Stop comment added");
   } catch (error) {
     toast(error.message);
+  } finally {
     submit.disabled = false;
   }
 }
