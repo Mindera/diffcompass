@@ -1,3 +1,6 @@
+import { captureTourEvidence, reconcileTourEvidence } from "../src/tour-evidence.ts";
+import { loadComparison } from "../src/git.ts";
+import { parseTourExplanation } from "../src/tour-reading.ts";
 // The current per-file production renderer. PR mode adds synthetic read-only
 // threads and a safety allowlist, never the legacy multi-file iframe harness.
 import { mkdtemp } from "node:fs/promises";
@@ -55,6 +58,18 @@ if (resumeFile) {
   }
   if (saved.outline) delete saved.outline.issueAssessment;
   if (beforeTour) addBeforeTourExamples(saved);
+  if (process.env.DIFF_VIEWER_TOUR_READING === "1" && saved.outline) {
+    const comparison = await loadComparison(fixture.repository, saved.base);
+    const first = saved.outline.phases[0]!.steps[0]!;
+    saved.outline.phases[0]!.fileChanges.push({ path: "src/receipt.ts", summary: "Formats the result of the same calculation." });
+    first.relatedAnchors = [{ path: "src/receipt.ts", side: "new", startLine: 3, endLine: 5 }];
+    first.importance = "key";
+    first.explanationDetail = "The receipt calls total, which delegates the item reduction to subtotal before applying the optional discount. This fixture uses two related files to keep the calculation and its consumer together.";
+    const quote = comparison.files.find(file => file.path === "src/cart.ts")!.hunks.flatMap(hunk => hunk.rows).find(row => row.newLine === 15)!.content;
+    first.notes = (await parseTourExplanation(JSON.stringify({ summary: "Fixture note", notes: [{ kind: "decision", text: "The total calculation delegates to the subtotal helper.", sources: [{ anchor: { path: "src/cart.ts", side: "new", startLine: 15, endLine: 15 }, quote }] }] }), comparison)).notes;
+    for (const step of saved.outline.phases.flatMap(phase => phase.steps)) step.evidence = captureTourEvidence(step, comparison);
+    reconcileTourEvidence(saved.outline, comparison);
+  }
   saved.preferences = { ...saved.preferences!, prefetchSteps: 0, showBriefing: false };
   saved.selection = { ...saved.selection!, adapterId: "attached", modelId: "Fixture responder (not AI)" };
   saved.bridgeToken = crypto.randomUUID(); saved.bridgeSequence = 0;

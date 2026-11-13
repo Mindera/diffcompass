@@ -253,7 +253,7 @@ test("tour rendering annotates code without continuously stealing navigation", a
   expect(html).toContain('id="current-step-return"');
   expect(app).toContain("function updateCurrentStepReturnVisibility()");
   expect(app).toContain('elements["diff-panel"].addEventListener("scroll", scheduleCurrentStepReturnUpdate');
-  expect(app).toContain('elements["current-step-return"].addEventListener("click", () => void focusCurrentStep())');
+  expect(app).toContain('elements["current-step-return"].addEventListener("click", () => void (state.tourMode ? focusCurrentStep() : beginPreparedTour()))');
   expect(styles).toContain(".diff-return { position: fixed;");
   expect(renderTour).not.toContain("scrollIntoView");
   expect(renderTour).not.toContain("showChangedFile");
@@ -523,7 +523,7 @@ test("tour mode scopes diffs to the current phase and can restore the baseline r
   expect(app).toContain("if (phasePaths) return state.session.comparison.files.filter((file) => phasePaths.has(file.path))");
   expect(app).toContain('const changedPathsOnly = state.tourMode || state.treeMode === "changes" || filtering');
   expect(app).toContain("async function ensureTourPhaseDiffs()");
-  expect(app).toContain('elements["tour-mode-toggle"].textContent = state.tourMode ? "Exit tour" : "Resume tour"');
+  expect(app).toContain('elements["tour-mode-toggle"].classList.toggle("hidden", !state.tourMode)');
   expect(app).toContain('toast("Tour exited. All changed files are visible.")');
   expect(app).toContain('toast("Tour resumed. Diffs are scoped to this phase.")');
   expect(app).toContain('{ duration: 9_000, tone: "warning" }');

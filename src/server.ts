@@ -15,6 +15,8 @@ import { highlightedSequenceSources } from "./sequence-walkthrough-preview.ts";
 import { BRAND_FILES } from "./brand.ts";
 // @ts-expect-error Bun's text loader embeds this JavaScript asset as a string.
 import appScript from "../public/app.js" with { type: "text" };
+// @ts-expect-error Bun embeds the guided reading browser module.
+import tourReadingScript from "../public/tour-reading.mjs" with { type: "text" };
 // @ts-expect-error Bun embeds the sequence iframe lifecycle bridge.
 import sequenceWalkthroughHost from "../public/sequence-walkthrough-host.js" with { type: "text" };
 import { createSemanticPresentation } from "../public/semantic-diff-presentation.js";
@@ -68,6 +70,7 @@ import {
 const semanticPresentationScript = `const semanticPresentation = (${createSemanticPresentation.toString()})();`;
 
 const PUBLIC_FILES: Record<string, { body: BodyInit; contentType: string }> = {
+  "tour-reading.mjs": { body: String(tourReadingScript), contentType: "text/javascript; charset=utf-8" },
   ...BRAND_FILES,
   "index.html": { body: String(indexHtml), contentType: "text/html; charset=utf-8" },
   "app.js": { body: String(diagramLabelsScript) + "\n" + String(semanticPresentationScript) + "\n" + String(semanticDiffScript) + "\n" + `${callTreeScript}\n${briefingScript}` + "\n" + String(appScript) + "\n" + String(mapPresentationScript), contentType: "text/javascript; charset=utf-8" },
@@ -246,6 +249,7 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
         });
       }
       if (request.method === "GET" && url.pathname === "/api/session") return json(session.snapshot());
+      if (request.method === "GET" && url.pathname === "/api/tour/code") return json(session.tourCode(url.searchParams.get("stepId") ?? ""));
       if (request.method === "GET" && url.pathname === "/api/diff/sources") {
         const comparison = session.comparison;
         const path = url.searchParams.get("path");

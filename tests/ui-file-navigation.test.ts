@@ -10,7 +10,7 @@ function harness(monaco: boolean) {
   const state = { tourMode:false, fileRequestId:0, collapsedFiles:new Set(["src/cart.ts"]), session:{comparison:{diffMode:"full"}}, monacoRenderer:{active:monaco, owns:()=>monaco, reveal:(...args: unknown[])=>{calls.push(["monaco",...args]);return pending;}} };
   const elements = { diff:{querySelector:(selector: string)=>({scrollIntoView:(options: unknown)=>calls.push(["scroll",selector,options])})} };
   const noop = () => {};
-  const show = new Function("state","elements","CSS","filteredChangedFiles","renderActiveTab","renderDiff","renderComments","renderFindings","revealCodeLocation","renderTourAnnotation", `${source}; return showChangedFile;`)(
+  const show = new Function("state","elements","CSS","filteredChangedFiles","renderActiveTab","renderDiff","renderComments","renderFindings","revealCodeLocation","renderTourAnnotation", `const tourReading = { closeCode() {} }; ${source}; return showChangedFile;`)(
     state,elements,{escape:(path: string)=>path},()=>[{path:"src/cart.ts"}],noop,noop,noop,noop,
     (...args: unknown[])=>{calls.push(["line",...args]);return pending;},noop,
   ) as (path: string,line?: number,side?: string)=>Promise<boolean>;

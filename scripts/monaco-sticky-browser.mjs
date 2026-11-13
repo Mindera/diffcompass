@@ -122,10 +122,41 @@ try {
   await page.locator('#diff-renderer').selectOption('current');
   await page.locator('.tour-code-note.active').evaluate(node => node.scrollIntoView({block:'center',behavior:'instant'}));
   await assertReturn(true);
-  await page.locator('#tour-mode-toggle').click();
-  await assertReturn(true);
+  const stepBeforePause = await page.locator('#step-count').textContent();
+  for (const renderer of ['current', 'monaco']) {
+    await page.locator('#diff-renderer').selectOption(renderer);
+    await page.locator('#tour-mode-toggle').click();
+    await assertReturn(false);
+    assert.equal(await returning.getAttribute('aria-label'), 'Resume tour');
+    assert.equal(await page.locator('#tour-mode-toggle').isVisible(), false, 'The top of the diff has no duplicate resume control');
+    assert.equal(await page.getByRole('button', {name:'Resume tour', exact:true}).count(), 1);
+    for (const width of [1800, 420]) {
+      await page.setViewportSize({ width, height:1000 });
+      await beginManualScroll(page);
+      await page.locator('#diff-panel').evaluate(node => { node.scrollTop = node.scrollHeight; });
+      await page.waitForFunction(() => {
+        const button = document.getElementById('current-step-return'), bounds = button.getBoundingClientRect();
+        return !button.classList.contains('hidden') && bounds.top > 0 && bounds.bottom <= innerHeight && bounds.left >= 0 && bounds.right <= innerWidth;
+      });
+      const geometry = await returning.evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        const panelBottom = Math.min(innerHeight, document.getElementById('diff-panel').getBoundingClientRect().bottom);
+        return { position:getComputedStyle(node).position, bottom:panelBottom-bounds.bottom, clickable:node.contains(document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2)) };
+      });
+      assert.equal(geometry.position, 'fixed'); assert.ok(geometry.bottom < 40); assert.ok(geometry.clickable, 'Resume stays reachable after scrolling or resizing');
+    }
+    await page.setViewportSize({width:1800,height:1000});
+    await page.locator('#findings-tab').click();
+    await assertReturn(false);
+    await returning.press('Enter');
+    await page.locator('#diff-tab[aria-selected="true"]').waitFor();
+    await page.getByRole('button',{name:'Exit tour',exact:true}).waitFor();
+    await page.waitForFunction(() => !document.getElementById('next-step').disabled);
+    assert.equal(await page.locator('#step-count').textContent(), stepBeforePause, 'Resuming returns to the same stop');
+    await assertReturn(true);
+  }
   assert.deepEqual(errors,[]);
-  console.log('PASS native renderer/tour exit unaffected and clean browser console');
+  console.log('PASS floating Resume tour: no top duplicate, desktop/mobile scrolling, tab detours, keyboard resume and same stop');
 } catch (error) {
   await page.screenshot({path:'/tmp/dc-sticky-failure.png'});
   console.error(error.stack); console.error('PAGE_ERRORS',errors); process.exitCode=1;

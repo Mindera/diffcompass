@@ -219,6 +219,10 @@
             <div id="symbol-peek-result" class="symbol-peek-result" aria-live="polite"></div>
           </section>
           <div id="empty-diff" class="empty hidden">No changes found for this comparison.</div>
+          <section id="tour-code-view" class="tour-code-view hidden" aria-label="Related code for this tour stop">
+            <header class="tour-code-heading"><h2 id="tour-code-title"></h2><button id="tour-code-close" class="button secondary" type="button">Back to phase diff</button></header>
+            <p id="tour-code-status" role="status"></p><div id="tour-code-groups"></div>
+          </section>
           <div id="diff"></div>
         </div>
         <nav id="maps-navigation" class="maps-navigation hidden" aria-label="Diagrams">
@@ -289,6 +293,7 @@
         <span id="structural-source-return" class="hidden"><button id="structural-graph-return" class="button diff-return" type="button">↩ Back to caller graph</button></span>
         <button id="sequence-source-return" class="button diff-return hidden" type="button">↩ Back to diagram</button>
         <button id="pull-request-return" class="button diff-return pull-request-return hidden" type="button">↩ Return to pull request</button>
+        <button id="tour-reading-return" class="button diff-return hidden" type="button">↩ Back to tour code</button>
         <button id="briefing-source-return" class="button diff-return hidden" type="button">↩ Back to Briefing</button>
         <button id="current-step-return" class="button diff-return current-step-return hidden" type="button">↩ Current step</button>
       </section>
@@ -364,11 +369,18 @@
                 <div id="phase-finding-list" class="finding-list"></div>
               </details>
             </section>
+            <details id="tour-coverage" class="phase-files-details tour-coverage hidden"><summary><span>Not covered</span><span id="tour-coverage-count" class="count"></span></summary><p id="tour-coverage-summary"></p><ul id="tour-coverage-list"></ul></details>
             <article class="step-card">
+              <div id="step-importance" class="eyebrow"></div>
+              <p id="step-freshness" class="tour-freshness hidden" role="status"></p>
               <div id="step-anchor" class="anchor"></div>
               <h3 id="step-title"></h3>
               <p id="step-objective" class="objective"></p>
               <div id="step-explanation" class="explanation"></div>
+              <details id="step-detail" class="tour-step-detail hidden"><summary>More detail</summary><div id="step-detail-body" class="explanation"></div></details>
+              <div id="step-notes"></div>
+              <button id="tour-step-code" class="button secondary" type="button" aria-pressed="false">Read this step’s code</button>
+              <div id="step-related" class="tour-related"></div>
               <details id="agent-activity" class="agent-activity hidden">
                 <summary><span class="planning-spinner" aria-hidden="true"></span><span id="agent-activity-title">Agent activity</span></summary>
                 <div id="agent-activity-body" class="agent-activity-body"></div>
