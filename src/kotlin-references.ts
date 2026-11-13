@@ -36,7 +36,7 @@ function parsedContext(node: Node): boolean {
   return true;
 }
 
-function declaration(name: Node): Declaration | undefined {
+export function kotlinLexicalDeclaration(name: Node): Declaration | undefined {
   const parent = name.parent;
   if (!parent) return;
   let scope: Node | undefined;
@@ -105,7 +105,7 @@ export async function kotlinReferences(content: string, symbol: string, line: nu
     const candidates = identifiers.filter(node => node.startPosition.row === line - 1 && (column === undefined || (node.startPosition.column <= column - 1 && column - 1 < node.endPosition.column)));
     if (candidates.length !== 1) return;
     const selected = candidates[0]!;
-    const declarations = identifiers.map(declaration).filter((value): value is Declaration => !!value);
+    const declarations = identifiers.map(kotlinLexicalDeclaration).filter((value): value is Declaration => !!value);
     const byName = new Map(declarations.map(value => [value.name.id, value]));
     const byScope = new Map<number, Declaration[]>();
     for (const value of declarations) byScope.set(value.scope.id, [...(byScope.get(value.scope.id) ?? []), value]);

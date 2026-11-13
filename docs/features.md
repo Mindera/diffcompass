@@ -193,9 +193,14 @@ selected symbol's line and column. Without extra setup, Kotlin (`.kt` and `.kts`
 can find same-file declaration and usage candidates for properties, functions
 and parameters. The bundled parser respects explicit lexical scopes and
 shadowing, excludes comments and plain string text, and distinguishes `this`
-members from unknown receivers. Results are labelled **Kotlin syntax**; syntax
-the parser cannot read is reported as partial. This does not resolve receiver
-types, overloads, imports or references in other files.
+members from unknown receivers. Top-level classes, interfaces, objects and type
+aliases also have cross-file candidates based on Kotlin packages, explicit
+imports (including aliases), qualified names and unambiguous wildcard imports.
+Same-named types in different packages stay separate; duplicate declarations
+(including expect/actual pairs) need a project-aware provider. Results are
+labelled **Kotlin syntax**; unreadable syntax and scan limits are reported.
+This does not resolve receiver types, overloads, type-alias expansion, dependency
+sources or KMP source sets. Nested and local type lookups still use the fallback.
 
 For project-aware results, Kotlin supports `kotlin-lsp --stdio` or
 `kotlin-language-server` on DiffCompass's `PATH`.

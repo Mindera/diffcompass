@@ -109,6 +109,49 @@ function comparison(root: string, repositoryFiles: string[]): GitComparison {
   };
 }
 
+test("Kotlin classes resolve across packages, imports and aliases without an external server", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "symbol-peek-")); roots.push(root);
+  process.env.PATH = root;
+  const sources: Record<string, string> = {
+    "LeaveAllowance.kt": "package leave\ninterface Repository { fun get(): LeaveAllowance? }\ndata class LeaveAllowance(val days: Int)\n",
+    "Mapping.kt": "package dashboard\nimport leave.LeaveAllowance\nfun map(value: LeaveAllowance) = LeaveAllowance(2)\nfun LeaveAllowance.remaining() = days\n",
+    "Alias.kt": "package dashboard\nimport leave.LeaveAllowance as Allowance\nfun make(): Allowance = Allowance(3)\n",
+    "SamePackage.kt": "package leave\nfun make() = LeaveAllowance(4)\n",
+    "Qualified.kt": "package elsewhere\nfun make(): leave.LeaveAllowance = leave.LeaveAllowance(5)\n",
+    "Unrelated.kt": "package unrelated\nclass LeaveAllowance\nfun make() = LeaveAllowance()\n",
+    "OtherImport.kt": "package dashboard\nimport unrelated.LeaveAllowance\nfun make() = LeaveAllowance()\n",
+    "Noise.kt": 'package dashboard\nimport leave.LeaveAllowance\n// LeaveAllowance\nval text = "LeaveAllowance"\nfun named() = call(LeaveAllowance = 1)\nfun member(other: Other) = other.LeaveAllowance()\nfun <LeaveAllowance> generic(value: LeaveAllowance) = value\nfun shadow(LeaveAllowance: () -> Unit) = LeaveAllowance()\nfun local() { class LeaveAllowance; LeaveAllowance() }\n',
+  };
+  await Promise.all(Object.entries(sources).map(([path, source]) => writeFile(join(root, path), source)));
+  // Screenshot assets must not exhaust the Kotlin source budget.
+  const reviewed = comparison(root, [...Array.from({ length: 250 }, (_, i) => `image-${i}.png`), ...Object.keys(sources)]);
+  for (const request of [
+    { symbol: "LeaveAllowance", path: "LeaveAllowance.kt", line: 3 },
+    { symbol: "LeaveAllowance", path: "Mapping.kt", line: 3, column: 16 },
+    { symbol: "Allowance", path: "Alias.kt", line: 3, column: 13 },
+  ]) {
+    const result = await resolveSymbolPeek(reviewed, request);
+    expect(result.source).toBe("kotlin-syntax");
+    expect(result.definitions.map(({ path, line }) => ({ path, line }))).toEqual([{ path: "LeaveAllowance.kt", line: 3 }]);
+    expect(result.usages.map(({ path, line }) => `${path}:${line}`).sort()).toEqual([
+      "LeaveAllowance.kt:2", "Mapping.kt:2", "Mapping.kt:3", "Mapping.kt:4", "Alias.kt:2", "Alias.kt:3", "SamePackage.kt:2", "Qualified.kt:2", "Noise.kt:2",
+    ].sort());
+    expect(result.notice).toContain("packages and imports");
+    expect(result.truncated).toBe(false);
+  }
+});
+
+test("Kotlin class lookup leaves duplicate KMP declarations ambiguous and labels the fallback", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "symbol-peek-")); roots.push(root);
+  process.env.PATH = root;
+  await writeFile(join(root, "common.kt"), "package leave\nexpect class LeaveAllowance\n");
+  await writeFile(join(root, "actual.kt"), "package leave\nactual class LeaveAllowance\n");
+  const result = await resolveSymbolPeek(comparison(root, ["common.kt", "actual.kt"]), { symbol: "LeaveAllowance", path: "common.kt", line: 2 });
+  expect(result.source).toBe("repository-search");
+  expect(result.notice).toContain("Built-in Kotlin lookup");
+  expect(result.notice).toContain("ambiguous");
+});
+
 test("symbol peek returns definitions and usages from a bounded repository search", async () => {
   const root = await mkdtemp(join(import.meta.dir, "symbol-peek-"));
   roots.push(root);

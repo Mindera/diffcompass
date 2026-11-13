@@ -5,6 +5,7 @@ import { loadRepositoryFile } from "./git.ts";
 import { ReviewError } from "./errors.ts";
 import { runProcess } from "./process.ts";
 import { kotlinReferences } from "./kotlin-references.ts";
+import { kotlinTypeReferences } from "./kotlin-type-references.ts";
 import type { GitComparison } from "./types.ts";
 
 const MAX_SYMBOL_LENGTH = 200;
@@ -471,6 +472,20 @@ export async function resolveSymbolPeek(comparison: GitComparison, input: Symbol
   if (languageServer.result) return withPartialSymbolSuggestions(comparison, request, languageServer.result);
   const kotlin = await kotlinSyntaxResult(comparison, request, languageServer.notice);
   if (kotlin) return kotlin;
+  let kotlinNotice: string | undefined;
+  if (request.path && request.line && /\.kts?$/i.test(request.path) && request.side !== "old") {
+    const types = await kotlinTypeReferences(searchPaths(comparison, request), path => loadRepositoryFile(comparison, path, MAX_FILE_BYTES), { ...request, path: request.path, line: request.line });
+    if (types.result) {
+      const result = types.result;
+      const locations = await materializeLocations(comparison, [
+        { ...result.definition, kind: "definition" as const },
+        ...result.usages.map(location => ({ ...location, kind: "usage" as const })),
+      ]);
+      return sourceResult(request.symbol, "kotlin-syntax", locations.filter(location => location.kind === "definition"), locations.filter(location => location.kind === "usage"),
+        `Kotlin type candidates across repository files, following packages and imports, including aliases. Compiler type inference, dependency sources and KMP source-set selection are not available.${result.partial ? " Some Kotlin files could not be fully parsed or read; results may be incomplete." : ""}`, result.truncated);
+    }
+    kotlinNotice = types.notice ?? "Built-in Kotlin lookup could not resolve this source position or symbol kind.";
+  }
   const search = await searchRepositoryAsync(comparison, request);
   const definitions: SymbolPeekLocation[] = [];
   const usages: SymbolPeekLocation[] = [];
@@ -479,6 +494,6 @@ export async function resolveSymbolPeek(comparison: GitComparison, input: Symbol
   const fallback = matches.length
     ? "CodeGraph and a language server were unavailable; results come from a bounded repository search."
     : "No definition or usage was found. CodeGraph and a language server were unavailable, and repository search was bounded.";
-  const notice = `${languageServer.notice ?? ""} ${fallback}`.trim();
+  const notice = [kotlinNotice, languageServer.notice, fallback].filter(Boolean).join(" ");
   return withPartialSymbolSuggestions(comparison, request, sourceResult(request.symbol, "repository-search", definitions, usages, notice, search.truncated));
 }
