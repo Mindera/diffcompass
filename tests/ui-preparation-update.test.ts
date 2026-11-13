@@ -24,6 +24,7 @@ function harness(previous = snapshot()) {
   let tick: () => Promise<void>;
   let renders = 0;
   let explanationWrites = 0;
+  let readingWrites = 0;
   let renderedExplanation = "";
   let commentRenders = 0;
   let activityRenders = 0;
@@ -48,6 +49,7 @@ function harness(previous = snapshot()) {
     diff: { querySelectorAll: () => [anchor] },
     "feedback-button": { classList: { toggle() {}, remove() {} } },
     "tour-scroll": tourScroll,
+    "step-detail-body": { set innerHTML(_value: string) { readingWrites += 1; tourScroll.scrollTop = 0; } },
     "step-explanation": { set innerHTML(value: string) {
       explanationWrites += 1;
       renderedExplanation = value;
@@ -55,7 +57,7 @@ function harness(previous = snapshot()) {
     } },
   };
   const commentActions = app.slice(app.indexOf("async function saveInlineComment("), app.indexOf("async function askAgent("));
-  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", "renderMessages", "renderReviewerTaskAssessmentStatus", "renderActivities", "renderPullRequest", `${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
+  const run = new Function("state", "elements", "window", "api", "reviewIsOpen", "currentStep", "renderMarkdown", "renderAgentActivity", "renderSession", "beginCloseCountdownForTransition", "renderComments", "closeInlineCommentEditor", "toast", "renderFindings", "renderTour", "focusCurrentStep", "renderMessages", "renderReviewerTaskAssessmentStatus", "renderActivities", "renderPullRequest", `const tourReading = { render() { elements["step-detail-body"].innerHTML = "updated"; } }; ${helpers}\n${commentActions}\n${poll}\nreturn { classify: isInPlaceSessionUpdate, classifyNavigation: isSamePhaseNavigationUpdate, saveInlineComment, deleteReviewComment };`);
   const actions = run(state, elements, { setInterval(fn: () => Promise<void>) { tick = fn; } },
     async () => structuredClone(next), () => state.session.status === "open",
     () => state.session.outline.phases.flatMap((phase) => phase.steps)[state.session.currentStepIndex],
@@ -81,6 +83,7 @@ function harness(previous = snapshot()) {
     get tourRenders() { return tourRenders; },
     get focusCalls() { return focusCalls; },
     get explanationWrites() { return explanationWrites; },
+    get readingWrites() { return readingWrites; },
     get renderedExplanation() { return renderedExplanation; },
   };
 }
@@ -163,6 +166,15 @@ test("the current explanation appears immediately without moving either pane", a
   expect(h.tourScroll.scrollTop).toBe(430);
   expect(h.diffNode.scrollTop).toBe(1700);
   expect(h.renders).toBe(0);
+});
+
+test("prepared detail and notes update in place without losing reading position", async () => {
+  const previous = snapshot(), h = harness(previous), next = structuredClone(previous);
+  next.revision += 1;
+  Object.assign(next.outline.phases[0]!.steps[0]!, { explanationDetail: "Extra mechanics.", notes: [{ kind: "limitation", text: "A scoped limit", sources: [] }] });
+  await h.poll(next);
+  expect(h.renders).toBe(0); expect(h.readingWrites).toBe(1);
+  expect(h.explanationWrites).toBe(0); expect(h.tourScroll.scrollTop).toBe(430); expect(h.diffNode.scrollTop).toBe(1700);
 });
 
 test("structural updates and terminal state still render normally", async () => {

@@ -308,15 +308,12 @@ test("asks for short plain-language stop explanations", async () => {
   expect(event.prompt).toContain("If the state writer is not implemented yet");
   expect(event.prompt).toContain("label documented transitions as planned rather than verified runtime behavior");
   expect(event.prompt).toContain("Correct an unsupported premise instead of repeating it");
-  expect(event.prompt).toContain("a complete explanation needs no question");
   expect(event.prompt).toContain("next link in the tour's causal journey");
-  expect(event.prompt).toContain("Keep it under 150 words");
-  expect(event.prompt).toContain("Return only the finished reviewer-facing explanation");
-  expect(event.prompt).toContain("skill announcements, or tool-use commentary");
-  expect(event.prompt).toContain("Use short active sentences, one idea per sentence");
-  expect(event.prompt).toContain("Avoid metaphors and idioms");
-  expect(event.prompt).toContain("Do not predict, name, or summarize the next step");
-  expect(event.prompt).toContain("select Next when ready");
+  expect(event.prompt).toContain("at most 100 words");
+  expect(event.prompt).toContain("Most stops need no notes");
+  expect(event.prompt).toContain("Quotes are checked against captured Git source");
+  expect(event.prompt).toContain("A payload-free state does not prove a transition is reachable");
+  expect(event.prompt).toContain("Do not predict the next stop");
   expect(activities.at(-1)).toMatchObject({
     status: "waiting",
     label: "Preparing a tour stop",
@@ -325,8 +322,25 @@ test("asks for short plain-language stop explanations", async () => {
     totalSteps: 2,
   });
   await bridge.respond(event!.id, "The value now changes here. Check the result.");
-  expect((await pending).value).toBe("The value now changes here. Check the result.");
+  expect((await pending).value).toEqual({ summary: "The value now changes here. Check the result." });
   expect(activities.at(-1)).toMatchObject({ status: "completed" });
+});
+
+test("repairs unsupported explanation notes before returning a completed stop", async () => {
+  const bridge = new AttachedAgentBridge();
+  const agent = new TourAgent("/tmp/repository", { adapterId: "attached", modelId: "current-session" }, bridge);
+  const step = { id: "step", title: "Read code", objective: "Inspect the changed behavior", anchor: { path: "app.ts", side: "new" as const, startLine: 1, endLine: 1 } };
+  const pending = agent.explainStep(step, 0, 1, { title: "Review", summary: "Review", phases: [{ id: "phase", title: "Phase", summary: "Phase", fileChanges: [], steps: [step] }], callFlows: [], flows: [], findings: [] });
+  const [first] = await bridge.eventsAfter(0, 1_000);
+  if (!first || first.type !== "agent.prompt") throw new Error("Expected prompt");
+  await bridge.respond(first.id, JSON.stringify({ summary: "A summary.", notes: [{ kind: "test-gap", text: "There are no tests anywhere.", sources: [] }] }));
+  await bridge.ack(first.id);
+  const [retry] = await bridge.eventsAfter(first.sequence, 1_000);
+  if (!retry || retry.type !== "agent.prompt") throw new Error("Expected repair prompt");
+  expect(retry.prompt).toContain("Omit unsupported notes"); expect(retry.prompt).toContain("inspected scope");
+  await bridge.respond(retry.id, JSON.stringify({ summary: "The selected code changes the returned value.", detail: "Check its consumer in the captured source." }));
+  expect((await pending).value).toEqual({ summary: "The selected code changes the returned value.", detail: "Check its consumer in the captured source." });
+  agent.cancel();
 });
 
 test("bounds tour prompts to a first-read comparison and orders phases as conceptual layers", async () => {

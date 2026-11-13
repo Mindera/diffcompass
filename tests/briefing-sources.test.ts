@@ -176,6 +176,10 @@ test("new tours complete diagram source links before saving their first Briefing
     if (!linking || linking.type !== "agent.prompt") throw new Error("Missing source linking request");
     expect(linking.prompt).toContain("attaching inspected source");
     await session.bridge!.respond(linking.id, JSON.stringify({ decisions: decisions() })); await session.bridge!.ack(linking.id);
+    const explanation = (await session.bridge!.eventsAfter(linking.sequence, 3000)).find(event => event.type === "agent.prompt");
+    if (!explanation || explanation.type !== "agent.prompt") throw new Error("Missing grounded explanation request");
+    expect(explanation.kind).toBe("tour.explanation");
+    await session.bridge!.respond(explanation.id, JSON.stringify({ summary: "The named subtotal retains the original item reduction." })); await session.bridge!.ack(explanation.id);
     await generation;
     const persisted = await loadPersistedSession(stateFile);
     expect(persisted.outline!.briefing!.diagrams.find(d => d.id === diagramId)!.elements.find(e => e.id === callId)!.sourceReview?.status).toBe("bound");

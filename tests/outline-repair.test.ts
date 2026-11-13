@@ -62,6 +62,16 @@ test("repairs invalid call evidence with exact diagnostics and the original resp
   expect(result.receipts).toEqual([first.id, retry.id]);
 });
 
+test("keeps grouped anchors and importance while stripping generator-owned freshness and explanation fields", async () => {
+  const { bridge, pending } = start();
+  const value = outline(true);
+  Object.assign(value.phases[0]!.steps[0]!, { relatedAnchors: [{ path: "app.ts", side: "new", startLine: 1, endLine: 1 }], importance: "key", evidence: { version: 1, anchors: [] }, freshness: "current", outdated: false, explanation: "Unvalidated prose", notes: [{ text: "Unvalidated note" }] });
+  await respond(bridge, 0, value);
+  const step = (await pending).value.phases[0]!.steps[0]!;
+  expect(step.relatedAnchors).toHaveLength(1); expect(step.importance).toBe("key");
+  expect(step.evidence).toBeUndefined(); expect(step.freshness).toBeUndefined(); expect(step.explanation).toBeUndefined(); expect(step.notes).toBeUndefined();
+});
+
 test("after two retries keeps the valid route and scenarios with a bounded visible warning", async () => {
   const { bridge, pending } = start();
   const value = { ...outline(), planningNotes: Array.from({ length: 20 }, (_, i) => `Note ${i}`) };

@@ -47,6 +47,21 @@ or mark files reviewed. **Tour the code** continues into the guided walkthrough.
 The review sidebar has separate **Tour**, **Questions**, and **Comments** tabs,
 with drafts and reading positions retained when you switch between them.
 
+Tour stops start with a short summary and optional **More detail**, with **Key**,
+**Normal**, or **Supporting context** priority. **Read this step’s code** brings
+related before/after ranges together, including code from different files. Open
+a full file to explore or comment, then return to the same stop. Grounded notes
+include inspectable source quotes; most stops need none.
+
+**Not covered** lists changed blocks outside the tour, including partial coverage,
+generated files, and binary changes. It does not mark files reviewed. Content
+fingerprints follow unchanged blocks when line numbers shift and flag changed,
+missing, or ambiguous evidence as out of date. Older tours without fingerprints
+remain readable with an explicit unverified label. See the
+[guided reading guide](docs/guided-reading.md) for limits and saved-session behavior.
+
+![Related code from two files beside a concise tour explanation](docs/images/tour-reading.png)
+
 Briefing shares the Shiki/Monaco, Split/Unified, and Scroll/Wrap preferences with
 Changes. These choices follow you across repositories and resumed reviews, with
 separate layout and wrapping preferences for desktop and mobile.

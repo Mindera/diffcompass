@@ -69,6 +69,20 @@ function persistedSession(): PersistedReviewSession {
   };
 }
 
+test("persists bounded reading metadata and rejects malformed related anchors, notes and fingerprints", async () => {
+  const path = await temporaryStateFile(), session = persistedSession(), step = session.outline!.phases[0]!.steps[0]!;
+  step.relatedAnchors = [{ ...step.anchor, side: "old" }]; step.importance = "key"; step.explanationDetail = "Additional detail.";
+  step.notes = [{ kind: "limitation", text: "A scoped limitation.", sources: [{ anchor: step.anchor, quote: "return result;", blob: "a".repeat(40) }] }];
+  step.evidence = { version: 1, anchors: [step.anchor, ...step.relatedAnchors].map(anchor => ({ anchor, blocks: [{ fingerprint: "a".repeat(64), startOffset: 0, endOffset: 0 }] })) };
+  await savePersistedSession(path, session);
+  expect((await loadPersistedSession(path)).outline!.phases[0]!.steps[0]).toEqual(step);
+  for (const fields of [{ relatedAnchors: [{ ...step.anchor, path: "outside-phase.ts" }] }, { importance: "critical" }, { notes: [{ kind: "test-gap", text: "No tests", sources: [] }] }, { evidence: { version: 1, anchors: [] } }, { freshness: "trusted" }]) {
+    const invalid = structuredClone(session); Object.assign(invalid.outline!.phases[0]!.steps[0]!, fields);
+    await savePersistedSession(path, invalid);
+    await expect(loadPersistedSession(path)).rejects.toThrow("invalid schema");
+  }
+});
+
 test("persists a complete session atomically and with owner-only permissions where supported", async () => {
   const path = await temporaryStateFile();
   const expected = persistedSession();

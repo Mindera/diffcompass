@@ -1,3 +1,6 @@
+import { createTourReading } from "/tour-reading.mjs";
+let tourReading;
+let tourReadingReturn = false;
 import { refreshSequenceEvidence, sequenceEvidenceRevision, sequenceSourceSelection } from "/sequence-walkthrough-host.js";
 import { createMonacoRenderer } from "/monaco-controller.mjs";
 import { createBriefingCodeRenderer } from "/briefing-code.mjs";
@@ -1718,6 +1721,7 @@ function currentDiffRenderOptions() {
 }
 
 function syncDiffViewControls() {
+  tourReading?.sync();
   state.monacoRenderer?.sync();
   if (typeof briefingReader !== "undefined") briefingReader?.syncDiffView();
   elements.diff.classList.toggle("wrap-code", state.diffWrap === "wrap");
@@ -2064,6 +2068,7 @@ function visibleDiffFiles() {
 }
 
 async function ensureTourPhaseDiffs() {
+  if (tourReading?.active()) return;
   if (!state.tourMode || state.session.comparison.diffMode !== "file") return;
   const phase = currentPhase();
   if (!phase) return;
@@ -2170,6 +2175,7 @@ function restoreFileViewport(anchor) {
 }
 
 async function showChangedFile(path, line, side, requestedOffset, requestedContext, requestedFull, viewportOrigin) {
+  tourReading?.closeCode();
   if (state.tourMode && !filteredChangedFiles().some((file) => file.path === path)) {
     toast("That file belongs to another phase. Exit the tour to browse every changed file.", { duration: 9_000, tone: "warning" });
     return false;
@@ -4895,6 +4901,8 @@ function renderMapsNavigation() {
 }
 
 function renderActiveTab() {
+  tourReading?.sync();
+  document.getElementById("tour-reading-return").classList.toggle("hidden", !tourReadingReturn || state.activeTab !== "diff");
   if (state.activeTab === "screenshots" && !availableTabs().includes("screenshots")) state.activeTab = "diff";
   if (state.activeTab !== "diff") state.briefingSourceReturn = false;
   for (const tabName of ["briefing", "diff", "call-flows", "structural-blast-radius", "archify", "sequence", "dry-runs", "adaptive", "findings", "activity", "conversations", "screenshots", "pull-request"]) {
@@ -5133,6 +5141,7 @@ function updateCurrentStepReturnVisibility() {
   updateBriefingSourceReturnVisibility();
   currentStepReturnFrame = null;
   const button = elements["current-step-return"];
+  if (tourReading?.active()) { button.classList.add("hidden"); return; }
   if (!state.session || !state.tourMode || state.activeTab !== "diff" || !currentStep()) {
     button.classList.add("hidden");
     return;
@@ -5214,6 +5223,7 @@ function renderTourAnnotation() {
 }
 
 async function focusCurrentStep() {
+  if (tourReading?.active()) { elements["diff-panel"].scrollTop = 0; return; }
   const step = currentStep();
   if (!step || !state.tourMode || state.monacoRenderer?.hasDraft()) return;
   state.focusedStepId = step.id;
@@ -5481,6 +5491,7 @@ function renderTour() {
   elements["step-title"].textContent = step.title;
   elements["step-objective"].textContent = step.objective;
   elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
+  tourReading?.render(state.session, step);
   renderStepDiscussion();
   renderAgentActivity();
   const planningNotes = outline.planningNotes ?? [];
@@ -5659,7 +5670,7 @@ function isInPlaceSessionUpdate(previous, latest) {
       ...outline,
       phases: outline.phases.map((phase) => ({
         ...phase,
-        steps: phase.steps.map(({ explanation, ...step }) => step),
+        steps: phase.steps.map(({ explanation, explanationDetail, notes, ...step }) => step),
       })),
     } : outline,
   });
@@ -5681,7 +5692,7 @@ function isSamePhaseNavigationUpdate(previous, latest, { acrossPhases = false } 
       ...outline,
       phases: outline.phases.map((phase) => ({
         ...phase,
-        steps: phase.steps.map(({ explanation, ...step }) => step),
+        steps: phase.steps.map(({ explanation, explanationDetail, notes, ...step }) => step),
       })),
     } : outline,
   });
@@ -5710,6 +5721,7 @@ function renderInPlaceSessionUpdate(previous, { closeCommentEditor = false } = {
   if (step?.explanation !== oldStep?.explanation) {
     elements["step-explanation"].innerHTML = renderMarkdown(step.explanation || "Waiting for the agent…");
   }
+  if (step?.explanation !== oldStep?.explanation || step?.explanationDetail !== oldStep?.explanationDetail || JSON.stringify(step?.notes) !== JSON.stringify(oldStep?.notes)) tourReading?.render(state.session, step);
   if (commentsChanged || threadsChanged) renderComments();
   if (threadsChanged) renderPullRequest();
   if (JSON.stringify(previous.activities) !== JSON.stringify(state.session.activities)) renderActivities();
@@ -5940,6 +5952,7 @@ async function startTour() {
 }
 
 async function preparePhaseNavigation(session) {
+  if (tourReading?.active()) return [];
   if (!state.monacoRenderer?.active || !isSamePhaseNavigationUpdate(state.session, session, { acrossPhases: true }) || isSamePhaseNavigationUpdate(state.session, session)) return [];
   const step = session.outline.phases.flatMap(phase => phase.steps)[session.currentStepIndex];
   const phase = session.outline.phases.find(phase => phase.steps.some(candidate => candidate.id === step.id));
@@ -8408,6 +8421,32 @@ elements["briefing-source-return"].addEventListener("click", () => {
 });
 setFilePanelOpen(false);
 renderFocusMode();
+
+tourReading = createTourReading({
+  api, markdown: renderMarkdown, tokenHtml: syntaxTokenHtml,
+  view: () => ({ layout: state.diffLayout, wrap: state.diffWrap, tourMode: state.tourMode, activeTab: state.activeTab, syntaxTheme: state.syntaxTheme }),
+  highlight: async groups => (await api("/api/highlight", { method: "POST", body: JSON.stringify({ groups, theme: state.syntaxTheme }) })).groups,
+  canOpen: () => { if (state.busy || state.monacoRenderer?.hasDraft()) { toast("Save or cancel your draft and wait for navigation before opening another view."); return false; } return true; },
+  scrollTop: () => { activateReviewTab("diff"); elements["diff-panel"].scrollTop = 0; },
+  returnToDiff: () => { renderFilteredDiff(); void focusCurrentStep(); },
+  openFile: async anchor => {
+    const wasTour = state.tourMode;
+    if (state.tourMode) await toggleTourMode();
+    tourReadingReturn = wasTour || tourReadingReturn;
+    // Coverage and focused excerpts refer to the full comparison, including
+    // files hidden by a checkpoint filter.
+    if (state.session.comparisonView === "since-last-review") await switchComparisonView("full");
+    if (state.session.comparison.files.some(file => file.path === anchor.path)) await showChangedFile(anchor.path, anchor.startLine, anchor.side, undefined, undefined, true);
+    else await showRepositoryFile(anchor.path, anchor.startLine);
+    renderActiveTab();
+  },
+});
+document.getElementById("tour-reading-return").addEventListener("click", async () => {
+  if (state.busy || state.monacoRenderer?.hasDraft()) return toast("Save or cancel your draft before returning to the tour.");
+  tourReadingReturn = false;
+  if (!state.tourMode) await toggleTourMode();
+  tourReading.showCode(); renderActiveTab();
+});
 
 state.monacoRenderer = createMonacoRenderer({
   container: elements.diff, controls: document.querySelector(".diff-view-controls"), token: state.apiToken,
