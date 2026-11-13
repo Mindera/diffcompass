@@ -979,6 +979,7 @@ function setBusy(busy, label = "Working…") {
   elements["include-findings"].disabled = busy || state.session?.findingGenerationEnabled === false;
   elements["include-dry-runs"].disabled = busy;
   elements["tour-mode-toggle"].disabled = busy;
+  elements["current-step-return"].disabled = busy;
   elements["update-button"].disabled = busy || state.updateInProgress || elements["update-button"].classList.contains("updated");
   elements["refresh-button"].disabled = busy;
   elements["checkpoint-button"].disabled = busy;
@@ -2887,7 +2888,7 @@ function renderReviewOverview() {
   if (outline) {
     elements["review-overview-title"].textContent = outline.title;
     elements["review-overview-summary"].textContent = outline.summary;
-    elements["tour-mode-toggle"].textContent = state.tourMode ? "Exit tour" : "Resume tour";
+    elements["tour-mode-toggle"].classList.toggle("hidden", !state.tourMode);
     elements["tour-mode-toggle"].setAttribute("aria-pressed", String(Boolean(state.tourMode)));
   }
   elements["pull-request-description"].classList.toggle("hidden", !pullRequest);
@@ -5141,18 +5142,24 @@ function updateCurrentStepReturnVisibility() {
   updateBriefingSourceReturnVisibility();
   currentStepReturnFrame = null;
   const button = elements["current-step-return"];
-  if (tourReading?.active()) { button.classList.add("hidden"); return; }
-  if (!state.session || !state.tourMode || state.activeTab !== "diff" || !currentStep()) {
+  const paused = state.tourMode === false;
+  if (!state.session || !currentStep() || (paused ? !reviewIsOpen() : state.activeTab !== "diff" || tourReading?.active())) {
     button.classList.add("hidden");
     return;
   }
   const panel = elements["diff-panel"];
-  const target = elements.diff.querySelector(".tour-code-note.active")
-    ?? elements.diff.querySelector(".diff-row.tour-anchor, .markdown-source-block.tour-anchor");
   const panelBounds = panel.getBoundingClientRect();
   button.style.right = `${Math.max(12, window.innerWidth - panelBounds.right + 14)}px`;
-  button.style.bottom = `${Math.max(12, window.innerHeight - Math.min(window.innerHeight, panelBounds.bottom) + 14)}px`;
-  button.setAttribute("aria-label", `Return to current tour step ${state.session.currentStepIndex + 1}`);
+  button.style.bottom = `calc(${Math.max(12, window.innerHeight - Math.min(window.innerHeight, panelBounds.bottom) + 14)}px + max(var(--mobile-actions-height, 0px), var(--review-host-bottom-clearance, 0px)))`;
+  button.textContent = paused ? "Resume tour" : "↩ Current step";
+  button.setAttribute("aria-label", paused ? "Resume tour" : `Return to current tour step ${state.session.currentStepIndex + 1}`);
+  button.disabled = state.busy;
+  if (paused) {
+    button.classList.remove("hidden");
+    return;
+  }
+  const target = elements.diff.querySelector(".tour-code-note.active")
+    ?? elements.diff.querySelector(".diff-row.tour-anchor, .markdown-source-block.tour-anchor");
   if (state.monacoRenderer?.owns(currentStep().anchor.path)) {
     button.classList.toggle("hidden", state.monacoRenderer.isStepVisible(currentStep()));
     return;
@@ -8413,7 +8420,7 @@ elements["comment-list"].addEventListener("change", async (event) => {
 });
 
 elements["update-button"].addEventListener("click", installUpdate);
-elements["current-step-return"].addEventListener("click", () => void focusCurrentStep());
+elements["current-step-return"].addEventListener("click", () => void (state.tourMode ? focusCurrentStep() : beginPreparedTour()));
 elements["pull-request-return"].addEventListener("click", returnToPullRequest);
 elements["briefing-source-return"].addEventListener("click", () => {
   activateReviewTab("briefing");

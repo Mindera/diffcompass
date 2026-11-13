@@ -12,6 +12,9 @@ code** returns to its current stop. Existing question and comment drafts retain
 their original context. Source excerpts are read-only; line comments use the full
 file view.
 
+While the tour is paused, a floating **Resume tour** button stays at the bottom
+of the review pane as you scroll or switch tabs. It returns to the same stop.
+
 ## Coverage
 
 **Not covered** lists changed diff blocks not fully addressed by current tour
