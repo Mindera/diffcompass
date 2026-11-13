@@ -123,6 +123,32 @@ function validPreparation(value: unknown): boolean {
     ["briefingError", "stepsError", "findingsError"].every(key => value[key] === undefined || nonEmptyString(value[key], 2000));
 }
 
+function validTourReading(step: Record<string, unknown>, paths: Set<string>): boolean {
+  if (step.relatedAnchors !== undefined && (!Array.isArray(step.relatedAnchors) || step.relatedAnchors.length > 7 || !step.relatedAnchors.every(anchor => validAnchor(anchor) && paths.has(anchor.path) && anchor.endLine - anchor.startLine <= 500))) return false;
+  if (step.importance !== undefined && !["key", "normal", "context"].includes(String(step.importance))) return false;
+  if (step.explanationDetail !== undefined && !nonEmptyString(step.explanationDetail, 500_000)) return false;
+  if (step.freshness !== undefined && !["current", "outdated", "unverified"].includes(String(step.freshness))) return false;
+  if (step.missingEvidence !== undefined && (!Number.isSafeInteger(step.missingEvidence) || Number(step.missingEvidence) < 0 || Number(step.missingEvidence) > 4_008)) return false;
+  if (step.notes !== undefined && (!Array.isArray(step.notes) || step.notes.length > 2 || !step.notes.every(note => record(note) &&
+    ["decision", "upkeep", "limitation", "divergence", "test-gap"].includes(String(note.kind)) && nonEmptyString(note.text, 2_000) &&
+    (note.scope === undefined || nonEmptyString(note.scope, 2_000)) && (note.kind !== "test-gap" || nonEmptyString(note.scope, 2_000)) &&
+    (note.outdated === undefined || typeof note.outdated === "boolean") && Array.isArray(note.sources) && note.sources.length >= (note.kind === "divergence" ? 2 : 1) && note.sources.length <= 4 &&
+    note.sources.every(source => record(source) && validAnchor(source.anchor) && nonEmptyString(source.quote, 20_000) &&
+      (source.blob === undefined || (typeof source.blob === "string" && /^[0-9a-f]{40,64}$/.test(source.blob))))))) return false;
+  const evidence = step.evidence;
+  if (evidence !== undefined) {
+    if (!record(evidence) || evidence.version !== 1 || !Array.isArray(evidence.anchors) || evidence.anchors.length !== 1 + (Array.isArray(step.relatedAnchors) ? step.relatedAnchors.length : 0)) return false;
+    for (const saved of evidence.anchors) {
+      if (!record(saved) || !validAnchor(saved.anchor) || !Array.isArray(saved.blocks) || saved.blocks.length > 501) return false;
+      for (const block of saved.blocks) {
+        if (!record(block) || typeof block.fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(block.fingerprint) ||
+          !Number.isSafeInteger(block.startOffset) || Number(block.startOffset) < 0 || !Number.isSafeInteger(block.endOffset) || Number(block.endOffset) < Number(block.startOffset)) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function validOutline(value: unknown): boolean {
   if (!record(value) || !nonEmptyString(value.title, 8_000) || !nonEmptyString(value.summary, 50_000)) return false;
   if (value.planningNotes !== undefined && (!Array.isArray(value.planningNotes) || value.planningNotes.length > 20 || !value.planningNotes.every((note) => nonEmptyString(note, 2_000)))) return false;
@@ -150,6 +176,7 @@ function validOutline(value: unknown): boolean {
       if (!record(step) || !nonEmptyString(step.id, 128) || stepIds.has(step.id) || !nonEmptyString(step.title, 8_000) ||
         !nonEmptyString(step.objective, 50_000) || !validAnchor(step.anchor) || !filePaths.has(String((step.anchor as Record<string, unknown>).path)) ||
         (step.explanation !== undefined && !nonEmptyString(step.explanation, 500_000)) ||
+        !validTourReading(step, filePaths) ||
         (step.outdated !== undefined && typeof step.outdated !== "boolean")) return false;
       stepIds.add(step.id);
       phaseSteps.set(step.id, step);

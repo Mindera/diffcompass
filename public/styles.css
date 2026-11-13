@@ -1742,3 +1742,31 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .monaco-file-header [aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
 .monaco-file-status { color: var(--accent); text-transform: uppercase; font-size: 11px; margin-right: 7px; }
 .monaco-file-counts { display: inline-flex; gap: 5px; margin-right: 7px; }
+
+/* Guided reading: keep source groups spacious without moving the reviewer’s diff. */
+.tour-code-hidden { display: none !important; }
+.tour-code-view { padding: 16px; }
+.tour-code-heading, .tour-code-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tour-code-heading { margin-bottom: 12px; }
+.tour-code-heading h2 { font-size: 20px; margin: 0; }
+.tour-code-group { margin: 20px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.tour-code-group > header { padding: 12px; flex-wrap: wrap; background: var(--panel); }
+.tour-code-group > header .text-button { overflow-wrap: anywhere; text-align: left; }
+.tour-code-group > header > span { color: var(--muted); font-size: 12px; }
+.tour-code-group > p { padding: 0 12px; }
+.tour-step-detail, .tour-reading-note { margin: 12px 0; font-size: 12px; line-height: 1.52; }
+.tour-step-detail > summary, .tour-reading-note summary { cursor: pointer; color: var(--accent); }
+.tour-reading-note { border-left: 3px solid var(--accent); padding: 8px 12px; background: var(--panel); border-radius: 4px; }
+.tour-reading-note p { margin: 8px 0; }
+.tour-reading-note pre { overflow: auto; max-height: 200px; font-size: 12px; }
+.tour-freshness { border-left: 3px solid var(--warning, #e8b35e); padding: 10px; background: var(--panel); font-size: 12px; line-height: 1.52; }
+#tour-step-code { padding: 6px 10px; font-size: 12px; line-height: 1.5; }
+.tour-related { display: grid; gap: 8px; margin-top: 10px; }
+.tour-related button { text-align: left; overflow-wrap: anywhere; font-size: 12px; }
+.tour-coverage { padding: 12px; margin: 16px 0; border: 1px solid var(--border); border-radius: 10px; }
+.tour-coverage summary { display: flex; justify-content: space-between; cursor: pointer; gap: 12px; }
+.tour-coverage ul { padding-left: 18px; }
+.tour-coverage li { margin: 14px 0; }
+.tour-coverage button { text-align: left; overflow-wrap: anywhere; }
+.tour-coverage p { font-size: 13px; color: var(--muted); }
+#tour-reading-return { bottom: 110px; right: 16px; z-index: 30; }

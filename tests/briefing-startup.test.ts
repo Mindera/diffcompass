@@ -44,7 +44,8 @@ async function fixture() {
   };
   (session as unknown as { createAgent: () => TourAgent }).createAgent = factory;
   return { session, repository, stateFile, requests, workers,
-    get steps() { return steps; }, get briefing() { return briefing; }, explanation, get findings() { return findings; },
+    get steps() { return steps; }, get briefing() { return briefing; }, get explanation() { return explanation; }, get findings() { return findings; },
+    retryExplanation() { explanation = deferred<string>(); },
     retryFindings() { findings = deferred<string>(); },
     retrySteps() { steps = deferred<string>(); }, retryBriefing() { briefing = deferred<string>(); } };
 }
@@ -74,13 +75,21 @@ test("shared analysis fans out; verified briefing opens before steps and finding
   const documentId = f.session.outline!.briefing!.id;
   f.steps.resolve(JSON.stringify({ phases }));
   await until(() => f.requests.some(p => p.includes("focused findings auditor")));
-  f.explanation.resolve("The exported value changes from one to two.");
+  const audit = f.requests.find(p => p.includes("focused findings auditor"))!;
+  expect(audit).toContain(f.session.comparison.sourceTree!);
+  expect(audit).toContain(f.session.comparison.patch);
+  f.explanation.resolve(JSON.stringify({ summary: "The exported value changes from one to two.", detail: "Consumers use the exported constant.", notes: [{ kind: "decision", text: "The module exports two.", sources: [{ anchor: phases[0]!.steps[0]!.anchor, quote: "export const value = 2;" }] }] }));
   await until(() => f.session.outline?.preparation?.steps === "ready");
   expect(f.session.snapshot().tourState).toBe("active");
+  expect(f.session.snapshot().tourCoverage).toMatchObject({ total: 1, covered: 1, unverifiedSteps: 0 });
+  expect(f.session.outline?.phases[0]?.steps[0]?.freshness).toBe("current");
+  expect(f.session.outline?.phases[0]?.steps[0]?.explanationDetail).toBe("Consumers use the exported constant.");
+  expect(f.session.outline?.phases[0]?.steps[0]?.notes?.[0]?.sources[0]?.blob).toMatch(/^[0-9a-f]{40,64}$/);
   expect(f.session.outline?.preparation?.findings).toBe("pending");
   expect(f.session.outline?.briefing?.id).toBe(documentId);
   f.findings.resolve('{"candidateDecisions":[],"findings":[]}');
-  await until(() => f.session.outline?.preparation?.findings === "ready");
+  await until(() => f.session.outline?.preparation?.findings !== "pending");
+  expect(f.session.outline?.preparation?.findings).toBe("ready");
   expect((await loadPersistedSession(f.stateFile)).outline?.phases[0]?.steps[0]?.explanation).toContain("one to two");
 });
 
@@ -164,4 +173,22 @@ test("failed findings audit can retry without rewriting the briefing or steps", 
   f.findings.resolve('{"candidateDecisions":[],"findings":[]}');
   await until(() => f.session.outline?.preparation?.findings === "ready");
   expect(f.requests.filter(p => p.includes("Return only the briefingProposal") || p.includes("Prepare tour steps from"))).toHaveLength(before);
+});
+
+
+test("retrying the first explanation retains captured source for grounded reading notes", async () => {
+  const f = await fixture(); const starting = f.session.startTour(selection);
+  await until(() => f.requests.some(p => p.includes("Return only the briefingProposal")));
+  f.briefing.resolve(JSON.stringify(proposal)); f.steps.resolve(JSON.stringify({ phases }));
+  f.findings.resolve('{"candidateDecisions":[],"findings":[]}');
+  await starting;
+  await until(() => f.requests.some(p => p.includes("Tour step 1 of")));
+  f.explanation.reject(new Error("Explanation unavailable"));
+  await until(() => f.session.outline?.preparation?.steps === "failed");
+  f.retryExplanation(); await f.session.startTour();
+  f.explanation.resolve(JSON.stringify({ summary: "The value becomes two.", notes: [{ kind: "decision", text: "The constant is exported.", sources: [{ anchor: phases[0]!.steps[0]!.anchor, quote: "export const value = 2;" }] }] }));
+  await until(() => f.session.outline?.preparation?.steps !== "pending");
+  expect(f.session.outline?.preparation?.steps).toBe("ready");
+  expect(f.session.outline?.phases[0]?.steps[0]?.notes?.[0]?.sources[0]?.blob).toMatch(/^[0-9a-f]{40,64}$/);
+  expect(f.requests.filter(p => p.includes("Prepare tour steps from"))).toHaveLength(1);
 });

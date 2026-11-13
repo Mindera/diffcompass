@@ -89,8 +89,40 @@ export interface TourStep {
   title: string;
   objective: string;
   anchor: TourAnchor;
+  /** Other changed source ranges needed to explain the same behavior. */
+  relatedAnchors?: TourAnchor[];
+  importance?: "key" | "normal" | "context";
   explanation?: string;
+  explanationDetail?: string;
+  notes?: TourNote[];
+  /** Captured by the server, never trusted from a generated outline. */
+  evidence?: TourStepEvidence;
+  freshness?: "current" | "outdated" | "unverified";
+  missingEvidence?: number;
   outdated?: boolean;
+}
+
+export interface TourNote {
+  kind: "decision" | "upkeep" | "limitation" | "divergence" | "test-gap";
+  text: string;
+  /** Scope is required for absence claims; source quotes are checked separately. */
+  scope?: string;
+  sources: Array<{ anchor: TourAnchor; quote: string; blob?: string }>;
+  outdated?: boolean;
+}
+
+export interface TourStepEvidence {
+  version: 1;
+  anchors: Array<{
+    anchor: TourAnchor;
+    blocks: Array<{ fingerprint: string; startOffset: number; endOffset: number }>;
+  }>;
+}
+
+export interface TourExplanation {
+  summary: string;
+  detail?: string;
+  notes?: TourNote[];
 }
 
 export interface TourFileChange {

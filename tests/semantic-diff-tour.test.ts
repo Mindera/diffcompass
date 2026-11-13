@@ -127,14 +127,14 @@ test("agent requests captured facts after live edits, with unchanged source navi
   if (!event || event.type !== "agent.prompt") throw new Error("Expected tour prompt");
   const evidence = data(event.prompt);
   expect(evidence.status).toBe("analysed"); expect(evidence.changes.find((entry: SemanticChange) => entry.name === "total").inputs.added).toEqual([{ name: "discount", optional: true }]);
-  expect(event.prompt).not.toContain("liveOnly"); expect(event.prompt).toContain(fixture.comparison.patch); expect(event.prompt).toContain("Anchor: cart.ts:1-1 (new side)");
+  expect(event.prompt).not.toContain("liveOnly"); expect(event.prompt).toContain(fixture.comparison.patch); expect(event.prompt).toContain("Code ranges for this stop: cart.ts:1-1 (new side)");
   expect(event.prompt).toContain("A review question is optional"); expect(event.prompt).toContain("do not pair ambiguous versions or infer rationale");
   expect(event.prompt).toContain(`Captured source: before ${fixture.comparison.mergeBase}, after ${fixture.comparison.sourceTree}`);
   expect(event.prompt).toContain("inspect these exact Git objects with git show");
   expect(event.prompt).toContain("Never substitute current workspace files");
   expect(cachedSemanticSummaries(fixture.comparison)).toHaveLength(1);
   await bridge.respond(event.id, "The total accepts an optional discount. Check the omitted-discount case.");
-  expect((await pending).value).toContain("optional discount"); agent.cancel();
+  expect((await pending).value.summary).toContain("optional discount"); agent.cancel();
   const added = data(await syntaxContextForTourStep(fixture.comparison, { ...realStep, anchor: { ...realStep.anchor, path: "New.kt" } }));
   expect(added.language).toBe("kotlin"); expect(added.changes[0].categories).toEqual(["added"]);
   const removed = data(await syntaxContextForTourStep(fixture.comparison, { ...realStep, anchor: { ...realStep.anchor, path: "removed.ts", side: "old" } }));

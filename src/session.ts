@@ -1,3 +1,5 @@
+import { captureTourEvidence, reconcileTourEvidence, tourCode, tourCoverage } from "./tour-evidence.ts";
+import { explanationFields, reconcileTourNotes } from "./tour-reading.ts";
 import { captureBriefingDiagrams } from "./briefing-diagrams.ts";
 import { buildBriefing, briefingFingerprint, briefingIntent, resolveBriefingQuestion, type BriefingQuestionRequest } from "./briefing.ts";
 import { captureBriefingDiffs } from "./briefing-diff.ts";
@@ -182,6 +184,7 @@ export class ReviewSession {
   private readonly sessionName?: string;
   private readonly archived: boolean;
   private fullComparison: GitComparison;
+  private coverageCache?: { comparison: GitComparison; signature: string; value: ReturnType<typeof tourCoverage> };
   private currentRevisionSummary: RevisionSummary;
   private currentSinceFiles: DiffFile[] = [];
   private resolveClosed!: (outcome: ReviewOutcome) => void;
@@ -249,6 +252,7 @@ export class ReviewSession {
     this.comparisonView = persisted?.comparisonView ?? "full";
     this.selectedCheckpointId = persisted?.selectedCheckpointId;
     this.fullComparison = comparison;
+    reconcileTourEvidence(this.outline, comparison);
     this.currentRevisionSummary = { changedFiles: 0, additions: 0, deletions: 0, newFiles: [], changedAgainFiles: [], resolvedFiles: [], unchangedFiles: [], text: "No review checkpoint yet. Create one before refreshing to preserve reviewed files." };
     this.selection = persisted?.selection
       ? {
@@ -694,9 +698,8 @@ export class ReviewSession {
         comment.status = range.lineContent === comment.lineContent && (!comment.context || range.context === comment.context) ? "active" : "outdated";
       } catch { comment.status = "outdated"; }
     }
-    for (const step of tourSteps(this.outline)) {
-      step.outdated = changedPaths.has(step.anchor.path) || !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
-    }
+    reconcileTourEvidence(this.outline, full);
+    await reconcileTourNotes(this.outline, full);
     for (const finding of this.outline?.findings ?? []) {
       const row = this.findRow(finding.path, finding.side, finding.line);
       finding.outdated = changedPaths.has(finding.path) || row?.content !== finding.lineContent;
@@ -909,6 +912,7 @@ export class ReviewSession {
     const session = new ReviewSession(comparison, adapters, { ...defaults, attached, preferences, includeFindings }, bridge, persisted, globalDiffPreferences);
     // Renderer choice belongs to the reviewer, including when resuming an older review.
     session.diffRenderer = await loadGlobalDiffRenderer(preferenceDirectory);
+    await reconcileTourNotes(session.outline, session.fullComparison);
     await session.selectComparisonView();
     await session.updateRevisionSummary(session.fullComparison).catch(() => undefined);
     if (session.outline && !session.outline.briefing && !session.outline.preparation) session.outline.briefing = await buildBriefing(session.comparison, session.outline, session.briefingIntent());
@@ -1037,6 +1041,20 @@ export class ReviewSession {
     this.agentActivity = structuredClone(interactive ?? background ?? latestTerminal ?? activity);
   }
 
+  tourCode(stepId: string) {
+    const step = tourSteps(this.outline).find(step => step.id === stepId);
+    if (!step) throw new ReviewError("This tour stop does not exist.");
+    return { ...tourCode(step, this.fullComparison), revision: this.revision };
+  }
+
+  private currentTourCoverage() {
+    const signature = JSON.stringify(tourSteps(this.outline).map(step => [step.anchor, step.relatedAnchors, step.freshness, step.outdated]));
+    if (this.coverageCache?.comparison !== this.fullComparison || this.coverageCache.signature !== signature) {
+      this.coverageCache = { comparison: this.fullComparison, signature, value: tourCoverage(this.outline, this.fullComparison) };
+    }
+    return structuredClone(this.coverageCache.value);
+  }
+
   snapshot() {
     const { patch: _patch, ...rawComparison } = this.comparison;
     const diffRowCount = rawComparison.files.reduce(
@@ -1076,6 +1094,7 @@ export class ReviewSession {
     return {
       comparison,
       outline,
+      tourCoverage: this.currentTourCoverage(),
       currentStepIndex: this.currentStepIndex,
       comments: this.comments.map(comment => {
         const githubUnavailableReason = this.githubCommentUnavailableReason(comment);
@@ -1485,13 +1504,14 @@ export class ReviewSession {
         const current = tourSteps(this.outline).find((candidate) => candidate.id === stepId);
         if (!current || current.explanation) return;
         const previousRevision = this.revision;
-        current.explanation = generated.value;
+        const previous = { explanation: current.explanation, explanationDetail: current.explanationDetail, notes: current.notes };
+        Object.assign(current, explanationFields(generated.value));
         this.revision += 1;
         try {
           await this.persistAgentResult(generated.receipts);
         } catch (error) {
-          if (current.explanation === generated.value && this.revision === previousRevision + 1) {
-            current.explanation = undefined;
+          if (current.explanation === generated.value.summary && this.revision === previousRevision + 1) {
+            Object.assign(current, previous);
             this.revision = previousRevision;
           }
           throw error;
@@ -1705,7 +1725,7 @@ export class ReviewSession {
           const explanation = await this.agent.explainStep(step, this.currentStepIndex, steps.length, this.outline);
           receipts.push(...explanation.receipts);
           this.ensureComparisonCurrent(comparisonGeneration);
-          step.explanation = explanation.value;
+          Object.assign(step, explanationFields(explanation.value));
         }
         this.ensureOpen();
         this.revision += 1;
@@ -1786,12 +1806,15 @@ export class ReviewSession {
 
   private async prepareSteps(id: string, generation: number) {
     const worker = this.createWorkerAgent(), comparison = this.comparison;
+    worker.useComparison(comparison);
     try {
       let outline = structuredClone(this.outline!);
       if (!tourSteps(outline).length) {
         const generated = await worker.createTourSteps(comparison, outline);
         await this.commitPreparation(id, generation, current => {
           current.phases = generated.value.phases;
+          for (const step of tourSteps(current)) step.evidence = captureTourEvidence(step, comparison);
+          reconcileTourEvidence(current, this.fullComparison);
           this.currentStepIndex = 0;
         }, generated.receipts);
         outline = structuredClone(this.outline!);
@@ -1800,7 +1823,7 @@ export class ReviewSession {
       const steps = tourSteps(outline), first = steps[0]!;
       if (!first.explanation) {
         const generated = await worker.explainStep(first, 0, steps.length, outline);
-        await this.commitPreparation(id, generation, current => { tourSteps(current)[0]!.explanation = generated.value; }, generated.receipts);
+        await this.commitPreparation(id, generation, current => { Object.assign(tourSteps(current)[0]!, explanationFields(generated.value)); }, generated.receipts);
       }
       await this.commitPreparation(id, generation, current => { current.preparation!.steps = "ready"; });
       this.scheduleNextStepPrefetch();
@@ -1866,7 +1889,7 @@ export class ReviewSession {
           await this.persistAgentResult(receipts);
           return this.snapshot();
         }
-        step.explanation = explanation.value;
+        Object.assign(step, explanationFields(explanation.value));
       }
       this.ensureOpen();
       this.currentStepIndex = index;
@@ -2576,9 +2599,6 @@ export class ReviewSession {
           comment.status = "outdated";
         }
       }
-      for (const step of tourSteps(this.outline)) {
-        step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
-      }
       this.refreshFindingLifecycles();
       if (proposal && proposed && activeRequest) {
         this.recordAgentActivity(activeRequest.baselineComparison.files, proposed.files, context, proposal);
@@ -2749,7 +2769,6 @@ export class ReviewSession {
             comment.status = "outdated";
           }
         }
-        for (const step of tourSteps(this.outline)) step.outdated = !this.findRow(step.anchor.path, step.anchor.side, step.anchor.startLine);
         this.refreshFindingLifecycles();
         await this.persist();
         return this.snapshot();

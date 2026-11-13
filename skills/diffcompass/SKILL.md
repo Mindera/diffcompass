@@ -158,6 +158,31 @@ diffcompass bridge ack --url URL --token-file TOKEN_FILE --event EVENT_ID --leas
 
 Never invent feedback not present in the event. Every repository change after review closure must be directly required to resolve the submitted note or comments. Preserve unrelated work and report independently discovered issues separately instead of including them in the feedback implementation. If implementation needs authority beyond the review scope, stop and ask the user before making that change.
 
+### Focused tour reading
+
+A stop may include `relatedAnchors` (up to seven additional changed ranges, using
+the primary anchor shape) to explain one behavior across implementation, callers,
+and tests. Include each related path in that phase's `fileChanges`. Optional
+`importance` is `key`, `normal`, or `context`; use it to express reading priority,
+not to meet a quota. Keep file summaries complete without inventing stops merely
+to fill coverage. The UI lists changed blocks not fully covered by current stops,
+including generated and binary changes. Tour coverage is separate from files the
+reviewer marks reviewed.
+
+For `tour.explanation`, follow the event's JSON contract: a standalone short
+`summary`, optional expandable `detail`, and usually no `notes`. A useful note
+may describe a decision, upkeep, limitation, divergence, or scoped test evidence
+gap. Cite exact complete lines from captured Git source for each note. For a test
+gap name the inspected test files and cases; for divergence cite both sources.
+Quote validation checks provenance, not the correctness of the inference. Keep
+applying the behavioral evidence check below. Never supply server-owned content
+fingerprints, freshness flags, or explanations in an outline response.
+
+The UI can group related before/after code, open a full file, and return to the
+same tour stop. Content fingerprints relocate unchanged blocks after line shifts;
+changed, missing, or ambiguous code makes a stop stale. Older saved tours without
+fingerprints are explicitly unverified rather than retroactively validated.
+
 ### Behavioral evidence for tour prose
 
 Apply this check to outline objectives and summaries as well as stop explanations.
