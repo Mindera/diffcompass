@@ -161,8 +161,11 @@ function createBriefingReader(options) {
   new ResizeObserver(() => { if (scroll.clientWidth !== width) { width = scroll.clientWidth; restoreAnchor(); } }).observe(scroll);
   function render(value) {
     const nextDocument = value?.outline?.briefing ?? null;
-    const hasTour = Boolean(options.onTour && value?.outline?.phases?.some(phase => phase.steps.length));
-    const identity = `${nextDocument ? `${nextDocument.id}:${Boolean(nextDocument.outdated)}` : value?.outline ? "legacy" : "empty"}:${hasTour}`;
+    const preparation = value?.outline?.preparation;
+    const hasTour = Boolean(options.onTour && (!preparation || preparation.steps === "ready") && value?.outline?.phases?.some(phase => phase.steps.length));
+    const failed = preparation && [preparation.briefing, preparation.steps, preparation.findings].includes("failed");
+    const progress = preparation ? `<aside role="status" class="briefing-preparation">${preparation.steps === "pending" ? `<p>Preparing tour steps in the background.${nextDocument ? ' The briefing is ready to read.' : ''}</p>` : ''}${preparation.findings === "pending" ? '<p>Findings audit pending.</p>' : ''}${["briefing", "steps", "findings"].filter(part => preparation[part] === "failed").map(part => `<p>${esc(part)} preparation failed: ${esc(preparation[`${part}Error`] ?? "Retry to continue.")}</p>`).join("")}${failed && options.onRetry ? '<button type="button" class="button secondary" data-briefing-retry>Retry preparation</button>' : ''}</aside>` : "";
+    const identity = `${nextDocument ? `${nextDocument.id}:${Boolean(nextDocument.outdated)}` : value?.outline ? "legacy" : "empty"}:${hasTour}:${JSON.stringify(preparation)}`;
     if (identity === rendered) { session = value; document = nextDocument; renderChips(); return; }
     rememberAnchor(); saveReadingState();
     const sameDocument = document?.id === nextDocument?.id && document?.fingerprint === nextDocument?.fingerprint;
@@ -182,11 +185,11 @@ function createBriefingReader(options) {
     const tools = `<div class="briefing-reader-tools" role="group" aria-label="Briefing layout">${controls("Diff layout", "layout", ["split", "unified"], codeView.layout)}${controls("Long lines", "wrap", ["scroll", "wrap"], codeView.wrap)}<button type="button" class="briefing-layout-button" data-briefing-wide aria-pressed="${wide}" title="${wide ? "Use the standard reading width" : "Use a wider reading column"}">Wide briefing</button></div>`;
     const heading = tools + `<header class="briefing-heading"><div class="eyebrow">${esc(repository)} · ${esc(branch)} · Briefing</div><h1>${esc(document?.title ?? value?.outline?.title ?? "Understand this change")}</h1></header>`;
     if (!document) {
-      view.innerHTML = heading + `<p>${esc(value?.outline?.summary ?? "Prepare a walkthrough to explore the intent, behavior, and design of this change.")}</p><button type="button" class="button primary" data-briefing-generate>${value?.outline ? "Generate Briefing" : "Prepare walkthrough"}</button>`;
+      view.innerHTML = heading + progress + `<p>${esc(value?.outline?.summary ?? "Prepare a walkthrough to explore the intent, behavior, and design of this change.")}</p><button type="button" class="button primary" data-briefing-generate ${preparation?.briefing === "pending" ? "disabled" : ""}>${preparation?.briefing === "pending" ? "Preparing briefing…" : value?.outline ? "Generate Briefing" : "Prepare walkthrough"}</button>`;
       outline.innerHTML = '<p class="muted">Briefing</p>'; renderInspector(); return;
     }
     outline.innerHTML = `<div class="eyebrow">In this change</div><nav aria-label="Briefing sections">${document.sections.map(s => action(s.title, `data-briefing-section="${esc(s.id)}"`)).join("")}</nav><p class="briefing-version">${document.mode === "overview" ? "Basic overview · from saved tour" : "Authored walkthrough"}</p><button type="button" class="text-button" data-briefing-generate>Regenerate Briefing</button>${document.outdated ? '<p role="status" class="briefing-stale">Source or intent changed. This is the saved snapshot.</p>' : ''}`;
-    view.innerHTML = heading + document.sections.map((section, sectionIndex) => {
+    view.innerHTML = heading + progress + document.sections.map((section, sectionIndex) => {
       const opening = sectionIndex === 0;
       const content = section.blocks.map((block, blockIndex) => blockHtml(block, opening && blockIndex === 0)).join("");
       return `<section id="briefing-section-${esc(section.id)}" class="briefing-section${opening ? " briefing-opening" : ""}"><h2>${esc(section.title)}</h2>${content}</section>`;
@@ -436,6 +439,7 @@ function createBriefingReader(options) {
       return;
     }
     if (el.hasAttribute("data-briefing-generate")) return void options.onGenerate?.();
+    if (el.hasAttribute("data-briefing-retry")) return void Promise.resolve(options.onRetry?.()).catch(error => options.notify?.(error.message));
     if (el.hasAttribute("data-briefing-tour")) return void Promise.resolve(options.onTour?.()).catch(error => options.notify?.(error.message));
     if (el.dataset.briefingLayout || el.dataset.briefingWrap) {
       rememberAnchor();

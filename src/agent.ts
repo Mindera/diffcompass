@@ -157,12 +157,12 @@ export function buildCopilotArgs(prompt: string, sessionId: string, model?: stri
   ];
 }
 
-function parseOutline(message: string): TourOutline {
+function parseOutline(message: string, analysisOnly = false): TourOutline {
   const start = message.indexOf("{");
   const end = message.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("The agent did not return a tour outline.");
   const value = JSON.parse(message.slice(start, end + 1)) as TourOutline;
-  if (!generatedString(value.title, 8_000) || !generatedString(value.summary, 50_000) || !Array.isArray(value.phases) || value.phases.length === 0 || value.phases.length > 50) {
+  if (!generatedString(value.title, 8_000) || !generatedString(value.summary, 50_000) || !Array.isArray(value.phases) || (!analysisOnly && value.phases.length === 0) || value.phases.length > 50) {
     throw new Error("The agent returned an invalid tour outline.");
   }
   return {
@@ -506,11 +506,11 @@ function issueAssessmentPromptContext(issue: LinkedIssueContext | undefined): st
   ].join("\n");
 }
 
-function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy, includeArchitecture: boolean, includeAdaptiveDiagrams: boolean, includeDryRuns: boolean, issue?: LinkedIssueContext): TourOutline {
+function validateTourPhases(input: TourPhase[], comparison: GitComparison): TourPhase[] {
   const phaseIds = new Set<string>();
   const stepIds = new Set<string>();
   let totalSteps = 0;
-  const phases = outline.phases.flatMap((phase): TourPhase[] => {
+  const phases = input.flatMap((phase): TourPhase[] => {
     if (!phase || !generatedString(phase.id, 128) || phaseIds.has(phase.id) ||
       !generatedString(phase.title, 8_000) || !generatedString(phase.summary, 50_000) ||
       !Array.isArray(phase.fileChanges) || !Array.isArray(phase.steps)) return [];
@@ -541,6 +541,11 @@ function validateOutline(outline: TourOutline, comparison: GitComparison, policy
     throw new FileExplanationCoverageError(`The tour is missing a usable What changed explanation for ${missing.length} changed file${missing.length === 1 ? "" : "s"}: ${paths}${missing.length > 20 ? `, and ${missing.length - 20} more` : ""}. Every changed file needs a nonblank, bounded fileChanges.summary in a phase with a valid diff anchor. Supporting files do not need separate stops.`);
   }
   if (phases.length === 0) throw new Error("The agent did not anchor any tour phases to the diff.");
+  return phases;
+}
+
+function validateOutline(outline: TourOutline, comparison: GitComparison, policy: ReviewPolicy, includeArchitecture: boolean, includeAdaptiveDiagrams: boolean, includeDryRuns: boolean, issue?: LinkedIssueContext, analysisOnly = false): TourOutline {
+  const phases = analysisOnly ? [] : validateTourPhases(outline.phases, comparison);
   const diagnostics: string[] = [];
   const flowIds = new Set<string>();
   const flows = outline.flows.flatMap((candidate) => {
@@ -1006,6 +1011,32 @@ class AttachedFallbackTransport implements AgentTransport {
   }
 }
 
+const ANALYSIS_DIAGRAM_PROMPT = `${MAP_NODE_ROLE_PROMPT}
+When included, return two complementary architecture diagrams beside phases. Both use this shape: {"title":"...","summary":"...","mermaid":"flowchart LR\\n  client[\\\"Client\\\"]:::touched\\n  service[\\\"Service\\\"]:::new\\n  client -->|calls| service\\n  classDef new stroke:#2e7d32,stroke-width:3px\\n  classDef touched stroke:#f9a825,stroke-width:3px\\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\\n  classDef external stroke:#888888,stroke-dasharray:3 3","dependencyChanges":["Added Client → Service: calls"],"affectedFiles":["exact/changed/path"]}.
+
+Add "behaviorArchitectureStatus":"implemented|proposed" and "behaviorArchitecture": the system-level answer to what the changed code does. Use status "implemented" only when changed executable code directly supports the depicted behaviour. Use "proposed" for plans, ADRs, specifications, and documentation that describe future behaviour. This view may include immediate unchanged or external collaborators needed to understand the outcome.
+
+Add "architecture": the implementation journey, answering how this PR's concrete changed components or artifacts establish that behaviour. For code, show changed modules and dependency wiring. For documentation-only work, show the authority and specification path rather than presenting planned runtime components as implemented.
+
+Both diagrams are architecture maps, not runtime sequences. Use plain-language component names rather than build-module labels. Use flowchart LR, declare each node on its own line with a quoted label, and label every subject-to-object edge. Use neutral node IDs such as component1; never use Mermaid keywords such as graph, flowchart, subgraph, end, class, classDef, style, or click as node IDs. Mark every component with :::new, :::touched, :::removed, or :::external and include the exact four classDef lines shown in the example without fills. Edges touching removed components describe the old state; all other edges describe the target state. dependencyChanges explicitly lists every added, removed, or reversed relationship, or one item saying there are no dependency-direction changes. affectedFiles lists only changed paths that support that specific map. When architecture is omitted above, omit behaviorArchitectureStatus, behaviorArchitecture, and architecture, and spend no analysis on them.
+
+${SEQUENCE_SOURCE_PROMPT}
+
+Always include structuralBlastRadii. First identify every changed declaration you can support from changed diff rows (functions, methods, constructors, components, types, and modules). These are analysed symbols, not a claim that every changed declaration in the PR was found or analysed. For each analysed root, collect upstream static caller/reference reach into that one symbol only: do not mix in downstream callees, whole-PR reach, or runtime effects. Prefer CodeGraph when this repository is indexed; otherwise use an available language server; otherwise use a bounded repository search. Record the provider actually used as codegraph, language-server, repository-search, or unavailable. Never silently turn unavailable or partial data into zero impact: an unavailable provider uses confidence unresolved and provenance unverified, has the root node only, zero reported caller/reachable counts, coverage state unavailable with reportedCounts not-reported, and explains the limitation. Repository search and unresolved dispatch are partial or unverified, not verified. Structural reach is an authored/static dependency path, not proof of runtime impact; say this in every summary without suggesting a runtime trace.
+Return an empty structuralBlastRadii array only when no changed declarations can be identified, and include structuralAnalysisOmissionReason (a plain-language explanation, at most 2000 characters). Missing analysis or an unexplained empty array triggers repair. Known roots with unavailable analysis must instead use explicit unavailable results, never fabricated callers or zero-impact claims.
+
+Each radius is one isolated, selectable subgraph. Use unambiguous source identities for every node, for example path:side:line:qualified-symbol; never merge same-named symbols, and reuse the exact identity when the same source symbol appears in more than one root graph. Changed root identities must be unique. Its root symbol location must point to a diff row in a changed file. Edges are caller/reference source -> target; directCallerIds exactly list visible nodes with an edge into the root. Include visible source paths in impactedFiles. reportedDirectCallerCount and reportedReachableNodeCount count callers/reachable nodes excluding the root; reachable-node counts may include unresolved or external nodes. impacted-file counts are unique known source paths and include the root file; external or unresolved nodes without a source location do not add a file. Add coverage for every new result: state complete means every identity returned by the provider is saved and all reported counts are exact/equal to visible counts; partial means a provider result is incomplete and needs an omissionReason; unavailable means no caller analysis ran; unknown is reserved for legacy data. Set reportedCounts exact only for evidence-backed totals, lower-bound when the number is only known to be at least that value, and not-reported when no total exists. Never invent omitted nodes or exact totals. Use no more than 80 visible nodes and 160 edges per root.
+
+Structural symbol and node kind must be exactly function, method, constructor, component, type, module, or external. Represent classes, interfaces, enums, and type aliases as type. Each structural edge has exactly {"id":"caller-to-target","from":"caller-node-id","to":"target-node-id","relationship":"calls|references"}; relationship is calls for invocations and references for other static dependencies. Do not copy call-flow fields such as label, change, or call-site locations into structural edges.
+
+For every new radius include testEvidence. It is bounded source context, not test execution or runtime coverage: never say a test ran, passed, or covers a path solely because its source references it. state is not-assessed when no test assessment occurred (with empty source lists and no searchScope); relevant-tests-found when a recorded source anchor appears relevant; none-found only when a stated searchScope found no relevant test source; or limited when the assessment has a stated uncertainty. For every assessed state record the exact searchScope, plus only source anchors actually inspected in checkedSources and test anchors in relevantTests. Each anchor is {path,side,line,detail}; detail says what its source text suggests, not an execution result. A relevant-tests-found result needs at least one relevantTests anchor; a limited result needs remainingUncertainty. Keep nearbyTestGaps only for concrete remaining questions supported by the saved result. Old results may omit testEvidence; do not pretend that omission means no tests.
+
+The structural shape is: {"structuralBlastRadii":[{"id":"unique-radius-id","symbol":{"id":"src/a.ts:new:12:Service.run","symbol":"Service.run","kind":"method","location":{"path":"src/a.ts","side":"new","line":12}},"provider":"codegraph|language-server|repository-search|unavailable","confidence":"high|medium|low|unresolved","provenance":"verified|partial|unverified","summary":"Static upstream caller reach only, not proof of runtime impact.","nodes":[{"id":"src/a.ts:new:12:Service.run","symbol":"Service.run","kind":"method","location":{"path":"src/a.ts","side":"new","line":12}}],"edges":[],"directCallerIds":[],"reportedDirectCallerCount":0,"reportedReachableNodeCount":0,"reportedImpactedFileCount":1,"coverage":{"state":"complete","reportedCounts":"exact"},"impactedFiles":["src/a.ts"],"testEvidence":{"state":"not-assessed","checkedSources":[],"relevantTests":[]},"nearbyTestGaps":[]}]}.
+`;
+
+const ADAPTIVE_OUTPUT_PROMPT = `The optional adaptive fields use these shapes:
+{"stateDiagram":{"kind":"state-machine","title":"...","summary":"...","mermaid":"stateDiagram-v2...","evidence":["specific changed path or symbol observation"],"materiallyImprovesUnderstanding":"why this lifecycle view explains the change better than existing views","affectedFiles":["exact/changed/path"]},"dataModel":{"kind":"data-model","title":"...","summary":"...","mermaid":"erDiagram...","evidence":["specific changed path or symbol observation"],"materiallyImprovesUnderstanding":"why this relationship view explains the change better than existing views","affectedFiles":["exact/changed/path"]}}`;
+
 export class TourAgent {
   private readonly transport: AgentTransport;
   private readonly attached: boolean;
@@ -1072,7 +1103,7 @@ export class TourAgent {
         ? "Answering the reviewer"
         : kind === "issue.assessment"
           ? "Assessing the reviewer task"
-        : prompt.includes("attaching inspected source") ? "Linking Briefing diagrams to source" : prompt.includes("reviewing the causal completeness") ? "Checking Briefing sequences" : prompt.includes("focused findings auditor") ? "Auditing findings" : prompt.includes("updating grounded call-graph diffs") ? "Updating call flows" : prompt.includes("updating grounded sequence diagrams") ? "Updating sequence diagrams" : "Planning the tour";
+        : prompt.includes("attaching inspected source") ? "Linking Briefing diagrams to source" : prompt.includes("reviewing the causal completeness") ? "Checking Briefing sequences" : prompt.includes("focused findings auditor") ? "Auditing findings" : prompt.includes("updating grounded call-graph diffs") ? "Updating call flows" : prompt.includes("updating grounded sequence diagrams") ? "Updating sequence diagrams" : prompt.includes("Prepare shared change analysis") ? "Analysing the change and diagrams" : prompt.includes("Prepare tour steps from") ? "Preparing tour steps" : prompt.includes("Return only the briefingProposal") ? "Writing the Briefing" : "Planning the tour";
     const activity: AgentRunActivity = {
       id: crypto.randomUUID(),
       kind,
@@ -1181,7 +1212,7 @@ export class TourAgent {
     return id ? { adapterId: this.adapterId as StandaloneAgentAdapterId, id } : undefined;
   }
 
-  async createOutline(comparison: GitComparison, policy: ReviewPolicy, beforeFindingAudit?: () => void, issue?: LinkedIssueContext, intent = ""): Promise<AgentResult<TourOutline>> {
+  async createOutline(comparison: GitComparison, policy: ReviewPolicy, beforeFindingAudit?: () => void, issue?: LinkedIssueContext, intent = "", analysisOnly = false): Promise<AgentResult<TourOutline>> {
     this.useComparison(comparison);
     const domainDocuments = await loadDomainDocuments(comparison);
     const changedFiles = comparison.files
@@ -1211,31 +1242,9 @@ Reviewer-selected optional outputs:
 - Findings: ${this.includeFindings && policy.findings.enabled ? "include" : "omit"}
 - Adaptive diagrams: ${this.includeAdaptiveDiagrams ? "consider state-machine or data-model views only when evidence supports them and they materially improve understanding" : "omit"}
 
-${MAP_NODE_ROLE_PROMPT}
-When included, return two complementary architecture diagrams beside phases. Both use this shape: {"title":"...","summary":"...","mermaid":"flowchart LR\\n  client[\\\"Client\\\"]:::touched\\n  service[\\\"Service\\\"]:::new\\n  client -->|calls| service\\n  classDef new stroke:#2e7d32,stroke-width:3px\\n  classDef touched stroke:#f9a825,stroke-width:3px\\n  classDef removed stroke:#c62828,stroke-width:3px,stroke-dasharray:4 3\\n  classDef external stroke:#888888,stroke-dasharray:3 3","dependencyChanges":["Added Client → Service: calls"],"affectedFiles":["exact/changed/path"]}.
-
-Add "behaviorArchitectureStatus":"implemented|proposed" and "behaviorArchitecture": the system-level answer to what the changed code does. Use status "implemented" only when changed executable code directly supports the depicted behaviour. Use "proposed" for plans, ADRs, specifications, and documentation that describe future behaviour. This view may include immediate unchanged or external collaborators needed to understand the outcome.
-
-Add "architecture": the implementation journey, answering how this PR's concrete changed components or artifacts establish that behaviour. For code, show changed modules and dependency wiring. For documentation-only work, show the authority and specification path rather than presenting planned runtime components as implemented.
-
-Both diagrams are architecture maps, not runtime sequences. Use plain-language component names rather than build-module labels. Use flowchart LR, declare each node on its own line with a quoted label, and label every subject-to-object edge. Use neutral node IDs such as component1; never use Mermaid keywords such as graph, flowchart, subgraph, end, class, classDef, style, or click as node IDs. Mark every component with :::new, :::touched, :::removed, or :::external and include the exact four classDef lines shown in the example without fills. Edges touching removed components describe the old state; all other edges describe the target state. dependencyChanges explicitly lists every added, removed, or reversed relationship, or one item saying there are no dependency-direction changes. affectedFiles lists only changed paths that support that specific map. When architecture is omitted above, omit behaviorArchitectureStatus, behaviorArchitecture, and architecture, and spend no analysis on them.
-
-${SEQUENCE_SOURCE_PROMPT}
-
-Always include structuralBlastRadii. First identify every changed declaration you can support from changed diff rows (functions, methods, constructors, components, types, and modules). These are analysed symbols, not a claim that every changed declaration in the PR was found or analysed. For each analysed root, collect upstream static caller/reference reach into that one symbol only: do not mix in downstream callees, whole-PR reach, or runtime effects. Prefer CodeGraph when this repository is indexed; otherwise use an available language server; otherwise use a bounded repository search. Record the provider actually used as codegraph, language-server, repository-search, or unavailable. Never silently turn unavailable or partial data into zero impact: an unavailable provider uses confidence unresolved and provenance unverified, has the root node only, zero reported caller/reachable counts, coverage state unavailable with reportedCounts not-reported, and explains the limitation. Repository search and unresolved dispatch are partial or unverified, not verified. Structural reach is an authored/static dependency path, not proof of runtime impact; say this in every summary without suggesting a runtime trace.
-Return an empty structuralBlastRadii array only when no changed declarations can be identified, and include structuralAnalysisOmissionReason (a plain-language explanation, at most 2000 characters). Missing analysis or an unexplained empty array triggers repair. Known roots with unavailable analysis must instead use explicit unavailable results, never fabricated callers or zero-impact claims.
-
-Each radius is one isolated, selectable subgraph. Use unambiguous source identities for every node, for example path:side:line:qualified-symbol; never merge same-named symbols, and reuse the exact identity when the same source symbol appears in more than one root graph. Changed root identities must be unique. Its root symbol location must point to a diff row in a changed file. Edges are caller/reference source -> target; directCallerIds exactly list visible nodes with an edge into the root. Include visible source paths in impactedFiles. reportedDirectCallerCount and reportedReachableNodeCount count callers/reachable nodes excluding the root; reachable-node counts may include unresolved or external nodes. impacted-file counts are unique known source paths and include the root file; external or unresolved nodes without a source location do not add a file. Add coverage for every new result: state complete means every identity returned by the provider is saved and all reported counts are exact/equal to visible counts; partial means a provider result is incomplete and needs an omissionReason; unavailable means no caller analysis ran; unknown is reserved for legacy data. Set reportedCounts exact only for evidence-backed totals, lower-bound when the number is only known to be at least that value, and not-reported when no total exists. Never invent omitted nodes or exact totals. Use no more than 80 visible nodes and 160 edges per root.
-
-Structural symbol and node kind must be exactly function, method, constructor, component, type, module, or external. Represent classes, interfaces, enums, and type aliases as type. Each structural edge has exactly {"id":"caller-to-target","from":"caller-node-id","to":"target-node-id","relationship":"calls|references"}; relationship is calls for invocations and references for other static dependencies. Do not copy call-flow fields such as label, change, or call-site locations into structural edges.
-
-For every new radius include testEvidence. It is bounded source context, not test execution or runtime coverage: never say a test ran, passed, or covers a path solely because its source references it. state is not-assessed when no test assessment occurred (with empty source lists and no searchScope); relevant-tests-found when a recorded source anchor appears relevant; none-found only when a stated searchScope found no relevant test source; or limited when the assessment has a stated uncertainty. For every assessed state record the exact searchScope, plus only source anchors actually inspected in checkedSources and test anchors in relevantTests. Each anchor is {path,side,line,detail}; detail says what its source text suggests, not an execution result. A relevant-tests-found result needs at least one relevantTests anchor; a limited result needs remainingUncertainty. Keep nearbyTestGaps only for concrete remaining questions supported by the saved result. Old results may omit testEvidence; do not pretend that omission means no tests.
-
-The structural shape is: {"structuralBlastRadii":[{"id":"unique-radius-id","symbol":{"id":"src/a.ts:new:12:Service.run","symbol":"Service.run","kind":"method","location":{"path":"src/a.ts","side":"new","line":12}},"provider":"codegraph|language-server|repository-search|unavailable","confidence":"high|medium|low|unresolved","provenance":"verified|partial|unverified","summary":"Static upstream caller reach only, not proof of runtime impact.","nodes":[{"id":"src/a.ts:new:12:Service.run","symbol":"Service.run","kind":"method","location":{"path":"src/a.ts","side":"new","line":12}}],"edges":[],"directCallerIds":[],"reportedDirectCallerCount":0,"reportedReachableNodeCount":0,"reportedImpactedFileCount":1,"coverage":{"state":"complete","reportedCounts":"exact"},"impactedFiles":["src/a.ts"],"testEvidence":{"state":"not-assessed","checkedSources":[],"relevantTests":[]},"nearbyTestGaps":[]}]}.
-
+${ANALYSIS_DIAGRAM_PROMPT}
 Return only JSON with this shape:
-The optional adaptive fields use these shapes:
-{"stateDiagram":{"kind":"state-machine","title":"...","summary":"...","mermaid":"stateDiagram-v2...","evidence":["specific changed path or symbol observation"],"materiallyImprovesUnderstanding":"why this lifecycle view explains the change better than existing views","affectedFiles":["exact/changed/path"]},"dataModel":{"kind":"data-model","title":"...","summary":"...","mermaid":"erDiagram...","evidence":["specific changed path or symbol observation"],"materiallyImprovesUnderstanding":"why this relationship view explains the change better than existing views","affectedFiles":["exact/changed/path"]}}
+${ADAPTIVE_OUTPUT_PROMPT}
 {"title":"...","summary":"...","planningNotes":["concise user-facing rationale for the route"],"structuralBlastRadii":["use the structural shape above"],"behaviorArchitectureStatus":"implemented|proposed","behaviorArchitecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"architecture":{"title":"...","summary":"...","mermaid":"flowchart LR...","dependencyChanges":["..."],"affectedFiles":["exact/changed/path"]},"phases":[{"id":"stable-phase-id","title":"logical change","summary":"what this phase establishes","fileChanges":[{"path":"exact/changed/path","summary":"2–3 sentences explaining the changed mechanism, its significance and a supported review concern"}],"steps":[{"id":"globally-unique-step-id","title":"...","objective":"one short sentence suitable for an inline code annotation","anchor":{"path":"exact/changed/path","side":"new|old","startLine":1,"endLine":1}}]}],"callFlows":[{"id":"stable-id","title":"...","summary":"...","entrypointNodeId":"root","provenance":"verified|partial|unverified","nodes":[{"id":"root","label":"Class.method","kind":"function|method|constructor|component|branch|external","change":"added|removed|unchanged|modified","oldLocation":{"path":"changed/path","side":"old","line":1},"newLocation":{"path":"changed/path","side":"new","line":1}}],"edges":[{"id":"root-to-child","from":"root","to":"child","label":"optional call meaning","change":"added|removed|unchanged","oldCallSite":{"path":"changed/path","side":"old","line":1},"newCallSite":{"path":"changed/path","side":"new","line":1}}],"affectedFiles":["exact/changed/path"]}],"flows":[{"id":"stable-id","title":"...","summary":"...","mermaid":"sequenceDiagram\\n  participant A as Layer A\\n  participant B as Layer B\\n  A->>B: action","provenance":"verified|partial|unverified","affectedFiles":["exact/changed/path"]}],"findings":[{"id":"stable-id","phaseId":"owning-phase-id","stepId":"optional-owning-step-id","path":"exact/changed/path","side":"new|old","line":1,"message":"...","category":"correctness|security|performance|maintainability|testing","severity":"critical|high|medium|low","confidence":"high|medium|low","evidence":"specific evidence","priority":"P0|P1|P2|P3","introduced":true,"recallGuard":false,"blastRadiusSize":2,"tested":false,"pinScope":"line|symbol|file","pinnedSymbolIds":["global structural node id when supported"],"status":"open"}]}
 
 Before choosing anchors, identify one primary journey from an input, trigger, or contract to the observable result of the change. Use that journey as the narrative spine of the tour. When the implementation-journey diagram is included, its components and labelled relationships should express the same causal path at system level. Treat phases as ordered conceptual layers and order them by behavior and dependency flow, not file order or remembered implementation chronology. Put contract or foundation layers before implementation layers, and implementation before integration or effects, when the selected evidence supports those layers. Every phase summary must concisely state what its layer establishes and how it enables the next layer; for the final phase, state how it reaches the observable result or relevant verification. The first stop establishes the input or prerequisite. Each later stop adds one concrete fact that depends on what the reviewer has already learned. The final stops reach the observable result and its most relevant verification when the diff supports one. Branch only when the change has a genuinely separate behavior that cannot be explained on the primary journey. Do not create a component inventory, repeat the same fact at several anchors, or use a changed file as a stop unless it advances the journey.
@@ -1249,7 +1258,19 @@ Every phase is one coherent behavioral or architectural change. Declare every ch
 
 Write for a reviewer who has not seen this code before. Use short, plain sentences. Avoid jargon unless the code itself uses the term, and explain a necessary term in a few words. Keep the tour summary to at most three short sentences, every phase summary to one sentence, every file summary to the 2–3 sentence explanation specified above, and every objective to one direct sentence. Describe concrete behavior before implementation details.`;
     const needsAttachment = this.adapterId === "gemini" || this.adapterId === "copilot";
-    const boundedPrompt = `${TOUR_CONTEXT_BOUNDARY}\n\n${prompt}\n\n${domainPrompt(domainDocuments)}`;
+    const analysisPrompt = `Prepare shared change analysis for a briefing and a guided tour. Inspect only captured Git objects ${comparison.mergeBase} and ${comparison.sourceTree}. Do not modify files.
+Identify the concrete outcome, before/after behavior, causal journey, decisions, boundaries and source-backed diagrams. Record the journey in summary and planningNotes with decisive path/line references. Do not prepare tour phases, steps, explanations, findings or briefing prose: independent requests will use this saved analysis.
+Changed files:
+${changedFiles}
+Untrusted author/reviewer context: ${intent}
+Repository review policy: ${JSON.stringify(policy)}
+${issueContext}
+Requested outputs: architecture=${this.includeArchitecture}, sequences=${this.includeFlows}, call flows=${this.includeCallFlows}, adaptive=${this.includeAdaptiveDiagrams}, dry runs=${this.includeDryRuns}. Omit disabled diagrams and use empty arrays for disabled outputs.
+${ANALYSIS_DIAGRAM_PROMPT}
+${ADAPTIVE_OUTPUT_PROMPT}
+Return JSON with title, summary, planningNotes, phases:[], findings:[], structuralBlastRadii, structuralAnalysisOmissionReason when applicable, behaviorArchitectureStatus, behaviorArchitecture, architecture, flows, callFlows and optional stateDiagram/dataModel. Call flows use the existing CallFlow shape with nodes, edges, entrypointNodeId, affectedFiles and provenance. Each node has id, label, kind, change, oldLocation/newLocation; each edge has id, from, to, label, change, oldCallSite/newCallSite. Locations have path, side and line. Changed call sites must anchor to the diff. Sequences have id, title, summary, mermaid, provenance, affectedFiles and messageSources.
+${this.includeDryRuns ? DRY_RUN_PLANS_OUTPUT_CONTRACT : "Return dryRunPlans: []."}`;
+    const boundedPrompt = `${TOUR_CONTEXT_BOUNDARY}\n\n${analysisOnly ? analysisPrompt : prompt}\n\n${domainPrompt(domainDocuments)}`;
     const promptWithDiff = needsAttachment ? boundedPrompt : `${boundedPrompt}\n\n<diff>\n${comparison.patch}\n</diff>`;
     const attachment = needsAttachment ? { name: "review.diff", content: comparison.patch } : undefined;
     let retainedImpact: NonNullable<TourOutline["structuralBlastRadii"]> = [];
@@ -1270,7 +1291,8 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       attachment,
       undefined,
       (message) => {
-        const parsed = parseOutline(message);
+        const parsed = parseOutline(message, analysisOnly);
+        if (analysisOnly) { parsed.phases = []; parsed.findings = []; delete parsed.briefingProposal; }
         try {
           parsed.domainModels = validateDomainModels(parsed.domainModels, domainDocuments, comparison);
         } catch {
@@ -1280,7 +1302,7 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
           parsed.planningNotes = [...(parsed.planningNotes ?? []), "Domain maps were omitted because their glossary evidence or scope could not be verified."];
         }
         try {
-          return retainImpact(validateOutline(parsed, comparison, policy, this.includeArchitecture, this.includeAdaptiveDiagrams, this.includeDryRuns, issue));
+          return retainImpact(validateOutline(parsed, comparison, policy, this.includeArchitecture, this.includeAdaptiveDiagrams, this.includeDryRuns, issue, analysisOnly));
         } catch (error) {
           if (error instanceof OptionalOutlineValidationError) retainImpact(error.fallback);
           throw error;
@@ -1301,6 +1323,7 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       findings: this.includeFindings ? generated.findings : [],
     };
     const receipts = [...generatedResult.receipts];
+    if (analysisOnly) return { value: outline, receipts };
     if (validBriefingProposal(outline.briefingProposal)) {
       const reviewed = await this.auditBriefingSequences(comparison, outline.briefingProposal, outline.flows);
       outline.briefingProposal = reviewed.value.proposal;
@@ -1320,6 +1343,28 @@ Write for a reviewer who has not seen this code before. Use short, plain sentenc
       value: { ...outline, findings: findings.value },
       receipts: [...receipts, ...findings.receipts],
     };
+  }
+
+  async createAnalysis(comparison: GitComparison, policy: ReviewPolicy, issue?: LinkedIssueContext, intent = "") {
+    return this.createOutline(comparison, policy, undefined, issue, intent, true);
+  }
+
+  async createTourSteps(comparison: GitComparison, analysis: TourOutline): Promise<AgentResult<TourOutline>> {
+    this.useComparison(comparison);
+    const { briefing: _briefing, briefingProposal: _proposal, preparation: _preparation, phases: _phases, findings: _findings, archifyArtifacts: _artifacts, archifyFailures: _failures, ...shared } = analysis;
+    const prompt = `${TOUR_CONTEXT_BOUNDARY}
+Prepare tour steps from the saved shared analysis below. Read only captured Git objects ${comparison.mergeBase} and ${comparison.sourceTree}. Do not modify files. Preserve the outcome and causal journey; do not regenerate diagrams, briefing, structural analysis or findings.
+${FILE_EXPLANATION_PROMPT}
+Return only {"phases":[{"id":"unique-phase","title":"conceptual layer","summary":"what this establishes and enables next","fileChanges":[{"path":"changed/path","summary":"2–3 sentences explaining mechanism and significance"}],"steps":[{"id":"globally-unique-step","title":"concrete fact","objective":"one short concrete fact","anchor":{"path":"changed/path","side":"new","startLine":1,"endLine":1}}]}]}.
+Order by the primary input-to-outcome journey, not file order. Prefer 3–7 phases with 1–4 meaningful steps each, scaled to the change. Every changed file needs a fileChanges explanation; supporting files need not have their own stop. Every phase needs a valid step; anchors must refer to its declared changed files and lines present in the diff. No explanations yet.
+Shared analysis: ${JSON.stringify(shared)}
+Captured diff:
+${comparison.patch}`;
+    return this.send(prompt, "tour.outline", undefined, undefined, message => {
+      const result = parseReviewerTaskAssessment(message) as { phases?: TourPhase[] };
+      const outline = parseOutline(JSON.stringify({ ...analysis, phases: result.phases, findings: [] }));
+      return { ...analysis, phases: validateTourPhases(outline.phases, comparison) };
+    });
   }
 
   async assessReviewerTask(comparison: GitComparison, task: ReviewerTaskContext): Promise<AgentResult<NonNullable<ReviewerTaskContext["assessment"]>>> {
@@ -1368,7 +1413,7 @@ Return only JSON with this shape: ${shape}. ${ISSUE_ASSESSMENT_OUTPUT_CONTRACT}`
     );
   }
 
-  private async auditFindings(comparison: GitComparison, outline: TourOutline, policy: ReviewPolicy): Promise<AgentResult<ReviewFinding[]>> {
+  async auditFindings(comparison: GitComparison, outline: TourOutline, policy: ReviewPolicy): Promise<AgentResult<ReviewFinding[]>> {
     const phaseScope = outline.phases.map((phase) => ({
       id: phase.id,
       title: phase.title,
@@ -1495,7 +1540,7 @@ Read only the captured Git objects ${comparison.mergeBase} and ${comparison.sour
 ${BRIEFING_PROMPT}
 Return only the briefingProposal object itself. Preserve the tour and its diagrams.
 Untrusted author/reviewer context: ${intent}
-Tour summary: ${outline.summary}
+Shared analysis: ${JSON.stringify({ title: outline.title, summary: outline.summary, planningNotes: outline.planningNotes, structuralBlastRadii: outline.structuralBlastRadii })}
 Available diagrams and exact element IDs: ${JSON.stringify(document.diagrams.map(({ ir, archifyHtml, ...d }) => d))}
 Captured diff:
 ${comparison.patch}`;

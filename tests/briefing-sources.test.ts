@@ -172,10 +172,24 @@ test("new tours complete diagram source links before saving their first Briefing
     outline.phases[0]!.fileChanges.push({ path: "tests/cart.test.ts", summary: "Adds a receipt assertion that supplies a fractional discount and checks two decimal places." });
     outline.architecture!.elementSources = outline.architecture!.elementSources!.filter(source => ["receipt", "cart"].includes(source.elementId));
     await session.bridge!.respond(first.id, JSON.stringify(outline)); await session.bridge!.ack(first.id);
-    const linking = (await session.bridge!.eventsAfter(first.sequence, 3000)).find(event => event.type === "agent.prompt");
-    if (!linking || linking.type !== "agent.prompt") throw new Error("Missing source linking request");
-    expect(linking.prompt).toContain("attaching inspected source");
-    await session.bridge!.respond(linking.id, JSON.stringify({ decisions: decisions() })); await session.bridge!.ack(linking.id);
+    let sequence = first.sequence;
+    let linked = false;
+    while (!linked) {
+      const events = await session.bridge!.eventsAfter(sequence, 3000);
+      for (const event of events) {
+        sequence = Math.max(sequence, event.sequence);
+        if (event.type !== "agent.prompt") continue;
+        if (event.prompt.includes("Prepare tour steps from")) await session.bridge!.respond(event.id, JSON.stringify({ phases: outline.phases }));
+        else if (event.prompt.includes("Return only the briefingProposal")) await session.bridge!.respond(event.id, JSON.stringify(proposal));
+        else if (event.prompt.includes("attaching inspected source")) {
+          expect(session.outline?.briefing).toBeUndefined();
+          await session.bridge!.respond(event.id, JSON.stringify({ decisions: decisions() }));
+          linked = true;
+        } else if (event.kind === "tour.explanation") await session.bridge!.respond(event.id, "The receipt uses the discounted total.");
+        else throw new Error(`Unexpected preparation prompt: ${event.prompt.slice(0, 200)}`);
+        await session.bridge!.ack(event.id);
+      }
+    }
     await generation;
     const persisted = await loadPersistedSession(stateFile);
     expect(persisted.outline!.briefing!.diagrams.find(d => d.id === diagramId)!.elements.find(e => e.id === callId)!.sourceReview?.status).toBe("bound");

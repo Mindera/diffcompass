@@ -43,7 +43,13 @@ it through prose, focused before-and-after diffs, and interactive diagrams.
 
 Use **Open in Changes** to inspect the cited source and **Back to Briefing** to
 return to the story. Reading and inspecting a Briefing does not advance the tour
-or mark files reviewed. **Tour the code** continues into the guided walkthrough.
+or mark files reviewed. New reviews first prepare shared analysis and diagrams,
+then generate the Briefing and tour steps in parallel. The browser opens as soon
+as the Briefing and its source evidence are ready. Tour preparation and findings
+auditing continue in the background, with progress and retry controls in the
+Briefing. **Tour the code** becomes available when the first stop is ready.
+Interrupted preparation can resume from saved analysis without discarding the
+completed Briefing.
 The review sidebar has separate **Tour**, **Questions**, and **Comments** tabs,
 with drafts and reading positions retained when you switch between them.
 

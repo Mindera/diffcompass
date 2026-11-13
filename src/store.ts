@@ -116,11 +116,19 @@ function validAnchor(value: unknown): boolean {
     Number.isInteger(value.endLine) && Number(value.endLine) >= Number(value.startLine);
 }
 
+function validPreparation(value: unknown): boolean {
+  return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.comparisonId, 128) &&
+    ["briefing", "steps"].every(key => ["pending", "ready", "failed"].includes(String(value[key]))) &&
+    ["pending", "ready", "failed", "disabled"].includes(String(value.findings)) &&
+    ["briefingError", "stepsError", "findingsError"].every(key => value[key] === undefined || nonEmptyString(value[key], 2000));
+}
+
 function validOutline(value: unknown): boolean {
   if (!record(value) || !nonEmptyString(value.title, 8_000) || !nonEmptyString(value.summary, 50_000)) return false;
   if (value.planningNotes !== undefined && (!Array.isArray(value.planningNotes) || value.planningNotes.length > 20 || !value.planningNotes.every((note) => nonEmptyString(note, 2_000)))) return false;
   if (!Array.isArray(value.phases) || !Array.isArray(value.callFlows) || !Array.isArray(value.flows) || !Array.isArray(value.findings)) return false;
-  if (value.phases.length === 0 || value.phases.length > 50 || value.callFlows.length > 8 || value.flows.length > 50 || value.findings.length > 2_000) return false;
+  if (value.preparation !== undefined && !validPreparation(value.preparation)) return false;
+  if ((value.phases.length === 0 && (!record(value.preparation) || value.preparation.steps === "ready")) || value.phases.length > 50 || value.callFlows.length > 8 || value.flows.length > 50 || value.findings.length > 2_000) return false;
   const phases = value.phases;
   const phaseIds = new Set<string>();
   const stepIds = new Set<string>();
@@ -768,7 +776,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
   if (
     (outline !== undefined && selection === undefined) ||
     (outline === undefined && session.currentStepIndex !== -1) ||
-    (outline !== undefined && (session.currentStepIndex! < 0 || session.currentStepIndex! >= outline.phases.flatMap((phase) => phase.steps).length)) ||
+    (outline !== undefined && (outline.phases.length === 0 && outline.preparation ? session.currentStepIndex !== -1 : (session.currentStepIndex! < 0 || session.currentStepIndex! >= outline.phases.flatMap((phase) => phase.steps).length))) ||
     (selection?.adapterId === "attached" && session.bridgeToken === undefined) ||
     (session.bridgePrompts !== undefined && (session.bridgeToken === undefined || session.bridgeSequence === undefined ||
       new Set(session.bridgePrompts.map((record) => record.event.id)).size !== session.bridgePrompts.length ||

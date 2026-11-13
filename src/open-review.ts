@@ -19,8 +19,8 @@ export async function prepareAndOpenReviewPage(
   try {
     await automaticTour;
   } catch (error) {
-    reportError(`Could not prepare the tour: ${error instanceof Error ? error.message : String(error)}`);
-    reportError("The browser was not opened because the first tour stop is not ready. Inspect the running review URL or retry the tour after resolving the error.");
+    reportError(`Could not prepare the briefing: ${error instanceof Error ? error.message : String(error)}`);
+    reportError("The browser was not opened because the briefing is not ready. Inspect the running review URL or retry preparation after resolving the error.");
     return false;
   }
 

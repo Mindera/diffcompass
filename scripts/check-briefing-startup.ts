@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { chromium } from "playwright";
+import { prepareTestFixture } from "../src/test-fixture.ts";
+import { ReviewSession } from "../src/session.ts";
+import { startServer } from "../src/server.ts";
+import { diffSourceIdentity } from "../src/diff-sources.ts";
+
+const root = await mkdtemp(join(tmpdir(), "briefing-startup-browser-"));
+let session: ReviewSession | undefined, server: ReturnType<typeof startServer> | undefined;
+let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+try {
+  const fixture = await prepareTestFixture({ root: join(root, "fixture"), reset: true });
+  session = await ReviewSession.create(fixture.repository, undefined, { resume: true, stateFile: fixture.stateFile, agentAdapters: [] });
+  const prepared = structuredClone(session.outline!);
+  session.outline!.phases = [];
+  session.outline!.findings = [];
+  session.currentStepIndex = -1;
+  session.outline!.preparation = { id: crypto.randomUUID(), comparisonId: diffSourceIdentity(session.comparison), briefing: "ready", steps: "pending", findings: "pending" };
+  server = startServer(session, 0);
+  browser = await chromium.launch({ channel: process.env.CI ? undefined : "chrome", headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`http://127.0.0.1:${server.port}/#token=${session.browserToken}&intro=1`);
+  await page.locator('.briefing-preparation').getByText('Preparing tour steps in the background.', { exact: false }).waitFor();
+  assert.equal(await page.locator('[data-briefing-tour]').count(), 0);
+  await page.locator('.briefing-heading h1').waitFor();
+  const title = await page.locator('.briefing-heading h1').textContent();
+  const scroll = page.locator('#diff-panel');
+  await scroll.evaluate(el => { el.scrollTop = 300; });
+  const before = await scroll.evaluate(el => el.scrollTop);
+  session.outline!.phases = prepared.phases;
+  session.currentStepIndex = 0;
+  session.outline!.preparation!.steps = "ready";
+  session.revision++;
+  await page.locator('[data-briefing-tour]').waitFor();
+  assert.equal(await page.locator('.briefing-heading h1').textContent(), title);
+  assert.ok(Math.abs(await scroll.evaluate(el => el.scrollTop) - before) < 40, "background readiness preserves reading position");
+  session.outline!.preparation!.findings = "failed";
+  session.outline!.preparation!.findingsError = "Provider unavailable";
+  session.revision++;
+  await page.locator('[data-briefing-retry]').waitFor();
+  await page.getByText('findings preparation failed: Provider unavailable', { exact: true }).waitFor();
+  await page.locator('[data-briefing-tour]').click();
+  await page.locator('#step-title').waitFor();
+  assert.deepEqual(errors, [], "no browser exceptions while steps arrive");
+  console.log("Briefing-first browser checks passed: pending steps, live readiness, reading position, failure status, tour entry.");
+} finally {
+  await browser?.close();
+  server?.stop(true);
+  await session?.dispose();
+  await rm(root, { recursive: true, force: true });
+}

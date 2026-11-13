@@ -17,6 +17,7 @@
     "bridge": "bun run src/cli.ts bridge",
     "fixture": "bun run scripts/test-fixture.ts",
     "fixture:briefing-experiments": "bun prototypes/briefing/server.ts",
+    "test:briefing-startup": "bun scripts/check-briefing-startup.ts",
     "test:briefing-experiments": "bun scripts/check-briefing-experiments.ts",
     "fixture:github-suggestions": "bun scripts/github-suggestions-fixture.ts",
     "build:release": "bash scripts/build-release.sh",

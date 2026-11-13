@@ -147,6 +147,9 @@ export class ReviewSession {
   private selection?: AgentSelection;
   private agentContinuation?: PersistedReviewSession["agentContinuation"];
   private tourPlanning = false;
+  private disposed = false;
+  private stepPreparationTask?: Promise<void>;
+  private findingsPreparationTask?: Promise<void>;
   private agentActivity?: AgentRunActivity;
   private readonly agentActivities = new Map<string, AgentRunActivity>();
   private readonly prefetchTasks = new Map<string, Promise<void>>();
@@ -232,6 +235,14 @@ export class ReviewSession {
           findings: persisted.outline.findings ?? [],
         }
       : undefined;
+    if (this.outline?.preparation) {
+      for (const part of ["briefing", "steps", "findings"] as const) {
+        if (this.outline.preparation[part] === "pending") {
+          this.outline.preparation[part] = "failed";
+          this.outline.preparation[`${part}Error`] = "Preparation was interrupted. Retry to continue from the saved analysis.";
+        }
+      }
+    }
     this.currentStepIndex = persisted?.currentStepIndex ?? -1;
     this.revision = persisted?.revision ?? 1;
     this.status = persisted?.status ?? "open";
@@ -900,7 +911,7 @@ export class ReviewSession {
     session.diffRenderer = await loadGlobalDiffRenderer(preferenceDirectory);
     await session.selectComparisonView();
     await session.updateRevisionSummary(session.fullComparison).catch(() => undefined);
-    if (session.outline && !session.outline.briefing) session.outline.briefing = await buildBriefing(session.comparison, session.outline, session.briefingIntent());
+    if (session.outline && !session.outline.briefing && !session.outline.preparation) session.outline.briefing = await buildBriefing(session.comparison, session.outline, session.briefingIntent());
     if (session.outline?.briefing) {
       await captureBriefingDiffs(session.comparison, session.outline.briefing);
       await captureBriefingDiagrams(session.outline.briefing, session.outline.archifyArtifacts);
@@ -1042,6 +1053,14 @@ export class ReviewSession {
       diffRowCount,
     };
     const outline = structuredClone(this.outline);
+    if (outline?.preparation && outline.preparation.comparisonId !== diffSourceIdentity(this.comparison)) {
+      for (const part of ["briefing", "steps", "findings"] as const) {
+        if (outline.preparation[part] === "pending") {
+          outline.preparation[part] = "failed";
+          outline.preparation[`${part}Error`] = "The comparison changed. Retry preparation against the current source.";
+        }
+      }
+    }
     if (outline?.briefing) outline.briefing.outdated = Boolean(outline.briefing.outdated) || outline.briefing.fingerprint !== briefingFingerprint(this.comparison, this.briefingIntent());
     // HTML is served as a separately sandboxed local resource. Keeping it out
     // of routine JSON snapshots avoids repeatedly moving multi-megabyte HTML.
@@ -1096,7 +1115,7 @@ export class ReviewSession {
       agentSelection: this.selection ?? (this.agentAdapters.length > 0 ? this.resolveSelection() : undefined),
       agentMode: this.selection ? `${this.selection.adapterId}-read-only` : undefined,
       agentActivity: structuredClone(this.agentActivity),
-      tourState: this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
+      tourState: outline?.preparation ? outline.preparation.steps === "ready" ? "active" as const : "preparing" as const : this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
       needsAttention: buildNeedsAttention(this.comparison, this.outline, this.pullRequest),
       archifyAvailable: Boolean(ArchifyRenderer.fromEnvironment()),
     };
@@ -1424,6 +1443,10 @@ export class ReviewSession {
 
   async prepareTourForExport() {
     if (!this.outline) throw new ReviewError("Start the tour before exporting it.");
+    if (this.outline.preparation && this.outline.preparation.steps !== "ready") {
+      await this.stepPreparationTask;
+      if ((this.outline as TourOutline).preparation?.steps !== "ready") throw new ReviewError("Tour preparation is incomplete. Retry preparation before exporting tour steps.");
+    }
     const steps = tourSteps(this.outline);
     const missing = steps.map((step, index) => ({ step, index })).filter(({ step }) => !step.explanation);
     if (missing.length === 0) return this.snapshot();
@@ -1645,29 +1668,34 @@ export class ReviewSession {
       this.tourPlanning = true;
       const receipts: string[] = [];
       try {
+        if (this.outline?.preparation && this.outline.preparation.comparisonId !== diffSourceIdentity(this.comparison)) {
+          this.outline = undefined;
+          this.currentStepIndex = -1;
+          this.stepPreparationTask = undefined;
+          this.findingsPreparationTask = undefined;
+        }
         if (!this.outline) {
-          const generated = await this.agent.createOutline(
-            this.comparison,
-            this.reviewPolicy,
-            () => this.ensureComparisonCurrent(comparisonGeneration),
-            this.pullRequest?.linkedIssue,
-            this.briefingIntent(),
-          );
-          receipts.push(...generated.receipts);
+          const generated = await this.agent.createAnalysis(this.comparison, this.reviewPolicy, this.pullRequest?.linkedIssue, this.briefingIntent());
           this.ensureComparisonCurrent(comparisonGeneration);
           await validateDryRunPlanSourceAnchors(generated.value.dryRunPlans ?? [], (path) => loadRepositoryFile(this.comparison, path));
-          await this.refreshArchifyArtifacts(generated.value, before.outline);
-          generated.value.briefing = await buildBriefing(this.comparison, generated.value, this.briefingIntent());
-          const linked = await this.agent.bindBriefingSources(this.comparison, generated.value.briefing);
+          await this.refreshArchifyArtifacts(generated.value);
           this.ensureComparisonCurrent(comparisonGeneration);
-          generated.value.briefing = linked.value;
-          receipts.push(...linked.receipts);
-          delete generated.value.briefingProposal;
+          this.ensureOpen();
+          generated.value.preparation = {
+            id: crypto.randomUUID(), comparisonId: diffSourceIdentity(this.comparison),
+            briefing: "pending", steps: "pending",
+            findings: this.selection?.includeFindings !== false && this.reviewPolicy.findings.enabled ? "pending" : "disabled",
+          };
           this.outline = generated.value;
-          this.currentStepIndex = 0;
-        } else if (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length) {
+          this.currentStepIndex = -1;
+          this.revision += 1;
+          operationRevision = this.revision;
+          try { await this.persistAgentResult(generated.receipts); }
+          catch (error) { this.restoreMutableState(before, terminalEpoch, operationRevision); throw error; }
+        } else if (tourSteps(this.outline).length && (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length)) {
           this.currentStepIndex = 0;
         }
+        if (this.outline.preparation) return await this.prepareReadingExperiences(comparisonGeneration);
         if (!this.outline.briefing) this.outline.briefing = await buildBriefing(this.comparison, this.outline, this.briefingIntent());
         this.ensureComparisonCurrent(comparisonGeneration);
         this.ensureOpen();
@@ -1686,7 +1714,7 @@ export class ReviewSession {
         this.scheduleNextStepPrefetch();
         return this.snapshot();
       } catch (error) {
-        this.restoreMutableState(before, terminalEpoch, operationRevision);
+        if (!this.outline?.preparation) this.restoreMutableState(before, terminalEpoch, operationRevision);
         if (createdAgent && !this.outline && this.status === "open") {
           this.agent = undefined;
           this.selection = undefined;
@@ -1698,7 +1726,111 @@ export class ReviewSession {
     });
   }
 
+  private preparationIsCurrent(id: string, generation: number): boolean {
+    return !this.disposed && this.status === "open" && this.comparisonGeneration === generation &&
+      this.outline?.preparation?.id === id && this.outline.preparation.comparisonId === diffSourceIdentity(this.comparison);
+  }
+
+  private async commitPreparation(id: string, generation: number, update: (outline: TourOutline) => void, receipts: string[] = []) {
+    return this.serializeMutation(async () => {
+      if (!this.preparationIsCurrent(id, generation)) throw new ReviewError("The comparison changed or review closed during preparation.");
+      const previous = structuredClone(this.outline!), index = this.currentStepIndex, revision = this.revision;
+      update(this.outline!);
+      this.revision += 1;
+      try { await this.persistAgentResult(receipts); }
+      catch (error) { this.outline = previous; this.currentStepIndex = index; this.revision = revision; throw error; }
+    });
+  }
+
+  private async preparationFailed(id: string, generation: number, part: "briefing" | "steps" | "findings", error: unknown) {
+    if (!this.preparationIsCurrent(id, generation)) return;
+    await this.commitPreparation(id, generation, outline => {
+      outline.preparation![part] = "failed";
+      outline.preparation![`${part}Error`] = (error instanceof Error ? error.message : String(error)).slice(0, 2000) || "Preparation failed.";
+    });
+  }
+
+  private async prepareReadingExperiences(generation: number) {
+    const preparation = this.outline!.preparation!;
+    const id = preparation.id;
+    // A failure becomes visible when saved, just before its worker settles.
+    if (preparation.steps === "failed") await this.stepPreparationTask?.catch(() => undefined);
+    if (preparation.findings === "failed") await this.findingsPreparationTask?.catch(() => undefined);
+    if (!this.preparationIsCurrent(id, generation)) throw new ReviewError("The shared analysis belongs to a previous comparison. Start a new review for the refreshed change.");
+    if (preparation.steps !== "ready" && !this.stepPreparationTask) {
+      await this.commitPreparation(id, generation, outline => { outline.preparation!.steps = "pending"; delete outline.preparation!.stepsError; });
+      const task = this.prepareSteps(id, generation).finally(() => { if (this.stepPreparationTask === task) this.stepPreparationTask = undefined; });
+      this.stepPreparationTask = task;
+      void this.stepPreparationTask.catch(() => undefined);
+    }
+    if (tourSteps(this.outline).length) this.scheduleFindings(id, generation);
+    if (this.outline!.briefing && preparation.briefing === "ready") return this.snapshot();
+    await this.commitPreparation(id, generation, outline => { outline.preparation!.briefing = "pending"; delete outline.preparation!.briefingError; });
+    const worker = this.createWorkerAgent();
+    const comparison = this.comparison, analysis = structuredClone(this.outline!), intent = this.briefingIntent();
+    try {
+      const base = await buildBriefing(comparison, analysis, intent);
+      const generated = await worker.regenerateBriefing(comparison, analysis, base, intent);
+      const document = await buildBriefing(comparison, { ...analysis, flows: generated.value.flows }, intent, generated.value.proposal);
+      const linked = await worker.bindBriefingSources(comparison, document);
+      await this.commitPreparation(id, generation, outline => {
+        outline.briefing = linked.value;
+        outline.preparation!.briefing = "ready";
+      }, [...generated.receipts, ...linked.receipts]);
+      return this.snapshot();
+    } catch (error) {
+      await this.preparationFailed(id, generation, "briefing", error);
+      throw error;
+    } finally { this.workerAgents.delete(worker); worker.cancel(); }
+  }
+
+  private async prepareSteps(id: string, generation: number) {
+    const worker = this.createWorkerAgent(), comparison = this.comparison;
+    try {
+      let outline = structuredClone(this.outline!);
+      if (!tourSteps(outline).length) {
+        const generated = await worker.createTourSteps(comparison, outline);
+        await this.commitPreparation(id, generation, current => {
+          current.phases = generated.value.phases;
+          this.currentStepIndex = 0;
+        }, generated.receipts);
+        outline = structuredClone(this.outline!);
+      }
+      this.scheduleFindings(id, generation);
+      const steps = tourSteps(outline), first = steps[0]!;
+      if (!first.explanation) {
+        const generated = await worker.explainStep(first, 0, steps.length, outline);
+        await this.commitPreparation(id, generation, current => { tourSteps(current)[0]!.explanation = generated.value; }, generated.receipts);
+      }
+      await this.commitPreparation(id, generation, current => { current.preparation!.steps = "ready"; });
+      this.scheduleNextStepPrefetch();
+    } catch (error) { await this.preparationFailed(id, generation, "steps", error); }
+    finally { this.workerAgents.delete(worker); worker.cancel(); }
+  }
+
+  private scheduleFindings(id: string, generation: number) {
+    if (!this.preparationIsCurrent(id, generation) || this.findingsPreparationTask ||
+      ["ready", "disabled"].includes(this.outline!.preparation!.findings)) return;
+    const task = this.prepareFindings(id, generation).finally(() => { if (this.findingsPreparationTask === task) this.findingsPreparationTask = undefined; });
+    this.findingsPreparationTask = task;
+    void this.findingsPreparationTask.catch(() => undefined);
+  }
+
+  private async prepareFindings(id: string, generation: number) {
+    const worker = this.createWorkerAgent(), comparison = this.comparison;
+    try {
+      await this.commitPreparation(id, generation, outline => { outline.preparation!.findings = "pending"; delete outline.preparation!.findingsError; });
+      const result = await worker.auditFindings(comparison, structuredClone(this.outline!), this.reviewPolicy);
+      await this.commitPreparation(id, generation, outline => {
+        outline.findings = result.value;
+        outline.preparation!.findings = "ready";
+      }, result.receipts);
+    } catch (error) { await this.preparationFailed(id, generation, "findings", error); }
+    finally { this.workerAgents.delete(worker); worker.cancel(); }
+  }
+
   async navigate(direction: "previous" | "next") {
+    if (this.outline?.preparation && this.outline.preparation.steps !== "ready") throw new ReviewError("Tour steps are still being prepared. Read the briefing while you wait.");
     if (this.outline && this.agent) {
       const expectedCurrentStepIndex = this.currentStepIndex;
       const steps = tourSteps(this.outline);
@@ -2792,6 +2924,7 @@ export class ReviewSession {
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true;
     this.agent?.cancel();
     for (const worker of this.workerAgents) worker.cancel();
     this.workerAgents.clear();

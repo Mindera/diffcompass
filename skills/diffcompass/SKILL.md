@@ -13,7 +13,7 @@ Run the local tour in attached mode so every explanation and reviewer question r
    - Prefer `diffcompass` from `PATH`; bridge operations use its `bridge` subcommand.
    - If it is globally installed by Bun but absent from `PATH`, get the directory with `bun pm bin -g` and invoke it from that absolute directory.
    - From this repository checkout, use `bun run src/cli.ts` from the repository root.
-2. Start a persistent terminal process from the repository being reviewed. The server prints its bridge details immediately, prepares the outline and first explanation through this agent, and opens the browser only after the first stop is ready:
+2. Start a persistent terminal process from the repository being reviewed. The server prints its bridge details immediately, prepares shared analysis and diagrams through this agent, then requests Briefing and tour preparation independently, and opens the browser once the verified Briefing is ready:
 
    For an ordinary branch or working-tree tour, skip findings by default. This includes walking through code the user wrote or had an agent write for them:
 
@@ -39,11 +39,11 @@ Run the local tour in attached mode so every explanation and reviewer question r
 
    When the work being reviewed produced useful UI evidence, pass each PNG, JPEG, GIF, WebP, or MP4 with a separate `--media` argument. The tool copies those files into session-owned storage and adds the `Media` tab. Do not pass unrelated files, secrets, or media that contain credentials.
 
-   Pass `--preview-redirect` by default. It preserves ordinary local launches while also supporting hosts whose preview opens the bare origin and cannot preserve the tokenized review URL. In that preview-host case, tell the reviewer to open the bare origin through their forwarding or preview path rather than copying the hash-token URL from the terminal. The server redirects `/` once to `/t#token=...`, where the fragment contains the browser-session token. This is unrelated to the attached bridge token. The normal delay before `--open`—waiting until the first stop is ready—is also not a redirect.
+   Pass `--preview-redirect` by default. It preserves ordinary local launches while also supporting hosts whose preview opens the bare origin and cannot preserve the tokenized review URL. In that preview-host case, tell the reviewer to open the bare origin through their forwarding or preview path rather than copying the hash-token URL from the terminal. The server redirects `/` once to `/t#token=...`, where the fragment contains the browser-session token. This is unrelated to the attached bridge token. The normal delay before `--open`—waiting until the verified Briefing is ready—is also not a redirect.
 
-   Use a short initial yield and retain the running terminal session. Do not wait synchronously for the server to exit. `--attached --open` also implies `--start-tour` as a safety net: the browser opens only after the first anchored stop and its explanation are ready, and a preparation failure leaves the server running without opening an empty tour. Start it in a host-managed persistent terminal/session so it survives the caller ending, cancelling, or signalling its own process group. Do not assume a background child automatically survives its parent. Use the host's supported persistent-process mechanism; macOS does not provide `setsid`.
+   Use a short initial yield and retain the running terminal session. Do not wait synchronously for the server to exit. `--attached --open` also implies `--start-tour` as a safety net: the browser opens after the Briefing is ready while tour steps and findings continue in the background. A Briefing failure leaves the server running for retry without discarding completed tour work. Start it in a host-managed persistent terminal/session so it survives the caller ending, cancelling, or signalling its own process group. Do not assume a background child automatically survives its parent. Use the host's supported persistent-process mechanism; macOS does not provide `setsid`.
 3. Read the printed `Attached bridge URL` and `Attached bridge token file`. Treat the token file as a local secret; never read or include its contents in a user-facing response. The CLI has already requested tour planning; do not open another browser, navigate the page, or call the browser API to press `Start tour`.
-4. If automatic browser opening fails after the tour is ready, give the review URL to the user.
+4. If automatic browser opening fails after the Briefing is ready, give the review URL to the user.
 
 ## Serve prompts
 
@@ -98,7 +98,10 @@ the coordinator rather than processing that batch serially:
 3. Keep the coordinator polling with bounded `bridge next` calls while workers
    inspect the repository.
    A reviewer question must start immediately even while one or more future tour
-   stops are being prepared. The server normally requests up to the configured
+   stops are being prepared. Initial preparation also fans out into independent
+   Briefing and tour-step prompts after shared analysis. Process these concurrently;
+   do not wait for tour steps or findings before answering the Briefing request.
+   The server normally requests up to the configured
    prepare-ahead window in parallel; do not wait for stop N before starting N+1.
 4. Bound the worker pool to five concurrent prompts. This covers the maximum
    four-stop preparation window plus one reviewer question without creating an

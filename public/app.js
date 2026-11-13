@@ -2972,6 +2972,9 @@ function renderFindings() {
   elements["findings-tab-count"].textContent = String(findings.filter((finding) => finding.status === "open").length);
   elements["findings-tab-count"].classList.toggle("hidden", findings.length === 0);
   elements["all-findings-empty"].classList.toggle("hidden", findings.length > 0);
+  const findingPreparation = state.session.outline?.preparation;
+  elements["all-findings-empty"].textContent = findingPreparation?.findings === "pending" ? "Findings audit pending."
+    : findingPreparation?.findings === "failed" ? `Findings audit failed: ${findingPreparation.findingsError}. Retry preparation from the briefing.` : "No evidence-backed findings were generated.";
   elements["all-findings-list"].innerHTML = findingCards(findings);
   elements["findings-back"].classList.toggle("hidden", !state.findingReturn);
   elements["findings-back"].textContent = state.findingReturn?.fromBriefing ? "← Back to briefing" : "← Back to code";
@@ -5039,9 +5042,10 @@ function getBriefingReader() {
       await new Promise(requestAnimationFrame);
       await showChangedFile(path, evidence.startLine, evidence.side);
     },
+    onRetry: async () => { await startTour(); },
     onGenerate: async () => {
       if (state.busy || !reviewIsOpen()) return;
-      if (!state.session.outline) { state.tourIntroPending = true; await startTour(); return; }
+      if (!state.session.outline || (state.session.outline.preparation && state.session.outline.preparation.briefing !== "ready")) { state.tourIntroPending = true; await startTour(); return; }
       setBusy(true);
       try { const previous = state.session; state.session = await api("/api/briefing/regenerate", { method: "POST", body: "{}" }); renderSessionUpdate(previous); }
       catch (error) { toast(error.message); }
@@ -5438,17 +5442,23 @@ function renderTour() {
   const { outline, currentStepIndex } = state.session;
   renderReviewOverview();
   renderReviewerTaskAssessmentStatus();
-  const active = Boolean(outline);
-  const planning = state.session.tourState === "planning";
+  const preparation = outline?.preparation;
+  const active = Boolean(outline && (!preparation || preparation.steps === "ready") && currentStep());
+  const planning = state.session.tourState === "planning" || preparation?.steps === "pending";
   elements["tour-empty"].classList.toggle("hidden", active);
   elements["tour-active"].classList.toggle("hidden", !active);
   renderMessages();
-  if (!outline) {
+  if (!active) {
     elements["tour-empty-title"].textContent = planning ? "Planning your tour" : "Walk through this change";
     elements["tour-empty-description"].textContent = planning
       ? "The triggering agent is inspecting the change and preparing the first stop."
       : "The agent will plan a logical route through the diff and explain each stop as you progress.";
-    elements["agent-config"].classList.toggle("hidden", planning);
+    if (preparation) {
+      elements["tour-empty-title"].textContent = preparation.steps === "failed" ? "Tour preparation paused" : "Preparing tour steps";
+      elements["tour-empty-description"].textContent = preparation.stepsError ?? "You can read the briefing while the guided tour is prepared.";
+      elements["start-tour"].textContent = "Retry preparation";
+    }
+    elements["agent-config"].classList.toggle("hidden", planning || Boolean(preparation));
     elements["start-tour"].classList.toggle("hidden", planning);
     elements["planning-activity"].classList.toggle("hidden", !planning);
     if (planning) {
@@ -5750,7 +5760,7 @@ function renderSession() {
   syncDryRunSourceCache();
   const briefingWasOpen = elements["tour-intro-dialog"].open;
   const briefingScroll = briefingWasOpen ? elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop : 0;
-  if (state.tourMode === null && state.session.outline) state.tourMode = true;
+  if (state.tourMode === null && state.session.outline) state.tourMode = !state.session.outline.preparation || state.session.outline.preparation.steps === "ready";
   initializeUiPreferences();
   state.proposalPreview = false;
   state.proposalActivityId = null;
@@ -5883,6 +5893,7 @@ async function beginPreparedTour() {
     void startTour();
     return;
   }
+  if (state.session.outline?.preparation?.steps && state.session.outline.preparation.steps !== "ready") return toast("Tour steps are still being prepared. You can read the briefing now.");
   if (!currentStep()) return;
   state.tourIntroPending = false;
   state.tourIntroReturn = false;
@@ -5922,7 +5933,7 @@ async function startTour() {
         includeArchify: elements["include-archify"].checked,
       }),
     });
-    state.tourMode = true;
+    state.tourMode = !state.session.outline?.preparation || state.session.outline.preparation.steps === "ready";
     state.agentPane = "tour";
     state.tourStarted = true;
     state.focusedStepId = state.tourIntroPending ? null : currentStep()?.id ?? null;
@@ -5991,6 +6002,7 @@ async function navigate(direction) {
 
 async function toggleTourMode() {
   if (!state.session.outline || state.busy) return;
+  if (state.session.outline.preparation && state.session.outline.preparation.steps !== "ready") return toast("Tour steps are still being prepared.");
   if (state.monacoRenderer?.hasDraft()) return toast("Save or cancel the Monaco draft before leaving the tour.");
   state.tourMode = !state.tourMode;
   if (state.tourMode) { state.briefingSourceReturn = false; state.agentPane = "tour"; }

@@ -30,7 +30,7 @@ test("the attached-agent skill scopes preview redirects and media evidence", asy
   expect(skill).toContain("unrelated to the attached bridge token");
   expect(skill).toContain("separate `--media` argument");
   expect(skill).toContain("`--attached --open` also implies `--start-tour`");
-  expect(skill).toContain("preparation failure leaves the server running without opening an empty tour");
+  expect(skill).toContain("Briefing failure leaves the server running for retry without discarding completed tour work");
 });
 
 test("the attached-agent skill offers author intent for ordinary branch tours", async () => {

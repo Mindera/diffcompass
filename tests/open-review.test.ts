@@ -7,7 +7,7 @@ test("builds platform-specific browser commands", () => {
   expect(browserCommand("http://review.test", "linux")).toEqual(["xdg-open", "http://review.test"]);
 });
 
-test("does not open the review page when automatic preparation has no ready first stop", async () => {
+test("does not open the review page when automatic preparation has no ready briefing", async () => {
   const opened: string[][] = [];
   const errors: string[] = [];
 
@@ -20,7 +20,7 @@ test("does not open the review page when automatic preparation has no ready firs
   expect(opened).toEqual([]);
   expect(openedReady).toBe(false);
   expect(errors[0]).toContain("invalid optional diagram");
-  expect(errors[1]).toContain("first tour stop is not ready");
+  expect(errors[1]).toContain("briefing is not ready");
 });
 
 test("opens only after automatic preparation resolves", async () => {

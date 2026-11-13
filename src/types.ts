@@ -108,7 +108,20 @@ export interface TourPhase {
   steps: TourStep[];
 }
 
+export interface TourPreparation {
+  id: string;
+  comparisonId: string;
+  briefing: "pending" | "ready" | "failed";
+  steps: "pending" | "ready" | "failed";
+  findings: "pending" | "ready" | "failed" | "disabled";
+  briefingError?: string;
+  stepsError?: string;
+  findingsError?: string;
+}
+
 export interface TourOutline {
+  /** Saved shared analysis can exist before either reading experience is ready. */
+  preparation?: TourPreparation;
   briefing?: import("./briefing.ts").BriefingDocument;
   /** Transient agent proposal; resolved to captured evidence before persistence. */
   briefingProposal?: import("./briefing.ts").BriefingProposal;

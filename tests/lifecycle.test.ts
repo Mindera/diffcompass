@@ -1241,14 +1241,23 @@ test("an ignored-file watcher event does not invalidate an in-flight attached ou
       steps: [{ id: "current", title: "Current", objective: "Current", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }],
     }], callFlows: [], flows: [], findings: [],
   }));
-  let explanation;
-  for (let attempt = 0; attempt < 20 && !explanation; attempt += 1) {
-    const events = await bridge.eventsAfter(outlinePrompt!.sequence, 1_000);
-    explanation = events.find((event) => event.type === "agent.prompt" && event.kind === "tour.explanation");
-    if (!explanation) await Bun.sleep(10);
+  await bridge.ack(outlinePrompt!.id);
+  let sequence = outlinePrompt!.sequence;
+  let briefingAnswered = false, stepsAnswered = false;
+  while (!briefingAnswered || !stepsAnswered) {
+    for (const event of await bridge.eventsAfter(sequence, 1000)) {
+      sequence = Math.max(sequence, event.sequence);
+      if (event.type !== "agent.prompt") continue;
+      if (event.prompt.includes("Prepare tour steps from")) {
+        await bridge.respond(event.id, JSON.stringify({ phases: [{ id: "current-phase", title: "Current", summary: "Current phase", fileChanges: [{ path: "app.ts", summary: "Current file" }], steps: [{ id: "current", title: "Current", objective: "Current", anchor: { path: "app.ts", side: "new", startLine: 2, endLine: 2 } }] }] }));
+        stepsAnswered = true;
+      } else if (event.prompt.includes("Return only the briefingProposal")) {
+        await bridge.respond(event.id, JSON.stringify({ title: "Current change", sections: [{ id: "current", title: "Current", blocks: [{ id: "text", kind: "prose", text: "The changed line remains current." }] }], evidence: [] }));
+        briefingAnswered = true;
+      } else if (event.kind === "tour.explanation") await bridge.respond(event.id, "The changed line remains current.");
+      await bridge.ack(event.id);
+    }
   }
-  if (!explanation || explanation.type !== "agent.prompt") throw new Error("Expected an explanation prompt.");
-  await bridge.respond(explanation.id, "The changed line remains current.");
   await expect(starting).resolves.toMatchObject({ outline: { title: "Current outline" } });
 
   await writeFile(join(repository, "app.ts"), "const base = 1;\nconst changedAgain = 3;\n");
@@ -1265,7 +1274,7 @@ test("a failed automatic outline remains visible in the session so the browser c
   const [prompt] = await bridge.eventsAfter(0, 1_000);
 
   await bridge.respond(prompt!.id, JSON.stringify({
-    title: "Invalid outline",
+    title: "",
     summary: "No route can be anchored.",
     phases: [],
     callFlows: [],
