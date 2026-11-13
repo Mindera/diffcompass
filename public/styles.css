@@ -1754,12 +1754,13 @@ button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focu
 .tour-code-group > header .text-button { overflow-wrap: anywhere; text-align: left; }
 .tour-code-group > header > span { color: var(--muted); font-size: 12px; }
 .tour-code-group > p { padding: 0 12px; }
-.tour-step-detail, .tour-reading-note { margin: 14px 0; }
+.tour-step-detail, .tour-reading-note { margin: 12px 0; font-size: 12px; line-height: 1.52; }
 .tour-step-detail > summary, .tour-reading-note summary { cursor: pointer; color: var(--accent); }
-.tour-reading-note { border-left: 3px solid var(--accent); padding: 10px 14px; background: var(--panel); border-radius: 4px; }
+.tour-reading-note { border-left: 3px solid var(--accent); padding: 8px 12px; background: var(--panel); border-radius: 4px; }
 .tour-reading-note p { margin: 8px 0; }
 .tour-reading-note pre { overflow: auto; max-height: 200px; font-size: 12px; }
-.tour-freshness { border-left: 3px solid var(--warning, #e8b35e); padding: 10px; background: var(--panel); }
+.tour-freshness { border-left: 3px solid var(--warning, #e8b35e); padding: 10px; background: var(--panel); font-size: 12px; line-height: 1.52; }
+#tour-step-code { padding: 6px 10px; font-size: 12px; line-height: 1.5; }
 .tour-related { display: grid; gap: 8px; margin-top: 10px; }
 .tour-related button { text-align: left; overflow-wrap: anywhere; font-size: 12px; }
 .tour-coverage { padding: 12px; margin: 16px 0; border: 1px solid var(--border); border-radius: 10px; }
