@@ -386,19 +386,15 @@ export async function updatePullRequestWorkspace(
   return latest;
 }
 
-export async function publishPullRequestReview(
+export class PullRequestHeadChangedError extends ReviewError {
+  constructor() { super("The pull request changed on GitHub. Refresh it before publishing this review."); }
+}
+
+export async function findPublishedPullRequestReview(
   context: PullRequestContext,
-  comments: ReviewComment[],
-  outcome: Extract<ReviewOutcome, "accepted" | "feedback"> | "comment",
   intentId: string,
   runner: Runner = runProcess,
-  note?: string,
-): Promise<{ id: string; url?: string }> {
-  const latest = await loadPullRequestContext(context.sourceRepositoryRoot, String(context.number), context.refNamespace, runner);
-  if (latest.headRefOid !== context.headRefOid) throw new ReviewError("The pull request changed on GitHub. Refresh it before publishing this review.");
-  if (comments.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
-  if (comments.some(comment => comment.suggestion && (comment.suggestion.headOid !== context.headRefOid || comment.side !== "new" ||
-    comment.body !== githubSuggestionBody(comment.suggestion.replacement)))) throw new ReviewError("This GitHub suggestion no longer matches its saved source or replacement.");
+): Promise<{ id: string; url?: string } | undefined> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(intentId)) throw new ReviewError("The GitHub publication intent is invalid.");
   const marker = `<!-- diffcompass:${intentId} -->`;
   // Reviews are oldest first. A successful POST whose response was lost may
@@ -415,6 +411,27 @@ export async function publishPullRequestReview(
     }
     if (existing.length < 100) break;
   }
+  return undefined;
+}
+
+export async function publishPullRequestReview(
+  context: PullRequestContext,
+  comments: ReviewComment[],
+  outcome: Extract<ReviewOutcome, "accepted" | "feedback"> | "comment",
+  intentId: string,
+  runner: Runner = runProcess,
+  note?: string,
+  beforePost?: () => Promise<void>,
+): Promise<{ id: string; url?: string }> {
+  // Recover a lost response even if the branch advanced after the original POST.
+  const prior = await findPublishedPullRequestReview(context, intentId, runner);
+  if (prior) return prior;
+  const latest = await loadPullRequestContext(context.sourceRepositoryRoot, String(context.number), context.refNamespace, runner);
+  if (latest.headRefOid !== context.headRefOid) throw new PullRequestHeadChangedError();
+  if (comments.some((comment) => comment.status !== "active")) throw new ReviewError("Outdated comments cannot be published to GitHub.");
+  if (comments.some(comment => comment.suggestion && (comment.suggestion.headOid !== context.headRefOid || comment.side !== "new" ||
+    comment.body !== githubSuggestionBody(comment.suggestion.replacement)))) throw new ReviewError("This GitHub suggestion no longer matches its saved source or replacement.");
+  const marker = `<!-- diffcompass:${intentId} -->`;
   const body = {
     commit_id: context.headRefOid,
     event: outcome === "comment" ? "COMMENT" : outcome === "accepted" ? "APPROVE" : "REQUEST_CHANGES",
@@ -424,6 +441,8 @@ export async function publishPullRequestReview(
       ...(comment.suggestion && comment.endLine !== undefined && comment.endLine > comment.line ? { start_line: comment.line, start_side: "RIGHT" } : {}),
     })),
   };
+  // Persist the retry identity only after preflight, but before any remote write.
+  await beforePost?.();
   const response = await jsonCommand(runner, ["gh", "api", `repos/${context.repository}/pulls/${context.number}/reviews`, "--method", "POST", "--input", "-"], context.sourceRepositoryRoot, JSON.stringify(body));
   if (typeof response.id !== "number" && typeof response.id !== "string") throw new ReviewError("GitHub did not return a review identifier after publication.");
   return { id: String(response.id), url: typeof response.html_url === "string" ? response.html_url : undefined };

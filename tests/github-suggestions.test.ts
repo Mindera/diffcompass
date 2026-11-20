@@ -39,17 +39,20 @@ async function fixture() {
   const context: PullRequestContext = { repository: "test/suggestions", number: 7, title: "Suggestions", body: "", author: "author", url: "https://github.com/test/suggestions/pull/7",
     baseRefName: "main", baseRefOid: base, headRefName: "feature", headRefOid: head, sourceRepositoryRoot: repository, workspaceRoot: repository,
     refNamespace: "refs/diffcompass/native-test", commits: [], checks: [], threads: [], threadsTruncated: false, updatedAt: new Date().toISOString() };
-  const remote = { head, posts: [] as any[], reviews: [] as any[], loseResponse: false };
+  const remote = { head, posts: [] as any[], reviews: [] as any[], loseResponse: false, failReviewLookup: false };
   const runner: GitHubRunner = async (command, _cwd, _accepted, options) => {
+    if (command[0] === "git") return runProcess(command, _cwd, _accepted, options);
     let value: unknown;
     if (command.slice(0, 3).join(" ") === "gh repo view") value = { nameWithOwner: context.repository };
     else if (command.slice(0, 3).join(" ") === "gh pr view") value = { ...context, headRefOid: remote.head, author: { login: "author" }, statusCheckRollup: [], reviewDecision: "REVIEW_REQUIRED" };
     else if (command.includes("graphql")) value = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } };
     else if (command.at(-1)?.includes("reviews?per_page")) {
+      if (remote.failReviewLookup) throw new Error("Review lookup unavailable");
       const page = Number(new URL(command.at(-1)!, "https://api.github.com/").searchParams.get("page") ?? 1);
       value = remote.reviews.slice((page - 1) * 100, page * 100);
     }
     else if (command.includes("--method")) {
+      expect((await loadPersistedSession(stateFile)).pullRequest?.publication?.status).toBe("pending");
       const payload = JSON.parse(options?.input ?? "{}"); remote.posts.push(payload);
       value = { id: 77, body: payload.body, html_url: "https://github.com/test/suggestions/pull/7#pullrequestreview-77" };
       remote.reviews.push(value);
@@ -61,6 +64,123 @@ async function fixture() {
   const session = await ReviewSession.create(repository, base, defaults); sessions.push(session);
   return { session, repository, stateFile, git, head, content, remote, defaults };
 }
+
+async function advanceRemoteHead(f: Awaited<ReturnType<typeof fixture>>) {
+  const tree = (await f.git("rev-parse", `${f.head}^{tree}`)).stdout.trim();
+  f.remote.head = (await f.git("commit-tree", tree, "-p", f.head, "-m", "Updated PR head")).stdout.trim();
+}
+
+async function publicationFixture(outcome: "accepted" | "feedback" | "comment") {
+  const f = await fixture();
+  if (outcome === "comment") {
+    const { activityId } = await f.session.proposeInlineEdit("file.txt", "new", 5, "changed 5", "replacement");
+    await f.session.setSuggestionPublication(activityId, true, f.head);
+  } else await f.session.addComment({ path: "file.txt", side: "new", line: 5, body: "Keep this review comment." });
+  const ids = f.session.comments.map(comment => comment.id);
+  const decision = outcome === "accepted" ? "approve-with-comments" as const : "request-changes" as const;
+  const publish = (session = f.session, head = f.head) => outcome === "comment"
+    ? session.publishGitHubSuggestions(head, ids)
+    : session.publishPullRequest(outcome, head, decision, undefined, ids);
+  const resumeLegacyPending = async () => {
+    const saved = await loadPersistedSession(f.stateFile);
+    saved.pullRequest!.publication = { intentId: crypto.randomUUID(), outcome, ...(outcome !== "comment" ? { decision } : {}), commentIds: ids, status: "pending" };
+    await savePersistedSession(f.stateFile, saved);
+    const resumed = await ReviewSession.create(f.repository, f.session.comparison.base, { ...f.defaults, resume: true });
+    sessions.push(resumed);
+    return resumed;
+  };
+  return { ...f, ids, publish, resumeLegacyPending };
+}
+
+test.each(["accepted", "feedback", "comment"] as const)("stale-head %s rejection leaves Refresh available and preserves comments", async outcome => {
+  const f = await publicationFixture(outcome);
+  const comments = structuredClone(f.session.comments);
+  await advanceRemoteHead(f);
+  await expect(f.publish()).rejects.toThrow("changed on GitHub");
+  expect(f.remote.posts).toHaveLength(0);
+  expect(f.session.pullRequest?.publication).toBeUndefined();
+  expect((await loadPersistedSession(f.stateFile)).pullRequest?.publication).toBeUndefined();
+  await f.session.refreshPullRequest();
+  expect(f.session.pullRequest?.headRefOid).toBe(f.remote.head);
+  expect(f.session.comments).toEqual(comments);
+  if (outcome !== "comment") {
+    await f.publish(f.session, f.remote.head);
+    expect(f.remote.posts).toHaveLength(1);
+    expect(f.remote.posts[0].commit_id).toBe(f.remote.head);
+  }
+});
+
+for (const action of ["refresh", "retry"] as const) {
+  test.each(["accepted", "feedback", "comment"] as const)(`${action} recovers an old pending %s intent after the PR head moves`, async outcome => {
+    const f = await publicationFixture(outcome);
+    const resumed = await f.resumeLegacyPending();
+    const comments = structuredClone(resumed.comments);
+    await advanceRemoteHead(f);
+    if (action === "retry") await expect(f.publish(resumed)).rejects.toThrow("changed on GitHub");
+    await resumed.refreshPullRequest();
+    expect(f.remote.posts).toHaveLength(0);
+    expect(resumed.pullRequest?.publication).toBeUndefined();
+    expect(resumed.pullRequest?.headRefOid).toBe(f.remote.head);
+    expect(resumed.comments).toEqual(comments);
+    expect((await loadPersistedSession(f.stateFile)).pullRequest?.publication).toBeUndefined();
+  });
+}
+
+test("an unavailable review lookup preserves an ambiguous pending intent across Refresh and Retry", async () => {
+  const f = await publicationFixture("feedback");
+  const resumed = await f.resumeLegacyPending();
+  const publication = structuredClone(resumed.pullRequest!.publication);
+  await advanceRemoteHead(f);
+  f.remote.failReviewLookup = true;
+  await expect(resumed.refreshPullRequest()).rejects.toThrow("Review lookup unavailable");
+  await expect(f.publish(resumed)).rejects.toThrow("Review lookup unavailable");
+  expect(resumed.pullRequest?.publication).toEqual(publication);
+  expect((await loadPersistedSession(f.stateFile)).pullRequest?.publication).toEqual(publication);
+  expect(f.remote.posts).toHaveLength(0);
+  f.remote.failReviewLookup = false;
+  await resumed.refreshPullRequest();
+  expect(resumed.pullRequest?.publication).toBeUndefined();
+});
+
+test("failure to save the publication intent sends nothing and leaves comments editable", async () => {
+  const f = await publicationFixture("feedback");
+  const internals = f.session as unknown as { persist(): Promise<void> };
+  const persist = internals.persist.bind(f.session);
+  internals.persist = async () => { throw new Error("Storage unavailable"); };
+  await expect(f.publish()).rejects.toThrow("Storage unavailable");
+  expect(f.remote.posts).toHaveLength(0);
+  expect(f.session.pullRequest?.publication).toBeUndefined();
+  internals.persist = persist;
+  await f.session.updateComment(f.ids[0]!, "Still editable");
+});
+
+test("Refresh keeps an unresolved intent on the same head and Retry reuses its identity", async () => {
+  const f = await publicationFixture("feedback");
+  const resumed = await f.resumeLegacyPending();
+  const publication = structuredClone(resumed.pullRequest!.publication);
+  await expect(resumed.refreshPullRequest()).rejects.toThrow("publication has started");
+  expect((await loadPersistedSession(f.stateFile)).pullRequest?.publication).toEqual(publication);
+  await f.publish(resumed);
+  expect(f.remote.posts).toHaveLength(1);
+  expect(f.remote.posts[0].body).toContain(`<!-- diffcompass:${publication!.intentId} -->`);
+});
+
+test("failure to persist stale-intent recovery retains the durable lock until storage recovers", async () => {
+  const f = await publicationFixture("feedback");
+  const resumed = await f.resumeLegacyPending();
+  const publication = structuredClone(resumed.pullRequest!.publication);
+  await advanceRemoteHead(f);
+  const internals = resumed as unknown as { persist(): Promise<void> };
+  const persist = internals.persist.bind(resumed);
+  internals.persist = async () => { throw new Error("Storage unavailable"); };
+  await expect(resumed.refreshPullRequest()).rejects.toThrow("Storage unavailable");
+  expect(resumed.pullRequest?.publication).toEqual(publication);
+  expect((await loadPersistedSession(f.stateFile)).pullRequest?.publication).toEqual(publication);
+  expect(f.remote.posts).toHaveLength(0);
+  internals.persist = persist;
+  await resumed.refreshPullRequest();
+  expect((await loadPersistedSession(f.stateFile)).pullRequest?.publication).toBeUndefined();
+});
 
 test("suggestion Markdown preserves multiline replacements, deletion and literal fences", () => {
   expect(githubSuggestionBody("one\ntwo\n")).toBe("```suggestion\none\ntwo\n\n```");
@@ -124,7 +244,8 @@ test.each(["new\nreplacement", "", "```ts\n`value`\n```"])("confirmed native pub
 });
 
 test("single-line suggestions omit range fields and recover a lost publication response without duplicates", async () => {
-  const { session, stateFile, head, remote, defaults, repository } = await fixture();
+  const f = await fixture();
+  const { session, stateFile, head, remote, defaults, repository } = f;
   const { activityId } = await session.proposeInlineEdit("file.txt", "new", 5, "changed 5", "new");
   await session.setSuggestionPublication(activityId, true, head);
   remote.loseResponse = true;
@@ -133,6 +254,9 @@ test("single-line suggestions omit range fields and recover a lost publication r
   expect((await loadPersistedSession(stateFile)).pullRequest?.publication?.status).toBe("pending");
   await expect(session.setSuggestionPublication(activityId, false)).rejects.toThrow("publication has started");
   const resumed = await ReviewSession.create(repository, session.comparison.base, { ...defaults, resume: true }); sessions.push(resumed);
+  await advanceRemoteHead(f);
+  await expect(resumed.refreshPullRequest()).rejects.toThrow("publication has started");
+  expect((await loadPersistedSession(stateFile)).pullRequest?.publication?.status).toBe("pending");
   await resumed.publishPullRequest("feedback", head);
   expect(remote.posts).toHaveLength(1);
   expect(resumed.status).toBe("feedback");
@@ -304,7 +428,8 @@ test("neutral submission checks remote head at final publication and permits loc
 });
 
 test("neutral retry recovers its receipt beyond the first hundred GitHub reviews", async () => {
-  const { session, head, repository, defaults, remote } = await fixture();
+  const f = await fixture();
+  const { session, head, repository, defaults, remote } = f;
   remote.reviews.push(...Array.from({ length: 101 }, (_, index) => ({ id: 1000 + index, body: "Earlier review" })));
   const { activityId } = await session.proposeInlineEdit("file.txt", "new", 5, "changed 5", "new");
   await session.setSuggestionPublication(activityId, true, head);
@@ -312,6 +437,7 @@ test("neutral retry recovers its receipt beyond the first hundred GitHub reviews
   remote.loseResponse = true;
   await expect(session.publishGitHubSuggestions(head, ids)).rejects.toThrow("Response lost");
   remote.loseResponse = false;
+  await advanceRemoteHead(f);
   const resumed = await ReviewSession.create(repository, session.comparison.base, { ...defaults, resume: true }); sessions.push(resumed);
   await resumed.publishGitHubSuggestions(head, ids);
   expect(remote.posts).toHaveLength(1);
