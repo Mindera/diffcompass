@@ -2521,7 +2521,7 @@ function renderModelOptions() {
     : "";
   elements["agent-note"].textContent = [adapter ? adapter.note ?? "" : "Install Codex, Claude Code, Gemini, or Copilot, then restart the server.", policyNote].filter(Boolean).join(" ");
   const model = adapter?.models.find((candidate) => candidate.id === selected) ?? adapter?.models[0];
-  const reasoning = state.session.agentSelection?.adapterId === adapter?.id && state.session.agentSelection?.modelId === model?.id
+  const reasoning = state.session.agentSelection && state.session.agentSelection.adapterId === adapter?.id && state.session.agentSelection.modelId === model?.id
     ? state.session.agentSelection.reasoningEffort
     : model?.defaultReasoningEffort;
   const modelIdentity = model?.id === "current-session" ? "Current agent session" : model?.id;
