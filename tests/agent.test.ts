@@ -89,6 +89,7 @@ test("builds Copilot invocations with exact sessions and a defense-in-depth read
   expect(args).toContain("--no-custom-instructions");
   expect(args).toContain("--no-auto-update");
   expect(args).toContain("--no-remote-export");
+  expect(args).not.toContain("--no-remote");
   expect(args).toContain("--model=gpt-5.4");
   expect(args).toContain("--effort=high");
   expect(args).not.toContain("--allow-all");
@@ -99,6 +100,8 @@ test("builds Copilot invocations with exact sessions and a defense-in-depth read
   expect(writable).toContain("--allow-tool=shell");
   expect(writable).not.toContain("--deny-tool=write");
   expect(writable).not.toContain("--disallow-temp-dir");
+  expect(writable).toContain("--no-remote-export");
+  expect(writable).not.toContain("--no-remote");
 });
 
 test("creates and restores adapter-specific continuation identifiers without cross-wiring", () => {

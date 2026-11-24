@@ -153,7 +153,7 @@ export function buildCopilotArgs(prompt: string, sessionId: string, model?: stri
     "--no-bash-env",
     "--no-custom-instructions",
     "--no-experimental",
-    "--no-remote",
+    // Accepted alias of --sync-session=off, also supported by older CLIs.
     "--no-remote-export",
     ...(model && model !== "default" ? [`--model=${model}`] : []),
     ...(reasoning ? [`--effort=${reasoning}`] : []),

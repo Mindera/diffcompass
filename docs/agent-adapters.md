@@ -39,6 +39,10 @@ Copilot uses an exact UUID with `--session-id` for every turn. Its available
 tools are restricted to `view`, `glob`, and `grep`, with explicit denials for
 writes, shell commands, and URLs. Built-in MCP, repository instructions,
 experimental features, automatic updates, and remote export are disabled.
+Session history syncing stays disabled with `--no-remote-export`, the compatible
+alias of `--sync-session=off`. Do not pass `--no-remote`: current Copilot releases
+reject that removed flag before running a prompt; remote control is managed in
+interactive sessions instead.
 Models are parsed from `copilot help`; failure to parse that catalog leaves only
 the `auto` model.
 See GitHub's official [Copilot CLI command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
