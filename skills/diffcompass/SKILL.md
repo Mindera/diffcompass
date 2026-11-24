@@ -5,7 +5,7 @@ description: Launch and conduct an attached-agent change walkthrough in a local 
 
 # DiffCompass
 
-Run the local tour in attached mode so every explanation and reviewer question returns to this agent instead of starting a separate model session.
+Launch the requested review mode with `--attached` so generated content and reviewer questions return to this agent instead of starting a separate model session.
 
 ## Launch
 
@@ -13,12 +13,24 @@ Run the local tour in attached mode so every explanation and reviewer question r
    - Prefer `diffcompass` from `PATH`; bridge operations use its `bridge` subcommand.
    - If it is globally installed by Bun but absent from `PATH`, get the directory with `bun pm bin -g` and invoke it from that absolute directory.
    - From this repository checkout, use `bun run src/cli.ts` from the repository root.
-2. Start a persistent terminal process from the repository being reviewed. The server prints its bridge details immediately, prepares shared analysis and diagrams through this agent, then requests Briefing and tour preparation independently, and opens the browser once the verified Briefing is ready:
+2. Choose the mode that matches the user's request, then start a persistent terminal process from the repository being reviewed:
+
+   | Requested experience | Launch flag | Automatic work |
+   | --- | --- | --- |
+   | Diff and comments, without a briefing or tour | `--mode changes` | None; open immediately and serve reviewer questions |
+   | Briefing only | `--mode briefing` | Shared analysis, diagrams and verified Briefing; no tour steps, explanations or findings audit |
+   | Briefing and guided code tour | `--mode tour` | Shared analysis, then independent Briefing and tour preparation, plus findings when enabled |
+
+   Pass the mode explicitly. All three support `--attached --open`, `--media`, `--intent-file`, and the `pr` command. Do not upgrade a request for just a diff or briefing into a full tour. In briefing mode, Start tour is an explicit later action that reuses the completed Briefing and analysis. `--start-tour` remains an alias for `--mode tour`; do not combine it with another mode. Resume retains the saved launch mode unless an explicit mode overrides it, and does not discard existing content.
+
+   The server prints its bridge details immediately. Changes mode opens immediately. Briefing and tour modes open once the verified Briefing is ready. Keep serving the bridge in every mode, including changes mode with no initial prompt.
+
+   For a briefing and guided tour:
 
    For an ordinary branch or working-tree tour, skip findings by default. This includes walking through code the user wrote or had an agent write for them:
 
    ```text
-   diffcompass --attached --start-tour --open --preview-redirect --no-findings --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...] [--intent-file ABSOLUTE_INTENT_PATH]
+   diffcompass --attached --mode tour --open --preview-redirect --no-findings --repo ABSOLUTE_REPOSITORY_PATH [--base BASE_REF] [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...] [--intent-file ABSOLUTE_INTENT_PATH]
    ```
 
    When you hold author-stated context for an ordinary tour, such as which tests the branch changed and why, write it to a plain-text file and pass it with `--intent-file` so the Briefing can use it as stated intent.
@@ -26,7 +38,7 @@ Run the local tour in attached mode so every explanation and reviewer question r
    When the user asks for a tour of a GitHub pull request, enable findings by default: use the PR command and omit `--no-findings`. This captures the PR's base, head, and GitHub context:
 
    ```text
-   diffcompass pr PR_URL_OR_NUMBER --attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
+   diffcompass pr PR_URL_OR_NUMBER --attached --mode tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH [--caller-model MODEL] [--caller-reasoning EFFORT] [--media ABSOLUTE_MEDIA_PATH ...]
    ```
 
    Use the target repository's local checkout for `--repo`; a PR number is resolved in that repository. The CLI creates an isolated PR workspace and selects the PR base, so omit `--base` for this command.
@@ -41,9 +53,9 @@ Run the local tour in attached mode so every explanation and reviewer question r
 
    Pass `--preview-redirect` by default. It preserves ordinary local launches while also supporting hosts whose preview opens the bare origin and cannot preserve the tokenized review URL. In that preview-host case, tell the reviewer to open the bare origin through their forwarding or preview path rather than copying the hash-token URL from the terminal. The server redirects `/` once to `/t#token=...`, where the fragment contains the browser-session token. This is unrelated to the attached bridge token. The normal delay before `--open`—waiting until the verified Briefing is ready—is also not a redirect.
 
-   Use a short initial yield and retain the running terminal session. Do not wait synchronously for the server to exit. `--attached --open` also implies `--start-tour` as a safety net: the browser opens after the Briefing is ready while tour steps and findings continue in the background. A Briefing failure leaves the server running for retry without discarding completed tour work. Start it in a host-managed persistent terminal/session so it survives the caller ending, cancelling, or signalling its own process group. Do not assume a background child automatically survives its parent. Use the host's supported persistent-process mechanism; macOS does not provide `setsid`.
-3. Read the printed `Attached bridge URL` and `Attached bridge token file`. Treat the token file as a local secret; never read or include its contents in a user-facing response. The CLI has already requested tour planning; do not open another browser, navigate the page, or call the browser API to press `Start tour`.
-4. If automatic browser opening fails after the Briefing is ready, give the review URL to the user.
+   Use a short initial yield and retain the running terminal session. Do not wait synchronously for the server to exit. On a new session without an explicit mode, `--attached --open` also implies `--start-tour` as a safety net: the browser opens after the Briefing is ready while tour steps and findings continue in the background. A Briefing failure leaves the server running for retry without discarding completed tour work. Start it in a host-managed persistent terminal/session so it survives the caller ending, cancelling, or signalling its own process group. Do not assume a background child automatically survives its parent. Use the host's supported persistent-process mechanism; macOS does not provide `setsid`.
+3. Read the printed `Attached bridge URL` and `Attached bridge token file`. Treat the token file as a local secret; never read or include its contents in a user-facing response. The CLI has already requested the selected preparation, if any; do not open another browser, navigate the page, or call the browser API to press `Start tour`. Changes mode has no initial preparation prompt; wait for reviewer questions without starting generation yourself.
+4. If automatic browser opening fails after the selected preparation is ready, give the review URL to the user.
 
 ## Serve prompts
 

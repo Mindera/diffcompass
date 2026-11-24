@@ -225,6 +225,21 @@ To use the agent you are already chatting with, ask it:
 The [bundled skill](skills/diffcompass/SKILL.md) starts the review and keeps the
 agent connected for explanations and questions.
 
+Agents can choose the experience explicitly:
+
+| Flag | Experience |
+| --- | --- |
+| `--mode changes` | Open the diff immediately, with no generated briefing or tour. |
+| `--mode briefing` | Prepare the briefing and its source evidence, without tour steps or findings. |
+| `--mode tour` | Prepare the briefing and guided tour, with findings when enabled. |
+
+All three work with `--attached --open` and `diffcompass pr`. For example,
+`diffcompass --attached --mode briefing --open` prepares only a briefing while
+the attached agent serves its prompts. `--start-tour` remains an alias for
+`--mode tour`. New attached launches with `--open` default to tour; resumed
+sessions retain their saved mode. Start tour later to extend a briefing-only
+review without regenerating its completed briefing.
+
 ![Current guided tour highlighting a demo change with its explanation and tour navigation](docs/images/guided-tour.png)
 
 *Screenshots show the current UI with the disposable checkout demo; its sample

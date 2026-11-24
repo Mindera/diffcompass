@@ -12,7 +12,8 @@ import { runDoctor } from "./doctor.ts";
 import { acquireSessionLock, reviewSessionDirectory, runSessionCommand } from "./session-library.ts";
 import { loadRepositoryConfig } from "./config.ts";
 import { createPullRequestWorkspace, loadPullRequestContext, removePullRequestWorkspace } from "./github.ts";
-import type { PullRequestContext } from "./types.ts";
+import type { PullRequestContext, ReviewLaunchMode } from "./types.ts";
+import { reviewLaunchMode } from "./launch-mode.ts";
 import { runBridgeCommand } from "./bridge-command.ts";
 import { runLifecycleCommand } from "./install-lifecycle.ts";
 import { prepareAndOpenReviewPage } from "./open-review.ts";
@@ -29,6 +30,7 @@ interface Options {
   attached: boolean;
   open: boolean;
   startTour: boolean;
+  mode?: ReviewLaunchMode;
   disableFindings: boolean;
   previewRedirect: boolean;
   media: string[];
@@ -55,8 +57,11 @@ Options:
   --repo PATH          Repository to review (default: current directory)
   --base REF           Parent branch, commit, or captured Git tree to compare
   --attached           Use the launching agent as the conversation backend
-  --start-tour         Prepare stop one before opening the review page
-                       (implied by --attached --open)
+  --mode MODE          changes: open the diff without generation
+                       briefing: prepare only the briefing
+                       tour: prepare the briefing and tour
+  --start-tour         Alias for --mode tour
+                       (default for --attached --open on new sessions)
   --no-findings        Skip finding generation for this review session
   --open               Open the review automatically in the default browser
   --agent ID           Standalone agent: codex, claude, gemini, or copilot
@@ -97,6 +102,11 @@ function parseOptions(args: string[]): Options {
       options.attached = true;
     } else if (arg === "--start-tour") {
       options.startTour = true;
+    } else if (arg === "--mode" && value) {
+      if (!["changes", "briefing", "tour"].includes(value)) throw new Error("--mode must be changes, briefing, or tour.");
+      if (options.mode && options.mode !== value) throw new Error("Pass only one --mode value.");
+      options.mode = value as ReviewLaunchMode;
+      index += 1;
     } else if (arg === "--no-findings") {
       options.disableFindings = true;
     } else if (arg === "--open") {
@@ -175,7 +185,7 @@ if (command === "pr") {
   cliArguments = cliArguments.slice(2);
 }
 const options = parseOptions(cliArguments);
-if (options.attached && options.open) options.startTour = true;
+reviewLaunchMode(options); // Reject conflicting flags before creating a session.
 if ((options.callerModel || options.callerReasoning) && !options.attached && !options.resume) {
   throw new Error("--caller-model and --caller-reasoning require --attached or --resume.");
 }
@@ -194,6 +204,8 @@ const stateFile = options.resume ?? join(
   `${crypto.randomUUID()}.json`,
 );
 const resumedState = options.resume ? await loadPersistedSession(stateFile) : undefined;
+const launchMode = reviewLaunchMode(options, resumedState?.launchMode ?? (resumedState?.outline?.preparation?.steps === "disabled" ? "briefing" : undefined));
+const prepareReading = launchMode !== "changes";
 // A completed PR review may have already released its isolated checkout.
 const intendedRepositoryRoot = resumedState
   ? resumedState.pullRequest?.sourceRepositoryRoot ?? resumedState.repositoryRoot
@@ -271,6 +283,7 @@ try {
     screenshots: options.media,
     mediaIncludeChangedImages: options.mediaIncludeChangedImages ?? resumedState?.mediaIncludeChangedImages ?? repositoryConfig.mediaIncludeChangedImages,
     authorIntent,
+    launchMode,
   });
   if (session.pullRequest?.workspaceRoot) {
     await writeFile(join(session.pullRequest.workspaceRoot, "..", ".active.json"), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
@@ -299,9 +312,9 @@ if (!session.pullRequest) {
     console.warn(`Automatic repository watching is unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-const server = startServer(session, options.port, undefined, options.previewRedirect, options.startTour);
+const server = startServer(session, options.port, undefined, options.previewRedirect, prepareReading);
 const baseUrl = `http://${server.hostname}:${server.port}`;
-const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${options.startTour ? "&intro=1" : ""}`;
+const reviewUrl = `${baseUrl}/#token=${encodeURIComponent(session.browserToken)}${prepareReading ? "&intro=1" : ""}`;
 try {
   await releaseSessionLock.publishUrls({ reviewUrl, bridgeUrl: session.bridge ? baseUrl : undefined });
 } catch (error) {
@@ -312,7 +325,7 @@ try {
   await releaseSessionLock();
   throw error;
 }
-const deferReviewUrl = options.open && options.startTour;
+const deferReviewUrl = options.open && prepareReading;
 if (!deferReviewUrl) console.log(`DiffCompass: ${reviewUrl}`);
 console.log(`Repository: ${session.comparison.repositoryRoot}`);
 console.log(`Comparison: ${session.comparison.base} (${session.comparison.mergeBase.slice(0, 8)}) → working tree`);
@@ -365,13 +378,14 @@ if (session.bridge) {
   process.on("SIGTERM", () => shutdown(undefined, true));
 }
 
-const automaticTour = options.startTour ? session.startTour() : undefined;
+const automaticPreparation = launchMode === "tour" ? session.startTour()
+  : launchMode === "briefing" ? session.startBriefing() : undefined;
 
 if (options.open) {
-  await prepareAndOpenReviewPage(automaticTour, reviewUrl);
+  await prepareAndOpenReviewPage(automaticPreparation, reviewUrl);
   if (deferReviewUrl) console.log(`DiffCompass: ${reviewUrl}`);
-} else if (automaticTour) {
-  void automaticTour.catch((error) => {
-    console.error(`Could not start the tour automatically: ${error instanceof Error ? error.message : String(error)}`);
+} else if (automaticPreparation) {
+  void automaticPreparation.catch((error) => {
+    console.error(`Could not prepare the ${launchMode} automatically: ${error instanceof Error ? error.message : String(error)}`);
   });
 }

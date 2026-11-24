@@ -25,7 +25,7 @@ test("the attached-agent skill documents authoritative event and anchor shapes",
 
 test("the attached-agent skill scopes preview redirects and media evidence", async () => {
   const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
-  expect(skill).toContain("--attached --start-tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH");
+  expect(skill).toContain("--attached --mode tour --open --preview-redirect --repo ABSOLUTE_REPOSITORY_PATH");
   expect(skill).toContain("Pass `--preview-redirect` by default");
   expect(skill).toContain("unrelated to the attached bridge token");
   expect(skill).toContain("separate `--media` argument");
@@ -80,4 +80,13 @@ test("the attached-agent skill requires behavioral evidence for optional tour qu
   expect(skill).toContain("A type or\nrenderer branch alone does not establish a reachable transition");
   expect(skill).toContain("Explain an already-settled answer instead");
   expect(skill).toContain("distinguish planned transitions from implemented\nrendering");
+});
+
+
+test("the attached-agent skill offers explicit changes, briefing-only, and tour launches", async () => {
+  const skill = await readFile(join(root, "skills/diffcompass/SKILL.md"), "utf8");
+  for (const mode of ["changes", "briefing", "tour"]) expect(skill).toContain(`--mode ${mode}`);
+  expect(skill).toContain("no tour steps, explanations or findings audit");
+  expect(skill).toContain("Changes mode has no initial preparation prompt");
+  expect(skill).toContain("Resume retains the saved launch mode");
 });

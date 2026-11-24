@@ -18,6 +18,10 @@ are simulations.
 
 ## Released in v2.6.0
 
+- Select `--mode changes`, `--mode briefing`, or `--mode tour` for a diff-only
+  review, a briefing without tour generation, or a briefing with a guided tour.
+  Retain the selected mode on resume and reuse a completed briefing when the
+  reviewer explicitly starts a tour later. Keep `--start-tour` compatible.
 - Show tour coverage separately from review completion, including a Not covered
   list for omitted and partially covered changes. Group related source ranges
   across files in a focused before/after view with full-file navigation.

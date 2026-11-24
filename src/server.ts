@@ -543,6 +543,9 @@ export function createRequestHandler(session: ReviewSession, sessionDirectory = 
       if (request.method === "POST" && url.pathname === "/api/tour/start") {
         return json(await session.startTour(parseAgentSelection(await readJsonObject(request))));
       }
+      if (request.method === "POST" && url.pathname === "/api/briefing/start") {
+        return json(await session.startBriefing(parseAgentSelection(await readJsonObject(request))));
+      }
       if (request.method === "POST" && url.pathname === "/api/tour/navigate") {
         const input = await readJsonObject(request);
         exactKeys(input, ["direction"]);

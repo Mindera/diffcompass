@@ -118,7 +118,8 @@ function validAnchor(value: unknown): boolean {
 
 function validPreparation(value: unknown): boolean {
   return record(value) && nonEmptyString(value.id, 128) && nonEmptyString(value.comparisonId, 128) &&
-    ["briefing", "steps"].every(key => ["pending", "ready", "failed"].includes(String(value[key]))) &&
+    ["pending", "ready", "failed"].includes(String(value.briefing)) &&
+    ["pending", "ready", "failed", "disabled"].includes(String(value.steps)) &&
     ["pending", "ready", "failed", "disabled"].includes(String(value.findings)) &&
     ["briefingError", "stepsError", "findingsError"].every(key => value[key] === undefined || nonEmptyString(value[key], 2000));
 }
@@ -779,6 +780,7 @@ export async function loadPersistedSession(path: string): Promise<PersistedRevie
     (session.findingGenerationEnabled !== undefined && typeof session.findingGenerationEnabled !== "boolean") ||
     (session.dryRuns !== undefined && (!Array.isArray(session.dryRuns) || session.dryRuns.length > 32 || !session.dryRuns.every(validDryRunTrace))) ||
     (session.pullRequest !== undefined && !validPullRequest(session.pullRequest)) ||
+    (session.launchMode !== undefined && !["changes", "briefing", "tour"].includes(session.launchMode)) ||
     (session.authorIntent !== undefined && (typeof session.authorIntent !== "string" || session.authorIntent.length > 24000)) ||
     (session.screenshots !== undefined && (!Array.isArray(session.screenshots) || session.screenshots.length > 12 || !session.screenshots.every(validScreenshot) || new Set(session.screenshots.map((shot) => shot.id)).size !== session.screenshots.length)) ||
     (session.mediaIncludeChangedImages !== undefined && typeof session.mediaIncludeChangedImages !== "boolean") ||

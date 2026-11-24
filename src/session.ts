@@ -22,7 +22,7 @@ import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
 import type { DiffRenderer, FindingDisposition } from "./types.ts";
-import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, DryRunDetail, DryRunFlowKind, DryRunPlan, DryRunScenario, DryRunTrace, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewerTaskContext, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
+import type { AgentAdapterOption, AgentChangeActivity, AgentChangeFile, AgentRunActivity, AgentSelection, BriefingPreferences, ChatMessage, ComparisonView, DiffFile, DiffRow, DiffViewPreferences, DryRunDetail, DryRunFlowKind, DryRunPlan, DryRunScenario, DryRunTrace, GitComparison, PersistedReviewSession, PullRequestContext, ReasoningEffort, ReviewerTaskContext, ReviewComment, ReviewDecisionIntent, ReviewFlow, ReviewOutcome, ReviewPolicy, ReviewPreferences, ReviewScreenshot, ReviewLaunchMode, ReviewStatus, RevisionSummary, SessionDiffPreferences, SourceCheckpoint, TourOutline } from "./types.ts";
 import { isBriefingSectionOrder, isDiffRenderer } from "./types.ts";
 import { importReviewScreenshots, screenshotAssetPath } from "./screenshots.ts";
 import { revisionSummary } from "./revision.ts";
@@ -62,6 +62,7 @@ interface AgentDefaults {
   screenshots?: string[];
   mediaIncludeChangedImages?: boolean;
   authorIntent?: string;
+  launchMode?: ReviewLaunchMode;
   githubRunner?: GitHubRunner;
   agentAdapters?: AgentAdapterOption[];
 }
@@ -136,6 +137,7 @@ export class ReviewSession {
   readonly screenshots: ReviewScreenshot[];
   readonly mediaIncludeChangedImages: boolean;
   readonly authorIntent?: string;
+  readonly launchMode?: ReviewLaunchMode;
   readonly checkpoints: SourceCheckpoint[];
   readonly checkpointRefNamespace: string;
   comparisonView: ComparisonView = "full";
@@ -218,6 +220,7 @@ export class ReviewSession {
     this.screenshots = structuredClone(persisted?.screenshots ?? []);
     this.mediaIncludeChangedImages = defaults.mediaIncludeChangedImages ?? persisted?.mediaIncludeChangedImages ?? false;
     this.authorIntent = persisted?.authorIntent ?? defaults.authorIntent;
+    this.launchMode = defaults.launchMode ?? persisted?.launchMode;
     this.checkpoints = structuredClone(persisted?.checkpoints ?? []);
     this.checkpointRefNamespace = persisted?.checkpointRefNamespace ?? `refs/diffcompass/checkpoints/${this.refKey(defaults.stateFile)}`;
     this.comments = structuredClone(persisted?.comments ?? []);
@@ -368,6 +371,7 @@ export class ReviewSession {
       pullRequest: structuredClone(this.pullRequest),
       screenshots: structuredClone(this.screenshots),
       mediaIncludeChangedImages: this.mediaIncludeChangedImages,
+      launchMode: this.launchMode,
       authorIntent: this.authorIntent,
       revision: this.revision,
       status: this.status,
@@ -1164,13 +1168,14 @@ export class ReviewSession {
       pullRequest: structuredClone(this.pullRequest),
       screenshots: structuredClone(this.screenshots),
       mediaIncludeChangedImages: this.mediaIncludeChangedImages,
+      launchMode: this.launchMode,
       revision: this.revision,
       status: this.status,
       agentAdapters: this.agentAdapters,
       agentSelection: this.selection ?? (this.agentAdapters.length > 0 ? this.resolveSelection() : undefined),
       agentMode: this.selection ? `${this.selection.adapterId}-read-only` : undefined,
       agentActivity: structuredClone(this.agentActivity),
-      tourState: outline?.preparation ? outline.preparation.steps === "ready" ? "active" as const : "preparing" as const : this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
+      tourState: outline?.preparation ? outline.preparation.steps === "disabled" ? "idle" as const : outline.preparation.steps === "ready" ? "active" as const : "preparing" as const : this.outline ? "active" as const : this.tourPlanning ? "planning" as const : "idle" as const,
       needsAttention: buildNeedsAttention(this.comparison, this.outline, this.pullRequest),
       archifyAvailable: Boolean(ArchifyRenderer.fromEnvironment()),
     };
@@ -1497,7 +1502,8 @@ export class ReviewSession {
   }
 
   async prepareTourForExport() {
-    if (!this.outline) throw new ReviewError("Start the tour before exporting it.");
+    if (!this.outline) throw new ReviewError("Prepare a briefing or tour before exporting it.");
+    if (this.outline.preparation?.steps === "disabled") return this.snapshot();
     if (this.outline.preparation && this.outline.preparation.steps !== "ready") {
       await this.stepPreparationTask;
       if ((this.outline as TourOutline).preparation?.steps !== "ready") throw new ReviewError("Tour preparation is incomplete. Retry preparation before exporting tour steps.");
@@ -1696,6 +1702,14 @@ export class ReviewSession {
   }
 
   async startTour(selection?: Partial<AgentSelection>) {
+    return this.prepareReview("tour", selection);
+  }
+
+  async startBriefing(selection?: Partial<AgentSelection>) {
+    return this.prepareReview("briefing", selection);
+  }
+
+  private async prepareReview(mode: "briefing" | "tour", selection?: Partial<AgentSelection>) {
     return this.serialize(async () => {
       const before = this.captureMutableState();
       const terminalEpoch = this.terminalEpoch;
@@ -1739,8 +1753,8 @@ export class ReviewSession {
           this.ensureOpen();
           generated.value.preparation = {
             id: crypto.randomUUID(), comparisonId: diffSourceIdentity(this.comparison),
-            briefing: "pending", steps: "pending",
-            findings: this.selection?.includeFindings !== false && this.reviewPolicy.findings.enabled ? "pending" : "disabled",
+            briefing: "pending", steps: mode === "tour" ? "pending" : "disabled",
+            findings: mode === "tour" && this.selection?.includeFindings !== false && this.reviewPolicy.findings.enabled ? "pending" : "disabled",
           };
           this.outline = generated.value;
           this.currentStepIndex = -1;
@@ -1751,7 +1765,15 @@ export class ReviewSession {
         } else if (tourSteps(this.outline).length && (this.currentStepIndex < 0 || this.currentStepIndex >= tourSteps(this.outline).length)) {
           this.currentStepIndex = 0;
         }
-        if (this.outline.preparation) return await this.prepareReadingExperiences(comparisonGeneration);
+        if (this.outline.preparation) return await this.prepareReadingExperiences(comparisonGeneration, mode);
+        if (mode === "briefing") {
+          if (!this.outline.briefing) {
+            this.outline.briefing = await buildBriefing(this.comparison, this.outline, this.briefingIntent());
+            this.revision += 1; operationRevision = this.revision;
+            await this.persist();
+          }
+          return this.snapshot();
+        }
         if (!this.outline.briefing) this.outline.briefing = await buildBriefing(this.comparison, this.outline, this.briefingIntent());
         this.ensureComparisonCurrent(comparisonGeneration);
         this.ensureOpen();
@@ -1806,20 +1828,26 @@ export class ReviewSession {
     });
   }
 
-  private async prepareReadingExperiences(generation: number) {
+  private async prepareReadingExperiences(generation: number, mode: "briefing" | "tour") {
     const preparation = this.outline!.preparation!;
     const id = preparation.id;
     // A failure becomes visible when saved, just before its worker settles.
     if (preparation.steps === "failed") await this.stepPreparationTask?.catch(() => undefined);
     if (preparation.findings === "failed") await this.findingsPreparationTask?.catch(() => undefined);
     if (!this.preparationIsCurrent(id, generation)) throw new ReviewError("The shared analysis belongs to a previous comparison. Start a new review for the refreshed change.");
-    if (preparation.steps !== "ready" && !this.stepPreparationTask) {
+    if (mode === "tour" && preparation.steps === "disabled") {
+      await this.commitPreparation(id, generation, outline => {
+        outline.preparation!.steps = "pending";
+        outline.preparation!.findings = this.selection?.includeFindings !== false && this.reviewPolicy.findings.enabled ? "pending" : "disabled";
+      });
+    }
+    if (mode === "tour" && preparation.steps !== "ready" && !this.stepPreparationTask) {
       await this.commitPreparation(id, generation, outline => { outline.preparation!.steps = "pending"; delete outline.preparation!.stepsError; });
       const task = this.prepareSteps(id, generation).finally(() => { if (this.stepPreparationTask === task) this.stepPreparationTask = undefined; });
       this.stepPreparationTask = task;
       void this.stepPreparationTask.catch(() => undefined);
     }
-    if (tourSteps(this.outline).length) this.scheduleFindings(id, generation);
+    if (mode === "tour" && tourSteps(this.outline).length) this.scheduleFindings(id, generation);
     if (this.outline!.briefing && preparation.briefing === "ready") return this.snapshot();
     await this.commitPreparation(id, generation, outline => { outline.preparation!.briefing = "pending"; delete outline.preparation!.briefingError; });
     const worker = this.createWorkerAgent();

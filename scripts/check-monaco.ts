@@ -30,6 +30,12 @@ const groups = {
 };
 const requested = process.env.MONACO_CHECK_GROUP;
 if (requested && !Object.hasOwn(groups, requested)) throw Error("Unknown MONACO_CHECK_GROUP: " + requested);
+if (!requested || requested === "briefing") {
+  console.log("BROWSER CHECK scripts/check-briefing-startup.ts (preparation modes)");
+  const test = Bun.spawn([process.execPath, "scripts/check-briefing-startup.ts"], { stdout: "inherit", stderr: "inherit" });
+  const exitCode = await test.exited;
+  if (exitCode) process.exitCode = exitCode;
+}
 if (!requested || requested === "local") {
   console.log("BROWSER CHECK scripts/session-discovery-browser.mjs (CLI fixture)");
   const test = Bun.spawn([process.execPath, "scripts/session-discovery-browser.mjs", resolve("node_modules/playwright/index.mjs")], { stdout: "inherit", stderr: "inherit" });
