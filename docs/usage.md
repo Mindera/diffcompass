@@ -31,6 +31,14 @@ timeout expires. Interrupted reviews and worktrees with local changes are kept.
 The saved review remains available; reopening a completed review recreates its
 checkout at the recorded PR revision when needed.
 
+If the PR branch changes before publication, refresh the review and confirm the
+updated revision before submitting again. Your local comments are preserved;
+comments whose source changed are marked outdated. Refresh also recovers older
+sessions stuck with a pending publication after a stale-head rejection. It first
+checks GitHub for the saved review: if publication already succeeded, retry the
+original submission to recover its receipt without posting another review. If
+GitHub cannot be checked, the pending intent is retained until a retry succeeds.
+
 External tools can find a running review through `<session>.json.lock` beside its
 saved session. The lock keeps its existing `pid`, `token`, and `startedAt` fields
 and adds `reviewUrl` once the server is listening. Attached sessions also include

@@ -17,7 +17,7 @@ import { AttachedAgentBridge } from "./bridge.ts";
 import { applyChangePatch, captureWorkingTreeSnapshot, createChangePatch, createProposalWorkspace, loadComparison, loadComparisonBetweenTrees, loadDiffFileWithContext, loadDiffImage, loadDiffText, loadRepositoryFile, removeCheckpointRef, removeProposalWorkspace, writeCheckpointRef, writeProposalFile, type ProposalWorkspace } from "./git.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { DEFAULT_REVIEW_POLICY, DEFAULT_REVIEW_PREFERENCES } from "./config.ts";
-import { extractAcceptanceCriteria, publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
+import { extractAcceptanceCriteria, findPublishedPullRequestReview, loadPullRequestContext, PullRequestHeadChangedError, publishPullRequestReview as publishGitHubReview, updatePullRequestWorkspace, type GitHubRunner } from "./github.ts";
 import { runProcess } from "./process.ts";
 import { loadPersistedSession, savePersistedSession } from "./store.ts";
 import { tourSteps } from "./tour.ts";
@@ -287,6 +287,42 @@ export class ReviewSession {
     if (this.pullRequest?.publication && !(this.pullRequest.publication.outcome === "comment" && this.pullRequest.publication.status === "published")) {
       throw new ReviewError("A GitHub review publication has started. Retry it before changing comments or refreshing the pull request.");
     }
+  }
+
+  private async persistGitHubPublication(publication: PullRequestContext["publication"]): Promise<void> {
+    const context = this.pullRequest!;
+    const previous = context.publication;
+    context.publication = publication;
+    const revision = ++this.revision;
+    try { await this.persist(); }
+    catch (error) {
+      context.publication = previous;
+      if (this.revision === revision) this.revision -= 1;
+      throw error;
+    }
+  }
+
+  private async sendGitHubPublication(publication: NonNullable<PullRequestContext["publication"]>, comments: ReviewComment[]) {
+    try {
+      return await publishGitHubReview(this.pullRequest!, comments, publication.outcome, publication.intentId, this.defaults.githubRunner, publication.note,
+        () => this.persistGitHubPublication(publication));
+    } catch (error) {
+      // This rejection follows a successful search for the saved receipt and
+      // precedes any POST. Never clear an intent after an ambiguous write/read.
+      if (error instanceof PullRequestHeadChangedError && this.pullRequest?.publication?.status === "pending" &&
+        this.pullRequest.publication.intentId === publication.intentId) await this.persistGitHubPublication(undefined);
+      throw error;
+    }
+  }
+
+  private async recoverStaleGitHubPublication(): Promise<void> {
+    const context = this.pullRequest;
+    if (context?.publication?.status !== "pending") return;
+    // Legacy sessions may have saved an intent before discovering a stale head.
+    // Refresh must not discard one that was actually submitted: Retry recovers it.
+    if (await findPublishedPullRequestReview(context, context.publication.intentId, this.defaults.githubRunner)) return;
+    const latest = await loadPullRequestContext(context.sourceRepositoryRoot, String(context.number), context.refNamespace, this.defaults.githubRunner);
+    if (latest.headRefOid !== context.headRefOid) await this.persistGitHubPublication(undefined);
   }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -2726,8 +2762,11 @@ export class ReviewSession {
       const wasClosed = this.status !== "open";
       if (wasClosed && this.status === "cancelled") throw new ReviewError("A cancelled review cannot be reopened.");
       if (wasClosed && this.bridge) throw new ReviewError("Attached-agent reviews cannot start a new pass after closing; start a new review session for the updated pull request.");
-      if (!wasClosed) this.ensurePublicationMutable();
       if (this.activeAgentRequest) throw new ReviewError("Wait for the active agent request before refreshing the pull request.");
+      if (!wasClosed) {
+        await this.recoverStaleGitHubPublication();
+        this.ensurePublicationMutable();
+      }
       const previousContext = structuredClone(this.pullRequest);
       const previousComparison = this.comparison;
       const previousFullComparison = this.fullComparison;
@@ -2835,10 +2874,7 @@ export class ReviewSession {
       await this.validateQueuedGitHubSuggestions(selected);
       const publication = existing?.outcome === "comment" && existing.status === "pending" ? existing
         : { intentId: crypto.randomUUID(), outcome: "comment" as const, commentIds, status: "pending" as const };
-      this.pullRequest.publication = publication;
-      this.revision += 1;
-      await this.persist();
-      const result = await publishGitHubReview(this.pullRequest, selected, "comment", publication.intentId, this.defaults.githubRunner);
+      const result = await this.sendGitHubPublication(publication, selected);
       this.pullRequest.publication = { ...publication, status: "published", reviewId: result.id, url: result.url };
       for (const comment of selected) {
         comment.githubPublication = { reviewId: result.id, ...(result.url ? { url: result.url } : {}) };
@@ -2870,11 +2906,8 @@ export class ReviewSession {
       const publication = existing
         ? { ...existing, decision: existingDecision }
         : { intentId: crypto.randomUUID(), outcome, decision, ...(note ? { note } : {}), commentIds, status: "pending" as const };
-      this.pullRequest.publication = publication;
-      this.revision += 1;
-      await this.persist();
       if (publication.status !== "published") {
-        const result = await publishGitHubReview(this.pullRequest, selected, outcome, publication.intentId, this.defaults.githubRunner, publication.note);
+        const result = await this.sendGitHubPublication(publication, selected);
         this.pullRequest.publication = { ...publication, status: "published", reviewId: result.id, url: result.url };
         this.revision += 1;
         await this.persist();
