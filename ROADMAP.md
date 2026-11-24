@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.5.3, including the v2.1.0 feature baseline
+Canonical delivery state for v2.6.0, including the v2.1.0 feature baseline
 and the changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -10,11 +10,30 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.5.3](https://github.com/Mindera/diffcompass/releases/tag/v2.5.3).
+Latest release: [v2.6.0](https://github.com/Mindera/diffcompass/releases/tag/v2.6.0).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.6.0
+
+- Show tour coverage separately from review completion, including a Not covered
+  list for omitted and partially covered changes. Group related source ranges
+  across files in a focused before/after view with full-file navigation.
+- Separate concise stop summaries from expandable detail and captured-source
+  notes. Keep Resume tour visible as a floating control while paused, and retain
+  the same stop and drafts when returning from source inspection.
+- Track source fingerprints, relocate unchanged evidence after line shifts,
+  and flag changed, missing or ambiguous evidence as stale. Preserve reading
+  metadata and evidence in saved sessions and Markdown/HTML exports.
+- Prepare the briefing, tour steps and findings independently after shared
+  analysis. Open the briefing when ready while the remaining work continues,
+  with progress, failure and retry states.
+- Keep Refresh available when GitHub rejects publication because the PR head
+  moved. Preserve comments, recover older stuck sessions, and find an existing
+  published review before retrying so a lost response does not create duplicates.
+- Handle review publication in the browser when no agent is selected.
 
 ## Released in v2.5.3
 
