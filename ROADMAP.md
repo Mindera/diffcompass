@@ -1,6 +1,6 @@
 # Roadmap
 
-Canonical delivery state for v2.6.0, including the v2.1.0 feature baseline
+Canonical delivery state for v2.6.1, including the v2.1.0 feature baseline
 and the changes below.
 [README](README.md#run) gives entry points,
 [the feature catalogue](docs/features.md) describes them, and
@@ -10,11 +10,16 @@ retains earlier milestones.
 
 ## Released baseline
 
-Latest release: [v2.6.0](https://github.com/Mindera/diffcompass/releases/tag/v2.6.0).
+Latest release: [v2.6.1](https://github.com/Mindera/diffcompass/releases/tag/v2.6.1).
 The additions below are included. Tours, text/word diffs, Symbol Peek,
 conversations, findings, checkpoints, exports, dry runs, Archify maps and blast
 radius are already released. Static maps are not execution traces; dry runs
 are simulations.
+
+## Released in v2.6.1
+
+- Restore Copilot CLI launches after removal of its `--no-remote` flag. Keep
+  session syncing disabled through the compatible `--no-remote-export` alias.
 
 ## Released in v2.6.0
 
