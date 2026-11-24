@@ -148,8 +148,18 @@ The launching agent must keep serving authenticated bridge events; invoking the
 CLI alone does not provide a responder. The bundled skill documents the
 long-lived watcher, bounded polling fallback, and response schemas.
 
-- `--attached --open` implies `--start-tour`, preparing the outline and first
-  explanation before opening one user-facing page.
+- `--mode changes` opens the diff immediately without generating a briefing or
+  tour. The attached agent remains available for questions and feedback.
+- `--mode briefing` prepares shared analysis, diagrams and the verified briefing,
+  with no tour stops, explanations or findings audit. Start tour later to reuse
+  that analysis and briefing, and run findings if enabled.
+- `--mode tour` prepares a briefing and tour. The briefing opens as soon as its
+  source evidence is ready; tour preparation and findings continue in the background.
+- Modes work with ordinary reviews and `diffcompass pr`. `--start-tour` remains
+  an alias for `--mode tour` and cannot be combined with another mode. New
+  `--attached --open` launches default to tour; other launches default to changes.
+  Resumed sessions retain their saved launch mode unless explicitly overridden.
+  Choosing another mode on resume preserves content already generated.
 - Future stops prepare concurrently inside the configured window; questions
   bypass that queue.
 - Browser and bridge tokens are separate. Browser mutations require same-origin

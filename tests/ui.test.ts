@@ -1132,8 +1132,8 @@ test("agent-launched tours introduce the change before navigating to the first s
     readFile(join(root, "src/cli.ts"), "utf8"),
     readFile(join(root, "public/styles.css"), "utf8"),
   ]);
-  expect(cli).toContain('options.startTour ? "&intro=1" : ""');
-  expect(cli).toContain("if (options.attached && options.open) options.startTour = true");
+  expect(cli).toContain('prepareReading ? "&intro=1" : ""');
+  expect(cli).toContain("const launchMode = reviewLaunchMode(options,");
   expect(cli).toContain("if (!deferReviewUrl) console.log(`DiffCompass: ${reviewUrl}`)");
   expect(html).toContain('id="tour-intro-dialog"');
   expect(html).toContain('id="begin-tour"');

@@ -192,3 +192,58 @@ test("retrying the first explanation retains captured source for grounded readin
   expect(f.session.outline?.phases[0]?.steps[0]?.notes?.[0]?.sources[0]?.blob).toMatch(/^[0-9a-f]{40,64}$/);
   expect(f.requests.filter(p => p.includes("Prepare tour steps from"))).toHaveLength(1);
 });
+
+test("briefing-only creates no tour or findings work and persists an idle, resumable review", async () => {
+  const f = await fixture();
+  const starting = f.session.startBriefing(selection);
+  await until(() => f.requests.some(p => p.includes("Return only the briefingProposal")));
+  f.briefing.resolve(JSON.stringify(proposal));
+  await starting;
+  expect(f.workers.size).toBe(2);
+  expect(f.requests.some(p => p.includes("Prepare tour steps from") || p.includes("Tour step 1 of") || p.includes("focused findings auditor"))).toBe(false);
+  expect(f.session.snapshot().tourState).toBe("idle");
+  expect(f.session.outline?.preparation).toMatchObject({ briefing: "ready", steps: "disabled", findings: "disabled" });
+  expect(f.session.outline?.phases).toEqual([]);
+  expect(f.session.currentStepIndex).toBe(-1);
+  expect(f.session.outline?.briefing?.evidence[0]?.available).toBe(true);
+  const saved = await loadPersistedSession(f.stateFile);
+  expect(saved.outline?.preparation?.steps).toBe("disabled");
+  const resumed = await ReviewSession.create(f.repository, "main", { stateFile: f.stateFile, resume: true, agentAdapters: [] });
+  cleanups.push(() => resumed.dispose());
+  const snapshot = await resumed.startBriefing();
+  expect(snapshot.tourState).toBe("idle");
+  expect(snapshot.outline?.briefing?.id).toBe(f.session.outline?.briefing?.id);
+  expect(await resumed.bridge!.eventsAfter(0, 0)).toEqual([]);
+  await expect(resumed.prepareTourForExport()).resolves.toBeDefined();
+});
+
+test("starting a tour after briefing-only reuses the briefing and analysis", async () => {
+  const f = await fixture();
+  const starting = f.session.startBriefing(selection);
+  await until(() => f.requests.some(p => p.includes("Return only the briefingProposal")));
+  f.briefing.resolve(JSON.stringify(proposal)); await starting;
+  const briefingId = f.session.outline!.briefing!.id;
+  await f.session.startTour();
+  f.steps.resolve(JSON.stringify({ phases }));
+  f.explanation.resolve("The value is two.");
+  f.findings.resolve('{"candidateDecisions":[],"findings":[]}');
+  await until(() => f.session.outline?.preparation?.steps === "ready" && f.session.outline?.preparation?.findings === "ready");
+  expect(f.session.snapshot().tourState).toBe("active");
+  expect(f.session.outline?.briefing?.id).toBe(briefingId);
+  expect(f.requests.filter(p => p.includes("Prepare shared change analysis"))).toHaveLength(1);
+  expect(f.requests.filter(p => p.includes("Return only the briefingProposal"))).toHaveLength(1);
+});
+
+test("retrying a failed briefing-only generation does not enable the tour", async () => {
+  const f = await fixture();
+  const starting = f.session.startBriefing(selection).catch(error => error);
+  await until(() => f.requests.some(p => p.includes("Return only the briefingProposal")));
+  f.briefing.reject(new Error("Briefing unavailable"));
+  expect(await starting).toBeInstanceOf(Error);
+  f.retryBriefing();
+  const retry = f.session.startBriefing();
+  f.briefing.resolve(JSON.stringify(proposal)); await retry;
+  expect(f.session.outline?.preparation).toMatchObject({ briefing: "ready", steps: "disabled", findings: "disabled" });
+  expect(f.requests.filter(p => p.includes("Prepare shared change analysis"))).toHaveLength(1);
+  expect(f.requests.some(p => p.includes("Prepare tour steps from") || p.includes("focused findings auditor"))).toBe(false);
+});

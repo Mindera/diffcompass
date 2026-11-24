@@ -3659,6 +3659,7 @@ function renderTourIntroDiagrams() {
 
 function maybeShowTourIntro() {
   if (state.tourIntroShown) return;
+  if (state.session.launchMode === "changes" && !state.tourIntroPending) return;
   if (state.session.preferences?.showBriefing === false && !launchTourIntro) { state.tourIntroPending = false; return; }
   if (!state.tourIntroPending && !state.session.outline?.briefing) return;
   state.tourIntroPending = false;
@@ -5051,10 +5052,10 @@ function getBriefingReader() {
       await new Promise(requestAnimationFrame);
       await showChangedFile(path, evidence.startLine, evidence.side);
     },
-    onRetry: async () => { await startTour(); },
+    onRetry: async () => { await startTour(state.session.outline?.preparation?.steps === "disabled" ? "briefing" : "tour"); },
     onGenerate: async () => {
       if (state.busy || !reviewIsOpen()) return;
-      if (!state.session.outline || (state.session.outline.preparation && state.session.outline.preparation.briefing !== "ready")) { state.tourIntroPending = true; await startTour(); return; }
+      if (!state.session.outline || (state.session.outline.preparation && state.session.outline.preparation.briefing !== "ready")) { state.tourIntroPending = true; await startTour("briefing"); return; }
       setBusy(true);
       try { const previous = state.session; state.session = await api("/api/briefing/regenerate", { method: "POST", body: "{}" }); renderSessionUpdate(previous); }
       catch (error) { toast(error.message); }
@@ -5470,7 +5471,11 @@ function renderTour() {
     elements["tour-empty-description"].textContent = planning
       ? "The triggering agent is inspecting the change and preparing the first stop."
       : "The agent will plan a logical route through the diff and explain each stop as you progress.";
-    if (preparation) {
+    elements["start-tour"].textContent = "Start tour";
+    if (preparation?.steps === "disabled") {
+      elements["tour-empty-title"].textContent = "No tour prepared";
+      elements["tour-empty-description"].textContent = "This review was prepared as a briefing. Start a tour when you want a guided walkthrough of the code.";
+    } else if (preparation) {
       elements["tour-empty-title"].textContent = preparation.steps === "failed" ? "Tour preparation paused" : "Preparing tour steps";
       elements["tour-empty-description"].textContent = preparation.stepsError ?? "You can read the briefing while the guided tour is prepared.";
       elements["start-tour"].textContent = "Retry preparation";
@@ -5779,6 +5784,7 @@ function renderSession() {
   syncDryRunSourceCache();
   const briefingWasOpen = elements["tour-intro-dialog"].open;
   const briefingScroll = briefingWasOpen ? elements["tour-intro-dialog"].querySelector(".tour-intro-scroll").scrollTop : 0;
+  if (state.tourMode === null && ["changes", "briefing"].includes(state.session.launchMode)) state.tourMode = false;
   if (state.tourMode === null && state.session.outline) state.tourMode = !state.session.outline.preparation || state.session.outline.preparation.steps === "ready";
   initializeUiPreferences();
   state.proposalPreview = false;
@@ -5929,15 +5935,15 @@ async function beginPreparedTour() {
   elements["diff-tab"].focus({ preventScroll: true });
 }
 
-async function startTour() {
+async function startTour(mode = "tour") {
   if (!reviewIsOpen()) return;
   state.tourIntroReturn = false;
   setBusy(true);
   elements["planning-activity"].classList.remove("hidden");
   elements["planning-activity-body"].innerHTML = `<p>Inspecting ${state.session.comparison.files.length.toLocaleString()} changed files and ${state.session.comparison.diffRowCount.toLocaleString()} diff rows.</p><p class="planning-live">Waiting for the agent to return a grounded route…</p>`;
-  elements["start-tour"].innerHTML = '<span class="button-spinner" aria-hidden="true"></span>Planning tour';
+  elements["start-tour"].innerHTML = `<span class="button-spinner" aria-hidden="true"></span>${mode === "briefing" ? "Preparing briefing" : "Planning tour"}`;
   try {
-    state.session = await api("/api/tour/start", {
+    state.session = await api(mode === "briefing" ? "/api/briefing/start" : "/api/tour/start", {
       method: "POST",
       body: JSON.stringify({
         adapterId: elements["agent-select"].value,

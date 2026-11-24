@@ -140,11 +140,13 @@ export interface TourPhase {
   steps: TourStep[];
 }
 
+export type ReviewLaunchMode = "changes" | "briefing" | "tour";
+
 export interface TourPreparation {
   id: string;
   comparisonId: string;
   briefing: "pending" | "ready" | "failed";
-  steps: "pending" | "ready" | "failed";
+  steps: "pending" | "ready" | "failed" | "disabled";
   findings: "pending" | "ready" | "failed" | "disabled";
   briefingError?: string;
   stepsError?: string;
@@ -934,6 +936,7 @@ export interface AgentRunActivity {
 
 export interface PersistedReviewSession {
   schemaVersion: 2 | 3 | 4;
+  launchMode?: ReviewLaunchMode;
   name?: string;
   archived?: boolean;
   repositoryRoot: string;
