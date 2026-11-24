@@ -6,9 +6,10 @@
 sequence and call-flow diagrams, dry runs, and evidence-backed findings.
 [Watch the MP4 with sound](docs/media/diffcompass-demo.mp4).*
 
-A local, agent-led review for Git changes. Start with a Briefing that explains the
-outcome and connects it to the code. Explore diagrams and diffs, ask questions,
-and follow a guided tour of a branch or GitHub pull request in your browser.
+A local, agent-led review for Git changes. Choose a diff-only review, a Briefing
+that connects the outcome to its code, or a Briefing followed by a guided tour.
+Explore diagrams and diffs and ask questions about a branch or GitHub pull
+request in your browser.
 
 Pull request integration is officially supported and tested only with GitHub.
 GitLab, Bitbucket, and other hosting providers have not been tested and are not
@@ -43,7 +44,11 @@ it through prose, focused before-and-after diffs, and interactive diagrams.
 
 Use **Open in Changes** to inspect the cited source and **Back to Briefing** to
 return to the story. Reading and inspecting a Briefing does not advance the tour
-or mark files reviewed. New reviews first prepare shared analysis and diagrams,
+or mark files reviewed. Briefing-only reviews prepare the shared analysis,
+diagrams, and source-backed story without generating tour stops or findings.
+You can explicitly start a tour later, reusing the completed Briefing and analysis.
+
+With **Briefing + tour**, reviews first prepare shared analysis and diagrams,
 then generate the Briefing and tour steps in parallel. The browser opens as soon
 as the Briefing and its source evidence are ready. Tour preparation and findings
 auditing continue in the background, with progress and retry controls in the
@@ -218,14 +223,24 @@ diffcompass pr 123 --open
 diffcompass pr https://github.com/OWNER/REPOSITORY/pull/123 --open
 ```
 
+### Choose your review experience
+
 To use the agent you are already chatting with, ask it:
 
-> Use the diffcompass skill to walk me through the changes in this repository.
+> Use the diffcompass skill to review the changes in this repository.
 
-The [bundled skill](skills/diffcompass/SKILL.md) starts the review and keeps the
-agent connected for explanations and questions.
+The [bundled skill](skills/diffcompass/SKILL.md) asks which experience you want:
 
-Agents can choose the experience explicitly:
+- **Diff only:** explore changes and leave comments, with no briefing or tour.
+- **Briefing only:** read the explanation, diagrams, and source evidence without
+  a guided tour.
+- **Briefing + tour:** read the briefing, then follow the guided code walkthrough.
+
+You can also type a custom answer to describe what you want. If you already chose
+a mode in your request, the agent uses it without asking again. It stays connected
+for questions and comments in every mode; resuming a review keeps its saved mode.
+
+Agents pass the corresponding flag explicitly:
 
 | Flag | Experience |
 | --- | --- |

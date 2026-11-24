@@ -1,6 +1,6 @@
 ---
 name: diffcompass
-description: Launch and conduct an attached-agent change walkthrough in a local browser. Use when the user asks for a guided walkthrough, code tour, interactive diff explanation, or wants to review branch changes or a GitHub pull request with the same agent answering questions and receiving line feedback.
+description: Launch an attached-agent diff review, briefing, or guided code tour in a local browser. Use when the user wants to review branch changes or a GitHub pull request with the same agent answering questions and receiving line feedback.
 ---
 
 # DiffCompass
@@ -13,7 +13,17 @@ Launch the requested review mode with `--attached` so generated content and revi
    - Prefer `diffcompass` from `PATH`; bridge operations use its `bridge` subcommand.
    - If it is globally installed by Bun but absent from `PATH`, get the directory with `bun pm bin -g` and invoke it from that absolute directory.
    - From this repository checkout, use `bun run src/cli.ts` from the repository root.
-2. Choose the mode that matches the user's request, then start a persistent terminal process from the repository being reviewed:
+2. Before launching a new review, ask: **“How would you like to review this change?”** Offer these choices in this order:
+
+   - **Diff only** — changes and comments, with no briefing or tour.
+   - **Briefing only** — an explanation with source evidence and diagrams, with no guided tour.
+   - **Briefing + tour** — the briefing followed by a guided walkthrough of the code.
+
+   Use the host's question/choice tool when available and allow a free-text answer after the three choices. If the host already supplies an Other or free-text field, do not add a duplicate Other choice. Otherwise include “Something else — describe what you want.” If no choice tool is available, ask the same question in chat with the three choices and invite a custom answer. Wait for the answer before launching; do not treat a preselected option or silence as a choice.
+
+   Skip this question when the user has already explicitly chosen one of these modes for this review. A general “review these changes” or “use DiffCompass” request needs the question. For a custom answer, map the requested experience to a supported mode and retain any stated scope; clarify only if the mode remains ambiguous. Resuming an existing session keeps its saved mode unless the user asks to change it.
+
+   Start a persistent terminal process from the repository being reviewed with the chosen mode:
 
    | Requested experience | Launch flag | Automatic work |
    | --- | --- | --- |
