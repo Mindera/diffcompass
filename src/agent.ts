@@ -141,7 +141,8 @@ export function buildCopilotArgs(prompt: string, sessionId: string, model?: stri
     "--prompt", prompt,
     "--silent",
     "--session-id", sessionId,
-    ...(attachmentPath ? ["--attachment", attachmentPath] : []),
+    // --attachment accepts images/documents, not a plain-text Git patch.
+    ...(attachmentPath ? ["--add-dir", dirname(attachmentPath)] : []),
     writable ? "--available-tools=view,glob,grep,edit,write,bash" : "--available-tools=view,glob,grep",
     "--allow-tool=read",
     ...(writable ? ["--allow-tool=write", "--allow-tool=shell"] : ["--deny-tool=write", "--deny-tool=shell"]),
@@ -885,7 +886,7 @@ class CopilotTransport implements AgentTransport {
 
   async send(prompt: string, _kind: BridgePromptKind, attachment?: { name: string; content: string }, progress?: Parameters<AgentTransport["send"]>[3]): Promise<string> {
     const invoke = (attachmentPath?: string) => runProcess(buildCopilotArgs(
-      attachmentPath ? `${prompt}\n\nThe complete review diff is attached.` : prompt,
+      attachmentPath ? `${prompt}\n\nRead the complete review diff from ${JSON.stringify(attachmentPath)} using the view tool. Read further ranges if needed; do not truncate the comparison.` : prompt,
       this.sessionId,
       this.model,
       this.reasoning,
