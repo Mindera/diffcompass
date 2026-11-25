@@ -43,6 +43,12 @@ Session history syncing stays disabled with `--no-remote-export`, the compatible
 alias of `--sync-session=off`. Do not pass `--no-remote`: current Copilot releases
 reject that removed flag before running a prompt; remote control is managed in
 interactive sessions instead.
+The complete patch is written to a private temporary `review.diff` file. The
+prompt asks Copilot to read it with `view`, and `--add-dir` grants access only to
+that file's dedicated directory. Keep `--disallow-temp-dir` for read-only turns
+and remove the directory after the process ends, including on errors. Do not
+send patches with `--attachment`: it accepts images and native documents, not
+plain-text diff files.
 Models are parsed from `copilot help`; failure to parse that catalog leaves only
 the `auto` model.
 See GitHub's official [Copilot CLI command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).

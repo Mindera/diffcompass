@@ -93,8 +93,12 @@ test("builds Copilot invocations with exact sessions and a defense-in-depth read
   expect(args).toContain("--model=gpt-5.4");
   expect(args).toContain("--effort=high");
   expect(args).not.toContain("--allow-all");
-  expect(buildCopilotArgs("prompt", "550e8400-e29b-41d4-a716-446655440000", "auto", undefined, "/private/tmp/owned/review.diff"))
-    .toContain("/private/tmp/owned/review.diff");
+  const withDiff = buildCopilotArgs("prompt", "550e8400-e29b-41d4-a716-446655440000", "auto", undefined, "/private/tmp/owned/review.diff");
+  expect(withDiff).not.toContain("--attachment");
+  expect(withDiff.slice(withDiff.indexOf("--add-dir"), withDiff.indexOf("--add-dir") + 2)).toEqual(["--add-dir", "/private/tmp/owned"]);
+  expect(withDiff).toContain("--disallow-temp-dir");
+  expect(withDiff).not.toContain("--allow-all-paths");
+  expect(args).not.toContain("--add-dir");
   const writable = buildCopilotArgs("prompt", "550e8400-e29b-41d4-a716-446655440000", "auto", undefined, undefined, true);
   expect(writable).toContain("--allow-tool=write");
   expect(writable).toContain("--allow-tool=shell");
@@ -102,6 +106,9 @@ test("builds Copilot invocations with exact sessions and a defense-in-depth read
   expect(writable).not.toContain("--disallow-temp-dir");
   expect(writable).toContain("--no-remote-export");
   expect(writable).not.toContain("--no-remote");
+  const writableWithDiff = buildCopilotArgs("prompt", "550e8400-e29b-41d4-a716-446655440000", "auto", undefined, "/private/tmp/owned/review.diff", true);
+  expect(writableWithDiff).not.toContain("--attachment");
+  expect(writableWithDiff).toContain("--add-dir");
 });
 
 test("creates and restores adapter-specific continuation identifiers without cross-wiring", () => {
